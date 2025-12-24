@@ -1,0 +1,113 @@
+#ifndef CREST_PARSER_H
+#define CREST_PARSER_H
+
+#include "xoaop.h"
+#include "tokenizer.hpp"
+#include "array.hpp"
+#include "common.hpp"
+
+#include "ast.hpp"
+
+
+xp_internal b32 is_binary_op(TokenType type) {
+    switch (type)
+    {
+    case Add:
+    case Minus:
+    case Star:
+    case ForwardSlash:
+    case Percent:
+    case GreaterThan:
+    case GreaterEqual:
+    case LessThan:
+    case LessEqual:
+    case DoubleEqual:
+    case ExclamationEqual:
+    case DoubleAnd:
+    case DoubleOr:
+        return true;
+    default:
+        return false;
+    }
+
+    return false;
+}
+
+xp_internal b32 is_unray_op(TokenType type) {
+    switch (type)
+    {
+    case TokenType::Minus:
+    case TokenType::Exclamation:
+        return true;
+    default:
+        return false;
+    }
+    return false;
+}
+
+
+//NOTE(xoaop): 越大 优先级越高
+xp_internal isize precedence(TokenType op) {
+
+    //NOTE: 12 - 13 = -1
+    isize prec = 13;
+
+    //NOTE(xoaop): 越小, 优先级越高
+    switch (op) {
+    case TokenType::Star:              // *
+    case TokenType::ForwardSlash:      // /
+    case TokenType::Percent:           // %
+        prec = 3;
+        break;
+    case TokenType::Add:               // +
+    case TokenType::Minus:             // - 
+        prec = 4;
+        break;
+    case TokenType::GreaterThan:       // >
+    case TokenType::GreaterEqual:      // >=
+    case TokenType::LessThan:          // <
+    case TokenType::LessEqual:         // <=
+        prec = 6;
+        break;
+    case TokenType::DoubleEqual:       // ==
+    case TokenType::ExclamationEqual:  // !=
+        prec = 7;
+        break;
+    case TokenType::DoubleAnd:         // &&
+        prec = 11;
+        break;
+    case TokenType::DoubleOr:          // ||
+        prec = 12;
+        break;
+    default:
+        XP_ASSERT_MSG(0, "Unknown operator precedence for %s\n", token_strings[cast(i32) op]);
+    }
+
+    //NOTE: 12 - 13 = -1
+    return 12 - prec;
+}
+    
+    
+
+struct Parser {
+    isize curr_token_index;
+    Array<Token> tokens;
+    AstFile f;
+};
+
+
+Ast ast_make(AstType type);
+AstFile ast_file_make();
+
+Parser parser_make(Array<Token> tokens);
+void parser_init(Parser *parser, Array<Token> tokens);
+
+AstFile parse_file(Array<Token> tokens);
+
+
+void print_ast(Ast *a);
+void print_ast(Array<Ast *> a_arr);
+
+xpAllocator ast_allocator();
+
+#endif

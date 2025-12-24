@@ -1,0 +1,51 @@
+#pragma once
+
+#include "xoaop.h"
+#include "array.hpp"
+#include "common.hpp"
+
+enum TypeKind {
+    Type_i8,
+    Type_i32,
+    Type_i64,
+    Type_u8,
+    Type_u32,
+    Type_u64,
+    Type_f32,
+    Type_f64,
+    
+    Type_bool, // i1 in llvm
+    Type_void,
+
+    Type_function,
+    Type_pointer,
+    Type_struct,
+    Type_array,
+};
+
+struct Type {
+    TypeKind kind;
+
+    union {
+        struct {
+            Array<Type> param_types;
+            Type *return_type;
+        } function_info;
+
+        Type *pointed_type;
+
+        Array<Type> struct_members;
+        
+        struct {
+            Type *element_type;
+            isize count;
+        } array_info;
+    };
+};
+
+
+Type make_type(TypeKind kind);
+
+
+void point_to(Type *type, Type *pointed_type);
+void struct_add_member(Type *type, Type member_type);
