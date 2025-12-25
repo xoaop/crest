@@ -40,6 +40,10 @@ void free_symbol_table(SymbolTable *table) {
     xp_hash_map_free(table->symbols);
 }
 
+SymbolInfo *SymbolTable::operator[](xpString name) {
+    return find_symbol(this, name);
+}
+
 
 b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info) {
     xpHashMap<xpString, SymbolInfo> *map = &table->symbols;
@@ -58,3 +62,20 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
     return info;
 }
 
+
+b8 add_symbol(Array<SymbolTable> *symbol_table_stack, xpString name, SymbolInfo info) {
+    SymbolTable *current_table = &(*symbol_table_stack)[symbol_table_stack->count - 1];
+    return add_symbol(current_table, name, info);
+}
+
+SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name) {
+    for(isize i = symbol_table_stack->count - 1; i >= 0; i--) {
+        SymbolTable *table = &(*symbol_table_stack)[i];
+        SymbolInfo *info = find_symbol(table, name);
+        if(info != NULL) {
+            return info;
+        }
+    }
+
+    return NULL;
+}

@@ -1,17 +1,21 @@
-#include "ast.hpp"
+#include "decl_collect.hpp"
 
 #include "analyser.hpp"
-
-#include "symbol.hpp"
 
 
 
 void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
     SymbolInfo info;
 
+
     switch(ast->type)
     {
-    case AstType_Function:
+    case AstType_Function: {
+        
+        SymbolInfo *existing_info = find_symbol(&analyser->symbol_table_stack, ast->Function.name);
+        XP_ASSERT_MSG(existing_info == NULL, "Function redefinition");
+
+
         info = make_symbol_info(SymbolType_Function);
         info.Function.name = ast->Function.name;
         info.Function.param_types = make_array<Type>(permanent_allocator());
@@ -20,8 +24,8 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
         }
         info.Function.return_type = ast->v_type;
 
-        add_symbol(&analyser->symbol_table_stack[analyser->symbol_table_stack.count - 1], ast->Function.name, info);
-        break;
+        add_symbol(&analyser->symbol_table_stack, ast->Function.name, info);
+    } break;
     
     case AstType_VariableDecl:
         if(at_global_scope(analyser)) {
@@ -29,7 +33,7 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
             info.VariableDecl.name = ast->VariableDecl.var_name;
             info.VariableDecl.type = ast->v_type;
 
-            add_symbol(&analyser->symbol_table_stack[analyser->symbol_table_stack.count - 1], ast->VariableDecl.var_name, info);
+            add_symbol(&analyser->symbol_table_stack, ast->VariableDecl.var_name, info);
         }
 
     default:

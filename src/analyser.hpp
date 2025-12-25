@@ -9,22 +9,11 @@
 #include "symbol.hpp"
 
 
-struct MapEntry {
-    xpString unique_name;
-    bool curr_scope;
-};
-
-void false_curr_scope(xpHashMap<xpString, MapEntry> *identifier_map);
 
 
 struct Analyser {
     // TODO(xoaop): Analyser state
 
-    // orig_name, unique_name
-    
-    // TODO: two replaced by symbol_table_stack
-    // xpHashMap<xpString, MapEntry> *identifier_map;
-    // xpHashMap<xpString, isize> name_map;
     
     Array<SymbolTable> symbol_table_stack;
 
@@ -44,8 +33,8 @@ bool at_global_scope(Analyser *analyser);
 /**/
 
 
-
-void resolve_ast_file(AstFile *ast_file);
+void semantic_analysis_ast_file(AstFile *ast_file);
+void resolve_ast_file(AstFile *ast_file, Analyser *analyser);
 
 
 //

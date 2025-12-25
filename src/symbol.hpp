@@ -64,6 +64,10 @@ SymbolInfo make_symbol_info(SymbolType type);
 
 
 struct SymbolTable {
+
+    SymbolInfo *operator[](xpString name);
+
+
     xpHashMap<xpString, SymbolInfo> symbols;
 };
 SymbolTable make_symbol_table(xpAllocator allocator);
@@ -77,7 +81,7 @@ void symbol_table_init();
 b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
 SymbolInfo *find_symbol(SymbolTable *table, xpString name);
 
-
-
+b8 add_symbol(Array<SymbolTable> *symbol_table_stack, xpString name, SymbolInfo info);
+SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name);
 
 #endif // CREST_SYMBOL_HPP
