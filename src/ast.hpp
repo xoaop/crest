@@ -64,7 +64,7 @@ struct Ast;
         xpString name;                                                      \
     })                                                                      \
     AST_INFO(FunctionCallExpr, "function call expr", struct {               \
-        xpString func_name;                                                 \
+        xpString name;                                                      \
         Array<Ast *> args;                                                  \
     })                                                                      \
 /**/

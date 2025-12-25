@@ -2,6 +2,8 @@
 
 #include "common.hpp"
 
+#include "symbol.hpp"
+
 void init_llvm_generator(LLVMGenerator *gen) {
     gen->ctx = LLVMContextCreate();
     gen->module = LLVMModuleCreateWithNameInContext("my_module", gen->ctx);
@@ -61,6 +63,21 @@ void gen_ir_astfile(AstFile f) {
 
     LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
 
+    for(isize i = 0; i < f.root.count; i++) {
+        Ast *func = f.root[i];
+
+        LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen.ctx);
+        Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(temp_allocator(), func->Function.params.count);
+        for(isize j = 0; j < func->Function.params.count; j++) {
+            params.push_back(i32_type);
+        }
+        LLVMTypeRef func_type = LLVMFunctionType(i32_type, params.data, params.count, 0);
+        LLVMValueRef function = LLVMAddFunction(gen.module, func->Function.name.c_str, func_type);
+    }
+
+    // char *str = LLVMPrintModuleToString(gen.module); // For debug   
+    // printf("%s\n", str);
+
     // TODO
     for(isize i = 0; i < f.root.count; i++) {
         gen_ir_function(&gen, f.root[i]);
@@ -82,16 +99,8 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     XP_ASSERT_DEFAULT(function->type == AstType_Function);
     defer(xp_arena_allocator_clear(temp_allocator()));
 
-    // TODO 目前只有i32
     LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen->ctx);
-
-    Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(temp_allocator(), function->Function.params.count);
-    for(isize i = 0; i < function->Function.params.count; i++) {
-        params.push_back(i32_type);
-    }
-
-    LLVMTypeRef func_type = LLVMFunctionType(i32_type, params.data, params.count, 0);
-    LLVMValueRef func = LLVMAddFunction(gen->module, function->Function.name.c_str, func_type);
+    LLVMValueRef func = LLVMGetNamedFunction(gen->module, function->Function.name.c_str);
 
     // 1. 创建入口基本块并设置插入点
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(gen->ctx, func, "entry");
@@ -272,8 +281,10 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         LLVMBuildBr(gen->builder, gen->loop_stack[gen->loop_stack.count - 1].post_block);
     } break;
 
-    default:
-        XP_ASSERT_DEFAULT(0);
+    default: {
+        gen_ir_expr(gen, stmt, state);
+        break;
+    }
     }
 
     return state;
@@ -338,16 +349,17 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
     } break;
 
     case AstType_FunctionCallExpr: {
-        LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.func_name.c_str);
-        
+        LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.name.c_str);
 
         Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(temp_allocator(), expr->FunctionCallExpr.args.count);
         for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
             LLVMValueRef arg_val = gen_ir_expr(gen,  expr->FunctionCallExpr.args[i], state);
-            args.push_back(arg_val);
+            array_push_back(&args, arg_val);
         }
 
-        return LLVMBuildCall2(gen->builder, LLVMGetElementType(LLVMTypeOf(func)), func, args.data, args.count, "calltmp");
+        LLVMTypeRef type = LLVMGlobalGetValueType(func);
+
+        return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "calltmp");
     } break;
 
     default:

@@ -159,7 +159,7 @@ xp_internal Ast *parse_function(Parser *p);
 xp_internal Ast *parse_block(Parser *p);
 
 
-xp_internal Ast *parse_var_decl_or_assign(Parser *p);
+xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p);
 xp_internal Ast *parse_if(Parser *p);
 xp_internal Ast *parse_for(Parser *p);
 xp_internal Ast *parse_stmt(Parser *p);
@@ -269,7 +269,7 @@ xp_internal Ast *parse_stmt(Parser *p) {
     {
     // VariableDecl Or Assignment
     case TokenType::Ident: 
-        a = parse_var_decl_or_assign(p);
+        a = parse_var_decl_or_assign_or_fncall(p);
         expect(p, TokenType::Semicolon);
         break;
     case TokenType::KW_if:
@@ -300,6 +300,7 @@ xp_internal Ast *parse_stmt(Parser *p) {
         expect(p, TokenType::KW_continue);
         expect(p, TokenType::Semicolon);
         break;
+
     default:
         XP_ASSERT_DEFAULT(0);
         break;
@@ -309,7 +310,7 @@ xp_internal Ast *parse_stmt(Parser *p) {
     return a;
 }
 
-xp_internal Ast *parse_var_decl_or_assign(Parser *p) {
+xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
     Ast *a = ast_alloc(AstType_Undefined);
 
     Token ident = expect(p, TokenType::Ident);
@@ -342,6 +343,27 @@ xp_internal Ast *parse_var_decl_or_assign(Parser *p) {
 
         a->Assignment.left_var_expr = var_expr;
         a->Assignment.right_expr = right;
+    } else if (curr.type == TokenType::LeftBracket) {
+        // Function Call Expr
+        a->type = AstType_FunctionCallExpr;
+        a->FunctionCallExpr.name = ident.token_str;
+        expect(p, TokenType::LeftBracket);
+
+        a->FunctionCallExpr.args = make_array<Ast *>(ast_allocator());
+        for(;;) {
+            if(curr_token(p).type == TokenType::RightBracket) {
+                break;
+            }
+
+            Ast *arg = parse_expr(p);
+            array_push_back(&a->FunctionCallExpr.args, arg);
+
+            if(curr_token(p).type != TokenType::RightBracket) {
+                expect(p, TokenType::Comma);
+            }
+        }
+
+        expect(p, TokenType::RightBracket);
     } else {
         XP_ASSERT_DEFAULT(0);
     }
@@ -378,7 +400,7 @@ xp_internal Ast *parse_for(Parser *p) {
     // TODO
     // init
     if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.init = parse_var_decl_or_assign(p);
+        a->ForStmt.init = parse_var_decl_or_assign_or_fncall(p);
 
         // 变量声明
         // if() {
@@ -402,7 +424,7 @@ xp_internal Ast *parse_for(Parser *p) {
 
     // post
     if(curr_token(p).type != TokenType::LeftCurlyBracket) {
-        a->ForStmt.post = parse_var_decl_or_assign(p);
+        a->ForStmt.post = parse_var_decl_or_assign_or_fncall(p);
     } else {
         a->ForStmt.post = NULL;
     }
@@ -446,9 +468,9 @@ xp_internal Ast *parse_factor(Parser *p) {
             expect(p, TokenType::LeftBracket);
             a = parse_expr(p);
             expect(p, TokenType::RightBracket);
+            
             break;
-
-        // VarExpr Or FnCall
+        // VarExpr
         case TokenType::Ident:
             advance_token(p);
             a = ast_alloc(AstType_Undefined);
@@ -456,7 +478,7 @@ xp_internal Ast *parse_factor(Parser *p) {
             if(curr_token(p).type == TokenType::LeftBracket) {
                 // Function Call Expr
                 a->type = AstType_FunctionCallExpr;
-                a->FunctionCallExpr.func_name = curr.token_str;
+                a->FunctionCallExpr.name = curr.token_str;
                 expect(p, TokenType::LeftBracket);
 
                 a->FunctionCallExpr.args = make_array<Ast *>(ast_allocator());
@@ -474,11 +496,12 @@ xp_internal Ast *parse_factor(Parser *p) {
                 }
 
                 expect(p, TokenType::RightBracket);
+                break;
             } else {
-                // Variable Expr
                 a->type = AstType_VarExpr;
                 a->VarExpr.name = curr.token_str;
             }
+
 
             break;
         default:
@@ -534,6 +557,12 @@ xp_internal Token curr_token(Parser *p) {
     XP_ASSERT_MSG(p->curr_token_index < p->tokens.count, "Reached end of tokens\n");
 
     return p->tokens[p->curr_token_index];
+}
+
+xp_internal Token next_token(Parser *p) {
+    XP_ASSERT_MSG(p->curr_token_index + 1 < p->tokens.count, "Reached end of tokens\n");
+
+    return p->tokens[p->curr_token_index + 1];
 }
 
 xp_internal void advance_token(Parser *p) {
