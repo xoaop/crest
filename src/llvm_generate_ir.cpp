@@ -54,6 +54,28 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
 }
 
 
+LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
+    switch(type.kind) {
+        case Type_void:
+            return LLVMVoidTypeInContext(gen->ctx);
+        case Type_i8:
+        case Type_u8:
+            return LLVMInt8TypeInContext(gen->ctx);
+        case Type_i32:
+        case Type_u32:
+            return LLVMInt32TypeInContext(gen->ctx);
+        case Type_i64:
+        case Type_u64:
+            return LLVMInt64TypeInContext(gen->ctx);
+        case Type_bool:
+            return LLVMInt1TypeInContext(gen->ctx);
+        default:
+            XP_ASSERT_DEFAULT(0);
+    }
+}
+
+
+
 void gen_ir_astfile(AstFile f) {
     LLVMInitializeNativeTarget();
 
@@ -66,12 +88,11 @@ void gen_ir_astfile(AstFile f) {
     for(isize i = 0; i < f.root.count; i++) {
         Ast *func = f.root[i];
 
-        LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen.ctx);
         Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(temp_allocator(), func->Function.params.count);
         for(isize j = 0; j < func->Function.params.count; j++) {
-            params.push_back(i32_type);
+            params.push_back(get_llvm_type_from_type(&gen, func->Function.params[j]->v_type));
         }
-        LLVMTypeRef func_type = LLVMFunctionType(i32_type, params.data, params.count, 0);
+        LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(&gen, *func->v_type.function_info.return_type), params.data, params.count, 0);
         LLVMValueRef function = LLVMAddFunction(gen.module, func->Function.name.c_str, func_type);
     }
 
@@ -112,7 +133,7 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     // 2. 为每个参数分配 alloca 并保存到 gen->locals
     for(isize i = 0; i < function->Function.params.count; i++) {
         Ast *param = function->Function.params[i];
-        LLVMValueRef param_alloca = LLVMBuildAlloca(gen->builder, i32_type, param->VariableDecl.var_name.c_str);
+        LLVMValueRef param_alloca = LLVMBuildAlloca(gen->builder, get_llvm_type_from_type(gen, param->v_type), param->VariableDecl.var_name.c_str);
         LLVMBuildStore(gen->builder, LLVMGetParam(func, i), param_alloca);
         xp_hash_map_insert(&gen->locals, param->VariableDecl.var_name, param_alloca);
     }
@@ -126,7 +147,7 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
 
 
     // TODO 返回值
-    LLVMBuildRet(gen->builder, LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 1));
+    LLVMBuildRet(gen->builder, LLVMConstInt(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0, is_signed_type(*function->v_type.function_info.return_type)));
 }
 
 
@@ -134,10 +155,8 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state) {
     XP_ASSERT_DEFAULT(variable_decl->type == AstType_VariableDecl);
 
-    LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen->ctx);
-
     // 1. 分配空间
-    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(gen, state.entry, variable_decl->VariableDecl.var_name.c_str, i32_type);
+    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(gen, state.entry, variable_decl->VariableDecl.var_name.c_str, get_llvm_type_from_type(gen, variable_decl->v_type));
 
 
     // 2. 如果有初始值，生成初始值 IR 并存储
@@ -187,9 +206,6 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         state.curr_block = cond_block;
         LLVMValueRef cond_val = gen_ir_expr(gen, stmt->IfStmt.condition, state);
 
-        // TODO: 目前假设条件是 i32 类型，非零为真
-        // LLVMValueRef zero = LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0);
-        // LLVMValueRef cond = LLVMBuildICmp(gen->builder, LLVMIntNE, cond_val, zero, "ifcond");
 
         LLVMBuildCondBr(gen->builder, cond_val, then_block, else_block);
         
@@ -291,6 +307,85 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
 }
 
 
+LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState state) {
+    
+    LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
+
+    if(size_of_type(cast_expr->CastExpr.target_type) > size_of_type(cast_expr->CastExpr.expr->v_type)) {
+        // 扩展
+        if(is_signed_type(cast_expr->CastExpr.expr->v_type)) {
+            // 有符号扩展
+            return LLVMBuildSExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "sexttmp");
+        } else {
+            // 无符号扩展
+            return LLVMBuildZExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "zexttmp");
+        }
+        
+    } else if(size_of_type(cast_expr->CastExpr.target_type) < size_of_type(cast_expr->CastExpr.expr->v_type)) {
+        // 截断
+        return LLVMBuildTrunc(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "trunctmp");
+    } else {
+        // 相等，直接返回
+        return expr_val;
+    }
+}
+
+
+LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
+    LLVMValueRef left = gen_ir_expr(gen, expr->BinaryExpr.left, state);
+    LLVMValueRef right = gen_ir_expr(gen, expr->BinaryExpr.right, state);
+    switch (expr->BinaryExpr.op) {
+    case TokenType::Add: // +
+        return LLVMBuildAdd(gen->builder, left, right, "addtmp");
+    case TokenType::Minus: // -
+        return LLVMBuildSub(gen->builder, left, right, "subtmp");
+    case TokenType::Star: // *
+        return LLVMBuildMul(gen->builder, left, right, "multmp");
+    case TokenType::ForwardSlash: // /
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildSDiv(gen->builder, left, right, "divtmp");
+        } else {
+            return LLVMBuildUDiv(gen->builder, left, right, "divtmp");
+        }
+    case TokenType::Percent: // % 
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildSRem(gen->builder, left, right, "modtmp");
+        } else {
+            return LLVMBuildURem(gen->builder, left, right, "modtmp");
+        }
+    case TokenType::GreaterThan: // >
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildICmp(gen->builder, LLVMIntSGT, left, right, "gttmp");
+        } else {
+            return LLVMBuildICmp(gen->builder, LLVMIntUGT, left, right, "gttmp");
+        }
+    case TokenType::GreaterEqual: // >=
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildICmp(gen->builder, LLVMIntSGE, left, right, "getmp");
+        } else {
+            return LLVMBuildICmp(gen->builder, LLVMIntUGE, left, right, "getmp");
+        }
+    case TokenType::LessThan: // <
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildICmp(gen->builder, LLVMIntSLT, left, right, "lttmp");
+        } else {
+            return LLVMBuildICmp(gen->builder, LLVMIntULT, left, right, "lttmp");
+        }
+    case TokenType::LessEqual: // <=
+        if(is_signed_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildICmp(gen->builder, LLVMIntSLE, left, right, "letmp");
+        } else {
+            return LLVMBuildICmp(gen->builder, LLVMIntULE, left, right, "letmp");
+        }
+    case TokenType::DoubleEqual: // ==
+        return LLVMBuildICmp(gen->builder, LLVMIntEQ, left, right, "eqtmp");
+    case TokenType::ExclamationEqual: // !=
+        return LLVMBuildICmp(gen->builder, LLVMIntNE, left, right, "netmp");
+    default:
+        XP_ASSERT_DEFAULT(0);
+    }
+}
+
 
 LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
     switch (expr->type)
@@ -298,17 +393,19 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
     case AstType_VarExpr: {
         LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->VarExpr.name);
         XP_ASSERT_DEFAULT(alloca != NULL);
-        LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen->ctx);
-        return LLVMBuildLoad2(gen->builder, i32_type, *alloca, expr->VarExpr.name.c_str);
+        return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), *alloca, expr->VarExpr.name.c_str);
     } break;
     case AstType_Constant: {
-        return LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), expr->Constant.value, 1);
+        LLVMBool is_signed = cast(LLVMBool) is_signed_type(expr->v_type);
+        return LLVMConstInt(get_llvm_type_from_type(gen, expr->v_type), expr->Constant.value, is_signed);
     } break;
-    case AstType_UnrayExpr: {
+    case AstType_UnaryExpr: {
         // 一元表达式（如负号）
-        LLVMValueRef operand = gen_ir_expr(gen, expr->UnrayExpr.operand, state);
-        if (expr->UnrayExpr.op == TokenType::Minus) {
+        LLVMValueRef operand = gen_ir_expr(gen, expr->UnaryExpr.operand, state);
+        if (expr->UnaryExpr.op == TokenType::Minus) {
             return LLVMBuildNeg(gen->builder, operand, "negtmp");
+        } else if(expr->UnaryExpr.op == TokenType::Exclamation) {
+            return LLVMBuildNot(gen->builder, operand, "nottmp");
         }
 
         XP_ASSERT_DEFAULT(0);
@@ -340,6 +437,10 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
             return LLVMBuildICmp(gen->builder, LLVMIntEQ, lhs, rhs, "eqtmp");
         case TokenType::ExclamationEqual: // !=
             return LLVMBuildICmp(gen->builder, LLVMIntNE, lhs, rhs, "netmp");
+        case TokenType::DoubleAnd: 
+            return LLVMBuildAnd(gen->builder, lhs, rhs, "andtmp");
+        case TokenType::DoubleOr:
+            return LLVMBuildOr(gen->builder, lhs, rhs, "ortmp");
 
         default:
             XP_ASSERT_DEFAULT(0);
@@ -360,6 +461,10 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
         LLVMTypeRef type = LLVMGlobalGetValueType(func);
 
         return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "calltmp");
+    } break;
+
+    case AstType_CastExpr: {
+        return gen_ir_cast_expr(gen, expr, state);
     } break;
 
     default:

@@ -33,7 +33,7 @@ xp_internal b32 is_binary_op(TokenType type) {
     return false;
 }
 
-xp_internal b32 is_unray_op(TokenType type) {
+xp_internal b32 is_unary_op(TokenType type) {
     switch (type)
     {
     case TokenType::Minus:
@@ -49,7 +49,7 @@ xp_internal b32 is_unray_op(TokenType type) {
 //NOTE(xoaop): 越大 优先级越高
 xp_internal isize precedence(TokenType op) {
 
-    //NOTE: 12 - 13 = -1
+    //NOTE: 13 - 13 = 0
     isize prec = 13;
 
     //NOTE(xoaop): 越小, 优先级越高
@@ -83,8 +83,8 @@ xp_internal isize precedence(TokenType op) {
         XP_ASSERT_MSG(0, "Unknown operator precedence for %s\n", token_strings[cast(i32) op]);
     }
 
-    //NOTE: 12 - 13 = -1
-    return 12 - prec;
+    //NOTE: 13 - 13 = 0
+    return 13 - prec;
 }
     
     
@@ -105,9 +105,7 @@ void parser_init(Parser *parser, Array<Token> tokens);
 AstFile parse_file(Array<Token> tokens);
 
 
-void print_ast(Ast *a);
-void print_ast(Array<Ast *> a_arr);
 
-xpAllocator ast_allocator();
+
 
 #endif

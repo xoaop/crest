@@ -8,15 +8,6 @@
 
 
 #define SYMBOL_TYPES                             \
-    SYMBOL_TYPE(Function, struct {               \
-        xpString name;                           \
-        Array<Type> param_types;                 \
-        Type return_type;                        \
-    })                                           \
-    SYMBOL_TYPE(VariableDecl, struct {           \
-        xpString name;                           \
-        Type type;                               \
-    })                                           \
 /**/
 
 
@@ -42,20 +33,25 @@ enum ScopeType {
 
 struct SymbolInfo {
     xpString name;
-    // TODO(xoaop): Additional symbol information
+    Type type;
+
+    // TODO 现在先不区分作用域类型, 后面实现
     ScopeType scope;
     
-    SymbolType type;
-
-    union {
-        #define SYMBOL_TYPE(type_name, ...) XP_JOIN_2(SymbolInfo, type_name) type_name;
-        SYMBOL_TYPES
-        #undef SYMBOL_TYPE
-    };
+    // TODO 这个目前好像没什么用, 可以直接用Type
+    // SymbolType type;
+    // TODO 目前不需要特定的数据, 先注释掉
+    // union {
+    //     #define SYMBOL_TYPE(type_name, ...) XP_JOIN_2(SymbolInfo, type_name) type_name;
+    //     SYMBOL_TYPES
+    //     #undef SYMBOL_TYPE
+    // };
 
 };
 
 SymbolInfo make_symbol_info(SymbolType type);
+
+bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b);
 
 
 

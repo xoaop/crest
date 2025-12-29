@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     char const *path = argv[1];
 
     xpString code_str = file_to_string(path, permanent_allocator());
-
+    
     Tokenizer tokenizer;
     tokenizer_init(&tokenizer, code_str);
     tokenize(&tokenizer);

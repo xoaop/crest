@@ -48,6 +48,7 @@ struct Ast;
         Ast *left_var_expr;                                                 \
         Ast *right_expr;                                                    \
     })                                                                      \
+    AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \
         i128 value;                                                         \
     })                                                                      \
@@ -56,7 +57,7 @@ struct Ast;
         Ast *left;                                                          \
         Ast *right;                                                         \
     })                                                                      \
-    AST_INFO(UnrayExpr, "unray expr", struct {                              \
+    AST_INFO(UnaryExpr, "unary expr", struct {                              \
         TokenType op;                                                       \
         Ast *operand;                                                       \
     })                                                                      \
@@ -67,6 +68,11 @@ struct Ast;
         xpString name;                                                      \
         Array<Ast *> args;                                                  \
     })                                                                      \
+    AST_INFO(CastExpr, "cast expr", struct {                                \
+        Type target_type;                                                   \
+        Ast *expr;                                                          \
+    })                                                                      \
+    AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/
 
 
@@ -111,7 +117,11 @@ struct Ast {
     AstType type;
 
     // TODO(xoaop): more data
-    Type v_type;
+    Type v_type; // 该AST节点的类型
+    Token token; // 记录该AST对应的第一个token
+
+
+    bool is_const_expr = false; // 该AST是否是一个常量表达式
     
     union {
         #define AST_INFO(type_name, ...) XP_JOIN_2(Ast, type_name) type_name;
@@ -121,9 +131,25 @@ struct Ast {
     
 };
 
+extern const char *ast_strs[];
 
 
+Ast ast_make(AstType type);
+Ast *ast_alloc(AstType type);
+AstFile ast_file_make();
 
+
+bool is_equal_compare_operator(TokenType t);
+bool is_compare_operator(TokenType t);
+bool is_operator_for_bool(TokenType t);
+bool is_logic_operator(TokenType t);
+bool is_return_bool_operator(TokenType t);
+
+
+void print_ast(Ast *a);
+void print_ast(Array<Ast *> a_arr);
+
+xpAllocator ast_allocator();
 
 
 
