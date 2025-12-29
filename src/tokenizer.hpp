@@ -42,24 +42,32 @@
     TOKEN_INFO(Comma, ","),                                     \
     TOKEN_INFO(Arrow, "->"),                                    \
     TOKEN_INFO(Integer, "interger"),                            \
+    TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
+    TOKEN_INFO(KW_void, "void"),                                \
+    TOKEN_INFO(KW_bool, "bool"),                                \
     TOKEN_INFO(KW_i8, "i8"),                                    \
     TOKEN_INFO(KW_i32, "i32"),                                  \
     TOKEN_INFO(KW_i64, "i64"),                                  \
     TOKEN_INFO(KW_u8, "u8"),                                    \
     TOKEN_INFO(KW_u32, "u32"),                                  \
     TOKEN_INFO(KW_u64, "u64"),                                  \
+    TOKEN_INFO(KW_f32, "f32"),                                  \
+    TOKEN_INFO(KW_f64, "f64"),                                  \
     TOKEN_INFO(KW_if, "if"),                                    \
     TOKEN_INFO(KW_else, "else"),                                \
     TOKEN_INFO(KW_for, "for"),                                  \
     TOKEN_INFO(KW_switch, "switch"),                            \
     TOKEN_INFO(KW_case, "case"),                                \
-    TOKEN_INFO(KW_default, "default"),                          \
     TOKEN_INFO(KW_return, "return"),                            \
     TOKEN_INFO(KW_break, "break"),                              \
     TOKEN_INFO(KW_continue, "continue"),                        \
-    TOKEN_INFO(__END__OF__KEYWORD__, "")                                  
+    TOKEN_INFO(KW_cast, "cast"),                                \
+    TOKEN_INFO(KW_true, "true"),                                \
+    TOKEN_INFO(KW_false, "false"),                              \
+    TOKEN_INFO(__END__OF__KEYWORD__, "")                        \
+/**/                                  
 
 
 extern const char* token_strings[];

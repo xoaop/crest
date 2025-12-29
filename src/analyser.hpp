@@ -19,7 +19,13 @@ struct Analyser {
 
     // 循环体栈
     Array<Ast *> loop_ast_stack;
+
+
+    Ast *curr_function;
 };
+
+void analyser_init(Analyser *analyser, xpAllocator allocator);
+void analyser_free(Analyser *analyser);
 
 
 void push_symbol_table(Analyser *analyser);

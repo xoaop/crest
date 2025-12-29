@@ -5,6 +5,9 @@
 #include "common.hpp"
 
 enum TypeKind {
+    Type_Undefined,
+
+    
     Type_i8,
     Type_i32,
     Type_i64,
@@ -21,6 +24,10 @@ enum TypeKind {
     Type_pointer,
     Type_struct,
     Type_array,
+
+
+    Type_literal, // 用于常量表达式推导阶段的字面量类型
+
 };
 
 struct Type {
@@ -45,7 +52,24 @@ struct Type {
 
 
 Type make_type(TypeKind kind);
+Type *alloc_type(xpAllocator allocator, TypeKind kind);
+
+
+bool is_equal_type(Type a, Type b);
+int size_of_type(Type type);
+bool is_integer_type(Type type);
+bool is_signed_type(Type type);
+bool is_unsigned_type(Type type);
 
 
 void point_to(Type *type, Type *pointed_type);
 void struct_add_member(Type *type, Type member_type);
+
+
+
+
+
+
+
+
+void print_type(Type type);

@@ -272,6 +272,7 @@ b32 tokenizer_get_token(Tokenizer* t, Token *token) {
             break;
 
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
+            // TODO 支持 小数 类型后缀
             token->type = TokenType::Integer;
             tokenizer_scan_integer(t);
             break;
@@ -311,13 +312,21 @@ xp_internal isize advance_one_character(Tokenizer *t) {
     return 0;
 }
 
+isize advance_characters(Tokenizer *t, isize count) {
+    isize advanced = 0;
+    for(isize i = 0; i < count; i++) {
+        advanced += advance_one_character(t);
+    }
+    return advanced;
+}
+
 char tokenizer_next_character(Tokenizer *t) {
     return t->code.c_str[t->curr_character_index + 1];
 }
 
 isize tokenizer_move_until_next_space(Tokenizer *t) {
     isize count = 0;
-    while (t->code.c_str[t->curr_character_index] != '\0') {
+    while (tokenizer_curr_character(t) != '\0') {
 
         if(xp_is_space(t->code.c_str[t->curr_character_index])) {
             break;
@@ -339,6 +348,7 @@ isize tokenizer_skip_space(Tokenizer *t) {
     return count;
 }
 
+
 void tokenizer_scan_integer(Tokenizer *t) {
     char c = tokenizer_curr_character(t);
     while (!tokenizer_end(t)) {
@@ -350,4 +360,101 @@ void tokenizer_scan_integer(Tokenizer *t) {
     }
 
     return;
+}
+
+isize tokenizer_try_to_fix(Tokenizer *t, const char *str) {
+    isize curr_index = t->curr_character_index;
+    defer(t->curr_character_index = curr_index);
+    
+    isize i = 0;
+    for(i = 0; str[i] != '\0'; i++) {
+        if(tokenizer_curr_character(t) != str[i]) {
+            return 0;
+        }
+    }
+    
+    return i;
+}
+
+bool is_number(char c) {
+    return c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9';
+}
+
+
+void tokenizer_scan_pure_integer_seq(Tokenizer *t) {
+    char c = tokenizer_curr_character(t);
+    while (!tokenizer_end(t)) {
+        if(!is_number(c)) {
+            break;
+        }
+        advance_one_character(t);
+        c = tokenizer_curr_character(t);
+    }
+}
+
+
+TokenType tokenizer_scan_number(Tokenizer *t) {
+    TokenType type;
+
+    switch(tokenizer_curr_character(t))
+    {
+    case '0': {
+        advance_one_character(t);
+
+        if(tokenizer_curr_character(t) == 'x') {
+            advance_one_character(t);
+            tokenizer_scan_pure_integer_seq(t);
+        }
+
+        type = TokenType::Integer;
+    } break;
+
+    case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        tokenizer_scan_pure_integer_seq(t);
+
+        if(tokenizer_curr_character(t) == '.') {
+            advance_one_character(t);
+            tokenizer_scan_pure_integer_seq(t);
+        }
+
+        type = TokenType::Float;
+    } break;
+
+    default:
+        XP_ASSERT_DEFAULT(0);
+        break;
+    }
+
+    isize len = 0;
+    static const char *postfix[] = {
+        "i8", "i32", "i64",
+        "u8", "u32", "u64",
+        "f32", "f64"
+    };
+
+    isize i = 0;
+    for(i = 0; i < xp_array_len(postfix); i++) {
+        len = tokenizer_try_to_fix(t, postfix[i]);
+        if(len > 0) {
+            break;
+        }
+    }
+
+    // 浮点数不能用整型的后缀
+    if(type == TokenType::Float) {
+        if(len > 0 && !(i == 6 || i == 7)) {
+            XP_ASSERT_DEFAULT(0);
+        }
+    }
+    // 整型不能用浮点数的后缀
+    if(type == TokenType::Integer) {
+        if(len > 0 && (i == 6 || i == 7)) {
+            XP_ASSERT_DEFAULT(0);
+        }
+    }
+
+    advance_characters(t, len);
+
+
+    return type;
 }
