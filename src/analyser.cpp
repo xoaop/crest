@@ -1038,11 +1038,7 @@ unary_operation:
         result = -left;
     } break;
     case TokenType::Exclamation: {
-        if(left == 0) {
-            result = 1;
-        } else {
-            result = 0;
-        }
+        result = !left;
     } break;
     
     default:

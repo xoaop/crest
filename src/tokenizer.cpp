@@ -69,6 +69,8 @@ void tokenize(Tokenizer* t) {
     Token temp;
 
     for(;;) {
+        temp.token_str.capacity = 0;
+
         if(!tokenizer_get_token(t, &temp)) {
             break;
         }
@@ -273,8 +275,9 @@ b32 tokenizer_get_token(Tokenizer* t, Token *token) {
 
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
             // TODO 支持 小数 类型后缀
-            token->type = TokenType::Integer;
-            tokenizer_scan_integer(t);
+            tokenizer_scan_number(t, token, old_index);
+            // token->type = TokenType::Integer;
+            // tokenizer_scan_integer(t);
             break;
         
         default: 
@@ -282,7 +285,9 @@ b32 tokenizer_get_token(Tokenizer* t, Token *token) {
             XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
         }
 
-        token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+        if(token->token_str.capacity == 0) {
+            token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+        }
     }
 
     return true;
@@ -371,6 +376,7 @@ isize tokenizer_try_to_fix(Tokenizer *t, const char *str) {
         if(tokenizer_curr_character(t) != str[i]) {
             return 0;
         }
+        advance_one_character(t);
     }
     
     return i;
@@ -393,8 +399,9 @@ void tokenizer_scan_pure_integer_seq(Tokenizer *t) {
 }
 
 
-TokenType tokenizer_scan_number(Tokenizer *t) {
-    TokenType type;
+void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
+    TokenType token_type;
+    TypeKind type_kind;
 
     switch(tokenizer_curr_character(t))
     {
@@ -406,7 +413,7 @@ TokenType tokenizer_scan_number(Tokenizer *t) {
             tokenizer_scan_pure_integer_seq(t);
         }
 
-        type = TokenType::Integer;
+        token_type = TokenType::Integer;
     } break;
 
     case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
@@ -415,9 +422,11 @@ TokenType tokenizer_scan_number(Tokenizer *t) {
         if(tokenizer_curr_character(t) == '.') {
             advance_one_character(t);
             tokenizer_scan_pure_integer_seq(t);
+            token_type = TokenType::Float;
+        } else {
+            token_type = TokenType::Integer;
         }
 
-        type = TokenType::Float;
     } break;
 
     default:
@@ -425,8 +434,11 @@ TokenType tokenizer_scan_number(Tokenizer *t) {
         break;
     }
 
+
+
+    // 解析类型后缀
     isize len = 0;
-    static const char *postfix[] = {
+    const char *postfix[] = {
         "i8", "i32", "i64",
         "u8", "u32", "u64",
         "f32", "f64"
@@ -441,20 +453,28 @@ TokenType tokenizer_scan_number(Tokenizer *t) {
     }
 
     // 浮点数不能用整型的后缀
-    if(type == TokenType::Float) {
+    if(token_type == TokenType::Float) {
         if(len > 0 && !(i == 6 || i == 7)) {
             XP_ASSERT_DEFAULT(0);
         }
     }
     // 整型不能用浮点数的后缀
-    if(type == TokenType::Integer) {
+    if(token_type == TokenType::Integer) {
         if(len > 0 && (i == 6 || i == 7)) {
             XP_ASSERT_DEFAULT(0);
         }
     }
+    
+    
+    
+    if(i < 8) {
+        token->type_kind_of_number = string_to_type_kind(xp_string_c(postfix[i]));
+    }
 
+    token->type = token_type;
+    
+    token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
     advance_characters(t, len);
-
-
-    return type;
+    
+    return;
 }

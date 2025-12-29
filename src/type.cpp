@@ -1,5 +1,31 @@
 #include "type.hpp"
 
+TypeKind string_to_type_kind(xpString str) {
+    if(xp_string_cmp(str, xp_string_c("i8"))) {
+        return Type_i8;
+    } else if(xp_string_cmp(str, xp_string_c("i32"))) {
+        return Type_i32;
+    } else if(xp_string_cmp(str, xp_string_c("i64"))) {
+        return Type_i64;
+    } else if(xp_string_cmp(str, xp_string_c("u8"))) {
+        return Type_u8;
+    } else if(xp_string_cmp(str, xp_string_c("u32"))) {
+        return Type_u32;
+    } else if(xp_string_cmp(str, xp_string_c("u64"))) {
+        return Type_u64;
+    } else if(xp_string_cmp(str, xp_string_c("f32"))) {
+        return Type_f32;
+    } else if(xp_string_cmp(str, xp_string_c("f64"))) {
+        return Type_f64;
+    } else if(xp_string_cmp(str, xp_string_c("bool"))) {
+        return Type_bool;
+    } else if(xp_string_cmp(str, xp_string_c("void"))) {
+        return Type_void;
+    } else {
+        return Type_Undefined;
+    }
+}
+
 
 Type make_type(TypeKind kind) {
     Type t = {};

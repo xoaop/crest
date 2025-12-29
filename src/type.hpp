@@ -30,6 +30,9 @@ enum TypeKind {
 
 };
 
+TypeKind string_to_type_kind(xpString str);
+
+
 struct Type {
     TypeKind kind;
 
@@ -49,6 +52,7 @@ struct Type {
         } array_info;
     };
 };
+
 
 
 Type make_type(TypeKind kind);
