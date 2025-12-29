@@ -4,6 +4,8 @@
 #include "xoaop.h"
 #include "array.hpp"
 
+#include "type.hpp"
+
 // NOTE: Keyword是可以直接加在TOKEN_INFO不用修改别的地方的
 // 而别的Token需要在tokenizer加上处理逻辑
 
@@ -84,6 +86,11 @@ struct Token {
     TokenType type;
     xpString token_str;
 
+    union {
+        TypeKind type_kind_of_number = Type_Undefined; // 用于标记带类型后缀的数字(整数, 浮点数)
+    };
+    
+
     isize line_index;
     isize column_index;
 };
@@ -106,7 +113,7 @@ b32 tokenizer_end(Tokenizer *t);
 isize tokenizer_move_until_next_space(Tokenizer *t);
 isize tokenizer_skip_space(Tokenizer *t);
 void tokenizer_scan_integer(Tokenizer *t);
-
+void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index);
 
 void init_keyword_map();
 void test_keyword_map();
