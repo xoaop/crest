@@ -1038,7 +1038,11 @@ unary_operation:
         result = -left;
     } break;
     case TokenType::Exclamation: {
-        result = !left;
+        if(left == 0) {
+            result = 1;
+        } else {
+            result = 0;
+        }
     } break;
     
     default:
@@ -1122,7 +1126,7 @@ void try_constant_expr_folding(Ast *const_expr) {
 
 
         i128 result = operation_constant_ast(op_type, left, right);
-        if(check_const_overflow(left->v_type, result)) {
+        if(check_const_overflow(const_expr->v_type, result)) {
             // TODO 常量溢出错误处理
             XP_ASSERT_MSG(0, "constant overflowed");
         }
@@ -1130,7 +1134,7 @@ void try_constant_expr_folding(Ast *const_expr) {
         Ast constant = ast_make(AstType_Constant);
         constant.is_const_expr = true;
         constant.Constant.value = result;
-        constant.v_type = left->v_type;
+        constant.v_type = const_expr->v_type;
 
         *const_expr = constant;
     } break;
