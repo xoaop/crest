@@ -36,6 +36,10 @@ xp_internal Ast *parse_stmt(Parser *p);
 xp_internal Ast *parse_factor(Parser *p);
 xp_internal Ast *parse_expr(Parser *p, isize min_prec = 0);
 
+Ast *parse_constant(Parser *p);
+void parse_integer(const char *str, TypeKind type_kind, Ast *a);
+void parse_float(const char *str, TypeKind type_kind, Ast *a);
+
 
 AstFile parse_file(Array<Token> tokens) {
     Parser p = parser_make(tokens);
@@ -93,6 +97,12 @@ xp_internal Type parse_type(Parser *p) {
         } break;
         case TokenType::KW_u64: {
             type = make_type(Type_u64);
+        } break;
+        case TokenType::KW_f32: {
+            type = make_type(Type_f32);
+        } break;
+        case TokenType::KW_f64: {
+            type = make_type(Type_f64);
         } break;
 
         default: {
@@ -380,10 +390,12 @@ xp_internal Ast *parse_factor(Parser *p) {
 
         // 字面量
         case TokenType::Integer:
-            a = ast_alloc(AstType_Constant);
-            a->token = curr;
+        case TokenType::Float:
+            // a = ast_alloc(AstType_Constant);
+            // a->token = curr;
             
-            expect(p, TokenType::Integer);
+            // expect(p, TokenType::Integer);
+            a = parse_constant(p);
 
             // TODO: 移到tokenizer阶段, 且不转化为实际数值, 只保留字符串, 转化放到语义分析阶段
             // success = xp_str_to_number(curr.token_str.c_str, &a->Constant.value);
@@ -396,14 +408,14 @@ xp_internal Ast *parse_factor(Parser *p) {
             a->token = expect(p, curr.type);
             break;
         
-            // (expr)
+        // (expr)
         case TokenType::LeftBracket:
             expect(p, TokenType::LeftBracket);
             a = parse_expr(p);
             expect(p, TokenType::RightBracket);
             
             break;
-            // VarExpr
+        // VarExpr
         case TokenType::Ident:
             advance_token(p);
             a = ast_alloc(AstType_Undefined);
@@ -488,6 +500,104 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
 
     return left;
 }
+
+
+Ast *parse_constant(Parser *p) {
+    Ast *a = ast_alloc(AstType_Constant);
+    a->token = curr_token(p);
+
+    Token curr = curr_token(p);
+    
+    
+    if(curr.type == TokenType::Integer) {
+        parse_integer(curr.token_str.c_str, curr.type_kind_of_number, a);
+        expect(p, TokenType::Integer);
+    }
+
+    if(curr.type == TokenType::Float) {
+        parse_float(curr.token_str.c_str, curr.type_kind_of_number, a);
+        expect(p, TokenType::Float);
+    }
+
+    return a;
+}
+
+
+#include <errno.h>
+#include <inttypes.h>
+
+void parse_integer(const char *str, TypeKind type_kind, Ast *a) {
+    XP_ASSERT_DEFAULT(str != NULL && a != NULL);
+
+
+    // 解析
+    char *end = NULL;
+    errno = 0;
+    uintmax_t val = strtoumax(str, &end, 0);
+
+    // 检查解析完成
+    if(end == str) {
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    // 检查溢出(字面量)
+    if(errno == ERANGE) {
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    
+    // 检查溢出(类型)
+    if(type_kind != Type_Undefined) {
+        check_literal_overflow(type_kind, cast(i128)val, 0.0);
+    }
+
+    a->type = AstType_Constant;
+    a->v_type = make_type(type_kind);
+    a->Constant.value = cast(i128)val;
+
+}
+
+void parse_float(const char *str, TypeKind type_kind, Ast *a) {
+    XP_ASSERT_DEFAULT(str != NULL && a != NULL);
+
+    // 解析
+    char *end;
+    errno = 0;
+    double val = strtod(str, &end);
+
+    // 检查解析完成
+    if(end == str) {
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    // 检查溢出(字面量)
+    if(errno == ERANGE) {
+        if(val == HUGE_VAL || val == -HUGE_VAL) {
+            XP_ASSERT_DEFAULT(0);
+        }
+        // underflow (如1e-400) -> 返回0.0, 不算溢出
+    }
+
+    // 拒绝 NaN 和 Inf
+    if(!isfinite(val)) {
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    // 检查溢出(类型)
+    if(type_kind != Type_Undefined) {
+        check_literal_overflow(type_kind, 0, val);
+    }
+
+    a->type = AstType_Constant;
+    a->v_type = make_type(type_kind);
+    a->Constant.float_value = val;
+    
+    return;
+}
+
+
+
+
 
 
 //  Utils

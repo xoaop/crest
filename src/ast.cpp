@@ -50,7 +50,8 @@ bool is_operator_for_bool(TokenType t) {
 
 bool is_logic_operator(TokenType t) {
     return t == TokenType::DoubleAnd ||
-           t == TokenType::DoubleOr;
+           t == TokenType::DoubleOr  ||
+           t == TokenType::Exclamation;
 }
 
 bool is_return_bool_operator(TokenType t) {
@@ -105,6 +106,8 @@ void print_ast(Ast *a) {
     case AstType_Constant:
         print_with_prefix("value: ");
         print_i128(a->Constant.value);
+        print_with_prefix("\n");
+        print_with_prefix("float_value: %f\n", a->Constant.float_value);
         putchar('\n');
         break;
     case AstType_Function:

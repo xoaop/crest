@@ -475,6 +475,5 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     
     token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
     advance_characters(t, len);
-    
     return;
 }

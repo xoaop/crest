@@ -50,7 +50,10 @@ struct Ast;
     })                                                                      \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \
-        i128 value;                                                         \
+        union {                                                             \
+            i128 value;                                                     \
+            double float_value;                                             \
+        };                                                                  \
     })                                                                      \
     AST_INFO(BinaryExpr, "binary expr", struct {                            \
         TokenType op;                                                       \
