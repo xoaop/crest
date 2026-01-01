@@ -63,6 +63,7 @@ Type *alloc_type(xpAllocator allocator, TypeKind kind);
 bool is_equal_type(Type a, Type b);
 int size_of_type(Type type);
 bool is_integer_type(Type type);
+bool is_integer_or_bool_type(Type type);
 bool is_signed_type(Type type);
 bool is_unsigned_type(Type type);
 bool is_float_type(Type type);

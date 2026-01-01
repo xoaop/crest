@@ -90,7 +90,7 @@ struct Token {
         TypeKind type_kind_of_number = Type_Undefined; // 用于标记带类型后缀的数字(整数, 浮点数)
     };
     
-
+    xpString file_path;
     isize line_index;
     isize column_index;
 };
