@@ -34,6 +34,15 @@ ti_int __modti3(ti_int a, ti_int b) {
 }
 
 
+
+float __floattisf(__int128 a) {
+    return (float)(long long)a;
+}
+double __floattidf(__int128 a) {
+    return (double)(long long)a;
+}
+
+
 #ifdef __cplusplus
 }
 #endif

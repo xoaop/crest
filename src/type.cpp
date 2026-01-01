@@ -1,25 +1,25 @@
 #include "type.hpp"
 
 TypeKind string_to_type_kind(xpString str) {
-    if(xp_string_cmp(str, xp_string_c("i8"))) {
+    if(!xp_string_cmp(str, xp_string_c("i8"))) {
         return Type_i8;
-    } else if(xp_string_cmp(str, xp_string_c("i32"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("i32"))) {
         return Type_i32;
-    } else if(xp_string_cmp(str, xp_string_c("i64"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("i64"))) {
         return Type_i64;
-    } else if(xp_string_cmp(str, xp_string_c("u8"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("u8"))) {
         return Type_u8;
-    } else if(xp_string_cmp(str, xp_string_c("u32"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("u32"))) {
         return Type_u32;
-    } else if(xp_string_cmp(str, xp_string_c("u64"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("u64"))) {
         return Type_u64;
-    } else if(xp_string_cmp(str, xp_string_c("f32"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("f32"))) {
         return Type_f32;
-    } else if(xp_string_cmp(str, xp_string_c("f64"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("f64"))) {
         return Type_f64;
-    } else if(xp_string_cmp(str, xp_string_c("bool"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("bool"))) {
         return Type_bool;
-    } else if(xp_string_cmp(str, xp_string_c("void"))) {
+    } else if(!xp_string_cmp(str, xp_string_c("void"))) {
         return Type_void;
     } else {
         return Type_Undefined;
@@ -112,7 +112,7 @@ bool is_integer_type(Type type) {
     case Type_u8:
     case Type_u32:
     case Type_u64:
-    case Type_bool: // NOTE: bool 也作为整数类型处理, i1
+    // case Type_bool: // NOTE: bool 也作为整数类型处理, i1
         return true;
     default:
         return false;
@@ -138,11 +138,99 @@ bool is_unsigned_type(Type type) {
     case Type_u32:
     case Type_u64:
 
-    case Type_bool: // NOTE: bool 也作为无符号整数类型处理, i1
+    // case Type_bool: // NOTE: bool 也作为无符号整数类型处理, i1
         return true;
     default:
         return false;
     }
+}
+
+bool is_float_type(Type type) {
+    return type.kind == Type_f32 || type.kind == Type_f64;
+}
+
+bool is_certain_type(Type type) {
+    return type.kind != Type_literal && type.kind != Type_literal_float;
+}
+
+
+int get_type_rank(Type t) {
+    switch (t.kind) {
+        case Type_i8: case Type_u8:  return 8;
+        case Type_i32: case Type_u32: return 32;
+        case Type_i64: case Type_u64: return 64;
+        case Type_f32: return 32;
+        case Type_f64: return 64;
+        default: 
+            XP_ASSERT_DEFAULT(0);
+            return 0;
+    }
+}
+
+
+Type get_common_type(Type a, Type b) {
+    if(is_equal_type(a, b)) {
+        return a;
+    }
+
+    if(is_float_type(a) && is_float_type(b)) {
+        return (get_type_rank(a) >= get_type_rank(b)) ? a : b;
+    }
+
+
+    if(is_integer_type(a) && is_integer_type(b)) {
+        if (is_signed_type(a) != is_signed_type(b)) {
+            XP_ASSERT_DEFAULT(0);
+        }
+
+        return (get_type_rank(a) >= get_type_rank(b)) ? a : b;
+    }
+
+
+    XP_ASSERT_DEFAULT(0);
+    
+    return make_type(Type_Undefined);
+}
+
+
+bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
+    bool overflowed = false;
+    switch(type_kind) {
+        case Type_i8: 
+            overflowed = (result < INT8_MIN || result > INT8_MAX);
+            break;
+        case Type_i32: 
+            overflowed = (result < INT32_MIN || result > INT32_MAX);
+            break;
+        case Type_i64:
+            overflowed = (result < INT64_MIN || result > INT64_MAX);
+            break;
+        case Type_u8:
+            overflowed = (result < 0 || result > UINT8_MAX);
+            break;
+        case Type_u32:
+            overflowed = (result < 0 || result > UINT32_MAX);
+            break;
+        case Type_u64:
+            overflowed = (result < 0 || result > UINT64_MAX);
+            break;
+        case Type_f32:
+            overflowed = (dresult < -FLT_MAX || dresult > FLT_MAX);
+            break;
+        case Type_f64:
+            overflowed = (dresult < -DBL_MAX || dresult > DBL_MAX);
+            break;
+        
+        // 注意类型检查
+        case Type_bool: 
+            overflowed = (result != 0 && result != 1);
+            break;
+        default:
+            XP_ASSERT_DEFAULT(0);
+            break;
+    }
+
+    return overflowed;
 }
 
 

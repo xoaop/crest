@@ -27,6 +27,7 @@ enum TypeKind {
 
 
     Type_literal, // 用于常量表达式推导阶段的字面量类型
+    Type_literal_float,
 
 };
 
@@ -64,6 +65,12 @@ int size_of_type(Type type);
 bool is_integer_type(Type type);
 bool is_signed_type(Type type);
 bool is_unsigned_type(Type type);
+bool is_float_type(Type type);
+bool is_certain_type(Type type);
+Type get_common_type(Type a, Type b);
+
+
+bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult);
 
 
 void point_to(Type *type, Type *pointed_type);

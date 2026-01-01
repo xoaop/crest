@@ -163,7 +163,7 @@ xp_define b32 xp_is_space(char c);
 xp_define b32 xp_is_digit_base_all(char c);
 
 xp_define b32 xp_str_to_num_base(char const *str, u32 base, u64* result);
-xp_define b32 xp_str_to_number(char const *str, i128* result);
+xp_define b32 xp_str_to_integer(char const *str, i128* result);
 
 
 #define xp_array_len(array) (sizeof(array) / sizeof(array[0]))
@@ -977,10 +977,12 @@ b32 xp_str_to_num_base(char const *str, u32 base, u64* result) {
     return true;
 }
 
-b32 xp_str_to_number(char const *str, i128* result) {
+b32 xp_str_to_integer(char const *str, i128 *result) {
+    XP_ASSERT_DEFAULT(result != NULL);
+
     isize len = xp_strlen_c(str);
 
-    XP_ASSERT_MSG(len > 0, "xp_str_to_number() meet zero len str!\n");
+    XP_ASSERT_MSG(len > 0, "xp_str_to_integer() meet zero len str!\n");
 
     b32 success = false;
     u64 r = 0;
@@ -1009,6 +1011,8 @@ b32 xp_str_to_number(char const *str, i128* result) {
     *result = cast(i128) r;
     return success;
 }
+
+
 
 //
 // 内存操作
