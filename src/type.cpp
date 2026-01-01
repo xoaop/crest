@@ -119,6 +119,22 @@ bool is_integer_type(Type type) {
     }
 }
 
+bool is_integer_or_bool_type(Type type) {
+    switch(type.kind)
+    {
+    case Type_i8:
+    case Type_i32:
+    case Type_i64:
+    case Type_u8:
+    case Type_u32:
+    case Type_u64:
+    case Type_bool: // NOTE: bool 也作为整数类型处理, i1
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool is_signed_type(Type type) {
     XP_ASSERT_DEFAULT(is_integer_type(type));
     switch(type.kind) {

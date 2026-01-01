@@ -1,5 +1,6 @@
 #include "const_fold.hpp"
 
+#include "error_msg.hpp"
 
 i128 operation_integer_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
     XP_ASSERT_DEFAULT(left_c->type == AstType_Constant);
@@ -219,14 +220,15 @@ void try_constant_expr_folding(Ast *const_expr) {
         i128 result;
         double dresult;
 
-        if(is_integer_type(const_expr->v_type)) {
+        if(is_integer_or_bool_type(const_expr->v_type)) {
             result = operation_integer_ast(op_type, left, right);
         } else if(is_float_type(const_expr->v_type)) {
             dresult = operation_float_ast(op_type, left, right);
         } 
 
-        if(check_literal_overflow(const_expr->v_type.kind, result, 0.0)) {
+        if(check_literal_overflow(const_expr->v_type.kind, result, dresult)) {
             // TODO 常量溢出错误处理
+            error_msg(&const_expr->token, "constant overflowed");
             XP_ASSERT_MSG(0, "constant overflowed");
         }
 
@@ -234,7 +236,7 @@ void try_constant_expr_folding(Ast *const_expr) {
         constant.is_const_expr = true;
         constant.v_type = const_expr->v_type;
 
-        if(is_integer_type(const_expr->v_type)) {
+        if(is_integer_or_bool_type(const_expr->v_type)) {
             constant.Constant.value = result;
         } else if(is_float_type(const_expr->v_type)) {
             constant.Constant.float_value = dresult;
@@ -256,8 +258,8 @@ void try_constant_expr_folding(Ast *const_expr) {
 
         // 类型转换
         // TODO 改掉这种写法, 太丑陋了
-        if(is_integer_type(target_type)) {
-            if(is_integer_type(const_expr->CastExpr.expr->v_type)) {
+        if(is_integer_or_bool_type(target_type)) {
+            if(is_integer_or_bool_type(const_expr->CastExpr.expr->v_type)) {
                 switch (target_type.kind)
                 {
                 case Type_i8:
@@ -277,6 +279,9 @@ void try_constant_expr_folding(Ast *const_expr) {
                     break;
                 case Type_u64:
                     result = cast(u64) result;
+                    break;
+                case Type_bool:
+                    result = (result != 0) ? 1 : 0;
                     break;
                 default:
                     break;
@@ -303,12 +308,15 @@ void try_constant_expr_folding(Ast *const_expr) {
                 case Type_u64:
                     result = cast(u64) dresult;
                     break;
+                case Type_bool:
+                    result = (dresult != 0.0) ? 1 : 0;
+                    break;
                 default:
                     break;
                 }
             }
         } else if(is_float_type(target_type)) {
-            if(is_integer_type(const_expr->CastExpr.expr->v_type)) {
+            if(is_integer_or_bool_type(const_expr->CastExpr.expr->v_type)) {
                 switch(target_type.kind)
                 {
                 case Type_f32:
@@ -345,7 +353,7 @@ void try_constant_expr_folding(Ast *const_expr) {
         Ast constant = ast_make(AstType_Constant);
         constant.is_const_expr = true;
         
-        if(is_integer_type(target_type)) {
+        if(is_integer_or_bool_type(target_type)) {
             constant.Constant.value = result;
         } else if(is_float_type(target_type)) {
             constant.Constant.float_value = dresult;
