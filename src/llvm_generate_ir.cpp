@@ -73,6 +73,10 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
             return LLVMFloatTypeInContext(gen->ctx);
         case Type_f64:
             return LLVMDoubleTypeInContext(gen->ctx);
+        case Type_pointer: {
+            LLVMTypeRef pointed_type = get_llvm_type_from_type(gen, *type.pointed_type);
+            return LLVMPointerType(pointed_type, 0);
+        } break;
         default:
             XP_ASSERT_DEFAULT(0);
     }
@@ -360,12 +364,39 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
     case TokenType::Add: // +
         if(is_float_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildFAdd(gen->builder, left, right, "addtmp");
+        } 
+        if(is_pointer_type(expr->BinaryExpr.left->v_type) || is_pointer_type(expr->BinaryExpr.right->v_type)) {
+            // TODO 指针加法
+
+            LLVMValueRef pointer_expr_val = is_pointer_type(expr->BinaryExpr.left->v_type) ? left : right;
+            LLVMValueRef integer_expr_val = is_pointer_type(expr->BinaryExpr.left->v_type) ? right : left;
+            Ast *pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.left :  expr->BinaryExpr.right;
+            Ast *integer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.right :  expr->BinaryExpr.left;
+
+
+
+            LLVMValueRef indices[] = { integer_expr_val };
+
+            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, *(pointer_expr->v_type.pointed_type)), pointer_expr_val, indices, 1, "ptraddtmp");
         }
 
         return LLVMBuildAdd(gen->builder, left, right, "addtmp");
     case TokenType::Minus: // -
         if(is_float_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildFSub(gen->builder, left, right, "subtmp");
+        }
+
+        if(is_pointer_type(expr->BinaryExpr.left->v_type) || is_pointer_type(expr->BinaryExpr.right->v_type)) {
+            // TODO 指针减法
+
+            LLVMValueRef pointer_expr_val = is_pointer_type(expr->BinaryExpr.left->v_type) ? left : right;
+            LLVMValueRef integer_expr_val = is_pointer_type(expr->BinaryExpr.left->v_type) ? right : left;
+            Ast *pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.left :  expr->BinaryExpr.right;
+            Ast *integer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.right :  expr->BinaryExpr.left;
+
+            LLVMValueRef indices[] = { LLVMBuildNeg(gen->builder, integer_expr_val, "negtmp") };
+
+            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, *(pointer_expr->v_type.pointed_type)), pointer_expr_val, indices, 1, "ptrsubtmp");
         }
 
         return LLVMBuildSub(gen->builder, left, right, "subtmp");
@@ -453,6 +484,7 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
     case TokenType::DoubleOr: // ||
         return LLVMBuildOr(gen->builder, left, right, "ortmp");
 
+
     default:
         XP_ASSERT_DEFAULT(0);
     }
@@ -493,6 +525,15 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
             }
 
             return LLVMBuildNot(gen->builder, operand, "nottmp");
+        } else if(expr->UnaryExpr.op == TokenType::And) {
+            // 取地址运算符
+            LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->UnaryExpr.operand->VarExpr.name);
+            XP_ASSERT_DEFAULT(alloca != NULL);
+            return *alloca;
+        } else if(expr->UnaryExpr.op == TokenType::Star) {
+            // 解引用运算符
+            LLVMValueRef ptr = gen_ir_expr(gen, expr->UnaryExpr.operand, state);
+            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), ptr, "loadtmp");
         }
 
         XP_ASSERT_DEFAULT(0);
