@@ -38,6 +38,10 @@ xp_internal b32 is_unary_op(TokenType type) {
     {
     case TokenType::Minus:
     case TokenType::Exclamation:
+    
+    // 指针运算
+    case TokenType::And:
+    case TokenType::Star:
         return true;
     default:
         return false;

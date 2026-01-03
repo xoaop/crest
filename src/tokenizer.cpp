@@ -210,14 +210,12 @@ b32 tokenizer_get_token(Tokenizer* t, Token *token) {
             }
             break;
         case '&':
-            token->type = TokenType::DoubleAnd;
+            token->type = TokenType::And;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '&') {
                 token->type = TokenType::DoubleAnd;
                 advance_one_character(t);
-            } else {
-                goto unknown_character;
             }
             break;
         case '|':
@@ -469,6 +467,8 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     
     if(i < 8) {
         token->type_kind_of_number = string_to_type_kind(xp_string_c(postfix[i]));
+    } else {
+        token->type_kind_of_number = Type_Undefined;
     }
 
     token->type = token_type;

@@ -69,6 +69,10 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
             return LLVMInt64TypeInContext(gen->ctx);
         case Type_bool:
             return LLVMInt1TypeInContext(gen->ctx);
+        case Type_f32:
+            return LLVMFloatTypeInContext(gen->ctx);
+        case Type_f64:
+            return LLVMDoubleTypeInContext(gen->ctx);
         default:
             XP_ASSERT_DEFAULT(0);
     }
@@ -84,6 +88,7 @@ void gen_ir_astfile(AstFile f) {
     init_llvm_generator(&gen);
 
     LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
+
 
     for(isize i = 0; i < f.root.count; i++) {
         Ast *func = f.root[i];
@@ -145,11 +150,28 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     gen_ir_block(gen, function->Function.block, state);
 
 
+    
+    // 处理函数末尾没有返回语句的情况
+    LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(func);
+    LLVMPositionBuilderAtEnd(gen->builder, last_block);
+    LLVMBuildUnreachable(gen->builder);
+    
+    
+    // 3. 处理没有返回语句的控制流路径
 
-    // TODO 返回值
-    LLVMBuildRet(gen->builder, LLVMConstInt(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0, is_signed_type(*function->v_type.function_info.return_type)));
+    // // TODO 临时返回值 实现了返回检查后再删除
+    // if(function->v_type.function_info.return_type->kind == Type_void) {
+    //     LLVMBuildRetVoid(gen->builder);
+    // } else {
+    //     // TODO 临时返回 0
+    //     if(is_float_type(*function->v_type.function_info.return_type)) {
+    //         LLVMBuildRet(gen->builder, LLVMConstReal(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0.0));
+    //     } else {
+    //         LLVMBuildRet(gen->builder, LLVMConstInt(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0, is_signed_or_bool_type(*function->v_type.function_info.return_type)));
+    //     }
+
+    // }
 }
-
 
 
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state) {
@@ -336,51 +358,101 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
     LLVMValueRef right = gen_ir_expr(gen, expr->BinaryExpr.right, state);
     switch (expr->BinaryExpr.op) {
     case TokenType::Add: // +
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFAdd(gen->builder, left, right, "addtmp");
+        }
+
         return LLVMBuildAdd(gen->builder, left, right, "addtmp");
     case TokenType::Minus: // -
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFSub(gen->builder, left, right, "subtmp");
+        }
+
         return LLVMBuildSub(gen->builder, left, right, "subtmp");
     case TokenType::Star: // *
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFMul(gen->builder, left, right, "multmp");
+        }
+
         return LLVMBuildMul(gen->builder, left, right, "multmp");
     case TokenType::ForwardSlash: // /
+
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFDiv(gen->builder, left, right, "divtmp");
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildSDiv(gen->builder, left, right, "divtmp");
         } else {
             return LLVMBuildUDiv(gen->builder, left, right, "divtmp");
         }
     case TokenType::Percent: // % 
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            XP_ASSERT_DEFAULT(0); // 浮点数不支持取模运算
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildSRem(gen->builder, left, right, "modtmp");
         } else {
             return LLVMBuildURem(gen->builder, left, right, "modtmp");
         }
     case TokenType::GreaterThan: // >
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealOGT, left, right, "gttmp");
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildICmp(gen->builder, LLVMIntSGT, left, right, "gttmp");
         } else {
             return LLVMBuildICmp(gen->builder, LLVMIntUGT, left, right, "gttmp");
         }
     case TokenType::GreaterEqual: // >=
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealOGE, left, right, "getmp");
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildICmp(gen->builder, LLVMIntSGE, left, right, "getmp");
         } else {
             return LLVMBuildICmp(gen->builder, LLVMIntUGE, left, right, "getmp");
         }
     case TokenType::LessThan: // <
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealOLT, left, right, "lttmp");
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildICmp(gen->builder, LLVMIntSLT, left, right, "lttmp");
         } else {
             return LLVMBuildICmp(gen->builder, LLVMIntULT, left, right, "lttmp");
         }
     case TokenType::LessEqual: // <=
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealOLE, left, right, "letmp");
+        }
+
         if(is_signed_type(expr->BinaryExpr.left->v_type)) {
             return LLVMBuildICmp(gen->builder, LLVMIntSLE, left, right, "letmp");
         } else {
             return LLVMBuildICmp(gen->builder, LLVMIntULE, left, right, "letmp");
         }
     case TokenType::DoubleEqual: // ==
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealOEQ, left, right, "eqtmp");
+        }
+
         return LLVMBuildICmp(gen->builder, LLVMIntEQ, left, right, "eqtmp");
     case TokenType::ExclamationEqual: // !=
+        if(is_float_type(expr->BinaryExpr.left->v_type)) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealONE, left, right, "netmp");
+        }
+
         return LLVMBuildICmp(gen->builder, LLVMIntNE, left, right, "netmp");
+    case TokenType::DoubleAnd: // &&
+        return LLVMBuildAnd(gen->builder, left, right, "andtmp");
+    case TokenType::DoubleOr: // ||
+        return LLVMBuildOr(gen->builder, left, right, "ortmp");
+
     default:
         XP_ASSERT_DEFAULT(0);
     }
@@ -396,15 +468,30 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
         return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), *alloca, expr->VarExpr.name.c_str);
     } break;
     case AstType_Constant: {
-        LLVMBool is_signed = cast(LLVMBool) is_signed_type(expr->v_type);
+        if(is_float_type(expr->v_type)) {
+            // 浮点数常量
+            double float_value = expr->Constant.float_value;
+            return LLVMConstReal(get_llvm_type_from_type(gen,  expr->v_type), float_value);
+        }
+
+        LLVMBool is_signed = cast(LLVMBool) is_signed_or_bool_type(expr->v_type);
         return LLVMConstInt(get_llvm_type_from_type(gen, expr->v_type), expr->Constant.value, is_signed);
     } break;
     case AstType_UnaryExpr: {
         // 一元表达式（如负号）
         LLVMValueRef operand = gen_ir_expr(gen, expr->UnaryExpr.operand, state);
         if (expr->UnaryExpr.op == TokenType::Minus) {
+            if(is_float_type(expr->UnaryExpr.operand->v_type)) {
+                LLVMValueRef zero = LLVMConstReal(get_llvm_type_from_type(gen, expr->UnaryExpr.operand->v_type), 0.0);
+                return LLVMBuildFSub(gen->builder, zero, operand, "fnegtmp");
+            }
+
             return LLVMBuildNeg(gen->builder, operand, "negtmp");
         } else if(expr->UnaryExpr.op == TokenType::Exclamation) {
+            if(is_float_type(expr->UnaryExpr.operand->v_type)) {
+                XP_ASSERT_DEFAULT(0); // 浮点数不支持逻辑非运算
+            }
+
             return LLVMBuildNot(gen->builder, operand, "nottmp");
         }
 
@@ -412,41 +499,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
     } break;
 
     case AstType_BinaryExpr: {
-        LLVMValueRef lhs = gen_ir_expr(gen, expr->BinaryExpr.left, state);
-        LLVMValueRef rhs = gen_ir_expr(gen, expr->BinaryExpr.right, state);
-        switch (expr->BinaryExpr.op) {
-        case TokenType::Add: // +
-            return LLVMBuildAdd(gen->builder, lhs, rhs, "addtmp");
-        case TokenType::Minus: // -
-            return LLVMBuildSub(gen->builder, lhs, rhs, "subtmp");
-        case TokenType::Star: // *
-            return LLVMBuildMul(gen->builder, lhs, rhs, "multmp");
-        case TokenType::ForwardSlash: // /
-            return LLVMBuildSDiv(gen->builder, lhs, rhs, "divtmp");
-        case TokenType::Percent: // %
-            return LLVMBuildSRem(gen->builder, lhs, rhs, "modtmp");
-        case TokenType::GreaterThan: // >
-            return LLVMBuildICmp(gen->builder, LLVMIntSGT, lhs, rhs, "gttmp");
-        case TokenType::GreaterEqual: // >=
-            return LLVMBuildICmp(gen->builder, LLVMIntSGE, lhs, rhs, "getmp");
-        case TokenType::LessThan: // <
-            return LLVMBuildICmp(gen->builder, LLVMIntSLT, lhs, rhs, "lttmp");
-        case TokenType::LessEqual: // <=
-            return LLVMBuildICmp(gen->builder, LLVMIntSLE, lhs, rhs, "letmp");
-        case TokenType::DoubleEqual: // ==
-            return LLVMBuildICmp(gen->builder, LLVMIntEQ, lhs, rhs, "eqtmp");
-        case TokenType::ExclamationEqual: // !=
-            return LLVMBuildICmp(gen->builder, LLVMIntNE, lhs, rhs, "netmp");
-        case TokenType::DoubleAnd: 
-            return LLVMBuildAnd(gen->builder, lhs, rhs, "andtmp");
-        case TokenType::DoubleOr:
-            return LLVMBuildOr(gen->builder, lhs, rhs, "ortmp");
-
-        default:
-            XP_ASSERT_DEFAULT(0);
-        }
-
-
+        return gen_ir_binary_expr(gen, expr, state);
     } break;
 
     case AstType_FunctionCallExpr: {

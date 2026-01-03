@@ -31,6 +31,7 @@
     TOKEN_INFO(LessThan, "<"),                                  \
     TOKEN_INFO(GreaterEqual, ">="),                             \
     TOKEN_INFO(LessEqual, "<="),                                \
+    TOKEN_INFO(And, "&"),                                       \
     TOKEN_INFO(DoubleAnd, "&&"),                                \
     TOKEN_INFO(DoubleOr, "||"),                                 \
     TOKEN_INFO(Colon, ":"),                                     \
@@ -87,7 +88,7 @@ struct Token {
     xpString token_str;
 
     union {
-        TypeKind type_kind_of_number = Type_Undefined; // 用于标记带类型后缀的数字(整数, 浮点数)
+        TypeKind type_kind_of_number; // 用于标记带类型后缀的数字(整数, 浮点数)
     };
     
     xpString file_path;

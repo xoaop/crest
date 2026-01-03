@@ -7,6 +7,8 @@
 #include "type_check.hpp"
 #include "const_fold.hpp"
 
+#include "error_msg.hpp"
+
 void push_symbol_table(Analyser *analyser) {
     SymbolTable table = make_symbol_table(xp_heap_allocator());
     array_push_back(&analyser->symbol_table_stack, table);
@@ -46,6 +48,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser);
 void resolve_block(Ast *ast, Analyser *analyser);
 void resolve_constant(Ast *constant, Analyser *analyser);
 void try_constant_expr_folding(Ast *const_expr);
+bool may_fall_through(Ast *ast);
 
 
 
@@ -76,6 +79,15 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
     }
 
     resolve_block(ast->Function.block, analyser);
+
+
+    if(may_fall_through(ast->Function.block)) {
+        if(analyser->curr_function->v_type.function_info.return_type->kind != Type_void) {
+            // TODO 非void函数漏写return错误处理
+            error_msg(&ast->token, "non-void function may fall through without return");
+            XP_ASSERT_MSG(0, "non-void function may fall through without return");
+        }
+    }
 }
 
 void resolve_block(Ast *ast, Analyser *analyser) {
@@ -116,20 +128,21 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
             // TODO 有显示指定类型和初始化表达式的情况, 类型检查
             
             // !DEBUG
-            infer_type_new(var_decl_ast->VariableDecl.expr, true, var_decl_ast->v_type, analyser);
+            infer_expr_type(var_decl_ast->VariableDecl.expr, true, var_decl_ast->v_type, analyser);
             // infer_expr_type_without_target(var_decl_ast->VariableDecl.expr, analyser);
             // print_ast(var_decl_ast->VariableDecl.expr);
 
 
             if(!is_equal_type(var_decl_ast->v_type, var_decl_ast->VariableDecl.expr->v_type)) {
                 // TODO 变量类型和初始化表达式类型不匹配错误处理
+                error_msg(&var_decl_ast->VariableDecl.expr->token, "variable decl type mismatch with init expr");
                 XP_ASSERT_MSG(0, "variable decl type mismatch with init expr");
             }
 
         } else {
             // TODO 有初始化表达式, 无显示指定类型的情况, 类型推导
             // infer_expr_type(var_decl_ast->VariableDecl.expr, NULL, analyser);
-            infer_type_new(var_decl_ast->VariableDecl.expr, false, {}, analyser);
+            infer_expr_type(var_decl_ast->VariableDecl.expr, false, {}, analyser);
             var_decl_ast->v_type = var_decl_ast->VariableDecl.expr->v_type;
         }
 
@@ -173,8 +186,8 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         Ast *left_expr = stmt_ast->Assignment.left_var_expr;
         Ast *right_expr = stmt_ast->Assignment.right_expr;
         
-        infer_type_new(left_expr, false, {}, analyser);
-        infer_type_new(right_expr, true, left_expr->v_type, analyser);
+        infer_expr_type(left_expr, false, {}, analyser);
+        infer_expr_type(right_expr, true, left_expr->v_type, analyser);
 
     } break;
 
@@ -182,7 +195,7 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         resolve_expr(stmt_ast->IfStmt.condition, analyser);
 
         Type condition_expr_type = make_type(Type_bool);
-        infer_type_new(stmt_ast->IfStmt.condition, true, condition_expr_type, analyser);
+        infer_expr_type(stmt_ast->IfStmt.condition, true, condition_expr_type, analyser);
         
 
         resolve_block(stmt_ast->IfStmt.then_block, analyser);
@@ -202,7 +215,7 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         resolve_expr(stmt_ast->ForStmt.condition, analyser);
         
 
-        infer_type_new(stmt_ast->ForStmt.condition, true, make_type(Type_bool), analyser);
+        infer_expr_type(stmt_ast->ForStmt.condition, true, make_type(Type_bool), analyser);
 
         resolve_stmt(stmt_ast->ForStmt.post, analyser);
         
@@ -210,15 +223,25 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     } break;
 
     case AstType_ReturnStmt: {
-        resolve_expr(stmt_ast->ReturnStmt.expr, analyser);
+        if(stmt_ast->ReturnStmt.expr != NULL) {
+            resolve_expr(stmt_ast->ReturnStmt.expr, analyser);
+
+            if(analyser->curr_function->v_type.function_info.return_type->kind == Type_void) {
+                // TODO 错误处理, return 语句不应有返回值 在void函数中
+                error_msg(&stmt_ast->token, "return statement should not have expression in void function");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            infer_expr_type(stmt_ast->ReturnStmt.expr, true, *analyser->curr_function->v_type.function_info.return_type, analyser);
+        } else {
+            if(analyser->curr_function->v_type.function_info.return_type->kind != Type_void) {
+                // TODO 错误处理, return 语句缺少返回值 在非void函数中
+                error_msg(&stmt_ast->token, "return statement missing expression in non-void function");
+                XP_ASSERT_DEFAULT(0);
+            }
+        }
+
         
-        // infer_expr_type(stmt_ast->ReturnStmt.expr, analyser->curr_function->v_type.function_info.return_type, analyser);
-        infer_type_new(stmt_ast->ReturnStmt.expr, true, *analyser->curr_function->v_type.function_info.return_type, analyser);
-
-        // // *NOTE: 这是唯一在tag_expr__type_and_const__by_children之外设置类型的地方, 因为return是stmt不是expr, 但它也需要携带类型信息
-        // // *用于判断返回类型是否和函数返回类型匹配
-        // stmt_ast->v_type = stmt_ast->ReturnStmt.expr->v_type;
-
     } break;
 
     case AstType_Block: {
@@ -227,10 +250,16 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     
     case AstType_Break: {
         // TODO 错误处理, break 必须在循环体内
+        if(analyser->loop_ast_stack.count == 0) {
+            error_msg(&stmt_ast->token, "break statement not within loop");
+        }
         XP_ASSERT_DEFAULT(analyser->loop_ast_stack.count > 0);
     } break;
     case AstType_Continue: {
         // TODO 错误处理, continue 必须在循环体内
+        if(analyser->loop_ast_stack.count == 0) {
+            error_msg(&stmt_ast->token, "continue statement not within loop");
+        }
         XP_ASSERT_DEFAULT(analyser->loop_ast_stack.count > 0);
     } break;
 
@@ -276,7 +305,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         // TODO 检查参数类型是否匹配
         for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
             // infer_expr_type(expr_ast->FunctionCallExpr.args[i],&info->type.function_info.param_types[i], analyser);
-            infer_type_new(expr_ast->FunctionCallExpr.args[i], true, info->type.function_info.param_types[i], analyser);
+            infer_expr_type(expr_ast->FunctionCallExpr.args[i], true, info->type.function_info.param_types[i], analyser);
         }
         
 
@@ -298,8 +327,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
     case AstType_Constant: {
         resolve_constant(expr_ast, analyser);
-        break;
-    }
+    } break;
 
     case AstType_Undefined: {
         XP_ASSERT_DEFAULT(0);
@@ -311,7 +339,60 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
     void tag_expr_const_by_sons(Ast *expr_ast, Analyser *analyser);
     tag_expr_const_by_sons(expr_ast, analyser);
-} 
+
+    void tag_untyped_expr(Ast *expr, Analyser *analyser);
+    tag_untyped_expr(expr_ast, analyser);
+}
+
+
+
+
+void resolve_constant(Ast *constant, Analyser *analyser) {
+    Token token = constant->token;
+    xpString val_str = token.token_str;
+
+    // printf("Resolving constant: %s\n", val_str.c_str);
+
+
+    if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
+        constant->v_type = make_type(Type_bool);
+        constant->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
+        return;
+    }
+
+    // 解析
+    // bool success = xp_str_to_integer(val_str.c_str, &constant->Constant.value);
+    // XP_ASSERT_MSG(success, "Line %lld Column %lld: Invalid integer literal %s\n", token.line_index, token.column_index, val_str.c_str);
+    
+    // printf("Parsed constant value: ");
+    // print_i128(constant->Constant.value);
+    // printf("\n");
+    
+
+    // 整型常量
+    
+    if(token.type_kind_of_number != Type_Undefined) {
+        constant->v_type = make_type(token.type_kind_of_number);
+    } else {
+
+        // 无类型后缀的数字字面量, 先标记为untyped类型, 等待类型推导
+        if(token.type == TokenType::Integer) {
+            constant->v_type = make_type(Type_untyped_int);
+        } else if(token.type == TokenType::Float) {
+            constant->v_type = make_type(Type_untyped_float);
+        } 
+    
+    }
+    constant->is_const_expr = true;
+
+    return;
+}
+
+
+
+
+
+
 
 void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
     switch (expr->type)
@@ -341,47 +422,84 @@ void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
     }
 }
 
+void tag_untyped_expr(Ast *expr, Analyser *analyser) {
+    switch(expr->type) {
+        case AstType_BinaryExpr: {
+            if(is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_int)) &&
+               is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_int))) {
+                expr->v_type = make_type(Type_untyped_int);
+            } else if(is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_float)) &&
+               is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_float))) {
+                expr->v_type = make_type(Type_untyped_float);
+            } else if((is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_int)) && is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_float))) || 
+                      (is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_float)) && is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_int)))) {
+                // TODO 目前先报错, 后续可以考虑类型提升等规则
+                error_msg(&expr->token, "type mismatch in binary expression with untyped operands");
+                XP_ASSERT_DEFAULT(0);
+            }
 
-// TODO 目前只有 i8-64, u8-64 常量, true,false, 
-void resolve_constant(Ast *constant, Analyser *analyser) {
-    Token token = constant->token;
-    xpString val_str = token.token_str;
+        } break;
 
-    // printf("Resolving constant: %s\n", val_str.c_str);
+        case AstType_UnaryExpr: {
+            if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_int))) {
+                expr->v_type = make_type(Type_untyped_int);
+            }
 
+            if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_float))) {
+                expr->v_type = make_type(Type_untyped_float);
+            }
+        } break;
+        
 
-    if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
-        constant->v_type = make_type(Type_bool);
-        constant->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
-        return;
+        default:
+            break;
     }
-
-    // 解析
-    // bool success = xp_str_to_integer(val_str.c_str, &constant->Constant.value);
-    // XP_ASSERT_MSG(success, "Line %lld Column %lld: Invalid integer literal %s\n", token.line_index, token.column_index, val_str.c_str);
-    
-    // printf("Parsed constant value: ");
-    // print_i128(constant->Constant.value);
-    // printf("\n");
-    
-
-    // TODO 兼容 类型后缀 和 浮点数
-    // 整型常量
-    if(token.type_kind_of_number != Type_Undefined) {
-        constant->v_type = make_type(token.type_kind_of_number);
-    } else {
-        if(token.type == TokenType::Integer) {
-            constant->v_type = make_type(Type_literal);
-        } else if(token.type == TokenType::Float) {
-            constant->v_type = make_type(Type_literal_float);
-        } 
-    
-    }
-    constant->is_const_expr = true;
-
-    return;
 }
 
+
+bool may_fall_through(Ast *ast) {
+    
+    switch(ast->type)
+    {
+    case AstType_ReturnStmt:
+        return false;
+        break;
+    case AstType_Break:
+        return true;
+        break;
+    case AstType_Continue:
+        return false;
+        break;
+    case AstType_Block: {
+        Ast *last_stmt = NULL;
+        for(isize i = 0; i < ast->Block.statements.count; i++) {
+            if(!may_fall_through(ast->Block.statements[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    } break;
+    case AstType_IfStmt: {
+        Ast *then_block = ast->IfStmt.then_block;
+        Ast *else_block = ast->IfStmt.else_block;
+
+        if(else_block == NULL) {
+            return true;
+        }
+
+        return may_fall_through(then_block) || may_fall_through(else_block);
+    } break;
+
+    case AstType_ForStmt:
+        return may_fall_through(ast->ForStmt.body);    
+        break;
+    default:
+        break;
+    }
+
+    return true;
+}
 
 
 
@@ -424,6 +542,9 @@ void ast_visitor(Array<Ast *> ast_array, AstVisitorFunc visit_func[AstType_COUNT
         ast_visitor(ast_array[i], visit_func, analyser);
     }
 }
+
+
+
 
 
 // TODO Remove
