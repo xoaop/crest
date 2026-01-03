@@ -409,6 +409,18 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 XP_ASSERT_MSG(0, "only bool type can be casted to bool type");
             }
 
+            if(expr->CastExpr.expr->v_type.kind == Type_pointer && expr->CastExpr.target_type.kind != Type_pointer) {
+                // TODO 错误处理 指针类型转换为非指针类型
+                error_msg(&expr->token, "pointer type cannot be casted to non-pointer type");
+                XP_ASSERT_MSG(0, "pointer type cannot be casted to non-pointer type");
+            }
+
+            if(expr->CastExpr.expr->v_type.kind != Type_pointer && expr->CastExpr.target_type.kind == Type_pointer) {
+                // TODO 错误处理 非指针类型转换为指针类型
+                error_msg(&expr->token, "non-pointer type cannot be casted to pointer type");
+                XP_ASSERT_MSG(0, "non-pointer type cannot be casted to pointer type");
+            }
+
             expr->v_type = expr->CastExpr.target_type;
         } break;
 
