@@ -69,9 +69,10 @@ AstFile parse_file(Array<Token> tokens) {
 }
 
 
-xp_internal Type parse_type(Parser *p) {
-    Token curr = curr_token(p);
 
+xp_internal Type parse_base_type(Parser *p) {
+    Token curr = curr_token(p);
+    
     Type type = make_type(Type_Undefined); // default
     switch(curr.type) {
         case TokenType::KW_void: {
@@ -104,14 +105,40 @@ xp_internal Type parse_type(Parser *p) {
         case TokenType::KW_f64: {
             type = make_type(Type_f64);
         } break;
-
+        
         default: {
             XP_ASSERT_DEFAULT(0);
         } break;
     }
-
+    
     advance_token(p);
     return type;
+}
+
+Type parse_pointer_type(Parser *p) {
+    isize level_of_pointer = 0;
+    Type base = make_type(Type_Undefined);
+
+    for(;;) {
+        if(curr_token(p).type == TokenType::Star) {
+            level_of_pointer += 1;
+            expect(p, TokenType::Star);
+        } else {
+            base = parse_base_type(p);
+            break;
+        }
+    }
+
+    return make_pointer_type(base.kind, level_of_pointer);
+}
+
+
+Type parse_type(Parser *p) {
+    if(curr_token(p).type == TokenType::Star) {
+        return parse_pointer_type(p);
+    } else {
+        return parse_base_type(p);
+    }
 }
 
 
@@ -223,7 +250,13 @@ xp_internal Ast *parse_stmt(Parser *p) {
     case TokenType::KW_return:
         a = ast_alloc(AstType_ReturnStmt);
         a->token = expect(p, TokenType::KW_return);
-        a->ReturnStmt.expr = parse_expr(p);
+
+        if(curr_token(p).type != TokenType::Semicolon) {
+            a->ReturnStmt.expr = parse_expr(p);
+        } else {
+            a->ReturnStmt.expr = NULL;
+        }
+
         expect(p, TokenType::Semicolon);
         break;
     case TokenType::KW_break:
@@ -391,16 +424,7 @@ xp_internal Ast *parse_factor(Parser *p) {
         // 字面量
         case TokenType::Integer:
         case TokenType::Float:
-            // a = ast_alloc(AstType_Constant);
-            // a->token = curr;
-            
-            // expect(p, TokenType::Integer);
             a = parse_constant(p);
-
-            // TODO: 移到tokenizer阶段, 且不转化为实际数值, 只保留字符串, 转化放到语义分析阶段
-            // success = xp_str_to_number(curr.token_str.c_str, &a->Constant.value);
-            // XP_ASSERT_MSG(success, "Line %lld Column %lld: Invalid integer literal %s\n", curr.line_index, curr.column_index, curr.token_str.c_str);
-            
             break;
         case TokenType::KW_true:
         case TokenType::KW_false:
@@ -482,6 +506,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
         curr = curr_token(p);
         
         if(is_binary_op(curr.type) && precedence(curr.type) > min_prec) {
+
             advance_token(p);
             Ast *right = parse_expr(p, precedence(curr.type));
             Ast *new_left = ast_alloc(AstType_BinaryExpr);
@@ -490,8 +515,9 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             new_left->BinaryExpr.left = left;
             new_left->BinaryExpr.right = right;
 
-            left = new_left;  
+            left = new_left;
 
+            left->token = curr;
         } else {
             break;
         }

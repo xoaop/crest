@@ -142,6 +142,7 @@ Ast *ast_alloc(AstType type);
 AstFile ast_file_make();
 
 
+bool is_add_sub_operator(TokenType t);
 bool is_equal_compare_operator(TokenType t);
 bool is_compare_operator(TokenType t);
 bool is_operator_for_bool(TokenType t);

@@ -54,6 +54,41 @@ Type make_type(TypeKind kind) {
     return t;
 }
 
+Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer) {
+    XP_ASSERT_DEFAULT(level_of_pointer > 0);
+    XP_ASSERT_DEFAULT(base_type_kind != Type_pointer);
+
+    
+    Type pointer_type = make_type(Type_pointer);
+
+    Type* *curr_pointed_type = &pointer_type.pointed_type;
+    for(isize i = 0; i < level_of_pointer - 1; i++) {
+        Type *next = alloc_type(permanent_allocator(), Type_pointer);
+        *curr_pointed_type = next;
+
+        curr_pointed_type = &(*curr_pointed_type)->pointed_type;
+    }
+
+    *curr_pointed_type = alloc_type(permanent_allocator(), base_type_kind);
+
+    return pointer_type;
+}
+
+Type make_pointer_type(Type pointed_type) {
+    Type pointer_type = make_type(Type_pointer);
+    pointer_type.pointed_type = alloc_type(permanent_allocator(), pointed_type.kind);
+
+    *(pointer_type.pointed_type) = pointed_type;
+
+    return pointer_type;
+}
+
+Type get_pointed_type(Type pointer_type) {
+    XP_ASSERT_DEFAULT(pointer_type.kind == Type_pointer);
+    return *(pointer_type.pointed_type);
+}
+
+
 Type *alloc_type(xpAllocator allocator, TypeKind kind) {
     Type *t = cast(Type *) xp_alloc(allocator, sizeof(Type));
     *t = make_type(kind);
@@ -78,6 +113,9 @@ bool is_equal_type(Type a, Type b) {
         }
         return is_equal_type(*a.function_info.return_type, *b.function_info.return_type);
     
+    case Type_pointer:
+        return is_equal_type(*a.pointed_type, *b.pointed_type);
+
     // TODO 更多复杂类型比较
     default:
         return true;
@@ -147,6 +185,19 @@ bool is_signed_type(Type type) {
     }
 }
 
+bool is_signed_or_bool_type(Type type) {
+    XP_ASSERT_DEFAULT(is_integer_or_bool_type(type));
+    switch(type.kind) {
+    case Type_i8:
+    case Type_i32:
+    case Type_i64:
+    case Type_bool:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool is_unsigned_type(Type type) {
     XP_ASSERT_DEFAULT(is_integer_type(type));
     switch(type.kind) {
@@ -166,7 +217,11 @@ bool is_float_type(Type type) {
 }
 
 bool is_certain_type(Type type) {
-    return type.kind != Type_literal && type.kind != Type_literal_float;
+    return type.kind != Type_untyped_int && type.kind != Type_untyped_float;
+}
+
+bool is_pointer_type(Type type) {
+    return type.kind == Type_pointer;
 }
 
 
@@ -265,7 +320,7 @@ void struct_add_member(Type *type, Type member_type) {
 void print_type(Type type) {
     switch (type.kind)
     {
-    case Type_literal:
+    case Type_untyped_int:
         printf("literal");
         break;
     case Type_i8:
@@ -309,6 +364,18 @@ void print_type(Type type) {
         printf(") -> ");
         print_type(*type.function_info.return_type);
         break;
+    case Type_pointer: {
+        Type *curr = &type;
+        for(;;) {
+            printf("*");
+            if(curr->pointed_type->kind == Type_pointer) {
+                curr = curr->pointed_type;
+            } else {
+                print_type(*curr->pointed_type);
+                break;
+            }
+        }
+    } break;
     case Type_Undefined:
         printf("undefined");
         break;

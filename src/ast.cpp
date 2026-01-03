@@ -30,6 +30,10 @@ AstFile ast_file_make() {
     return f;
 }
 
+bool is_add_sub_operator(TokenType t) {
+    return t == TokenType::Add || t == TokenType::Minus;
+}
+
 
 bool is_equal_compare_operator(TokenType t) {
     return t == TokenType::DoubleEqual || 

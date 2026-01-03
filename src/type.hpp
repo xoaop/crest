@@ -26,8 +26,8 @@ enum TypeKind {
     Type_array,
 
 
-    Type_literal, // 用于常量表达式推导阶段的字面量类型
-    Type_literal_float,
+    Type_untyped_int, // 用于常量表达式推导阶段的字面量类型
+    Type_untyped_float,
 
 };
 
@@ -59,15 +59,20 @@ struct Type {
 Type make_type(TypeKind kind);
 Type *alloc_type(xpAllocator allocator, TypeKind kind);
 
+Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer);
+Type make_pointer_type(Type pointed_type);
+Type get_pointed_type(Type pointer_type);
 
 bool is_equal_type(Type a, Type b);
 int size_of_type(Type type);
 bool is_integer_type(Type type);
 bool is_integer_or_bool_type(Type type);
 bool is_signed_type(Type type);
+bool is_signed_or_bool_type(Type type);
 bool is_unsigned_type(Type type);
 bool is_float_type(Type type);
 bool is_certain_type(Type type);
+bool is_pointer_type(Type type);
 Type get_common_type(Type a, Type b);
 
 
