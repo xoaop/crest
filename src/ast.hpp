@@ -20,6 +20,14 @@ struct Ast;
         Array<Ast *> params;                                                \
         Ast *block;                                                         \
     })                                                                      \
+    AST_INFO(StructDecl, "struct decl", struct {                            \
+        xpString name;                                                      \
+        Array<Ast *> fields;                                                \
+    })                                                                      \
+    AST_INFO(StructField, "struct field", struct {                          \
+        xpString name;                                                      \
+        Type field_type;                                                    \
+    })                                                                      \
     AST_INFO(Block, "block", struct {                                       \
         Array<Ast *> statements;                                            \
         bool is_function_body;                                              \
@@ -75,6 +83,14 @@ struct Ast;
         Type target_type;                                                   \
         Ast *expr;                                                          \
     })                                                                      \
+    AST_INFO(StructFieldExpr, "struct field expr", struct {                 \
+        Ast *struct_var_expr;                                               \
+        xpString field_name;                                                \
+    })                                                                      \
+    AST_INFO(StructInitExpr, "struct init expr", struct {                   \
+        xpString struct_type_name;                                          \
+        Array<Ast *> field_inits;                                           \
+    })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/
 
@@ -111,7 +127,7 @@ enum AstType {
 
 
 //Ast节点数据定义
-#define AST_INFO(type_name, type_str, struct_def) typedef struct_def XP_JOIN_2(Ast, type_name);
+#define AST_INFO(type_name, type_str, ...) typedef __VA_ARGS__ XP_JOIN_2(Ast, type_name);
 AST_INFOS
 #undef AST_INFO
 
@@ -123,8 +139,9 @@ struct Ast {
     Type v_type; // 该AST节点的类型
     Token token; // 记录该AST对应的第一个token
 
-
+    // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式
+    bool is_lvalue = false;     // 该AST是否是一个左值表达式
     
     union {
         #define AST_INFO(type_name, ...) XP_JOIN_2(Ast, type_name) type_name;
@@ -137,8 +154,8 @@ struct Ast {
 extern const char *ast_strs[];
 
 
-Ast ast_make(AstType type);
 Ast *ast_alloc(AstType type);
+Ast ast_make(AstType type);
 AstFile ast_file_make();
 
 

@@ -116,6 +116,7 @@ Type get_compliable_const_type(Ast *constant) {
 
 
 
+
 void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *analyser) {
     static isize depth = 0;
 
@@ -142,7 +143,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
             if(has_target) {
                 if(!fit_in_type(expr, target_type)) {
-                    error_msg(&expr->token, "constant value overflowed for target type");
+                    error_msg(&expr->token, "constant value not fit in target type");
                     print_type(target_type);
                     printf("\n");
 
@@ -171,7 +172,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser);
                 infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser);
 
+                // TODO 指针和整数的加减法运算
                 
+
             } else if(!is_certain_type(old_left_type) && !is_certain_type(old_right_type)) {
                 // 两个都是不确定类型
                 // 例如: 1 + 2.0   1 == 2
@@ -215,29 +218,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 // 但是还不能确定是整数类型, 因为可能是浮点类型
                 bool should_check_untyped = !is_pointer_type(not_literal_expr->v_type);
 
-                // TODO 检查
                 infer_expr_type(literal_expr, should_check_untyped, not_literal_expr->v_type, analyser);
-                
-                
-                // 处理指针和整数的加减法运算
-                if(is_pointer_type(not_literal_expr->v_type)) {
-
-                    // 确保另一个是整数类型, 而不是浮点类型
-                    if(!is_integer_type(literal_expr->v_type)) {
-                        error_msg(&literal_expr->token, "only integer literal can be used in pointer arithmetic");
-                        XP_ASSERT_DEFAULT(0);
-                    }
-                    
-                    // 确保操作符是加法或减法
-                    if(!is_add_sub_operator(expr->BinaryExpr.op)) {
-                        error_msg(&expr->token, "only addition and subtraction are allowed for pointer types");
-                        XP_ASSERT_DEFAULT(0);
-                    }
-                    should_check_equal_type = false;
-                    expr->v_type = not_literal_expr->v_type;
-                }
-
             }
+
 
 
             // 处理指针和指针之间的比较
@@ -248,7 +231,29 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                     error_msg(&expr->token, "only equality comparison is allowed between pointer types");
                     XP_ASSERT_DEFAULT(0);
                 }
-            } 
+            } else if(is_pointer_type(expr->BinaryExpr.left->v_type) || is_pointer_type(expr->BinaryExpr.right->v_type)) {
+                
+                // 处理指针和整数的加减法运算
+                Ast *pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.left : expr->BinaryExpr.right;
+                Ast *non_pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.right : expr->BinaryExpr.left;
+
+                // 确保另一个是整数类型, 而不是浮点类型
+                if(!is_integer_type(non_pointer_expr->v_type)) {
+                    error_msg(&non_pointer_expr->token, "only integer type can be used with pointer type in binary expressions");
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+                // 确保操作符是加法或减法
+                if(!is_add_sub_operator(expr->BinaryExpr.op)) {
+                    error_msg(&expr->token, "only addition and subtraction are allowed for pointer types");
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+                should_check_equal_type = false;
+                expr->v_type = pointer_expr->v_type;
+            }
+
+            
 
 
 
@@ -424,12 +429,82 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             expr->v_type = expr->CastExpr.target_type;
         } break;
 
+        // TODO 检查
+        case AstType_StructFieldExpr: {
+            infer_expr_type(expr->StructFieldExpr.struct_var_expr, false, target_type, analyser);
+
+            // 检查a.b 中的a是不是结构体
+            Type parent_type = expr->StructFieldExpr.struct_var_expr->v_type;
+            if(parent_type.kind != Type_struct) {
+                XP_ASSERT_DEFAULT(0);
+            }
+            parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+
+            // 检查a.b中, a有没有b这个字段
+            StructField field;
+            bool found = false;
+            for(isize i = 0; i < parent_type.struct_fields.count; i++) {
+                field = parent_type.struct_fields[i];
+                if(xp_string_cmp(field.name, expr->StructFieldExpr.field_name) == 0) {
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type.type_name.c_str, expr->StructFieldExpr.field_name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            SymbolInfo *field_type_info = NULL;
+            if(field.type.kind == Type_struct) {
+                field_type_info = find_symbol(symbol_table(), field.type.type_name);
+            }
+
+            
+            if(field_type_info == NULL) {
+                // 如果不是结构体类型, 直接从字段类型赋值
+                expr->v_type = field.type;
+            } else {
+                // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
+                expr->v_type = copy_type(&field_type_info->type);
+            }
+
+        } break;
+
+        // TODO: StructInitExpr
+        case AstType_StructInitExpr: {
+            // 检查是否是结构体类型
+            SymbolInfo *struct_type_info = find_symbol(symbol_table(), expr->StructInitExpr.struct_type_name);
+            if(struct_type_info == NULL || struct_type_info->type.kind != Type_struct) {
+                error_msg(&expr->token, "struct type '%s' not found", expr->StructInitExpr.struct_type_name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            // 检查字段数量是否匹配
+            if(struct_type_info->type.struct_fields.count != expr->StructInitExpr.field_inits.count) {
+                error_msg(&expr->token, "struct init field count does not match struct type field count");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            // 检查字段初始化表达式类型是否和字段类型匹配
+            for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
+                infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type.struct_fields[i].type, analyser);
+                if(!is_equal_type(expr->StructInitExpr.field_inits[i]->v_type, struct_type_info->type.struct_fields[i].type)) {
+                    error_msg(&expr->StructInitExpr.field_inits[i]->token, "struct field init type does not match");
+                    XP_ASSERT_DEFAULT(0);
+                }
+            }
+
+            expr->v_type = copy_type(&struct_type_info->type);
+        } break;
+
+
         case AstType_VarExpr: {
             SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->VarExpr.name);
             expr->v_type = info->type;
         } break;
         case AstType_FunctionCallExpr: {
-            SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->FunctionCallExpr.name);
+            SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
             expr->v_type = *info->type.function_info.return_type;
         } break;
 
@@ -450,3 +525,4 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
     depth -= 1;
 }
+

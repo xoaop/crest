@@ -24,24 +24,117 @@ bool at_global_scope(Analyser *analyser) {
 }
 
 
-void semantic_analysis_ast_file(AstFile *ast_file) {
 
-    defer(xp_free_all(temp_allocator()));
+Type get_struct_type_info(xpString type_name, Analyser *analyser) {
+    XP_TODO;
+}
+
+void resolve_uncertain_type(Type *uncertain_type, Analyser *analyser) {
+    XP_ASSERT_DEFAULT(uncertain_type->kind == Type_uncertain);
+
+    SymbolInfo *info = find_symbol(symbol_table(), uncertain_type->type_name);
+
+    if(info == NULL || info->type.kind != Type_struct) {
+        // TODO 错误处理: 不存在的类型 或 非结构体类型
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    uncertain_type->kind = Type_struct;
+}
+
+void resolve_type(Type *type, Analyser *analyser) {
+    switch(type->kind) {
+        case Type_uncertain: {
+            resolve_uncertain_type(type, analyser);
+        } break;
+
+        case Type_pointer: {
+            resolve_type(type->pointed_type, analyser);
+        } break;
+
+        case Type_function: {
+            for(isize i = 0; i < type->function_info.param_types.count; i++) {
+                resolve_type(&type->function_info.param_types[i], analyser);
+            }
+            resolve_type(type->function_info.return_type, analyser);
+        } break;
+
+        default: {
+
+        } break;
+    }
+
+}
+
+
+void resolve_struct_decl(Ast *ast, Analyser *analyser) {
+    XP_ASSERT_DEFAULT(ast->type == AstType_StructDecl);
+
+    SymbolInfo *struct_type_info = find_symbol(symbol_table(), ast->StructDecl.name);
+
+    for(isize i = 0; i < ast->StructDecl.fields.count; i++) {
+        Ast *field_ast = ast->StructDecl.fields[i];
+
+        // 修正ast的类型
+        resolve_type(&field_ast->StructField.field_type, analyser);
+
+        // 补充符号表条目类型
+        array_push_back(&struct_type_info->type.struct_fields, StructField{field_ast->StructField.name, copy_type(&field_ast->StructField.field_type)});
+    }
+}
+
+
+void semantic_analysis_ast_file(AstFile *ast_file) {
+    defer(xp_free_all(stage_allocator()));
+
 
     Analyser analyser;
     analyser_init(&analyser, permanent_allocator());
 
-    // TODO: More Stages
-    declaration_collect_ast_file(ast_file, &analyser);
+
+    // 收集所有结构体声明、函数声明、变量声明(目前只有局部变量)
+    AllDecls all_decls = declaration_collect_ast_file(ast_file, &analyser, stage_allocator());
+
+
+    // 进行结构体声明field类型解析
+    for(isize i = 0; i < all_decls.struct_decls.count; i++) {
+        resolve_struct_decl(all_decls.struct_decls[i], &analyser);
+    }
+
+
+    // 进行函数声明的类型解析, 修正符号表中函数类型
+    for(isize i = 0; i < all_decls.function_decls.count; i++) {
+        Ast *fn_decl_ast = all_decls.function_decls[i];
+        SymbolInfo *fn_info = find_symbol(symbol_table(), fn_decl_ast->Function.name);
+        Type *fn_type = &fn_info->type;
+
+        resolve_type(fn_type, &analyser);
+    }
+
+
+
+    // 进行变量声明的类型解析
+    // TODO 移到resolve_var_decl中?
+    for(isize i = 0; i < all_decls.variable_decls.count; i++) {
+        Ast *var_decl_ast = all_decls.variable_decls[i];
+        resolve_type(&var_decl_ast->v_type, &analyser);
+    }
+
+    // TODO TEST
+    print_ast(ast_file->root);
+
+
     resolve_ast_file(ast_file, &analyser);
 
     // analyser_free(&analyser);
-    *symbol_table() = analyser.symbol_table_stack[0];
+    // *symbol_table() = analyser.symbol_table_stack[0];
     return;
 }
 
 
+void resolve_top_level(Ast *ast, Analyser *analyser);
 void resolve_function_decl(Ast *ast, Analyser *analyser);
+void resolve_struct_decl(Ast *ast, Analyser *analyser);
 void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser);
 void resolve_stmt(Ast *stmt_ast, Analyser *analyser);
 void resolve_expr(Ast *expr_ast, Analyser *analyser);
@@ -55,18 +148,29 @@ bool may_fall_through(Ast *ast);
 void resolve_ast_file(AstFile *ast_file, Analyser *analyser) {
 
     for(isize i = 0; i < ast_file->root.count; i++) {
-        switch (ast_file->root[i]->type) {
-        case AstType_Function:
-            resolve_function_decl(ast_file->root[i], analyser);
-            break;
-        default:
-            XP_ASSERT_DEFAULT(0);
-            break;
-        }
+        resolve_top_level(ast_file->root[i], analyser);
     }
 
     return;
 }
+
+
+void resolve_top_level(Ast *ast, Analyser *analyser) {
+    switch (ast->type) {
+    case AstType_Function:
+        resolve_function_decl(ast, analyser);
+        break;
+
+    case AstType_StructDecl:
+        resolve_struct_decl(ast, analyser);
+        break;
+        
+    default:
+        XP_ASSERT_DEFAULT(0);
+        break;
+    }
+}
+
 
 void resolve_function_decl(Ast *ast, Analyser *analyser) {
     new_scope(analyser);
@@ -89,6 +193,9 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
         }
     }
 }
+
+
+
 
 void resolve_block(Ast *ast, Analyser *analyser) {
     if(ast->Block.is_function_body) {
@@ -113,6 +220,18 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         print_ast(var_decl_ast);
         XP_ASSERT_MSG(0, "var decl repeat in the same scope");
     }
+
+    // TODO 获取结构体类型
+    // if(var_decl_ast->v_type.kind == Type_uncertain) {
+    //     SymbolInfo *sym = find_symbol(&analyser->symbol_table_stack, var_decl_ast->v_type.type_name);
+    //     if(sym != NULL && sym->type.kind == Type_struct) {
+    //         var_decl_ast->v_type = sym->type;
+    //     } else {
+    //         // TODO 未知类型错误处理
+    //         error_msg(&var_decl_ast->token, "unknown type in variable declaration");
+    //         XP_ASSERT_MSG(0, "unknown type in variable declaration");
+    //     }
+    // }
 
     
     if(var_decl_ast->v_type.kind == Type_void) {
@@ -294,7 +413,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
 
         // TODO 函数类型检查
-        SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr_ast->FunctionCallExpr.name);
+        SymbolInfo *info = find_symbol(symbol_table(), expr_ast->FunctionCallExpr.name);
 
         // TODO 是否是函数
         XP_ASSERT_MSG(info != NULL && info->type.kind == Type_function, "function not exist");
@@ -329,9 +448,21 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         resolve_constant(expr_ast, analyser);
     } break;
 
+    case AstType_StructInitExpr: {
+        for(isize i = 0; i < expr_ast->StructInitExpr.field_inits.count; i++) {
+            resolve_expr(expr_ast->StructInitExpr.field_inits[i], analyser);
+        }
+    } break;
+
+    case AstType_StructFieldExpr: {
+        resolve_expr(expr_ast->StructFieldExpr.struct_var_expr, analyser);
+    } break;
+
+
     case AstType_Undefined: {
         XP_ASSERT_DEFAULT(0);
     } break;
+
 
     default:
         XP_ASSERT_DEFAULT(0);

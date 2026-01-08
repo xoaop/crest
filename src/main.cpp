@@ -56,8 +56,12 @@ int main(int argc, char** argv) {
     printf("\n=========================================\n");
 
     semantic_analysis_ast_file(&f);
+    
     print_ast(f.root);
+    printf("\n=========================================\n");
+
     gen_ir_astfile(f);
+    print_ast(f.root);
 
     
     

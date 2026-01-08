@@ -88,6 +88,19 @@ void array_free(Array<T>* array) {
     array->capacity = 0;
 }
 
+
+template<typename T>
+Array<T> array_copy(Array<T>* src, xpAllocator allocator) {
+    Array<T> new_array = make_array<T>(allocator);
+
+    for(isize i = 0; i < src->count; i++) {
+        array_push_back(&new_array, src->data[i]);
+    }
+
+    return new_array;
+}
+
+
 template<typename T>
 Array<T>* array_resize(Array<T>* array, isize new_capacity) {
     if(array->capacity >= new_capacity) {
@@ -212,7 +225,7 @@ void array_clear(Array<T> *array) {
 }
 
 template<typename T>
-isize array_find_next(Array<T> *array, T elem) {
+isize array_find_next_index(Array<T> *array, T elem) {
     for(isize i = 0; i < array->count; i++) {
         if(array->data[i] == elem) {
             return i;
@@ -221,6 +234,7 @@ isize array_find_next(Array<T> *array, T elem) {
 
     return -1;
 }
+
 
 template<typename T>
 Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {

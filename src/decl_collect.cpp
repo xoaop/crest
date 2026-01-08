@@ -4,7 +4,7 @@
 
 
 
-void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
+void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all_decls) {
     SymbolInfo info;
 
 
@@ -12,25 +12,61 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
     {
     case AstType_Function: {
         
-        SymbolInfo *existing_info = find_symbol(&analyser->symbol_table_stack, ast->Function.name);
+        SymbolInfo *existing_info = find_symbol(symbol_table(), ast->Function.name);
         XP_ASSERT_MSG(existing_info == NULL, "Function redefinition");
 
 
         info.name = ast->Function.name;
         info.type = ast->v_type;
 
-        add_symbol(&analyser->symbol_table_stack, ast->Function.name, info);
+        add_symbol(symbol_table(), ast->Function.name, info);
+
+        // 函数参数的变量声明收集
+        for(isize i = 0; i < ast->Function.params.count; i++) {
+            Ast *param_ast = ast->Function.params[i];
+            array_push_back(&all_decls->variable_decls, param_ast);
+        }
+
+        // 函数体内的变量声明收集
+        for(isize i = 0; i < ast->Function.block->Block.statements.count; i++) {
+            Ast *stmt = ast->Function.block->Block.statements[i];
+            declaration_collect_ast_visitor(stmt, analyser, all_decls);
+        }
+
+        array_push_back(&all_decls->function_decls, ast);
     } break;
+
     
+    // TODO 检查
+    case AstType_StructDecl: {
+        SymbolInfo *existing_info = find_symbol(symbol_table(), ast->StructDecl.name);
+        XP_ASSERT_MSG(existing_info == NULL, "Struct redefinition");
+    
+        // 目前只保存类型名 不包括字段
+        Type struct_type = make_struct_type();
+        struct_type.type_name = ast->StructDecl.name;
+        
+
+        info.name = ast->StructDecl.name;
+        info.type = struct_type;
+        add_symbol(symbol_table(), ast->StructDecl.name, info);
+
+
+        array_push_back(&all_decls->struct_decls, ast);
+    } break;
+
     // TODO: 还没有全局变量
     case AstType_VariableDecl:
         if(at_global_scope(analyser)) {
             info.name = ast->VariableDecl.var_name;
             info.type = ast->v_type;
 
-            add_symbol(&analyser->symbol_table_stack, ast->VariableDecl.var_name, info);
+            add_symbol(symbol_table(), ast->VariableDecl.var_name, info);
         }
 
+        array_push_back(&all_decls->variable_decls, ast);
+
+        break;
     default:
         break;
     }
@@ -41,8 +77,15 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser) {
 
 
 
-void declaration_collect_ast_file(AstFile *file, Analyser *analyser) {
+AllDecls declaration_collect_ast_file(AstFile *file, Analyser *analyser, xpAllocator allocator) {
+    AllDecls all_decls;
+    all_decls.struct_decls = make_array<Ast *>(allocator);
+    all_decls.variable_decls = make_array<Ast *>(allocator);
+    all_decls.function_decls = make_array<Ast *>(allocator);
+    
     for(isize i = 0; i < file->root.count; i++) {
-        declaration_collect_ast_visitor(file->root[i], analyser);
+        declaration_collect_ast_visitor(file->root[i], analyser, &all_decls);
     }
+
+    return all_decls;
 }

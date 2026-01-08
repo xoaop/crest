@@ -13,12 +13,18 @@ const char *ast_strs[] = {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
+    ast.is_const_expr = false;
+    ast.is_lvalue = false;
+
     ast.type = type;
     return ast;
 }
 
 Ast *ast_alloc(AstType type) {
     Ast *a = cast(Ast *) xp_alloc(ast_allocator(), sizeof(Ast));
+    a->is_const_expr = false;
+    a->is_lvalue = false;
+
     a->type = type;
     return a;
 }
@@ -188,6 +194,31 @@ void print_ast(Ast *a) {
         print_with_prefix("name: %s\n", a->FunctionCallExpr.name.c_str);
         print_with_prefix("args: \n");
         print_ast(a->FunctionCallExpr.args);
+        break;
+
+    case AstType_StructFieldExpr:
+        print_with_prefix("struct_var_expr: \n");
+        print_ast(a->StructFieldExpr.struct_var_expr);
+        print_with_prefix("field_name: %s\n", a->StructFieldExpr.field_name.c_str);
+        break;
+
+    case AstType_StructDecl:
+        print_with_prefix("name: %s\n", a->StructDecl.name.c_str);
+        print_with_prefix("fields: \n");
+        print_ast(a->StructDecl.fields);
+        break;
+    case AstType_StructField:
+        print_with_prefix("name: %s\n", a->StructField.name.c_str);
+        print_with_prefix("field_type: \n");
+        print_prefix();
+        print_type(a->StructField.field_type);
+        putchar('\n');
+        break;
+
+    case AstType_StructInitExpr: 
+        print_with_prefix("struct_type: %s\n", a->StructInitExpr.struct_type_name.c_str);        
+        print_with_prefix("field_inits: \n");
+        print_ast(a->StructInitExpr.field_inits);
         break;
     default:
         break;
