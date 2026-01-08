@@ -399,6 +399,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
                 // 设置解引用后的类型
                 expr->v_type = get_pointed_type(expr->UnaryExpr.operand->v_type);
+
+                // 解引用表达式是左值
+                expr->is_lvalue = true;
             }
 
         } break;
@@ -469,6 +472,8 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 expr->v_type = copy_type(&field_type_info->type);
             }
 
+            // 结构体字段表达式是左值
+            expr->is_lvalue = true;
         } break;
 
         // TODO: StructInitExpr
@@ -502,6 +507,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
         case AstType_VarExpr: {
             SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->VarExpr.name);
             expr->v_type = info->type;
+
+            // 变量表达式是左值
+            expr->is_lvalue = true;
         } break;
         case AstType_FunctionCallExpr: {
             SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);

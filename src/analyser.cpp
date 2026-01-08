@@ -162,7 +162,7 @@ void resolve_top_level(Ast *ast, Analyser *analyser) {
         break;
 
     case AstType_StructDecl:
-        resolve_struct_decl(ast, analyser);
+        // resolve_struct_decl(ast, analyser);
         break;
         
     default:
@@ -307,6 +307,13 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         
         infer_expr_type(left_expr, false, {}, analyser);
         infer_expr_type(right_expr, true, left_expr->v_type, analyser);
+
+
+        if(left_expr->is_lvalue == false) {
+            // TODO 错误处理, 赋值表达式左表达式不是左值
+            error_msg(&left_expr->token, "left side of assignment is not a lvalue");
+            XP_ASSERT_DEFAULT(0);
+        }
 
     } break;
 
