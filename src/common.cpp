@@ -2,6 +2,7 @@
 
 xp_global xpAllocator permanent_memory;
 xp_global xpAllocator temp_memory;
+xp_global xpAllocator stage_memory;
 
 xpAllocator permanent_allocator() {
     return permanent_memory;
@@ -11,22 +12,30 @@ xpAllocator temp_allocator() {
     return temp_memory;
 }
 
+xpAllocator stage_allocator() {
+    return stage_memory;
+}
+
 
 void global_allocators_init() {
     xpArena* permanent_arena = cast(xpArena*) xp_alloc(xp_heap_allocator(), sizeof(xpArena));
     xpArena* temp_arena = cast(xpArena*) xp_alloc(xp_heap_allocator(), sizeof(xpArena));
+    xpArena* stage_arena = cast(xpArena*) xp_alloc(xp_heap_allocator(), sizeof(xpArena));
     
     xp_arena_init_default(permanent_arena);
     xp_arena_init_default(temp_arena);
+    xp_arena_init_default(stage_arena);
 
     permanent_memory = xp_arena_allocator(permanent_arena);
     temp_memory = xp_arena_allocator(temp_arena);
+    stage_memory = xp_arena_allocator(stage_arena);
 }
 
 
 void global_allocators_free() {
     xp_free_all(permanent_memory);
     xp_free_all(temp_memory);
+    xp_free_all(stage_memory);
 }
 
 

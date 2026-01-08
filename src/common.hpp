@@ -8,6 +8,7 @@
 //
 xpAllocator permanent_allocator();
 xpAllocator temp_allocator();
+xpAllocator stage_allocator();
 
 void global_allocators_init();
 void global_allocators_free();

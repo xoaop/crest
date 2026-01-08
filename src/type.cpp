@@ -40,7 +40,7 @@ Type make_type(TypeKind kind) {
         t.pointed_type = NULL;
         break;
     case Type_struct:
-        t.struct_members = make_array<Type>(permanent_allocator());
+        t = make_struct_type();
         break;
     case Type_array:
         t.array_info.element_type = NULL;
@@ -53,6 +53,39 @@ Type make_type(TypeKind kind) {
 
     return t;
 }
+
+Type copy_type(Type *src) {
+    Type t;
+    t.kind = src->kind;
+    t.type_name = src->type_name;
+
+
+    switch(src->kind) {
+    case Type_function:
+        t.function_info.param_types = make_array<Type>(permanent_allocator());
+        for(isize i = 0; i < src->function_info.param_types.count; i++) {
+            array_push_back(&t.function_info.param_types, copy_type(&src->function_info.param_types[i]));
+        }
+        t.function_info.return_type = alloc_type(permanent_allocator(), src->function_info.return_type->kind);
+        *(t.function_info.return_type) = copy_type(src->function_info.return_type);
+        break;
+    case Type_pointer:
+        t.pointed_type = alloc_type(permanent_allocator(), src->pointed_type->kind);
+        *(t.pointed_type) = copy_type(src->pointed_type);
+        break;
+    case Type_struct: {
+        t.struct_fields = array_copy(&src->struct_fields, permanent_allocator());
+    } break;
+    
+    // TODO: 更多复杂类型
+
+    default:
+        break;
+    }
+
+    return t;
+}
+
 
 Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer) {
     XP_ASSERT_DEFAULT(level_of_pointer > 0);
@@ -74,6 +107,27 @@ Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer) {
     return pointer_type;
 }
 
+Type make_pointer_type(Type base_type, isize level_of_pointer) {
+    XP_ASSERT_DEFAULT(level_of_pointer > 0);
+    XP_ASSERT_DEFAULT(base_type.kind != Type_pointer);
+
+    
+    Type pointer_type = make_type(Type_pointer);
+
+    Type* *curr_pointed_type = &pointer_type.pointed_type;
+    for(isize i = 0; i < level_of_pointer - 1; i++) {
+        Type *next = alloc_type(permanent_allocator(), Type_pointer);
+        *curr_pointed_type = next;
+
+        curr_pointed_type = &(*curr_pointed_type)->pointed_type;
+    }
+
+    *curr_pointed_type = alloc_type(permanent_allocator(), base_type.kind);
+    *( *curr_pointed_type ) = base_type;
+
+    return pointer_type;
+}
+
 Type make_pointer_type(Type pointed_type) {
     Type pointer_type = make_type(Type_pointer);
     pointer_type.pointed_type = alloc_type(permanent_allocator(), pointed_type.kind);
@@ -87,6 +141,32 @@ Type get_pointed_type(Type pointer_type) {
     XP_ASSERT_DEFAULT(pointer_type.kind == Type_pointer);
     return *(pointer_type.pointed_type);
 }
+
+void point_to(Type *type, Type *pointed_type) {
+    XP_ASSERT_DEFAULT(type->kind == Type_pointer);
+    type->pointed_type = pointed_type;
+}
+
+
+
+
+
+Type make_struct_type() {
+    Type struct_type;
+    struct_type.kind = Type_struct;
+    struct_type.struct_fields = make_array<StructField>(permanent_allocator());
+    return struct_type;
+}
+
+
+
+void struct_add_member(Type *type, xpString name, Type member_type) {
+    XP_ASSERT_DEFAULT(type->kind == Type_struct);
+    array_push_back(&type->struct_fields, StructField{name, member_type});
+}
+
+
+
 
 
 Type *alloc_type(xpAllocator allocator, TypeKind kind) {
@@ -115,6 +195,9 @@ bool is_equal_type(Type a, Type b) {
     
     case Type_pointer:
         return is_equal_type(*a.pointed_type, *b.pointed_type);
+    
+    case Type_struct: 
+        return xp_string_cmp(a.type_name, b.type_name) == 0;
 
     // TODO 更多复杂类型比较
     default:
@@ -224,6 +307,10 @@ bool is_pointer_type(Type type) {
     return type.kind == Type_pointer;
 }
 
+bool is_struct_type(Type type) {
+    return type.kind == Type_struct;
+}
+
 
 int get_type_rank(Type t) {
     switch (t.kind) {
@@ -305,15 +392,7 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
 }
 
 
-void point_to(Type *type, Type *pointed_type) {
-    XP_ASSERT_DEFAULT(type->kind == Type_pointer);
-    type->pointed_type = pointed_type;
-}
 
-void struct_add_member(Type *type, Type member_type) {
-    XP_ASSERT_DEFAULT(type->kind == Type_struct);
-    type->struct_members.push_back(member_type);
-}
 
 
 
@@ -376,6 +455,13 @@ void print_type(Type type) {
             }
         }
     } break;
+    case Type_struct:
+        printf("struct %s", type.type_name.c_str);
+        break;
+    case Type_uncertain:
+        printf("uncertain");
+        break;
+
     case Type_Undefined:
         printf("undefined");
         break;

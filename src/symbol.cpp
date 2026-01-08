@@ -28,6 +28,8 @@ bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b) {
 
 SymbolTable global_symbol_table;
 
+
+// *NOTE: 仅用于analyser阶段后的全局符号表访问
 SymbolTable* symbol_table() {
     return &global_symbol_table;
 }
@@ -85,3 +87,6 @@ SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name) {
 
     return NULL;
 }
+
+
+

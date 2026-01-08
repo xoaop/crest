@@ -44,10 +44,12 @@
     TOKEN_INFO(RightCurlyBracket, "}"),                         \
     TOKEN_INFO(Comma, ","),                                     \
     TOKEN_INFO(Arrow, "->"),                                    \
+    TOKEN_INFO(Dot, "."),                                       \
     TOKEN_INFO(Integer, "interger"),                            \
     TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
+    TOKEN_INFO(KW_struct, "struct"),                            \
     TOKEN_INFO(KW_void, "void"),                                \
     TOKEN_INFO(KW_bool, "bool"),                                \
     TOKEN_INFO(KW_i8, "i8"),                                    \

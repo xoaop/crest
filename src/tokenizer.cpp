@@ -271,6 +271,11 @@ b32 tokenizer_get_token(Tokenizer* t, Token *token) {
             advance_one_character(t);
             break;
 
+        case '.':
+            token->type = TokenType::Dot;
+            advance_one_character(t);
+            break;
+
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
             // TODO 支持 小数 类型后缀
             tokenizer_scan_number(t, token, old_index);

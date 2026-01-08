@@ -80,4 +80,12 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name);
 b8 add_symbol(Array<SymbolTable> *symbol_table_stack, xpString name, SymbolInfo info);
 SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name);
 
+
+
+
+
+
+
+
+
 #endif // CREST_SYMBOL_HPP

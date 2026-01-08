@@ -641,6 +641,8 @@ isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first
             return i;
         }
     }
+
+    *first_entry = NULL;
     return -1;
 }
 
@@ -652,6 +654,8 @@ isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntr
             return i;
         }
     }
+
+    *next_entry = NULL;
     return -1;
 }
 
