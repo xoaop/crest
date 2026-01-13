@@ -166,14 +166,22 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             Type old_left_type = expr->BinaryExpr.left->v_type;
             Type old_right_type = expr->BinaryExpr.right->v_type;
 
-            // TODO 协调指针和整数的加减法运算
+
+
             if(is_certain_type(old_left_type) && is_certain_type(old_right_type)) {
-                // TODO 协调指针和整数的加减法运算
                 infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser);
                 infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser);
 
-                // TODO 指针和整数的加减法运算
-                
+                // 处理结构体类型的运算
+                if(is_struct_type(expr->BinaryExpr.left->v_type) && is_struct_type(expr->BinaryExpr.right->v_type)) {
+                    // 结构体类型之间只能比较是否相等/不等
+                    if(is_equal_compare_operator(expr->BinaryExpr.op)) {
+                        expr->v_type = make_type(Type_bool);
+                    } else {
+                        error_msg(&expr->token, "only equality comparison is allowed between struct types");
+                        XP_ASSERT_DEFAULT(0);
+                    }
+                }
 
             } else if(!is_certain_type(old_left_type) && !is_certain_type(old_right_type)) {
                 // 两个都是不确定类型
@@ -458,25 +466,15 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 XP_ASSERT_DEFAULT(0);
             }
 
-            SymbolInfo *field_type_info = NULL;
-            if(field.type.kind == Type_struct) {
-                field_type_info = find_symbol(symbol_table(), field.type.type_name);
-            }
 
-            
-            if(field_type_info == NULL) {
-                // 如果不是结构体类型, 直接从字段类型赋值
-                expr->v_type = field.type;
-            } else {
-                // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
-                expr->v_type = copy_type(&field_type_info->type);
-            }
+            // 如果不是结构体类型, 直接从字段类型赋值
+            // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
+            expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
 
             // 结构体字段表达式是左值
             expr->is_lvalue = true;
         } break;
 
-        // TODO: StructInitExpr
         case AstType_StructInitExpr: {
             // 检查是否是结构体类型
             SymbolInfo *struct_type_info = find_symbol(symbol_table(), expr->StructInitExpr.struct_type_name);
@@ -500,7 +498,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 }
             }
 
-            expr->v_type = copy_type(&struct_type_info->type);
+            expr->v_type = struct_type_info->type;
         } break;
 
 

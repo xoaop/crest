@@ -2,6 +2,7 @@
 
 #include "analyser.hpp"
 
+#include "error_msg.hpp"
 
 
 void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all_decls) {
@@ -13,7 +14,11 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
     case AstType_Function: {
         
         SymbolInfo *existing_info = find_symbol(symbol_table(), ast->Function.name);
-        XP_ASSERT_MSG(existing_info == NULL, "Function redefinition");
+        
+        if(existing_info != NULL) {
+            error_msg(&ast->token, "function '%s' redefinition", ast->Function.name.c_str);
+            XP_ASSERT_MSG(0, "Function redefinition");
+        }
 
 
         info.name = ast->Function.name;
@@ -40,7 +45,12 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
     // TODO 检查
     case AstType_StructDecl: {
         SymbolInfo *existing_info = find_symbol(symbol_table(), ast->StructDecl.name);
-        XP_ASSERT_MSG(existing_info == NULL, "Struct redefinition");
+
+
+        if(existing_info != NULL) {
+            error_msg(&ast->token, "struct '%s' redefinition", ast->StructDecl.name.c_str);
+            XP_ASSERT_MSG(0, "Struct redefinition");
+        }
     
         // 目前只保存类型名 不包括字段
         Type struct_type = make_struct_type();
