@@ -22,6 +22,8 @@ struct LLVMGenerator {
     xpHashMap<xpString, LLVMValueRef> locals;
 
     Array<LLVMLoopBlocks> loop_stack;
+
+    xpHashMap<xpString, LLVMTypeRef> struct_types;
 };
 
 

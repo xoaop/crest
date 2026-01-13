@@ -82,7 +82,7 @@ SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name);
 
 
 
-
+Type get_type_detail_if_have(SymbolTable *table, Type type);
 
 
 

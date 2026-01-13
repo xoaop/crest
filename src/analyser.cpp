@@ -221,19 +221,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         XP_ASSERT_MSG(0, "var decl repeat in the same scope");
     }
 
-    // TODO 获取结构体类型
-    // if(var_decl_ast->v_type.kind == Type_uncertain) {
-    //     SymbolInfo *sym = find_symbol(&analyser->symbol_table_stack, var_decl_ast->v_type.type_name);
-    //     if(sym != NULL && sym->type.kind == Type_struct) {
-    //         var_decl_ast->v_type = sym->type;
-    //     } else {
-    //         // TODO 未知类型错误处理
-    //         error_msg(&var_decl_ast->token, "unknown type in variable declaration");
-    //         XP_ASSERT_MSG(0, "unknown type in variable declaration");
-    //     }
-    // }
 
-    
     if(var_decl_ast->v_type.kind == Type_void) {
         // TODO 变量定义为 void 类型错误处理
         XP_ASSERT_MSG(0, "variable can not be void type");
