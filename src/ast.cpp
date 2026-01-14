@@ -13,8 +13,13 @@ const char *ast_strs[] = {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
+    ast.v_type = make_type(Type_Undefined);
+    
     ast.is_const_expr = false;
     ast.is_lvalue = false;
+    ast.is_null = false;
+
+
 
     ast.type = type;
     return ast;
@@ -22,10 +27,8 @@ Ast ast_make(AstType type) {
 
 Ast *ast_alloc(AstType type) {
     Ast *a = cast(Ast *) xp_alloc(ast_allocator(), sizeof(Ast));
-    a->is_const_expr = false;
-    a->is_lvalue = false;
+    *a = ast_make(type);
 
-    a->type = type;
     return a;
 }
 

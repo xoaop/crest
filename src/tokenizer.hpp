@@ -8,8 +8,6 @@
 
 // NOTE: Keyword是可以直接加在TOKEN_INFO不用修改别的地方的
 // 而别的Token需要在tokenizer加上处理逻辑
-
-
 #define TOKEN_INFOS                                             \
     TOKEN_INFO(DoubleForwardSlash, "//"),                       \
     TOKEN_INFO(CommentLine, "comment line"),                    \
@@ -71,6 +69,7 @@
     TOKEN_INFO(KW_cast, "cast"),                                \
     TOKEN_INFO(KW_true, "true"),                                \
     TOKEN_INFO(KW_false, "false"),                              \
+    TOKEN_INFO(KW_null, "null"),                                \
     TOKEN_INFO(__END__OF__KEYWORD__, "")                        \
 /**/                                  
 

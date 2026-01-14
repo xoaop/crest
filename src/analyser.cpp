@@ -324,14 +324,17 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         array_push_back(&analyser->loop_ast_stack, stmt_ast);
         defer(array_pop_back(&analyser->loop_ast_stack));
         
-        
-        resolve_stmt(stmt_ast->ForStmt.init, analyser);
-        resolve_expr(stmt_ast->ForStmt.condition, analyser);
+        if(stmt_ast->ForStmt.init != NULL)
+            resolve_stmt(stmt_ast->ForStmt.init, analyser);
+
+        if(stmt_ast->ForStmt.condition != NULL)
+            resolve_expr(stmt_ast->ForStmt.condition, analyser);
         
 
         infer_expr_type(stmt_ast->ForStmt.condition, true, make_type(Type_bool), analyser);
 
-        resolve_stmt(stmt_ast->ForStmt.post, analyser);
+        if(stmt_ast->ForStmt.post != NULL)
+            resolve_stmt(stmt_ast->ForStmt.post, analyser);
         
         resolve_block(stmt_ast->ForStmt.body, analyser);
     } break;
@@ -437,6 +440,9 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
     case AstType_CastExpr: {
         resolve_expr(expr_ast->CastExpr.expr, analyser);
+
+        // TODO CHECK
+        resolve_type(&expr_ast->CastExpr.target_type, analyser);
     } break;
 
     case AstType_Constant: {
@@ -483,6 +489,13 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
     if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
         constant->v_type = make_type(Type_bool);
         constant->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
+        return;
+    }
+
+    if(token.type == TokenType::KW_null) {
+        constant->v_type = make_pointer_type(Type_void, 1);
+        constant->Constant.value = 0;
+        constant->is_null = true;
         return;
     }
 

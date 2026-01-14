@@ -239,11 +239,19 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                     error_msg(&expr->token, "only equality comparison is allowed between pointer types");
                     XP_ASSERT_DEFAULT(0);
                 }
+
             } else if(is_pointer_type(expr->BinaryExpr.left->v_type) || is_pointer_type(expr->BinaryExpr.right->v_type)) {
                 
                 // 处理指针和整数的加减法运算
                 Ast *pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.left : expr->BinaryExpr.right;
                 Ast *non_pointer_expr = is_pointer_type(expr->BinaryExpr.left->v_type) ? expr->BinaryExpr.right : expr->BinaryExpr.left;
+
+
+                // 指针类型不能是void指针
+                if(get_innermost_type_of_pointer(pointer_expr->v_type).kind == Type_void) {
+                    error_msg(&pointer_expr->token, "void pointer type cannot be used in pointer arithmetic");
+                    XP_ASSERT_DEFAULT(0);
+                }
 
                 // 确保另一个是整数类型, 而不是浮点类型
                 if(!is_integer_type(non_pointer_expr->v_type)) {
@@ -262,8 +270,6 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             }
 
             
-
-
 
 
             // 如果需要, 检查左右表达式类型是否相等
@@ -405,6 +411,12 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                     XP_ASSERT_DEFAULT(0);
                 }
 
+                // *void 类型不能解引用
+                if(get_pointed_type(expr->UnaryExpr.operand->v_type).kind == Type_void) {
+                    error_msg(&expr->token, "void pointer type cannot be dereferenced");
+                    XP_ASSERT_DEFAULT(0);
+                }
+
                 // 设置解引用后的类型
                 expr->v_type = get_pointed_type(expr->UnaryExpr.operand->v_type);
 
@@ -419,19 +431,20 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
         case AstType_CastExpr: {
             infer_expr_type(expr->CastExpr.expr, false, target_type, analyser);
 
+
             if(!is_equal_type(expr->CastExpr.expr->v_type, make_type(Type_bool)) && is_equal_type(expr->CastExpr.target_type, make_type(Type_bool))) {
                 // TODO 错误处理 非bool类型转换为bool类型
                 error_msg(&expr->token, "only bool type can be casted to bool type");
                 XP_ASSERT_MSG(0, "only bool type can be casted to bool type");
             }
 
-            if(expr->CastExpr.expr->v_type.kind == Type_pointer && expr->CastExpr.target_type.kind != Type_pointer) {
+            if(is_pointer_type(expr->CastExpr.expr->v_type) && !is_pointer_type(expr->CastExpr.target_type)) {
                 // TODO 错误处理 指针类型转换为非指针类型
                 error_msg(&expr->token, "pointer type cannot be casted to non-pointer type");
                 XP_ASSERT_MSG(0, "pointer type cannot be casted to non-pointer type");
             }
 
-            if(expr->CastExpr.expr->v_type.kind != Type_pointer && expr->CastExpr.target_type.kind == Type_pointer) {
+            if(!is_pointer_type(expr->CastExpr.expr->v_type) && is_pointer_type(expr->CastExpr.target_type)) {
                 // TODO 错误处理 非指针类型转换为指针类型
                 error_msg(&expr->token, "non-pointer type cannot be casted to pointer type");
                 XP_ASSERT_MSG(0, "non-pointer type cannot be casted to pointer type");
@@ -522,6 +535,23 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
     if(depth == 1) {
         if(has_target) {
+
+            // 有目标类型但是遇到null字面量
+            // 如 p: *i32 = null; 这是合法的
+            // 
+            // 前提p得是指针类型
+            // p: i32 = null; 这是不合法的
+            if(expr->is_null) {
+                if(!is_pointer_type(target_type)) {
+                    error_msg(&expr->token, "null can only be assigned to pointer types");
+                    XP_ASSERT_DEFAULT(0);
+                }
+            }
+
+            // TODO 支持所有指针都可以隐式转化为void* 指针
+            
+            
+            
             if(!is_equal_type(expr->v_type, target_type)) {
                 error_msg(&expr->token, "expression type does not match target type");
                 XP_ASSERT_DEFAULT(0);

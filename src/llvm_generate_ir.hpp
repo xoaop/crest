@@ -5,6 +5,7 @@
 
 #include "llvm-c/Core.h"
 #include "llvm-c/Target.h"
+#include "llvm-c/TargetMachine.h"
 #include "llvm-c/Analysis.h"
 #include "llvm-c/BitWriter.h"
 
@@ -18,6 +19,8 @@ struct LLVMGenerator {
     LLVMContextRef ctx;
     LLVMModuleRef module;
     LLVMBuilderRef builder;
+    LLVMTargetMachineRef target_machine;
+    LLVMTargetDataRef target_data;
 
     xpHashMap<xpString, LLVMValueRef> locals;
 
@@ -25,7 +28,6 @@ struct LLVMGenerator {
 
     xpHashMap<xpString, LLVMTypeRef> struct_types;
 };
-
 
 
 

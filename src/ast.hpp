@@ -135,14 +135,17 @@ AST_INFOS
 struct Ast {
     AstType type;
 
-    // TODO(xoaop): more data
+
     Type v_type; // 该AST节点的类型
     Token token; // 记录该AST对应的第一个token
+
 
     // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式
     bool is_lvalue = false;     // 该AST是否是一个左值表达式
+    bool is_null = false;       // 该AST是否是一个null值(仅用于常量表达式)
     
+
     union {
         #define AST_INFO(type_name, ...) XP_JOIN_2(Ast, type_name) type_name;
         AST_INFOS

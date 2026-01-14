@@ -54,7 +54,7 @@ xp_internal const char *get_token_str(TokenType type) {
 }
 
 
-void tokenizer_init(Tokenizer* t, xpString code) {
+void tokenizer_init(Tokenizer *t, xpString code) {
     t->curr_character_index = 0;
     t->token_array = make_array<Token>(permanent_allocator());
     t->code = code;
@@ -65,7 +65,7 @@ void tokenizer_init(Tokenizer* t, xpString code) {
 
 xp_internal isize advance_one_character(Tokenizer *t);
 
-void tokenize(Tokenizer* t) {
+void tokenize(Tokenizer *t) {
     Token temp;
 
     for(;;) {
@@ -87,7 +87,7 @@ void tokenize(Tokenizer* t) {
 
 
 // NOTE(xoaop): Key Function Of Tokenizer
-b32 tokenizer_get_token(Tokenizer* t, Token *token) {
+b32 tokenizer_get_token(Tokenizer *t, Token *token) {
     //跳过空格
     tokenizer_skip_space(t);
     
