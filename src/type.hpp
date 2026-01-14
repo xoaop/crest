@@ -84,12 +84,11 @@ Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer);
 Type make_pointer_type(Type base_type, isize level_of_pointer);
 Type make_pointer_type(Type pointed_type);
 Type get_pointed_type(Type pointer_type);
-
+Type get_innermost_type_of_pointer(Type pointer_type);
 
 Type make_struct_type();
 
 bool is_equal_type(Type a, Type b);
-int size_of_type(Type type);
 bool is_integer_type(Type type);
 bool is_integer_or_bool_type(Type type);
 bool is_signed_type(Type type);

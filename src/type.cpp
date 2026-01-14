@@ -147,7 +147,17 @@ void point_to(Type *type, Type *pointed_type) {
     type->pointed_type = pointed_type;
 }
 
+Type get_innermost_type_of_pointer(Type pointer_type) {
+    XP_ASSERT_DEFAULT(pointer_type.kind == Type_pointer);
 
+    for(;;) {
+        if(!is_pointer_type(pointer_type)) {
+            return pointer_type;
+        }
+
+        pointer_type = *(pointer_type.pointed_type);
+    }
+}
 
 
 
@@ -194,6 +204,10 @@ bool is_equal_type(Type a, Type b) {
         return is_equal_type(*a.function_info.return_type, *b.function_info.return_type);
     
     case Type_pointer:
+        if((a.pointed_type == NULL && b.pointed_type != NULL) || (a.pointed_type != NULL && b.pointed_type == NULL)) {
+            return false;
+        }
+
         return is_equal_type(*a.pointed_type, *b.pointed_type);
     
     case Type_struct: 
@@ -205,24 +219,7 @@ bool is_equal_type(Type a, Type b) {
     }
 }
 
-int size_of_type(Type type) {
-    switch(type.kind) {
-    case Type_i8:
-    case Type_u8:
-        return 8;
-    case Type_i32:
-    case Type_u32:
-        return 32;
-    case Type_i64:
-    case Type_u64:
-        return 64;
-    case Type_bool:
-        return 1;
-    default:
-        XP_ASSERT_DEFAULT(0);
-        return 0;
-    }
-}
+
 
 bool is_integer_type(Type type) {
     switch(type.kind)

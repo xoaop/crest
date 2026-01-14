@@ -4,10 +4,43 @@
 
 #include "symbol.hpp"
 
+LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type);
+
+void gen_ir_function(LLVMGenerator *gen, Ast *function);
+LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
+LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state);
+LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state);
+LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr = false);
+LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state);
+
+
+
 void init_llvm_generator(LLVMGenerator *gen) {
     gen->ctx = LLVMContextCreate();
     gen->module = LLVMModuleCreateWithNameInContext("my_module", gen->ctx);
     gen->builder = LLVMCreateBuilderInContext(gen->ctx);
+
+    LLVMTargetRef target;
+    char *error = NULL;
+    if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
+        printf("Error getting target: %s\n", error);
+        LLVMDisposeMessage(error);
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    gen->target_machine = LLVMCreateTargetMachine(
+        target,
+        LLVMGetDefaultTargetTriple(),
+        "x86_64",
+        "",
+        LLVMCodeGenLevelDefault,
+        LLVMRelocDefault,
+        LLVMCodeModelDefault
+    );
+    gen->target_data = LLVMCreateTargetDataLayout(gen->target_machine);
+
+
+
 
     gen->locals = xp_hash_map_make<xpString, LLVMValueRef>(permanent_allocator());
 
@@ -21,6 +54,8 @@ void free_llvm_generator(LLVMGenerator *gen) {
     LLVMDisposeBuilder(gen->builder);
     LLVMDisposeModule(gen->module);
     LLVMContextDispose(gen->ctx);
+    LLVMDisposeTargetData(gen->target_data);
+    LLVMDisposeTargetMachine(gen->target_machine);
 
     xp_hash_map_free(gen->locals);
     array_free(&gen->loop_stack);
@@ -31,12 +66,12 @@ void free_llvm_generator(LLVMGenerator *gen) {
 
 
 
-void gen_ir_function(LLVMGenerator *gen, Ast *function);
-LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
-LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state);
-LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state);
-LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr = false);
-LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state);
+int size_of_type(LLVMGenerator *gen, Type type) {
+    return (int)LLVMStoreSizeOfType(gen->target_data, get_llvm_type_from_type(gen, type));
+}
+
+
+
 
 
 static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *gen, LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type) {
@@ -87,13 +122,14 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
             if(existing_struct_type != NULL) {
                 return *existing_struct_type;
             }
-
+            
+            
             // TODO 结构体类型支持
             Type type_detail = get_type_detail_if_have(symbol_table(), type);
-
+            
             LLVMTypeRef struct_type = LLVMStructCreateNamed(gen->ctx, type_detail.type_name.c_str);
             Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(temp_allocator(), type_detail.struct_fields.count);
-
+            
             for(isize i = 0; i < type_detail.struct_fields.count; i++) {
                 StructField field = type_detail.struct_fields[i];
                 LLVMTypeRef field_llvm_type = get_llvm_type_from_type(gen, field.type);
@@ -103,7 +139,6 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
             LLVMStructSetBody(struct_type, field_types.data, field_types.count, 0);
 
             xp_hash_map_insert(&gen->struct_types, type.type_name, struct_type);
-
             // xp_arena_allocator_clear(temp_allocator());
             return struct_type;
         }
@@ -383,7 +418,7 @@ LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState stat
     
     LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
 
-    if(size_of_type(cast_expr->CastExpr.target_type) > size_of_type(cast_expr->CastExpr.expr->v_type)) {
+    if(size_of_type(gen, cast_expr->CastExpr.target_type) > size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
         // 扩展
         if(is_signed_type(cast_expr->CastExpr.expr->v_type)) {
             // 有符号扩展
@@ -393,7 +428,7 @@ LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState stat
             return LLVMBuildZExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "zexttmp");
         }
         
-    } else if(size_of_type(cast_expr->CastExpr.target_type) < size_of_type(cast_expr->CastExpr.expr->v_type)) {
+    } else if(size_of_type(gen, cast_expr->CastExpr.target_type) < size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
         // 截断
         return LLVMBuildTrunc(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "trunctmp");
     } else {
@@ -551,6 +586,12 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             // 浮点数常量
             double float_value = expr->Constant.float_value;
             return LLVMConstReal(get_llvm_type_from_type(gen,  expr->v_type), float_value);
+        }
+
+        if(expr->is_null) {
+            // null 常量
+            // 在llvm为*i8类型的指针
+            return LLVMConstNull(LLVMPointerType(LLVMVoidTypeInContext(gen->ctx), 0));
         }
 
         LLVMBool is_signed = cast(LLVMBool) is_signed_or_bool_type(expr->v_type);

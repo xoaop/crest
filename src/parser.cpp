@@ -219,7 +219,6 @@ Ast *parse_top_level(Parser *p) {
 
         a->StructDecl.fields = make_array<Ast *>(ast_allocator());
 
-        Type struct_type = make_struct_type();
         for(;;) {
             if(curr_token(p).type == TokenType::RightCurlyBracket) {
                 break;
@@ -237,13 +236,9 @@ Ast *parse_top_level(Parser *p) {
             expect(p, TokenType::Semicolon);
             
             array_push_back(&a->StructDecl.fields, field_ast);
-
-            array_push_back(&struct_type.struct_fields, StructField{field_ast->StructField.name, field_ast->StructField.field_type});
         }
 
         expect(p, TokenType::RightCurlyBracket);
-
-        a->v_type = struct_type;
 
     } break;
 
@@ -483,6 +478,7 @@ xp_internal Ast *parse_factor(Parser *p) {
             break;
         case TokenType::KW_true:
         case TokenType::KW_false:
+        case TokenType::KW_null:
             a = ast_alloc(AstType_Constant);
             a->token = expect(p, curr.type);
             break;
@@ -547,12 +543,14 @@ xp_internal Ast *parse_factor(Parser *p) {
             a->CastExpr.expr = parse_factor(p);
 
             break;
-            
+
+
         default:
             XP_ASSERT_DEFAULT(0);
             break;
         }
     }
+    a->token = curr;
 
     return a;
 }
@@ -649,7 +647,6 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a) {
     }
 
     a->type = AstType_Constant;
-    a->v_type = make_type(type_kind);
     a->Constant.value = cast(i128)val;
 
 }
@@ -686,7 +683,6 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a) {
     }
 
     a->type = AstType_Constant;
-    a->v_type = make_type(type_kind);
     a->Constant.float_value = val;
     
     return;
