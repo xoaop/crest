@@ -679,6 +679,8 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         if(is_struct_type(expr->StructFieldExpr.struct_var_expr->v_type)) {
             parent_expr = expr->StructFieldExpr.struct_var_expr;
         } else if(is_pointer_type(expr->StructFieldExpr.struct_var_expr->v_type) && get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type).kind == Type_struct) {
+            
+            // 如果是指向结构体的指针，则需要先解引用
             parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
             parent_expr->UnaryExpr.op = TokenType::Star;
             parent_expr->UnaryExpr.operand = expr->StructFieldExpr.struct_var_expr;
