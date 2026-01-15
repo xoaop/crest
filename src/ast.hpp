@@ -157,6 +157,7 @@ struct Ast {
 extern const char *ast_strs[];
 
 
+Ast *ast_alloc(AstType type, xpAllocator allocator);
 Ast *ast_alloc(AstType type);
 Ast ast_make(AstType type);
 AstFile ast_file_make();

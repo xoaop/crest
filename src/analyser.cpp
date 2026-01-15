@@ -240,11 +240,11 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
             // print_ast(var_decl_ast->VariableDecl.expr);
 
 
-            if(!is_equal_type(var_decl_ast->v_type, var_decl_ast->VariableDecl.expr->v_type)) {
-                // TODO 变量类型和初始化表达式类型不匹配错误处理
-                error_msg(&var_decl_ast->VariableDecl.expr->token, "variable decl type mismatch with init expr");
-                XP_ASSERT_MSG(0, "variable decl type mismatch with init expr");
-            }
+            // if(!is_equal_type(var_decl_ast->v_type, var_decl_ast->VariableDecl.expr->v_type)) {
+            //     // TODO 变量类型和初始化表达式类型不匹配错误处理
+            //     error_msg(&var_decl_ast->VariableDecl.expr->token, "variable decl type mismatch with init expr");
+            //     XP_ASSERT_MSG(0, "variable decl type mismatch with init expr");
+            // }
 
         } else {
             // TODO 有初始化表达式, 无显示指定类型的情况, 类型推导
