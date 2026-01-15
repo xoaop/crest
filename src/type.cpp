@@ -139,6 +139,8 @@ Type make_pointer_type(Type pointed_type) {
 
 Type get_pointed_type(Type pointer_type) {
     XP_ASSERT_DEFAULT(pointer_type.kind == Type_pointer);
+    XP_ASSERT_DEFAULT(pointer_type.pointed_type != NULL);
+
     return *(pointer_type.pointed_type);
 }
 

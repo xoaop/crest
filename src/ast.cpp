@@ -25,11 +25,15 @@ Ast ast_make(AstType type) {
     return ast;
 }
 
-Ast *ast_alloc(AstType type) {
-    Ast *a = cast(Ast *) xp_alloc(ast_allocator(), sizeof(Ast));
+Ast *ast_alloc(AstType type, xpAllocator allocator) {
+    Ast *a = cast(Ast *) xp_alloc(allocator, sizeof(Ast));
     *a = ast_make(type);
 
     return a;
+}
+
+Ast *ast_alloc(AstType type) {
+    return ast_alloc(type, ast_allocator());
 }
 
 

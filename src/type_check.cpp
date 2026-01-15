@@ -114,6 +114,17 @@ Type get_compliable_const_type(Ast *constant) {
 }
 
 
+static bool check_target_type(Ast *expr, Type target_type) {
+    if(expr->is_null) {
+        if(!is_pointer_type(target_type)) {
+            return false;
+        }
+    } else if(!is_equal_type(expr->v_type, target_type)) {
+        return false;
+    }
+
+    return true;
+}
 
 
 
@@ -238,6 +249,15 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 if(!is_equal_compare_operator(expr->BinaryExpr.op)) {
                     error_msg(&expr->token, "only equality comparison is allowed between pointer types");
                     XP_ASSERT_DEFAULT(0);
+                }
+
+                // null指针可以和任何指针类型比较
+                if(expr->BinaryExpr.left->is_null || expr->BinaryExpr.right->is_null) {
+                    should_check_equal_type = false;
+
+                    // should_check_equal_type会绕开把v_type设为左边类型的逻辑
+                    // 不过由于是比较操作, 结果类型是bool, 下面有v_type的设置
+                    // 最终这里不用设置expr->v_type = 非null指针的类型
                 }
 
             } else if(is_pointer_type(expr->BinaryExpr.left->v_type) || is_pointer_type(expr->BinaryExpr.right->v_type)) {
@@ -457,13 +477,22 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
         case AstType_StructFieldExpr: {
             infer_expr_type(expr->StructFieldExpr.struct_var_expr, false, target_type, analyser);
 
-            // 检查a.b 中的a是不是结构体
+            // 检查a.b 中的a是不是: 
+            // 1. 结构体
+            // 2. 结构体指针
             Type parent_type = expr->StructFieldExpr.struct_var_expr->v_type;
-            if(parent_type.kind != Type_struct) {
+            if((parent_type.kind != Type_struct) && (!((parent_type.kind == Type_pointer) && (get_pointed_type(parent_type).kind == Type_struct)))) {
                 XP_ASSERT_DEFAULT(0);
             }
-            parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+            if(parent_type.kind == Type_struct) {
+                parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+            } else {
+                parent_type = get_pointed_type(parent_type);
+                parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+            }
 
+
+            
             // 检查a.b中, a有没有b这个字段
             StructField field;
             bool found = false;
@@ -505,8 +534,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             // 检查字段初始化表达式类型是否和字段类型匹配
             for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
                 infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type.struct_fields[i].type, analyser);
-                if(!is_equal_type(expr->StructInitExpr.field_inits[i]->v_type, struct_type_info->type.struct_fields[i].type)) {
-                    error_msg(&expr->StructInitExpr.field_inits[i]->token, "struct field init type does not match");
+                
+                if(!check_target_type(expr->StructInitExpr.field_inits[i], struct_type_info->type.struct_fields[i].type)) {
+                    error_msg(&expr->StructInitExpr.field_inits[i]->token, "struct field init expression type does not match struct field type");
                     XP_ASSERT_DEFAULT(0);
                 }
             }
@@ -535,24 +565,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
     if(depth == 1) {
         if(has_target) {
-
-            // 有目标类型但是遇到null字面量
-            // 如 p: *i32 = null; 这是合法的
-            // 
-            // 前提p得是指针类型
-            // p: i32 = null; 这是不合法的
-            if(expr->is_null) {
-                if(!is_pointer_type(target_type)) {
-                    error_msg(&expr->token, "null can only be assigned to pointer types");
-                    XP_ASSERT_DEFAULT(0);
-                }
-            }
-
-            // TODO 支持所有指针都可以隐式转化为void* 指针
-            
-            
-            
-            if(!is_equal_type(expr->v_type, target_type)) {
+            if(!check_target_type(expr, target_type)) {
                 error_msg(&expr->token, "expression type does not match target type");
                 XP_ASSERT_DEFAULT(0);
             }
@@ -561,4 +574,6 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
     depth -= 1;
 }
+
+
 

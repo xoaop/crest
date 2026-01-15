@@ -4,6 +4,10 @@
 
 #include "symbol.hpp"
 
+#include "ast.hpp"
+
+
+
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type);
 
 void gen_ir_function(LLVMGenerator *gen, Ast *function);
@@ -122,13 +126,13 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
             if(existing_struct_type != NULL) {
                 return *existing_struct_type;
             }
-            
-            
-            // TODO 结构体类型支持
+
+
             Type type_detail = get_type_detail_if_have(symbol_table(), type);
+            LLVMTypeRef *struct_type = xp_hash_map_insert(&gen->struct_types, type.type_name, LLVMStructCreateNamed(gen->ctx, type_detail.type_name.c_str));
             
-            LLVMTypeRef struct_type = LLVMStructCreateNamed(gen->ctx, type_detail.type_name.c_str);
-            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(temp_allocator(), type_detail.struct_fields.count);
+            
+            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(stage_allocator(), type_detail.struct_fields.count);
             
             for(isize i = 0; i < type_detail.struct_fields.count; i++) {
                 StructField field = type_detail.struct_fields[i];
@@ -136,11 +140,9 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
                 array_push_back(&field_types, field_llvm_type);
             }
 
-            LLVMStructSetBody(struct_type, field_types.data, field_types.count, 0);
+            LLVMStructSetBody(*struct_type, field_types.data, field_types.count, 0);
 
-            xp_hash_map_insert(&gen->struct_types, type.type_name, struct_type);
-            // xp_arena_allocator_clear(temp_allocator());
-            return struct_type;
+            return *struct_type;
         }
         default:
             XP_ASSERT_DEFAULT(0);
@@ -152,6 +154,7 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
 void gen_ir_astfile(AstFile f) {
 
     defer(xp_arena_allocator_clear(temp_allocator()));
+    defer(xp_arena_allocator_clear(stage_allocator()));
 
     LLVMInitializeNativeTarget();
 
@@ -165,7 +168,7 @@ void gen_ir_astfile(AstFile f) {
     for(isize i = 0; i < f.root.count; i++) {
         Ast *top_level = f.root[i];
         if(top_level->type == AstType_Function) {
-            Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(temp_allocator(), top_level->Function.params.count);
+            Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(stage_allocator(), top_level->Function.params.count);
             for(isize j = 0; j < top_level->Function.params.count; j++) {
                 array_push_back(&params, get_llvm_type_from_type(&gen, top_level->Function.params[j]->v_type));
             }
@@ -339,7 +342,6 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         LLVMValueRef left_value = gen_ir_expr(gen, stmt->Assignment.left_var_expr, state, true);
         LLVMValueRef value = gen_ir_expr(gen, stmt->Assignment.right_expr, state);
 
-        // TODO: 目前只支持变量赋值
         // LLVMValueRef *alloca = xp_hash_map_get(gen->locals, stmt->Assignment.left_var_expr->VarExpr.name);
         // XP_ASSERT_DEFAULT(alloca != NULL);
         // LLVMBuildStore(gen->builder, value, *alloca);
@@ -348,7 +350,6 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
     } break;
 
     case AstType::AstType_ForStmt: {
-        // TODO
 
         // 1. 创建基本块
         LLVMBasicBlockRef init_block = LLVMAppendBasicBlockInContext(gen->ctx, state.curr_function, "for.init");
@@ -365,27 +366,47 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
 
         // 2. 初始化表达式
         LLVMBuildBr(gen->builder, init_block);
+        LLVMPositionBuilderAtEnd(gen->builder, init_block);
         state.curr_block = init_block;
-        gen_ir_stmt(gen, stmt->ForStmt.init, state);
 
+        if(stmt->ForStmt.init != NULL) {
+            gen_ir_stmt(gen, stmt->ForStmt.init, state);
+        }
+        
         // 3. 跳转到条件判断
         LLVMBuildBr(gen->builder, cond_block);
+
+
         // 4. 条件判断
         LLVMPositionBuilderAtEnd(gen->builder, cond_block);
-        LLVMValueRef cond_val = gen_ir_expr(gen, stmt->ForStmt.condition, state);
-        LLVMBuildCondBr(gen->builder, cond_val, body_block, merge_block);
+
+        if(stmt->ForStmt.condition != NULL) {
+            // 有条件循环
+            LLVMValueRef cond_val = gen_ir_expr(gen, stmt->ForStmt.condition, state);
+            LLVMBuildCondBr(gen->builder, cond_val, body_block, merge_block);
+        } else {
+            // 无条件循环
+            LLVMBuildBr(gen->builder, body_block);
+        }
+        
+        
         // 5. 循环体
         LLVMPositionBuilderAtEnd(gen->builder, body_block);
         state.curr_block = body_block;
 
         gen_ir_block(gen, stmt->ForStmt.body, state);
         LLVMBuildBr(gen->builder, post_block);
+
         // 6. 后置表达式
         LLVMPositionBuilderAtEnd(gen->builder, post_block);
         state.curr_block = post_block;
 
-        gen_ir_stmt(gen, stmt->ForStmt.post, state);
+        if(stmt->ForStmt.post != NULL) {
+            gen_ir_stmt(gen, stmt->ForStmt.post, state);
+        }
+        
         LLVMBuildBr(gen->builder, cond_block);
+
         // 7. 合并块
         LLVMPositionBuilderAtEnd(gen->builder, merge_block);
         state.curr_block = merge_block;
@@ -638,7 +659,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     case AstType_FunctionCallExpr: {
         LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.name.c_str);
 
-        Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(temp_allocator(), expr->FunctionCallExpr.args.count);
+        Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(stage_allocator(), expr->FunctionCallExpr.args.count);
         for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
             LLVMValueRef arg_val = gen_ir_expr(gen,  expr->FunctionCallExpr.args[i], state);
             array_push_back(&args, arg_val);
@@ -654,9 +675,19 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     } break;
 
     case AstType_StructFieldExpr: {
-        
+        Ast *parent_expr = NULL;
+        if(is_struct_type(expr->StructFieldExpr.struct_var_expr->v_type)) {
+            parent_expr = expr->StructFieldExpr.struct_var_expr;
+        } else if(is_pointer_type(expr->StructFieldExpr.struct_var_expr->v_type) && get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type).kind == Type_struct) {
+            parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
+            parent_expr->UnaryExpr.op = TokenType::Star;
+            parent_expr->UnaryExpr.operand = expr->StructFieldExpr.struct_var_expr;
+            parent_expr->v_type = get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type);
+        } else {
+            XP_ASSERT_DEFAULT(0);
+        }
 
-        Type struct_type = expr->StructFieldExpr.struct_var_expr->v_type;
+        Type struct_type = parent_expr->v_type;
         Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
         
         
@@ -672,12 +703,12 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         if(is_lvalue_expr) {
             // 这里正好发现is_lvalue_expr用来获取指针的场景
-            LLVMValueRef struct_ptr = gen_ir_expr(gen, expr->StructFieldExpr.struct_var_expr, state, true);
+            LLVMValueRef struct_ptr = gen_ir_expr(gen, parent_expr, state, true);
 
             LLVMValueRef field_ptr = LLVMBuildStructGEP2(gen->builder, get_llvm_type_from_type(gen, struct_type), struct_ptr, field_index, "fieldptrtmp");
             return field_ptr;
         } else {
-            LLVMValueRef struct_val = gen_ir_expr(gen, expr->StructFieldExpr.struct_var_expr, state);
+            LLVMValueRef struct_val = gen_ir_expr(gen, parent_expr, state);
             LLVMValueRef field_val = LLVMBuildExtractValue(gen->builder, struct_val, field_index, "fieldextractedtmp");
             return field_val;
         }
