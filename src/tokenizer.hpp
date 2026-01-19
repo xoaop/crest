@@ -38,6 +38,8 @@
     TOKEN_INFO(ColonEqual, ":="),                               \
     TOKEN_INFO(LeftBracket, "("),                               \
     TOKEN_INFO(RightBracket, ")"),                              \
+    TOKEN_INFO(LeftSquareBracket, "["),                         \
+    TOKEN_INFO(RightSquareBracket, "]"),                        \
     TOKEN_INFO(LeftCurlyBracket, "{"),                          \
     TOKEN_INFO(RightCurlyBracket, "}"),                         \
     TOKEN_INFO(Comma, ","),                                     \

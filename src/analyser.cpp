@@ -78,6 +78,12 @@ void resolve_struct_decl(Ast *ast, Analyser *analyser) {
         // 修正ast的类型
         resolve_type(&field_ast->StructField.field_type, analyser);
 
+        if(is_equal_type(field_ast->StructField.field_type, struct_type_info->type)) {
+            // 字段类型不能和结构体本身相同 错误处理
+            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
+            XP_ASSERT_DEFAULT(0);
+        }
+
         // 补充符号表条目类型
         array_push_back(&struct_type_info->type.struct_fields, StructField{field_ast->StructField.name, copy_type(&field_ast->StructField.field_type)});
     }

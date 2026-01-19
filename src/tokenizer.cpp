@@ -255,6 +255,16 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             token->type = TokenType::RightBracket;
             advance_one_character(t);
             break;
+
+        case '[':
+            token->type = TokenType::LeftSquareBracket;
+            advance_one_character(t);
+            break;
+            
+        case ']':
+            token->type = TokenType::RightSquareBracket;
+            advance_one_character(t);
+            break;
         
         case '{':
             token->type = TokenType::LeftCurlyBracket;

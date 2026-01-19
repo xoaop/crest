@@ -750,7 +750,7 @@ void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
 
 
 template<typename K>
-bool xp_hash_set_insert(xpHashSet<K> *set, K key) {
+K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
     if(set->count == set->capacity) {
         xp_hash_set_extend(set, set->capacity + set->capacity / 2 + 1);
     }
@@ -767,16 +767,16 @@ bool xp_hash_set_insert(xpHashSet<K> *set, K key) {
             entry->used = true;
 
             set->count += 1;
-            return true;
+            return &entry->key;
         } else if(entry->key == key) {
-            return false;
+            return NULL;
         }
         index = (index + 1) % set->capacity;
     } while(index != original_index);
     
     //NOTE: FULL SET
     XP_ASSERT_DEFAULT(0);
-    return false;
+    return NULL;
 }
 
 template<typename K>
@@ -802,6 +802,13 @@ xpHashSetEntry<K> *xp_hash_set_get_entry(xpHashSet<K> *set, K key) {
 
     return NULL;
 }
+
+template<typename K>
+K *xp_hash_set_get(xpHashSet<K> *set, K key) {
+    xpHashSetEntry<K> *entry = xp_hash_set_get_entry(set, key);
+    return entry ? &entry->key : NULL;
+}
+
 
 template<typename K>
 b32 xp_hash_set_find(xpHashSet<K> *set, K key) {

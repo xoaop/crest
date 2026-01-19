@@ -1,5 +1,12 @@
 #include "type.hpp"
 
+
+
+
+
+
+
+
 TypeKind string_to_type_kind(xpString str) {
     if(!xp_string_cmp(str, xp_string_c("i8"))) {
         return Type_i8;
@@ -171,6 +178,13 @@ Type make_struct_type() {
 }
 
 
+Type make_struct_type(xpString name) {
+    Type struct_type = make_struct_type();
+    struct_type.type_name = name;
+    return struct_type;
+}
+
+
 
 void struct_add_member(Type *type, xpString name, Type member_type) {
     XP_ASSERT_DEFAULT(type->kind == Type_struct);
@@ -219,6 +233,48 @@ bool is_equal_type(Type a, Type b) {
     default:
         return true;
     }
+}
+
+
+
+bool is_basic_type_kind(TypeKind kind) {
+    switch(kind) {
+    case Type_i8:
+    case Type_i32:
+    case Type_i64:
+    case Type_u8:
+    case Type_u32:
+    case Type_u64:
+    case Type_f32:
+    case Type_f64:
+    case Type_bool:
+    case Type_void:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool is_complex_type_kind(TypeKind kind) {
+    switch(kind) {
+    case Type_function:
+    case Type_pointer:
+    case Type_struct:
+    case Type_array:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// 包括基本类型和字面量类型
+bool is_easy_type_kind(TypeKind kind) {
+    return is_basic_type_kind(kind) || kind == Type_untyped_int || kind == Type_untyped_float;
+}
+
+// 包括复杂类型和不确定类型
+bool is_hard_type_kind(TypeKind kind) {
+    return is_complex_type_kind(kind) || kind == Type_uncertain;
 }
 
 
@@ -467,5 +523,100 @@ void print_type(Type type) {
     default:
         printf("unknown_type");
         break;
+    }
+}
+
+
+
+static TypeTable global_type_table;
+
+
+void init_type_table() {
+    global_type_table.type_set = xp_hash_set_make<Type>(permanent_allocator());
+}
+
+
+TypeRef easy_type(TypeKind kind) {
+    XP_ASSERT_DEFAULT(is_easy_type_kind(kind));
+    Type t = make_type(kind);
+    return get_type(t);
+}
+
+
+TypeRef pointer_type(TypeRef pointed_type) {
+    XP_TODO;    
+}
+
+TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type) {
+    XP_TODO;
+}
+
+TypeRef struct_type(xpString name) {
+    XP_TODO;
+}
+
+
+TypeRef get_type(Type type) {
+    TypeRef type_ref = xp_hash_set_get(&global_type_table.type_set, type);
+    if(type_ref != NULL) {
+        return type_ref;
+    }
+
+    return add_type(type);
+}
+
+
+TypeRef add_type(Type type) {
+    TypeRef type_ref = xp_hash_set_insert(&global_type_table.type_set, type);
+    return type_ref;
+}
+
+
+
+
+
+template<>
+usize xp_hash_func(Type *type) {
+    switch(type->kind) {
+
+        // 基本类型
+        // 由于没有额外类型信息, 直接用kind作为hash值
+        case Type_i8:
+        case Type_i32:
+        case Type_i64:
+        case Type_u8:
+        case Type_u32:
+        case Type_u64:
+        case Type_f32:
+        case Type_f64:
+        case Type_bool:
+        case Type_void:
+        case Type_untyped_int:
+        case Type_untyped_float: {
+            return cast(usize)(type->kind);
+        } break;
+
+        case Type_function: {
+            XP_TODO;
+        } break;
+
+        case Type_pointer: {
+            XP_TODO;
+        } break;
+
+        // 目前的uncertain只可能表示不确定的结构体类型, 所以哈希逻辑和struct一样
+        case Type_uncertain: 
+        case Type_struct: {
+            XP_TODO;
+        } break;
+
+        case Type_array: {
+            XP_TODO;
+        } break;
+
+        default: {
+            XP_ASSERT_DEFAULT(0);
+        } break;
+    
     }
 }
