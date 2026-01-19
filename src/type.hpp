@@ -5,7 +5,7 @@
 #include "common.hpp"
 
 enum TypeKind {
-    Type_Undefined,
+    Type_Undefined = 0,
 
     
     Type_i8,
@@ -38,12 +38,16 @@ enum TypeKind {
 
 TypeKind string_to_type_kind(xpString str);
 
+// 前向声明
+struct Type;
+bool is_equal_type(Type a, Type b);
+
 
 struct StructField;
 
 struct Type {
     TypeKind kind;
-    xpString type_name; // 仅用于struct等复合类型的记录
+    xpString type_name; // 目前仅用于struct等复合类型的记录
     
     union {
         
@@ -66,6 +70,10 @@ struct Type {
             isize count;
         } array_info;
     };
+
+    bool operator== (const Type &other) const {
+        return is_equal_type(*this, other);
+    }
 };
 
 
@@ -73,6 +81,14 @@ struct StructField {
     xpString name;
     Type type;
 };
+
+
+
+
+
+
+
+
 
 
 Type make_type(TypeKind kind);
@@ -87,6 +103,7 @@ Type get_pointed_type(Type pointer_type);
 Type get_innermost_type_of_pointer(Type pointer_type);
 
 Type make_struct_type();
+Type make_struct_type(xpString name);
 
 bool is_equal_type(Type a, Type b);
 bool is_integer_type(Type type);
@@ -98,6 +115,15 @@ bool is_float_type(Type type);
 bool is_certain_type(Type type);
 bool is_pointer_type(Type type);
 bool is_struct_type(Type type);
+
+
+bool is_basic_type_kind(TypeKind kind);
+bool is_complex_type_kind(TypeKind kind);
+bool is_easy_type_kind(TypeKind kind);
+bool is_hard_type_kind(TypeKind kind);
+
+
+
 Type get_common_type(Type a, Type b);
 
 
@@ -111,7 +137,41 @@ void struct_add_member(Type *type, xpString name, Type member_type);
 
 
 
-
-
-
 void print_type(Type type);
+
+
+
+
+
+
+// TODO: 大更新, 把ast里的类型信息都改成TypeRef
+// 所有详细类型信息都放在type表里
+// 统一类型获取接口
+// 解决结构体字段信息获取需要额外操作问题
+typedef Type *TypeRef;
+
+
+void init_type_table();
+
+
+
+struct TypeTable {
+    xpHashSet<Type> type_set;
+};
+
+
+
+
+TypeRef basic_type(TypeKind kind);
+TypeRef pointer_type(TypeRef pointed_type);
+TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
+TypeRef struct_type(xpString name);
+
+
+TypeRef get_type(Type type);
+TypeRef add_type(Type type);
+
+
+
+template<>
+usize xp_hash_func(Type *type);
