@@ -32,6 +32,7 @@ struct Ast;
         xpString name;                                                      \
         Array<Ast *> params;                                                \
         Ast *block;                                                         \
+        Ast *return_type_ast;                                               \
     })                                                                      \
     AST_INFO(StructDecl, "struct decl", struct {                            \
         xpString name;                                                      \
@@ -39,7 +40,7 @@ struct Ast;
     })                                                                      \
     AST_INFO(StructField, "struct field", struct {                          \
         xpString name;                                                      \
-        TypeRef field_type;                                                 \
+        Ast *type_ast;                                                      \
     })                                                                      \
     AST_INFO(Block, "block", struct {                                       \
         Array<Ast *> statements;                                            \
@@ -64,6 +65,7 @@ struct Ast;
     AST_INFO(VariableDecl, "variable decl", struct {                        \
         xpString var_name;                                                  \
         Ast *expr;                                                          \
+        Ast *type_ast;                                                      \
     })                                                                      \
     AST_INFO(Assignment, "assignment", struct {                             \
         Ast *left_var_expr;                                                 \
@@ -93,8 +95,9 @@ struct Ast;
         Array<Ast *> args;                                                  \
     })                                                                      \
     AST_INFO(CastExpr, "cast expr", struct {                                \
-        TypeRef target_type;                                                \
         Ast *expr;                                                          \
+        Ast *target_type_ast;                                               \
+        TypeRef target_type;    /* TODO REMOVE */                           \
     })                                                                      \
     AST_INFO(StructFieldExpr, "struct field expr", struct {                 \
         Ast *struct_var_expr;                                               \

@@ -155,7 +155,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             if(has_target) {
                 if(!fit_in_type(expr, target_type)) {
                     error_msg(&expr->token, "constant value not fit in target type");
-                    print_type(*target_type);
+                    print_type(target_type);
                     printf("\n");
 
                     XP_ASSERT_DEFAULT(0);
@@ -295,9 +295,9 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             // 如果需要, 检查左右表达式类型是否相等
             if(should_check_equal_type && expr->BinaryExpr.left->v_type != expr->BinaryExpr.right->v_type) {
                 error_msg(&expr->token, "binary expression left and right side types do not match");
-                print_type(*expr->BinaryExpr.left->v_type);
+                print_type(expr->BinaryExpr.left->v_type);
                 printf(" vs ");
-                print_type(*expr->BinaryExpr.right->v_type);
+                print_type(expr->BinaryExpr.right->v_type);
                 printf("\n");
 
                 XP_ASSERT_DEFAULT(0);

@@ -22,7 +22,6 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
 
 
         info.name = ast->Function.name;
-        info.type = ast->v_type;
 
         add_symbol(symbol_table(), ast->Function.name, info);
 
@@ -52,15 +51,13 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
             XP_ASSERT_MSG(0, "Struct redefinition");
         }
     
-        // 目前只保存类型名 不包括字段
         info.name = ast->StructDecl.name;
-        info.type = get_struct_type(ast->StructDecl.name);
-        if(info.type == NULL) {
-            error_msg(&ast->token, "internal error: struct type '%s' not found", ast->StructDecl.name.c_str);
-            XP_ASSERT_MSG(0, "Internal Error: Struct Type Not Found");
-        }
-
+        // 创建不确定类型占位符
+        info.type = add_uncertain_type(ast->StructDecl.name);
         add_symbol(symbol_table(), ast->StructDecl.name, info);
+
+
+
 
 
         array_push_back(&all_decls->struct_decls, ast);
@@ -68,13 +65,6 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
 
     // TODO: 还没有全局变量
     case AstType_VariableDecl:
-        if(at_global_scope(analyser)) {
-            info.name = ast->VariableDecl.var_name;
-            info.type = ast->v_type;
-
-            add_symbol(symbol_table(), ast->VariableDecl.var_name, info);
-        }
-
         array_push_back(&all_decls->variable_decls, ast);
 
         break;
