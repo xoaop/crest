@@ -26,7 +26,7 @@ struct Ast;
     })                                                                      \
     AST_INFO(StructField, "struct field", struct {                          \
         xpString name;                                                      \
-        Type field_type;                                                    \
+        TypeRef field_type;                                                 \
     })                                                                      \
     AST_INFO(Block, "block", struct {                                       \
         Array<Ast *> statements;                                            \
@@ -80,7 +80,7 @@ struct Ast;
         Array<Ast *> args;                                                  \
     })                                                                      \
     AST_INFO(CastExpr, "cast expr", struct {                                \
-        Type target_type;                                                   \
+        TypeRef target_type;                                                \
         Ast *expr;                                                          \
     })                                                                      \
     AST_INFO(StructFieldExpr, "struct field expr", struct {                 \
@@ -136,7 +136,7 @@ struct Ast {
     AstType type;
 
 
-    Type v_type; // 该AST节点的类型
+    TypeRef v_type; // 该AST节点的类型
     Token token; // 记录该AST对应的第一个token
 
 

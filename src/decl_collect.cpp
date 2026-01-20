@@ -53,12 +53,13 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
         }
     
         // 目前只保存类型名 不包括字段
-        Type struct_type = make_struct_type();
-        struct_type.type_name = ast->StructDecl.name;
-        
-
         info.name = ast->StructDecl.name;
-        info.type = struct_type;
+        info.type = get_struct_type(ast->StructDecl.name);
+        if(info.type == NULL) {
+            error_msg(&ast->token, "internal error: struct type '%s' not found", ast->StructDecl.name.c_str);
+            XP_ASSERT_MSG(0, "Internal Error: Struct Type Not Found");
+        }
+
         add_symbol(symbol_table(), ast->StructDecl.name, info);
 
 

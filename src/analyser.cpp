@@ -24,28 +24,27 @@ bool at_global_scope(Analyser *analyser) {
 }
 
 
+// void resolve_uncertain_type(TypeRef uncertain_type, Analyser *analyser) {
+//     XP_ASSERT_DEFAULT(uncertain_type->kind == Type_uncertain);
 
-Type get_struct_type_info(xpString type_name, Analyser *analyser) {
-    XP_TODO;
-}
+//     SymbolInfo *info = find_symbol(symbol_table(), uncertain_type->type_name);
 
-void resolve_uncertain_type(Type *uncertain_type, Analyser *analyser) {
-    XP_ASSERT_DEFAULT(uncertain_type->kind == Type_uncertain);
+//     if(info == NULL || info->type != uncertain_type) {
+//         // TODO 错误处理: 不存在的类型 或 类型不匹配
+//         XP_ASSERT_DEFAULT(0);
+//     }
 
-    SymbolInfo *info = find_symbol(symbol_table(), uncertain_type->type_name);
+//     // 注意: 这里修改了typeref的内容, 会同步变化到符号表的typeref和类型表中的typeref
+//     uncertain_type->kind = Type_struct;
+// }
 
-    if(info == NULL || info->type.kind != Type_struct) {
-        // TODO 错误处理: 不存在的类型 或 非结构体类型
-        XP_ASSERT_DEFAULT(0);
-    }
-
-    uncertain_type->kind = Type_struct;
-}
-
-void resolve_type(Type *type, Analyser *analyser) {
+void resolve_type(TypeRef type, Analyser *analyser) {
     switch(type->kind) {
         case Type_uncertain: {
-            resolve_uncertain_type(type, analyser);
+            // resolve_uncertain_type(type, analyser);
+            error_msg(NULL, "type '%s' is still uncertain", type->type_name.c_str);
+            XP_ASSERT_DEFAULT(0);
+
         } break;
 
         case Type_pointer: {
@@ -54,7 +53,7 @@ void resolve_type(Type *type, Analyser *analyser) {
 
         case Type_function: {
             for(isize i = 0; i < type->function_info.param_types.count; i++) {
-                resolve_type(&type->function_info.param_types[i], analyser);
+                resolve_type(type->function_info.param_types[i], analyser);
             }
             resolve_type(type->function_info.return_type, analyser);
         } break;
@@ -76,16 +75,16 @@ void resolve_struct_decl(Ast *ast, Analyser *analyser) {
         Ast *field_ast = ast->StructDecl.fields[i];
 
         // 修正ast的类型
-        resolve_type(&field_ast->StructField.field_type, analyser);
+        resolve_type(field_ast->StructField.field_type, analyser);
 
-        if(is_equal_type(field_ast->StructField.field_type, struct_type_info->type)) {
+        if(field_ast->StructField.field_type == struct_type_info->type) {
             // 字段类型不能和结构体本身相同 错误处理
             error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
             XP_ASSERT_DEFAULT(0);
         }
 
         // 补充符号表条目类型
-        array_push_back(&struct_type_info->type.struct_fields, StructField{field_ast->StructField.name, copy_type(&field_ast->StructField.field_type)});
+        // array_push_back(&struct_type_info->type.struct_fields, StructField{field_ast->StructField.name, field_ast->StructField.field_type});
     }
 }
 
@@ -112,7 +111,7 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
     for(isize i = 0; i < all_decls.function_decls.count; i++) {
         Ast *fn_decl_ast = all_decls.function_decls[i];
         SymbolInfo *fn_info = find_symbol(symbol_table(), fn_decl_ast->Function.name);
-        Type *fn_type = &fn_info->type;
+        TypeRef fn_type = fn_info->type;
 
         resolve_type(fn_type, &analyser);
     }
@@ -123,7 +122,7 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
     // TODO 移到resolve_var_decl中?
     for(isize i = 0; i < all_decls.variable_decls.count; i++) {
         Ast *var_decl_ast = all_decls.variable_decls[i];
-        resolve_type(&var_decl_ast->v_type, &analyser);
+        resolve_type(var_decl_ast->v_type, &analyser);
     }
 
     // TODO TEST
@@ -192,7 +191,7 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
 
 
     if(may_fall_through(ast->Function.block)) {
-        if(analyser->curr_function->v_type.function_info.return_type->kind != Type_void) {
+        if(analyser->curr_function->v_type->function_info.return_type->kind != Type_void) {
             // TODO 非void函数漏写return错误处理
             error_msg(&ast->token, "non-void function may fall through without return");
             XP_ASSERT_MSG(0, "non-void function may fall through without return");
@@ -228,7 +227,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
     }
 
 
-    if(var_decl_ast->v_type.kind == Type_void) {
+    if(var_decl_ast->v_type == easy_type(Type_void)) {
         // TODO 变量定义为 void 类型错误处理
         XP_ASSERT_MSG(0, "variable can not be void type");
     }
@@ -237,7 +236,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         resolve_expr(var_decl_ast->VariableDecl.expr, analyser);
         
         
-        if(var_decl_ast->v_type.kind != Type_Undefined) {
+        if(var_decl_ast->v_type != undefined_type()) {
             // TODO 有显示指定类型和初始化表达式的情况, 类型检查
             
             // !DEBUG
@@ -262,7 +261,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         // TODO 检查
         try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
     } else {
-        if(var_decl_ast->v_type.kind != Type_Undefined) {
+        if(var_decl_ast->v_type != undefined_type()) {
             // TODO 有显示指定类型, 无初始化表达式的情况, 报错, 变量必须初始化
             // XP_ASSERT_DEFAULT(0);
         } else {
@@ -314,7 +313,7 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     case AstType_IfStmt: {
         resolve_expr(stmt_ast->IfStmt.condition, analyser);
 
-        Type condition_expr_type = make_type(Type_bool);
+        TypeRef condition_expr_type = easy_type(Type_bool);
         infer_expr_type(stmt_ast->IfStmt.condition, true, condition_expr_type, analyser);
         
 
@@ -337,7 +336,7 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
             resolve_expr(stmt_ast->ForStmt.condition, analyser);
         
 
-        infer_expr_type(stmt_ast->ForStmt.condition, true, make_type(Type_bool), analyser);
+        infer_expr_type(stmt_ast->ForStmt.condition, true, easy_type(Type_bool), analyser);
 
         if(stmt_ast->ForStmt.post != NULL)
             resolve_stmt(stmt_ast->ForStmt.post, analyser);
@@ -349,15 +348,15 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         if(stmt_ast->ReturnStmt.expr != NULL) {
             resolve_expr(stmt_ast->ReturnStmt.expr, analyser);
 
-            if(analyser->curr_function->v_type.function_info.return_type->kind == Type_void) {
+            if(analyser->curr_function->v_type->function_info.return_type == easy_type(Type_void)) {
                 // TODO 错误处理, return 语句不应有返回值 在void函数中
                 error_msg(&stmt_ast->token, "return statement should not have expression in void function");
                 XP_ASSERT_DEFAULT(0);
             }
 
-            infer_expr_type(stmt_ast->ReturnStmt.expr, true, *analyser->curr_function->v_type.function_info.return_type, analyser);
+            infer_expr_type(stmt_ast->ReturnStmt.expr, true, analyser->curr_function->v_type->function_info.return_type, analyser);
         } else {
-            if(analyser->curr_function->v_type.function_info.return_type->kind != Type_void) {
+            if(analyser->curr_function->v_type->function_info.return_type != easy_type(Type_void)) {
                 // TODO 错误处理, return 语句缺少返回值 在非void函数中
                 error_msg(&stmt_ast->token, "return statement missing expression in non-void function");
                 XP_ASSERT_DEFAULT(0);
@@ -420,15 +419,15 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         SymbolInfo *info = find_symbol(symbol_table(), expr_ast->FunctionCallExpr.name);
 
         // TODO 是否是函数
-        XP_ASSERT_MSG(info != NULL && info->type.kind == Type_function, "function not exist");
+        XP_ASSERT_MSG(info != NULL && info->type->kind == Type_function, "function not exist");
 
         // TODO 参数个数是否匹配
-        XP_ASSERT_MSG(info->type.function_info.param_types.count == expr_ast->FunctionCallExpr.args.count, "function arg count mismatch");
+        XP_ASSERT_MSG(info->type->function_info.param_types.count == expr_ast->FunctionCallExpr.args.count, "function arg count mismatch");
 
         // TODO 检查参数类型是否匹配
         for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
             // infer_expr_type(expr_ast->FunctionCallExpr.args[i],&info->type.function_info.param_types[i], analyser);
-            infer_expr_type(expr_ast->FunctionCallExpr.args[i], true, info->type.function_info.param_types[i], analyser);
+            infer_expr_type(expr_ast->FunctionCallExpr.args[i], true, info->type->function_info.param_types[i], analyser);
         }
         
 
@@ -448,7 +447,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         resolve_expr(expr_ast->CastExpr.expr, analyser);
 
         // TODO CHECK
-        resolve_type(&expr_ast->CastExpr.target_type, analyser);
+        resolve_type(expr_ast->CastExpr.target_type, analyser);
     } break;
 
     case AstType_Constant: {
@@ -493,13 +492,13 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
 
 
     if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
-        constant->v_type = make_type(Type_bool);
+        constant->v_type = easy_type(Type_bool);
         constant->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
         return;
     }
 
     if(token.type == TokenType::KW_null) {
-        constant->v_type = make_pointer_type(Type_void, 1);
+        constant->v_type = pointer_type(easy_type(Type_void));
         constant->Constant.value = 0;
         constant->is_null = true;
         return;
@@ -517,14 +516,14 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
     // 整型常量
     
     if(token.type_kind_of_number != Type_Undefined) {
-        constant->v_type = make_type(token.type_kind_of_number);
+        constant->v_type = easy_type(token.type_kind_of_number);
     } else {
 
         // 无类型后缀的数字字面量, 先标记为untyped类型, 等待类型推导
         if(token.type == TokenType::Integer) {
-            constant->v_type = make_type(Type_untyped_int);
+            constant->v_type = easy_type(Type_untyped_int);
         } else if(token.type == TokenType::Float) {
-            constant->v_type = make_type(Type_untyped_float);
+            constant->v_type = easy_type(Type_untyped_float);
         } 
     
     }
@@ -570,14 +569,14 @@ void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
 void tag_untyped_expr(Ast *expr, Analyser *analyser) {
     switch(expr->type) {
         case AstType_BinaryExpr: {
-            if(is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_int)) &&
-               is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_int))) {
-                expr->v_type = make_type(Type_untyped_int);
-            } else if(is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_float)) &&
-               is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_float))) {
-                expr->v_type = make_type(Type_untyped_float);
-            } else if((is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_int)) && is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_float))) || 
-                      (is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_untyped_float)) && is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_untyped_int)))) {
+            if(expr->BinaryExpr.left->v_type == easy_type(Type_untyped_int) &&
+               expr->BinaryExpr.right->v_type == easy_type(Type_untyped_int)) {
+                expr->v_type = easy_type(Type_untyped_int);
+            } else if(expr->BinaryExpr.left->v_type == easy_type(Type_untyped_float) &&
+               expr->BinaryExpr.right->v_type == easy_type(Type_untyped_float)) {
+                expr->v_type = easy_type(Type_untyped_float);
+            } else if((expr->BinaryExpr.left->v_type ==  easy_type(Type_untyped_int) && expr->BinaryExpr.right->v_type == easy_type(Type_untyped_float)) || 
+                      (expr->BinaryExpr.left->v_type == easy_type(Type_untyped_float) && expr->BinaryExpr.right->v_type == easy_type(Type_untyped_int))) {
                 // TODO 目前先报错, 后续可以考虑类型提升等规则
                 error_msg(&expr->token, "type mismatch in binary expression with untyped operands");
                 XP_ASSERT_DEFAULT(0);
@@ -586,12 +585,12 @@ void tag_untyped_expr(Ast *expr, Analyser *analyser) {
         } break;
 
         case AstType_UnaryExpr: {
-            if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_int))) {
-                expr->v_type = make_type(Type_untyped_int);
+            if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_int)) {
+                expr->v_type =easy_type(Type_untyped_int);
             }
 
-            if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_float))) {
-                expr->v_type = make_type(Type_untyped_float);
+            if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_float)) {
+                expr->v_type = easy_type(Type_untyped_float);
             }
         } break;
         

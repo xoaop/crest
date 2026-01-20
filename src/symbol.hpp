@@ -33,7 +33,7 @@ enum ScopeType {
 
 struct SymbolInfo {
     xpString name;
-    Type type;
+    TypeRef type;
 
     // TODO 现在先不区分作用域类型, 后面实现
     ScopeType scope;
@@ -49,7 +49,7 @@ struct SymbolInfo {
 
 };
 
-SymbolInfo make_symbol_info(SymbolType type);
+// SymbolInfo make_symbol_info(SymbolType type);
 
 bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b);
 
@@ -82,7 +82,7 @@ SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name);
 
 
 
-Type get_type_detail_if_have(SymbolTable *table, Type type);
+// Type get_type_detail_if_have(SymbolTable *table, Type type);
 
 
 

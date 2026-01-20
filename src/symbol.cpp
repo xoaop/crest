@@ -16,7 +16,7 @@ bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b) {
         return false;
     }
 
-    return is_equal_type(a.type, b.type);
+    return a.type == b.type;
 }
 
 
@@ -92,15 +92,15 @@ SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name) {
 
 
 
-Type get_type_detail_if_have(SymbolTable *table, Type type) {
-    if(type.kind == Type_struct || type.kind == Type_function) {
-        SymbolInfo *info = find_symbol(table, type.type_name);
+// Type get_type_detail_if_have(SymbolTable *table, Type type) {
+//     if(type.kind == Type_struct || type.kind == Type_function) {
+//         SymbolInfo *info = find_symbol(table, type.type_name);
 
-        XP_ASSERT_DEFAULT(info != NULL);
-        XP_ASSERT_DEFAULT(is_equal_type(info->type, type));
+//         XP_ASSERT_DEFAULT(info != NULL);
+//         XP_ASSERT_DEFAULT(is_equal_type(info->type, type));
 
-        return info->type;
-    } 
+//         return info->type;
+//     } 
 
-    return type;
-}
+//     return type;
+// }

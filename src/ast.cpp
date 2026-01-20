@@ -13,7 +13,7 @@ const char *ast_strs[] = {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
-    ast.v_type = make_type(Type_Undefined);
+    ast.v_type = undefined_type();
     
     ast.is_const_expr = false;
     ast.is_lvalue = false;
@@ -109,7 +109,7 @@ void print_ast(Ast *a) {
     print_with_prefix("%s: \n", ast_strs[cast(i32) a->type]);
 
     print_prefix();
-    print_type(a->v_type);
+    print_type(*a->v_type);
     putchar('\n');
 
     depth++;
@@ -191,7 +191,7 @@ void print_ast(Ast *a) {
         print_with_prefix("target_type: \n");
 
         print_prefix();
-        print_type(a->CastExpr.target_type);
+        print_type(*a->CastExpr.target_type);
         putchar('\n');
         
         print_with_prefix("expr: \n");
@@ -218,7 +218,7 @@ void print_ast(Ast *a) {
         print_with_prefix("name: %s\n", a->StructField.name.c_str);
         print_with_prefix("field_type: \n");
         print_prefix();
-        print_type(a->StructField.field_type);
+        print_type(*a->StructField.field_type);
         putchar('\n');
         break;
 

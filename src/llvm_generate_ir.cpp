@@ -8,7 +8,7 @@
 
 
 
-LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type);
+LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type);
 
 void gen_ir_function(LLVMGenerator *gen, Ast *function);
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
@@ -70,7 +70,7 @@ void free_llvm_generator(LLVMGenerator *gen) {
 
 
 
-int size_of_type(LLVMGenerator *gen, Type type) {
+int size_of_type(LLVMGenerator *gen, TypeRef type) {
     return (int)LLVMStoreSizeOfType(gen->target_data, get_llvm_type_from_type(gen, type));
 }
 
@@ -96,8 +96,8 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
 }
 
 
-LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
-    switch(type.kind) {
+LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
+    switch(type->kind) {
         case Type_void:
             return LLVMVoidTypeInContext(gen->ctx);
         case Type_i8:
@@ -116,26 +116,25 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, Type type) {
         case Type_f64:
             return LLVMDoubleTypeInContext(gen->ctx);
         case Type_pointer: {
-            LLVMTypeRef pointed_type = get_llvm_type_from_type(gen, *type.pointed_type);
+            LLVMTypeRef pointed_type = get_llvm_type_from_type(gen, type->pointed_type);
             return LLVMPointerType(pointed_type, 0);
         }
         case Type_struct: {
 
             // 如果已经存在该结构体类型, 直接返回
-            LLVMTypeRef *existing_struct_type = xp_hash_map_get(gen->struct_types, type.type_name);
+            LLVMTypeRef *existing_struct_type = xp_hash_map_get(gen->struct_types, type->type_name);
             if(existing_struct_type != NULL) {
                 return *existing_struct_type;
             }
 
 
-            Type type_detail = get_type_detail_if_have(symbol_table(), type);
-            LLVMTypeRef *struct_type = xp_hash_map_insert(&gen->struct_types, type.type_name, LLVMStructCreateNamed(gen->ctx, type_detail.type_name.c_str));
+            LLVMTypeRef *struct_type = xp_hash_map_insert(&gen->struct_types, type->type_name, LLVMStructCreateNamed(gen->ctx, type->type_name.c_str));
             
             
-            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(stage_allocator(), type_detail.struct_fields.count);
+            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(stage_allocator(), type->struct_fields.count);
             
-            for(isize i = 0; i < type_detail.struct_fields.count; i++) {
-                StructField field = type_detail.struct_fields[i];
+            for(isize i = 0; i < type->struct_fields.count; i++) {
+                StructField field = type->struct_fields[i];
                 LLVMTypeRef field_llvm_type = get_llvm_type_from_type(gen, field.type);
                 array_push_back(&field_types, field_llvm_type);
             }
@@ -172,7 +171,7 @@ void gen_ir_astfile(AstFile f) {
             for(isize j = 0; j < top_level->Function.params.count; j++) {
                 array_push_back(&params, get_llvm_type_from_type(&gen, top_level->Function.params[j]->v_type));
             }
-            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(&gen, *top_level->v_type.function_info.return_type), params.data, params.count, 0);
+            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(&gen, top_level->v_type->function_info.return_type), params.data, params.count, 0);
             LLVMValueRef function = LLVMAddFunction(gen.module, top_level->Function.name.c_str, func_type);
         }
     }
@@ -479,7 +478,7 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
 
             LLVMValueRef indices[] = { integer_expr_val };
 
-            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, *(pointer_expr->v_type.pointed_type)), pointer_expr_val, indices, 1, "ptraddtmp");
+            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, pointer_expr->v_type->pointed_type), pointer_expr_val, indices, 1, "ptraddtmp");
         }
 
         return LLVMBuildAdd(gen->builder, left, right, "addtmp");
@@ -498,7 +497,7 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
 
             LLVMValueRef indices[] = { LLVMBuildNeg(gen->builder, integer_expr_val, "negtmp") };
 
-            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, *(pointer_expr->v_type.pointed_type)), pointer_expr_val, indices, 1, "ptrsubtmp");
+            return LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, pointer_expr->v_type->pointed_type), pointer_expr_val, indices, 1, "ptrsubtmp");
         }
 
         return LLVMBuildSub(gen->builder, left, right, "subtmp");
@@ -678,7 +677,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         Ast *parent_expr = NULL;
         if(is_struct_type(expr->StructFieldExpr.struct_var_expr->v_type)) {
             parent_expr = expr->StructFieldExpr.struct_var_expr;
-        } else if(is_pointer_type(expr->StructFieldExpr.struct_var_expr->v_type) && get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type).kind == Type_struct) {
+        } else if(is_pointer_type(expr->StructFieldExpr.struct_var_expr->v_type) && is_struct_type(get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type))) {
             
             // 如果是指向结构体的指针，则需要先解引用
             parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
@@ -689,13 +688,13 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             XP_ASSERT_DEFAULT(0);
         }
 
-        Type struct_type = parent_expr->v_type;
-        Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
+        TypeRef struct_type = parent_expr->v_type;
+        // Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
         
         
         isize field_index = -1;
-        for(isize i = 0; i < struct_type_detail.struct_fields.count; i++) {
-            if(struct_type_detail.struct_fields[i].name == expr->StructFieldExpr.field_name) {
+        for(isize i = 0; i < struct_type->struct_fields.count; i++) {
+            if(struct_type->struct_fields[i].name == expr->StructFieldExpr.field_name) {
                 field_index = i;
                 break;
             }
@@ -743,17 +742,17 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 }
 
 
-static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LLVMValueRef right, Type type) {
+static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LLVMValueRef right, TypeRef type) {
     if(is_struct_type(type)) {
-        Type type_detail = get_type_detail_if_have(symbol_table(), type);
+        // Type type_detail = get_type_detail_if_have(symbol_table(), type);
         
         
         LLVMValueRef result = nullptr;
-        for(isize i = 0; i < type_detail.struct_fields.count; i++) {
+        for(isize i = 0; i < type->struct_fields.count; i++) {
             LLVMValueRef left_field = LLVMBuildExtractValue(gen->builder, left, i, "leftextracttmp");
             LLVMValueRef right_field = LLVMBuildExtractValue(gen->builder, right, i, "rightextracttmp");
             
-            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type_detail.struct_fields[i].type);
+            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_fields[i].type);
             
             if(result == nullptr) {
                 result = field_cmp;

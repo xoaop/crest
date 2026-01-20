@@ -2,7 +2,7 @@
 
 #include "error_msg.hpp"
 
-bool fit_in_type(i128 value, Type target_type) {
+bool fit_in_type(i128 value, TypeRef target_type) {
     bool fit = false;
 
     // i64 high = cast(i64)(value >> 64);
@@ -14,7 +14,7 @@ bool fit_in_type(i128 value, Type target_type) {
     // printf("\n");
 
 
-    switch(target_type.kind) {
+    switch(target_type->kind) {
         case Type_i8:
             fit = (value >= INT8_MIN && value <= INT8_MAX);
             break;
@@ -44,9 +44,9 @@ bool fit_in_type(i128 value, Type target_type) {
     return fit;
 }
 
-bool fit_in_type(double value, Type target_type) {
+bool fit_in_type(double value, TypeRef target_type) {
     bool fit = false;
-    switch(target_type.kind) {
+    switch(target_type->kind) {
         case Type_f32:
             fit = (value >= -3.4028235e+38 && value <= 3.4028235e+38);
             break;
@@ -60,12 +60,12 @@ bool fit_in_type(double value, Type target_type) {
     return fit;
 }
 
-bool fit_in_type(Ast *constant, Type target_type) {
+bool fit_in_type(Ast *constant, TypeRef target_type) {
     XP_ASSERT_DEFAULT(constant->type == AstType_Constant);
 
-    if(is_integer_type(constant->v_type) || is_equal_type(constant->v_type, make_type(Type_untyped_int))) {
+    if(is_integer_type(constant->v_type) || constant->v_type == easy_type(Type_untyped_int)) {
         return fit_in_type(constant->Constant.value, target_type);
-    } else if(is_float_type(constant->v_type) || is_equal_type(constant->v_type, make_type(Type_untyped_float))) {
+    } else if(is_float_type(constant->v_type) || constant->v_type == easy_type(Type_untyped_float)) {
         return fit_in_type(constant->Constant.float_value, target_type);
     } else {
         XP_ASSERT_DEFAULT(0);
@@ -74,52 +74,52 @@ bool fit_in_type(Ast *constant, Type target_type) {
 }
 
 
-Type get_compliable_integer_type(i128 value) {
+TypeRef get_compliable_integer_type(i128 value) {
 
-    if(fit_in_type(value, make_type(Type_i32))) {
-        return make_type(Type_i32);
-    } else if(fit_in_type(value, make_type(Type_i64))) {
-        return make_type(Type_i64);
-    } else if(fit_in_type(value, make_type(Type_u64))) {
-        return make_type(Type_u64);
+    if(fit_in_type(value, easy_type(Type_i32))) {
+        return easy_type(Type_i32);
+    } else if(fit_in_type(value, easy_type(Type_i64))) {
+        return easy_type(Type_i64);
+    } else if(fit_in_type(value, easy_type(Type_u64))) {
+        return easy_type(Type_u64);
     }
 
 
     // TODO 超出范围错误处理
     XP_ASSERT_DEFAULT(0);
-    return make_type(Type_Undefined);
+    return undefined_type();
 }
 
-Type get_compliable_float_type(double value) {
+TypeRef get_compliable_float_type(double value) {
 
-    if(fit_in_type(value, make_type(Type_f32))) {
-        return make_type(Type_f32);
+    if(fit_in_type(value, easy_type(Type_f32))) {
+        return easy_type(Type_f32);
     } else {
-        return make_type(Type_f64);
+        return easy_type(Type_f64);
     }
 
 }
 
-Type get_compliable_const_type(Ast *constant) {
+TypeRef get_compliable_const_type(Ast *constant) {
     XP_ASSERT_DEFAULT(!is_certain_type(constant->v_type));
 
-    if(is_equal_type(constant->v_type, make_type(Type_untyped_int))) {
+    if(constant->v_type == easy_type(Type_untyped_int)) {
         return get_compliable_integer_type(constant->Constant.value);
-    } else if(is_equal_type(constant->v_type, make_type(Type_untyped_float))) {
+    } else if(constant->v_type == easy_type(Type_untyped_float)) {
         return get_compliable_float_type(constant->Constant.float_value);
     } else {
         XP_ASSERT_DEFAULT(0);
-        return make_type(Type_Undefined);
+        return undefined_type();
     }
 }
 
 
-static bool check_target_type(Ast *expr, Type target_type) {
+static bool check_target_type(Ast *expr, TypeRef target_type) {
     if(expr->is_null) {
         if(!is_pointer_type(target_type)) {
             return false;
         }
-    } else if(!is_equal_type(expr->v_type, target_type)) {
+    } else if(expr->v_type != target_type) {
         return false;
     }
 
@@ -128,7 +128,7 @@ static bool check_target_type(Ast *expr, Type target_type) {
 
 
 
-void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *analyser) {
+void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *analyser) {
     static isize depth = 0;
 
     depth += 1;
@@ -140,13 +140,13 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             }
 
             // example: x : i32 = true;  // target_type = i32, has_target = true, expr->v_type = bool
-            if(is_equal_type(expr->v_type, make_type(Type_bool)) && has_target && !is_equal_type(target_type, make_type(Type_bool))) {
+            if(expr->v_type == easy_type(Type_bool) && has_target && target_type != easy_type(Type_bool)) {
                 error_msg(&expr->token, "cannot assign bool constant to non-bool type");
                 XP_ASSERT_DEFAULT(0);
             }
 
             // example: x : bool = 1;  // target_type = bool, has_target = true, expr->v_type = literal
-            if(!is_equal_type(expr->v_type, make_type(Type_bool)) && has_target && is_equal_type(target_type, make_type(Type_bool))) {
+            if((expr->v_type != easy_type(Type_bool)) && has_target && target_type == easy_type(Type_bool)) {
                 error_msg(&expr->token, "cannot assign non-bool constant to bool type");
                 XP_ASSERT_DEFAULT(0);
             }
@@ -155,7 +155,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             if(has_target) {
                 if(!fit_in_type(expr, target_type)) {
                     error_msg(&expr->token, "constant value not fit in target type");
-                    print_type(target_type);
+                    print_type(*target_type);
                     printf("\n");
 
                     XP_ASSERT_DEFAULT(0);
@@ -174,8 +174,8 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             bool should_check_equal_type = true;
 
 
-            Type old_left_type = expr->BinaryExpr.left->v_type;
-            Type old_right_type = expr->BinaryExpr.right->v_type;
+            TypeRef old_left_type = expr->BinaryExpr.left->v_type;
+            TypeRef old_right_type = expr->BinaryExpr.right->v_type;
 
 
 
@@ -187,7 +187,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 if(is_struct_type(expr->BinaryExpr.left->v_type) && is_struct_type(expr->BinaryExpr.right->v_type)) {
                     // 结构体类型之间只能比较是否相等/不等
                     if(is_equal_compare_operator(expr->BinaryExpr.op)) {
-                        expr->v_type = make_type(Type_bool);
+                        expr->v_type = easy_type(Type_bool);
                     } else {
                         error_msg(&expr->token, "only equality comparison is allowed between struct types");
                         XP_ASSERT_DEFAULT(0);
@@ -200,7 +200,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
                 
                 // 一个是Type_literal, 另一个是Type_untyped_float
-                if(!is_equal_type(old_left_type, old_right_type)) {
+                if(old_left_type != old_right_type) {
                     error_msg(&expr->token, "cannot infer types for both sides of binary expression");
                     XP_ASSERT_DEFAULT(0);
                 }
@@ -215,7 +215,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 }
 
 
-                Type common_type = get_common_type(expr->BinaryExpr.left->v_type, expr->BinaryExpr.right->v_type);
+                TypeRef common_type = get_common_type(expr->BinaryExpr.left->v_type, expr->BinaryExpr.right->v_type);
                 expr->BinaryExpr.left->v_type = common_type;
                 expr->BinaryExpr.right->v_type = common_type;
             
@@ -268,7 +268,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
 
                 // 指针类型不能是void指针
-                if(get_innermost_type_of_pointer(pointer_expr->v_type).kind == Type_void) {
+                if(get_innermost_type_of_pointer(pointer_expr->v_type) == easy_type(Type_void)) {
                     error_msg(&pointer_expr->token, "void pointer type cannot be used in pointer arithmetic");
                     XP_ASSERT_DEFAULT(0);
                 }
@@ -293,11 +293,11 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
 
             // 如果需要, 检查左右表达式类型是否相等
-            if(should_check_equal_type && !is_equal_type(expr->BinaryExpr.left->v_type, expr->BinaryExpr.right->v_type)) {
+            if(should_check_equal_type && expr->BinaryExpr.left->v_type != expr->BinaryExpr.right->v_type) {
                 error_msg(&expr->token, "binary expression left and right side types do not match");
-                print_type(expr->BinaryExpr.left->v_type);
+                print_type(*expr->BinaryExpr.left->v_type);
                 printf(" vs ");
-                print_type(expr->BinaryExpr.right->v_type);
+                print_type(*expr->BinaryExpr.right->v_type);
                 printf("\n");
 
                 XP_ASSERT_DEFAULT(0);
@@ -312,8 +312,8 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
 
             // 如果有一个是bool类型, 那么操作符必须是逻辑操作符或等于/不等于
-            if(is_equal_type(expr->BinaryExpr.left->v_type, make_type(Type_bool)) || 
-               is_equal_type(expr->BinaryExpr.right->v_type, make_type(Type_bool))) {
+            if(expr->BinaryExpr.left->v_type == easy_type(Type_bool) || 
+               expr->BinaryExpr.right->v_type == easy_type(Type_bool)) {
                 if(!is_operator_for_bool(expr->BinaryExpr.op)) {
                     error_msg(&expr->token, "bool type can only be used with logical operators and double/! equal operator");
                     XP_ASSERT_DEFAULT(0);
@@ -332,7 +332,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             // 如果是返回bool类型的操作符, 那么类型就是bool
             // 否则不变
             if(is_return_bool_operator(expr->BinaryExpr.op)) {
-                expr->v_type = make_type(Type_bool);
+                expr->v_type = easy_type(Type_bool);
             } 
            
 
@@ -344,9 +344,9 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
             // 特殊处理如-128(i8)这种情况, 不能简单地把 128 作为常量处理, 不然会被推导为高一级别的类型
             if(expr->UnaryExpr.op == TokenType::Minus && !is_certain_type(expr->UnaryExpr.operand->v_type)) {
-                Type inferred_type;
+                TypeRef inferred_type;
 
-                if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_int))) {
+                if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_int)) {
                     i128 val = expr->UnaryExpr.operand->Constant.value;
                     i128 neg_val = -val;
                     
@@ -368,7 +368,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                     
                 }
 
-                if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_untyped_float))) {
+                if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_float)) {
                     double val = expr->UnaryExpr.operand->Constant.float_value;
                     double neg_val = -val;
 
@@ -397,7 +397,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             
             
             // 如果操作数是bool类型, 那么操作符必须是逻辑非或等于/不等于
-            if(is_equal_type(expr->UnaryExpr.operand->v_type, make_type(Type_bool))) {
+            if(expr->UnaryExpr.operand->v_type == easy_type(Type_bool)) {
                 if(!is_operator_for_bool(expr->UnaryExpr.op)) {
                     error_msg(&expr->token, "bool type operand can only be used with logical not operator and double/! equal operator");
                     XP_ASSERT_DEFAULT(0);
@@ -408,7 +408,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
 
 
             if(is_return_bool_operator(expr->UnaryExpr.op)) {
-                expr->v_type = make_type(Type_bool);
+                expr->v_type = easy_type(Type_bool);
             } else {
                 expr->v_type = expr->UnaryExpr.operand->v_type;
             }
@@ -421,18 +421,18 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
                 }
 
                 // 设置取地址后的类型
-                expr->v_type = make_pointer_type(expr->v_type);
+                expr->v_type = pointer_type(expr->v_type);
             }
 
             // 解引用只能用于指针类型
             if(expr->UnaryExpr.op == TokenType::Star) {
-                if(expr->UnaryExpr.operand->v_type.kind != Type_pointer) {
+                if(!is_pointer_type(expr->UnaryExpr.operand->v_type)) {
                     error_msg(&expr->token, "dereference operator can only be applied to pointer types");
                     XP_ASSERT_DEFAULT(0);
                 }
 
                 // *void 类型不能解引用
-                if(get_pointed_type(expr->UnaryExpr.operand->v_type).kind == Type_void) {
+                if(get_pointed_type(expr->UnaryExpr.operand->v_type) == easy_type(Type_void)) {
                     error_msg(&expr->token, "void pointer type cannot be dereferenced");
                     XP_ASSERT_DEFAULT(0);
                 }
@@ -452,7 +452,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             infer_expr_type(expr->CastExpr.expr, false, target_type, analyser);
 
 
-            if(!is_equal_type(expr->CastExpr.expr->v_type, make_type(Type_bool)) && is_equal_type(expr->CastExpr.target_type, make_type(Type_bool))) {
+            if(expr->CastExpr.expr->v_type != easy_type(Type_bool) && expr->CastExpr.target_type == easy_type(Type_bool)) {
                 // TODO 错误处理 非bool类型转换为bool类型
                 error_msg(&expr->token, "only bool type can be casted to bool type");
                 XP_ASSERT_MSG(0, "only bool type can be casted to bool type");
@@ -480,15 +480,16 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             // 检查a.b 中的a是不是: 
             // 1. 结构体
             // 2. 结构体指针
-            Type parent_type = expr->StructFieldExpr.struct_var_expr->v_type;
-            if((parent_type.kind != Type_struct) && (!((parent_type.kind == Type_pointer) && (get_pointed_type(parent_type).kind == Type_struct)))) {
+            TypeRef parent_type = expr->StructFieldExpr.struct_var_expr->v_type;
+            if(!(is_struct_type(parent_type)) && (!((is_pointer_type(parent_type)) && (is_struct_type(get_pointed_type(parent_type)))))) {
                 XP_ASSERT_DEFAULT(0);
             }
-            if(parent_type.kind == Type_struct) {
-                parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+            if(is_struct_type(parent_type)) {
+                // parent_type = find_symbol(symbol_table(), parent_type->type_name)->type;
+
             } else {
                 parent_type = get_pointed_type(parent_type);
-                parent_type = find_symbol(symbol_table(), parent_type.type_name)->type;
+                // parent_type = find_symbol(symbol_table(), parent_type->type_name)->type;
             }
 
 
@@ -496,22 +497,23 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
             // 检查a.b中, a有没有b这个字段
             StructField field;
             bool found = false;
-            for(isize i = 0; i < parent_type.struct_fields.count; i++) {
-                field = parent_type.struct_fields[i];
+            for(isize i = 0; i < parent_type->struct_fields.count; i++) {
+                field = parent_type->struct_fields[i];
                 if(xp_string_cmp(field.name, expr->StructFieldExpr.field_name) == 0) {
                     found = true;
                     break;
                 }
             }
             if(!found) {
-                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type.type_name.c_str, expr->StructFieldExpr.field_name.c_str);
+                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type->type_name.c_str, expr->StructFieldExpr.field_name.c_str);
                 XP_ASSERT_DEFAULT(0);
             }
 
 
             // 如果不是结构体类型, 直接从字段类型赋值
             // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
-            expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
+            // expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
+            expr->v_type = field.type;
 
             // 结构体字段表达式是左值
             expr->is_lvalue = true;
@@ -520,22 +522,22 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
         case AstType_StructInitExpr: {
             // 检查是否是结构体类型
             SymbolInfo *struct_type_info = find_symbol(symbol_table(), expr->StructInitExpr.struct_type_name);
-            if(struct_type_info == NULL || struct_type_info->type.kind != Type_struct) {
+            if(struct_type_info == NULL || !is_struct_type(struct_type_info->type)) {
                 error_msg(&expr->token, "struct type '%s' not found", expr->StructInitExpr.struct_type_name.c_str);
                 XP_ASSERT_DEFAULT(0);
             }
 
             // 检查字段数量是否匹配
-            if(struct_type_info->type.struct_fields.count != expr->StructInitExpr.field_inits.count) {
+            if(struct_type_info->type->struct_fields.count != expr->StructInitExpr.field_inits.count) {
                 error_msg(&expr->token, "struct init field count does not match struct type field count");
                 XP_ASSERT_DEFAULT(0);
             }
 
             // 检查字段初始化表达式类型是否和字段类型匹配
             for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
-                infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type.struct_fields[i].type, analyser);
+                infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type->struct_fields[i].type, analyser);
                 
-                if(!check_target_type(expr->StructInitExpr.field_inits[i], struct_type_info->type.struct_fields[i].type)) {
+                if(!check_target_type(expr->StructInitExpr.field_inits[i], struct_type_info->type->struct_fields[i].type)) {
                     error_msg(&expr->StructInitExpr.field_inits[i]->token, "struct field init expression type does not match struct field type");
                     XP_ASSERT_DEFAULT(0);
                 }
@@ -554,7 +556,7 @@ void infer_expr_type(Ast *expr, bool has_target, Type target_type, Analyser *ana
         } break;
         case AstType_FunctionCallExpr: {
             SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
-            expr->v_type = *info->type.function_info.return_type;
+            expr->v_type = info->type->function_info.return_type;
         } break;
 
 
