@@ -108,10 +108,21 @@ TypeRef parse_pointer_type(Parser *p) {
     return pointer_type(pointed_type);
 }
 
+TypeRef parse_array_type(Parser *p) {
+    expect(p, TokenType::LeftSquareBracket);
+
+
+
+    expect(p, TokenType::RightSquareBracket);
+    
+    XP_TODO;
+}
 
 TypeRef parse_type(Parser *p) {
     if(curr_token(p).type == TokenType::Star) {
         return parse_pointer_type(p);
+    } else if(curr_token(p).type == TokenType::LeftSquareBracket) {
+        return parse_array_type(p);
     } else {
         return parse_base_and_uncertain_type(p);
     }
@@ -420,7 +431,6 @@ xp_internal Ast *parse_for(Parser *p) {
     // init
     if(curr_token(p).type != TokenType::Semicolon) {
         a->ForStmt.init = parse_var_decl_or_assign_or_fncall(p);
-
     } else {
         a->ForStmt.init = NULL;
     }

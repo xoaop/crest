@@ -71,7 +71,7 @@ struct Type {
         // 数组
         struct {
             TypeRef element_type;
-            isize count;
+            usize count;
         } array_info;
     };
 
