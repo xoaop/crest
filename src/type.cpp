@@ -458,8 +458,13 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
 
 
 
-void print_type(Type type) {
-    switch (type.kind)
+void print_type(TypeRef type) {
+    if(type == NULL) {
+        printf("null_type");
+        return;
+    }
+
+    switch (type->kind)
     {
     case Type_untyped_int:
         printf("literal");
@@ -496,29 +501,29 @@ void print_type(Type type) {
         break;
     case Type_function:
         printf("func(");
-        for(isize i = 0; i < type.function_info.param_types.count; i++) {
-            print_type(*type.function_info.param_types[i]);
-            if(i != type.function_info.param_types.count - 1) {
+        for(isize i = 0; i < type->function_info.param_types.count; i++) {
+            print_type(type->function_info.param_types[i]);
+            if(i != type->function_info.param_types.count - 1) {
                 printf(", ");
             }
         }
         printf(") -> ");
-        print_type(*type.function_info.return_type);
+        print_type(type->function_info.return_type);
         break;
     case Type_pointer: {
-        Type *curr = &type;
+        Type *curr = type;
         for(;;) {
             printf("*");
             if(curr->pointed_type->kind == Type_pointer) {
                 curr = curr->pointed_type;
             } else {
-                print_type(*curr->pointed_type);
+                print_type(curr->pointed_type);
                 break;
             }
         }
     } break;
     case Type_struct:
-        printf("struct %s", type.type_name.c_str);
+        printf("struct %s", type->type_name.c_str);
         break;
     case Type_uncertain:
         printf("uncertain");

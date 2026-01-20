@@ -38,31 +38,61 @@ bool at_global_scope(Analyser *analyser) {
 //     uncertain_type->kind = Type_struct;
 // }
 
-void resolve_type(TypeRef type, Analyser *analyser) {
-    switch(type->kind) {
-        case Type_uncertain: {
-            // resolve_uncertain_type(type, analyser);
-            error_msg(NULL, "type '%s' is still uncertain", type->type_name.c_str);
-            XP_ASSERT_DEFAULT(0);
+// void resolve_type(TypeRef type, Analyser *analyser) {
+//     switch(type->kind) {
+//         case Type_uncertain: {
+//             // resolve_uncertain_type(type, analyser);
+//             error_msg(NULL, "type '%s' is still uncertain", type->type_name.c_str);
+//             XP_ASSERT_DEFAULT(0);
 
+//         } break;
+
+//         case Type_pointer: {
+//             resolve_type(type->pointed_type, analyser);
+//         } break;
+
+//         case Type_function: {
+//             for(isize i = 0; i < type->function_info.param_types.count; i++) {
+//                 resolve_type(type->function_info.param_types[i], analyser);
+//             }
+//             resolve_type(type->function_info.return_type, analyser);
+//         } break;
+
+//         default: {
+
+//         } break;
+//     }
+
+// }
+
+TypeRef resolve_type2(Ast *type_ast, Analyser *analyser) {
+    switch(type_ast->type) {
+        case AstType_EasyType: {
+            TypeKind kind = type_ast->EasyType.kind;
+            TypeRef type_ref = easy_type(kind);
+            return type_ref;
         } break;
 
-        case Type_pointer: {
-            resolve_type(type->pointed_type, analyser);
-        } break;
-
-        case Type_function: {
-            for(isize i = 0; i < type->function_info.param_types.count; i++) {
-                resolve_type(type->function_info.param_types[i], analyser);
+        case AstType_IdentType: {
+            xpString type_name = type_ast->IdentType.name;
+            SymbolInfo *type_info = find_symbol(symbol_table(), type_name);
+            if(type_info == NULL) {
+                error_msg(&type_ast->token, "unknown type '%s'", type_name.c_str);
+                XP_ASSERT_DEFAULT(0);
             }
-            resolve_type(type->function_info.return_type, analyser);
+            return type_info->type;
+        } break;
+
+        case AstType_PointerType: {
+            TypeRef pointed_type = resolve_type2(type_ast->PointerType.pointed_type_ast, analyser);
+            TypeRef type_ref = pointer_type(pointed_type);
+            return type_ref;
         } break;
 
         default: {
-
-        } break;
+            XP_ASSERT_DEFAULT(0);
+        }
     }
-
 }
 
 
@@ -71,21 +101,24 @@ void resolve_struct_decl(Ast *ast, Analyser *analyser) {
 
     SymbolInfo *struct_type_info = find_symbol(symbol_table(), ast->StructDecl.name);
 
+    Array<StructField> field_types = make_array<StructField>(stage_allocator());
     for(isize i = 0; i < ast->StructDecl.fields.count; i++) {
         Ast *field_ast = ast->StructDecl.fields[i];
 
-        // 修正ast的类型
-        resolve_type(field_ast->StructField.field_type, analyser);
+        // 解析字段类型, 
+        TypeRef field_type = resolve_type2(field_ast->StructField.type_ast, analyser);
+        array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
 
-        if(field_ast->StructField.field_type == struct_type_info->type) {
+        if(field_type == struct_type_info->type) {
             // 字段类型不能和结构体本身相同 错误处理
             error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
             XP_ASSERT_DEFAULT(0);
         }
 
-        // 补充符号表条目类型
-        // array_push_back(&struct_type_info->type.struct_fields, StructField{field_ast->StructField.name, field_ast->StructField.field_type});
     }
+
+
+    update_uncertain_to_struct(struct_type_info->type, field_types);
 }
 
 
@@ -108,25 +141,33 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
 
 
     // 进行函数声明的类型解析, 修正符号表中函数类型
+    Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
     for(isize i = 0; i < all_decls.function_decls.count; i++) {
         Ast *fn_decl_ast = all_decls.function_decls[i];
         SymbolInfo *fn_info = find_symbol(symbol_table(), fn_decl_ast->Function.name);
-        TypeRef fn_type = fn_info->type;
 
-        resolve_type(fn_type, &analyser);
+        // 解析参数类型
+        array_clear(&param_types);
+        for(isize j = 0; j < fn_decl_ast->Function.params.count; j++) {
+            Ast *param_ast = fn_decl_ast->Function.params[j];
+            TypeRef param_type = resolve_type2(param_ast->VariableDecl.type_ast, &analyser);
+            array_push_back(&param_types, param_type);
+        }
+        // 解析返回值类型
+        TypeRef return_type = resolve_type2(fn_decl_ast->Function.return_type_ast, &analyser);
+        // 构造函数类型
+        TypeRef fn_type = function_type(param_types, return_type);
+        // 修正符号表中函数类型
+        fn_info->type = fn_type;
+
+        // TODO 考虑是否移除这个, 但目前感觉也方便
+        // 修正函数声明ast的类型
+        fn_decl_ast->v_type = fn_type;
     }
 
-
-
-    // 进行变量声明的类型解析
-    // TODO 移到resolve_var_decl中?
-    for(isize i = 0; i < all_decls.variable_decls.count; i++) {
-        Ast *var_decl_ast = all_decls.variable_decls[i];
-        resolve_type(var_decl_ast->v_type, &analyser);
-    }
 
     // TODO TEST
-    print_ast(ast_file->root);
+    // print_ast(ast_file->root);
 
 
     resolve_ast_file(ast_file, &analyser);
@@ -224,6 +265,13 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         printf("---------------------------------");
         print_ast(var_decl_ast);
         XP_ASSERT_MSG(0, "var decl repeat in the same scope");
+    }
+
+    // TODO CHECK
+    if(var_decl_ast->VariableDecl.type_ast != NULL) {
+        var_decl_ast->v_type = resolve_type2(var_decl_ast->VariableDecl.type_ast, analyser);
+    } else {
+        var_decl_ast->v_type = undefined_type();
     }
 
 
@@ -447,7 +495,11 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         resolve_expr(expr_ast->CastExpr.expr, analyser);
 
         // TODO CHECK
-        resolve_type(expr_ast->CastExpr.target_type, analyser);
+        expr_ast->v_type = resolve_type2(expr_ast->CastExpr.target_type_ast, analyser);
+
+        // TODO 移除
+        expr_ast->CastExpr.target_type = expr_ast->v_type;
+        // resolve_type(expr_ast->CastExpr.target_type, analyser);
     } break;
 
     case AstType_Constant: {

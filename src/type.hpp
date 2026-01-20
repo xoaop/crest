@@ -143,7 +143,7 @@ void struct_add_member(Type *type, xpString name, Type member_type);
 
 
 
-void print_type(Type type);
+void print_type(TypeRef type);
 
 
 
