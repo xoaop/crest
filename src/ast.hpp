@@ -15,6 +15,19 @@ struct Ast;
 
 #define AST_INFOS                                                           \
     AST_INFO(Undefined, "undefined", struct {})                             \
+    AST_INFO(EasyType, "easy type", struct {                                \
+        TypeKind kind;                                                      \
+    })                                                                      \
+    AST_INFO(IdentType, "ident type", struct {                              \
+        xpString name;                                                      \
+    })                                                                      \
+    AST_INFO(PointerType, "pointer type", struct {                          \
+        Ast *pointed_type_ast;                                              \
+    })                                                                      \
+    AST_INFO(ArrayType, "array type", struct {                              \
+        Ast *element_type_ast;                                              \
+        Ast *count_expr;                                                    \
+    })                                                                      \
     AST_INFO(Function, "function", struct {                                 \
         xpString name;                                                      \
         Array<Ast *> params;                                                \

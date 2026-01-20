@@ -571,6 +571,15 @@ TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type) {
     return get_or_add_type(t);
 }
 
+TypeRef array_type(TypeRef element_type, usize count) {
+    Type t = {};
+    t.kind = Type_array;
+    t.array_info.element_type = element_type;
+    t.array_info.count = count;
+
+    return get_or_add_type(t);
+}
+
 
 TypeRef get_struct_type(xpString name) {
     Type t = {};
