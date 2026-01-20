@@ -61,72 +61,55 @@ AstFile parse_file(Array<Token> tokens) {
 
 
 
-xp_internal Type parse_base_and_uncertain_type(Parser *p) {
+xp_internal TypeRef parse_base_and_uncertain_type(Parser *p) {
     Token curr = curr_token(p);
     
-    Type type = make_type(Type_Undefined); // default
+    TypeRef type_ref = NULL;
     switch(curr.type) {
-        case TokenType::KW_void: {
-            type = make_type(Type_void);
-        } break;
-        case TokenType::KW_bool: {
-            type = make_type(Type_bool);
-        } break;
-        case TokenType::KW_i8: {
-            type = make_type(Type_i8);
-        } break;
-        case TokenType::KW_i32: {
-            type = make_type(Type_i32);
-        } break;
-        case TokenType::KW_i64: {
-            type = make_type(Type_i64);
-        } break;
-        case TokenType::KW_u8: {
-            type = make_type(Type_u8);
-        } break;
-        case TokenType::KW_u32: {
-            type = make_type(Type_u32);
-        } break;
-        case TokenType::KW_u64: {
-            type = make_type(Type_u64);
-        } break;
-        case TokenType::KW_f32: {
-            type = make_type(Type_f32);
-        } break;
+        case TokenType::KW_void:
+        case TokenType::KW_bool:
+        case TokenType::KW_i8:
+        case TokenType::KW_i32:
+        case TokenType::KW_i64:
+        case TokenType::KW_u8:
+        case TokenType::KW_u32:
+        case TokenType::KW_u64:
+        case TokenType::KW_f32:
         case TokenType::KW_f64: {
-            type = make_type(Type_f64);
+            type_ref = easy_type(string_to_type_kind(curr.token_str));
         } break;
         
         default: {
-            type = make_type(Type_uncertain);
+            type_ref = get_struct_or_uncertain_type(curr.token_str);
+
+            // 如果没有找到结构体类型或不确定类型, 就创建一个不确定类型
+            if(type_ref == NULL) {
+                type_ref = add_uncertain_type(curr.token_str);
+            }
+
         } break;
     }
-
-    type.type_name = curr.token_str;
     
     advance_token(p);
-    return type;
+    return type_ref;
 }
 
-Type parse_pointer_type(Parser *p) {
-    isize level_of_pointer = 0;
-    Type base = make_type(Type_Undefined);
 
-    for(;;) {
-        if(curr_token(p).type == TokenType::Star) {
-            level_of_pointer += 1;
-            expect(p, TokenType::Star);
-        } else {
-            base = parse_base_and_uncertain_type(p);
-            break;
-        }
+TypeRef parse_pointer_type(Parser *p) {
+    Token curr = curr_token(p);
+
+    if(curr.type != TokenType::Star) {
+        return parse_base_and_uncertain_type(p);
     }
 
-    return make_pointer_type(base, level_of_pointer);
+    expect(p, TokenType::Star);
+
+    TypeRef pointed_type = parse_pointer_type(p);
+    return pointer_type(pointed_type);
 }
 
 
-Type parse_type(Parser *p) {
+TypeRef parse_type(Parser *p) {
     if(curr_token(p).type == TokenType::Star) {
         return parse_pointer_type(p);
     } else {
@@ -156,7 +139,8 @@ Ast *parse_top_level(Parser *p) {
 
         a->Function.params = make_array<Ast *>(ast_allocator());
 
-        Type func_type = make_type(Type_function);
+        Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
+        TypeRef return_type = NULL;
         for(;;) {
             if(curr_token(p).type == TokenType::RightBracket) {
                 break;
@@ -166,8 +150,8 @@ Ast *parse_top_level(Parser *p) {
             expect(p, TokenType::Colon);
 
             // TODO: 类型
-            Type arg_type = parse_type(p);
-            array_push_back(&func_type.function_info.param_types, arg_type); 
+            TypeRef arg_type = parse_type(p);
+            array_push_back(&param_types, arg_type); 
             
             Ast *param = ast_alloc(AstType_VariableDecl);
 
@@ -193,14 +177,14 @@ Ast *parse_top_level(Parser *p) {
         if(curr_token(p).type == TokenType::Arrow) {
             // 有返回值
             expect(p, TokenType::Arrow);
-            *func_type.function_info.return_type = parse_type(p);
+            return_type = parse_type(p);
         } else {
             // 无返回值
-            *func_type.function_info.return_type = make_type(Type_void);
+            return_type = easy_type(Type_void);
         }
 
         
-        a->v_type = func_type;
+        a->v_type = function_type(param_types, return_type);
 
         a->Function.block = parse_block(p);
         a->Function.block->Block.is_function_body = true;
@@ -219,6 +203,7 @@ Ast *parse_top_level(Parser *p) {
 
         a->StructDecl.fields = make_array<Ast *>(ast_allocator());
 
+        Array<StructField> field_types = make_array<StructField>(stage_allocator());
         for(;;) {
             if(curr_token(p).type == TokenType::RightCurlyBracket) {
                 break;
@@ -232,6 +217,7 @@ Ast *parse_top_level(Parser *p) {
 
             expect(p, TokenType::Colon);
             field_ast->StructField.field_type = parse_type(p);
+            array_push_back(&field_types, StructField{field_ast->StructField.name, field_ast->StructField.field_type});
 
             expect(p, TokenType::Semicolon);
             
@@ -239,6 +225,15 @@ Ast *parse_top_level(Parser *p) {
         }
 
         expect(p, TokenType::RightCurlyBracket);
+
+        // TODO 检查
+        TypeRef struct_type_ref = get_uncertain_type(a->StructDecl.name);
+        if(struct_type_ref != NULL) {
+            update_uncertain_to_struct(struct_type_ref, field_types);
+        } else {
+            add_struct_type(a->StructDecl.name, field_types);
+        }
+        
 
     } break;
 
@@ -341,7 +336,7 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
         expect(p, ColonEqual);
         a->VariableDecl.expr = parse_expr(p);
 
-        a->v_type = make_type(Type_Undefined); // TODO: 需要类型推导
+        a->v_type = undefined_type();
 
 
     } else if(next.type == TokenType::Colon) {
@@ -494,8 +489,8 @@ xp_internal Ast *parse_factor(Parser *p) {
         case TokenType::Ident:
             if(next.type == TokenType::LeftBracket) {
                 // 函数调用
-                expect(p, TokenType::Ident);
                 a = ast_alloc(AstType_FunctionCallExpr);
+                a->token = expect(p, TokenType::Ident);
                 a->type = AstType_FunctionCallExpr;
                 a->FunctionCallExpr.name = curr.token_str;
                 expect(p, TokenType::LeftBracket);
@@ -520,21 +515,20 @@ xp_internal Ast *parse_factor(Parser *p) {
                 // 结构体初始化表达式
                 a = parse_struct_init_expr(p);
             } else {
-                expect(p, TokenType::Ident);
                 // 变量表达式
                 a = ast_alloc(AstType_VarExpr);
+                a->token = expect(p, TokenType::Ident);
                 a->type = AstType_VarExpr;
                 a->VarExpr.name = curr.token_str;
             }
 
             break;
         case TokenType::KW_cast:
-            // TODO: TEST
-
-            expect(p, TokenType::KW_cast);
-            expect(p, TokenType::LeftBracket);
 
             a = ast_alloc(AstType_Undefined);
+            a->token = expect(p, TokenType::KW_cast);
+            expect(p, TokenType::LeftBracket);
+
             a->type = AstType_CastExpr;
 
             a->CastExpr.target_type = parse_type(p);
@@ -550,7 +544,7 @@ xp_internal Ast *parse_factor(Parser *p) {
             break;
         }
     }
-    a->token = curr;
+    // a->token = curr;
 
     return a;
 }

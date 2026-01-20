@@ -90,7 +90,7 @@ unary_operation:
 
 unsigned_cast:
 
-    switch (left_c->v_type.kind)
+    switch (left_c->v_type->kind)
     {
     case Type_u8:
         result = cast(u8) result;
@@ -226,7 +226,7 @@ void try_constant_expr_folding(Ast *const_expr) {
             dresult = operation_float_ast(op_type, left, right);
         } 
 
-        if(check_literal_overflow(const_expr->v_type.kind, result, dresult)) {
+        if(check_literal_overflow(const_expr->v_type->kind, result, dresult)) {
             // TODO 常量溢出错误处理
             error_msg(&const_expr->token, "constant overflowed");
             XP_ASSERT_MSG(0, "constant overflowed");
@@ -251,7 +251,7 @@ void try_constant_expr_folding(Ast *const_expr) {
         i128 result = const_expr->CastExpr.expr->Constant.value;
         double dresult = const_expr->CastExpr.expr->Constant.float_value;
         
-        Type target_type = const_expr->CastExpr.target_type;
+        TypeRef target_type = const_expr->CastExpr.target_type;
 
 
 
@@ -260,7 +260,7 @@ void try_constant_expr_folding(Ast *const_expr) {
         // TODO 改掉这种写法, 太丑陋了
         if(is_integer_or_bool_type(target_type)) {
             if(is_integer_or_bool_type(const_expr->CastExpr.expr->v_type)) {
-                switch (target_type.kind)
+                switch (target_type->kind)
                 {
                 case Type_i8:
                     result = cast(i8) result;
@@ -288,7 +288,7 @@ void try_constant_expr_folding(Ast *const_expr) {
                 }    
 
             } else if(is_float_type(const_expr->CastExpr.expr->v_type)) {
-                switch(target_type.kind)
+                switch(target_type->kind)
                 {
                 case Type_i8:
                     result = cast(i8) dresult;
@@ -317,7 +317,7 @@ void try_constant_expr_folding(Ast *const_expr) {
             }
         } else if(is_float_type(target_type)) {
             if(is_integer_or_bool_type(const_expr->CastExpr.expr->v_type)) {
-                switch(target_type.kind)
+                switch(target_type->kind)
                 {
                 case Type_f32:
                     dresult = cast(float) result;
@@ -329,7 +329,7 @@ void try_constant_expr_folding(Ast *const_expr) {
                     break;
                 }
             } else if(is_float_type(const_expr->CastExpr.expr->v_type)) {
-                switch(target_type.kind)
+                switch(target_type->kind)
                 {
                 case Type_f32:
                     dresult = cast(float) dresult;
@@ -345,7 +345,7 @@ void try_constant_expr_folding(Ast *const_expr) {
 
 
 
-        if(check_literal_overflow(target_type.kind, result, dresult)) {
+        if(check_literal_overflow(target_type->kind, result, dresult)) {
             // TODO 常量溢出错误处理
             XP_ASSERT_MSG(0, "constant overflowed");
         }

@@ -329,7 +329,7 @@ xp_define xpSlice xp_slice_make_from_string(xpString string, isize begin, isize 
     哈希映射函数
 */
 xp_define u32 xp_murmur_hash3_32(const void* data, usize length, usize seed);
-
+xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 
 
 /*
@@ -689,7 +689,8 @@ xpHashSet<K> xp_hash_set_make(xpAllocator allocator) {
 
     hash_set.count = 0;
     hash_set.capacity = 0;
-    
+
+    hash_set.enable_rehash = true;
     return hash_set;
 }
 
@@ -831,6 +832,117 @@ b32 xp_hash_set_remove(xpHashSet<K> *set, K key) {
 
     return false;
 }
+
+
+
+
+//
+// xpInterningTable 实现
+//
+// 这个数据结构用于任意类型的唯一化存储, 保证每个值只存储一份, 且指针永不失效
+
+template<typename T>
+struct xpInterningEntry {
+    T *key_ptr;
+    b8 used;
+};
+
+
+template<typename T, size_t CAPACITY>
+struct xpInterningTable {
+
+    xpArena arena; // 只能是独立的ArenaAllocator
+    xpAllocator allocator; // 只能是独立的ArenaAllocator
+
+    xpInterningEntry<T> buckets[CAPACITY];
+
+    isize count;
+
+
+    static constexpr size_t capacity = CAPACITY;
+};
+
+template<typename T, size_t CAPACITY>
+void xp_interning_table_init(xpInterningTable<T, CAPACITY> *table) {
+    xp_arena_init_default(&table->arena);
+    table->allocator = xp_arena_allocator(&table->arena);
+    
+    table->count = 0;
+}
+
+template<typename T, size_t CAPACITY>
+void xp_interning_table_free(xpInterningTable<T, CAPACITY> *table) {
+    xp_free_all(table->allocator);
+}
+
+template<typename T, size_t CAPACITY>
+xpInterningEntry<T> *xp_interning_table_get_entry(xpInterningTable<T, CAPACITY> *table, T key) {
+    if(table->count == 0) {
+        return NULL;
+    }
+    
+    usize hash_value = xp_hash_func(&key);
+
+    usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
+    usize original_index = index;
+    do {
+       xpInterningEntry<T> *entry = &table->buckets[index];
+        if(entry->used == false) {
+            return NULL;
+        } else if(*(entry->key_ptr) == (key)) {
+            return entry;
+        }
+
+        index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
+    } while(index != original_index);
+
+    return NULL;
+}
+
+template<typename T, size_t CAPACITY>
+T *xp_interning_table_get(xpInterningTable<T, CAPACITY> *table, T key) {
+    xpInterningEntry<T> *entry = xp_interning_table_get_entry(table, key);
+    return entry ? entry->key_ptr : NULL;
+}
+
+template<typename T, size_t CAPACITY>
+T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
+    if(table->count >= table->capacity) {
+        return NULL; // 满了
+    }
+
+    usize hash_value = xp_hash_func(&key);
+    usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
+    usize original_index = index;
+
+    do {
+       xpInterningEntry<T> *entry = &table->buckets[index];
+        if(entry->used == false) {
+            T *stored_key_ptr = xp_alloc<T>(table->allocator);
+            *stored_key_ptr = key;
+
+            entry->key_ptr = stored_key_ptr;
+            entry->used = true;
+
+            table->count += 1;
+            return stored_key_ptr;
+        } else if(*(entry->key_ptr) == (key)) {
+            return NULL; // 重复插入当作失败处理
+        }
+
+        index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
+    } while(index != original_index);
+    
+    //NOTE: FULL MAP
+    XP_ASSERT_DEFAULT(0);
+    return NULL;
+}
+
+
+
+
+
+
 
 
 
@@ -1587,6 +1699,21 @@ u32 xp_murmur_hash3_32(const void* data, usize length, usize seed) {
 
     return h1;
 }
+
+// 一个简单的hash combine函数
+u64 xp_hash_combine_u64(u64 old_hash, u64 new_value) {
+    static const u64 HASH_SEED = 0x517cc1b727220a95;
+    static const u64 K = 0x9e3779b97f4a7c15;
+
+    u64 z = new_value + K + (old_hash << 6) + (old_hash >> 2);
+    z ^= (z >> 33);
+    z *= 0xff51afd7ed558ccd;
+    z ^= (z >> 33);
+    z *= 0xc4ceb9fe1a85ec53;
+    z ^= (z >> 33);
+    return old_hash ^ z;
+}
+
 
 
 

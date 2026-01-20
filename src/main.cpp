@@ -22,6 +22,9 @@ int main(int argc, char** argv) {
     init_keyword_map();
     test_keyword_map();
 
+    // 类型系统初始化
+    init_type_table();
+
     // TODO(xoaop): 参数解析
     if(argc < 2) {
         printf("usage: crest <path>");
