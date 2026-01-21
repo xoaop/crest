@@ -121,7 +121,7 @@ bool is_float_type(TypeRef type);
 bool is_certain_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
-
+bool is_array_type(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -174,6 +174,7 @@ TypeRef easy_type(TypeKind kind);
 TypeRef pointer_type(TypeRef pointed_type);
 TypeRef pointer_type(TypeRef pointed_type, isize level_of_pointer);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
+TypeRef array_type(TypeRef element_type, usize count);
 TypeRef get_struct_type(xpString name);
 TypeRef get_uncertain_type(xpString type_name);
 TypeRef get_struct_or_uncertain_type(xpString name);

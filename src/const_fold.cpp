@@ -224,7 +224,9 @@ void try_constant_expr_folding(Ast *const_expr) {
             result = operation_integer_ast(op_type, left, right);
         } else if(is_float_type(const_expr->v_type)) {
             dresult = operation_float_ast(op_type, left, right);
-        } 
+        } else {
+            XP_ASSERT_DEFAULT(0);
+        }
 
         if(check_literal_overflow(const_expr->v_type->kind, result, dresult)) {
             // TODO 常量溢出错误处理

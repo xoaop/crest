@@ -143,6 +143,12 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
 
             return *struct_type;
         }
+
+        case Type_array: {
+            LLVMTypeRef element_type = get_llvm_type_from_type(gen, type->array_info.element_type);
+            return LLVMArrayType(element_type, (unsigned)type->array_info.count);
+        }
+
         default:
             XP_ASSERT_DEFAULT(0);
     }
@@ -728,6 +734,22 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         }
 
         return struct_val;
+
+    } break;
+
+    // TODO
+    case AstType_ArrayLiteralExpr: {
+        LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
+
+        // 先用 undef 初始化
+        LLVMValueRef array_val = LLVMGetUndef(array_type);
+
+        for(isize i = 0; i < expr->ArrayLiteralExpr.elements.count; i++) {
+            LLVMValueRef element_value = gen_ir_expr(gen, expr->ArrayLiteralExpr.elements[i], state);
+            array_val = LLVMBuildInsertValue(gen->builder, array_val, element_value, i, "arrayinsertvaltmp");
+        }
+
+        return array_val;
 
     } break;
 

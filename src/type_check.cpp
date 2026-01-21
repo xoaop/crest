@@ -546,6 +546,67 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             expr->v_type = struct_type_info->type;
         } break;
 
+        // TODO 数组字面量类型检查+推导
+        case AstType_ArrayLiteralExpr: {
+
+            // 数组字面量的元素个数不能为0
+            if(expr->ArrayLiteralExpr.elements.count == 0) {
+                error_msg(&expr->token, "array literal cannot be empty");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            if(has_target) {
+                // 如果有目标类型
+
+                // target_type必须是数组类型
+                if(!is_array_type(target_type)) {
+                    error_msg(&expr->token, "target type for array literal must be an array type");
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+                TypeRef target_element_type = target_type->array_info.element_type;
+                usize target_count = target_type->array_info.count;
+
+                // 检查元素数量是否匹配
+                if(target_count != cast(usize)(expr->ArrayLiteralExpr.elements.count)) {
+                    error_msg(&expr->token, "array literal element count does not match target array type count");
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+                // 推导每个元素类型, 检查是否匹配目标元素类型
+                for(isize i = 0; i < expr->ArrayLiteralExpr.elements.count; i++) {
+                    infer_expr_type(expr->ArrayLiteralExpr.elements[i], true, target_element_type, analyser);
+
+                    if(target_element_type != expr->ArrayLiteralExpr.elements[i]->v_type) {
+                        error_msg(&expr->ArrayLiteralExpr.elements[i]->token, "array literal element type does not match target array element type");
+                        XP_ASSERT_DEFAULT(0);
+                    }
+                }
+
+                expr->v_type = target_type;
+            } else {
+                // 如果没有目标类型
+                // 先推导第一个元素类型
+                infer_expr_type(expr->ArrayLiteralExpr.elements[0], false, target_type, analyser);
+                TypeRef element_type = expr->ArrayLiteralExpr.elements[0]->v_type;
+
+
+                // 推导其他元素类型
+                for(isize i = 1; i < expr->ArrayLiteralExpr.elements.count; i++) {
+                    infer_expr_type(expr->ArrayLiteralExpr.elements[i], true, element_type, analyser);
+
+                    if(element_type != expr->ArrayLiteralExpr.elements[i]->v_type) {
+                        error_msg(&expr->ArrayLiteralExpr.elements[i]->token, "array literal element type does not match first element type");
+                        XP_ASSERT_DEFAULT(0);
+                    }
+                }
+
+                expr->v_type = array_type(element_type, cast(usize)(expr->ArrayLiteralExpr.elements.count));
+            }
+        
+        } break;
+
+
 
         case AstType_VarExpr: {
             SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->VarExpr.name);

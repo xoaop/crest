@@ -373,6 +373,10 @@ bool is_struct_type(TypeRef type) {
     return type->kind == Type_struct;
 }
 
+bool is_array_type(TypeRef type) {
+    return type->kind == Type_array;
+}
+
 
 int get_type_rank(TypeRef t) {
     switch (t->kind) {
@@ -723,7 +727,13 @@ usize xp_hash_func(Type *type) {
         } break;
 
         case Type_array: {
-            XP_TODO;
+            u64 hash_array = Type_array;
+            u64 hash_element_type = cast(u64)(xp_hash_func(type->array_info.element_type));
+            u64 hash_count = cast(u64)(type->array_info.count);
+            u64 hash_value = xp_hash_combine_u64(hash_array, hash_element_type);
+            hash_value = xp_hash_combine_u64(hash_value, hash_count);
+            return cast(usize)(hash_value);
+
         } break;
 
         default: {
