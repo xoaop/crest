@@ -19,6 +19,7 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser);
 void resolve_expr(Ast *expr_ast, Analyser *analyser);
 void resolve_block(Ast *ast, Analyser *analyser);
 void resolve_constant(Ast *constant, Analyser *analyser);
+TypeRef resolve_type(Ast *type_ast, Analyser *analyser);
 void try_constant_expr_folding(Ast *const_expr);
 void tag_expr_const_by_sons(Ast *expr, Analyser *analyser);
 bool may_fall_through(Ast *ast);
