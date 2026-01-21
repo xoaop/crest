@@ -107,6 +107,9 @@ struct Ast;
         xpString struct_type_name;                                          \
         Array<Ast *> field_inits;                                           \
     })                                                                      \
+    AST_INFO(ArrayLiteralExpr, "array literal expr", struct {               \
+        Array<Ast *> elements;                                              \
+    })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/
 

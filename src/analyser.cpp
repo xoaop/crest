@@ -9,6 +9,23 @@
 
 #include "error_msg.hpp"
 
+
+
+void resolve_top_level(Ast *ast, Analyser *analyser);
+void resolve_function_decl(Ast *ast, Analyser *analyser);
+void resolve_struct_decl(Ast *ast, Analyser *analyser);
+void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser);
+void resolve_stmt(Ast *stmt_ast, Analyser *analyser);
+void resolve_expr(Ast *expr_ast, Analyser *analyser);
+void resolve_block(Ast *ast, Analyser *analyser);
+void resolve_constant(Ast *constant, Analyser *analyser);
+void try_constant_expr_folding(Ast *const_expr);
+void tag_expr_const_by_sons(Ast *expr, Analyser *analyser);
+bool may_fall_through(Ast *ast);
+
+
+
+
 void push_symbol_table(Analyser *analyser) {
     SymbolTable table = make_symbol_table(xp_heap_allocator());
     array_push_back(&analyser->symbol_table_stack, table);
@@ -19,53 +36,13 @@ void pop_symbol_table(Analyser *analyser) {
     free_symbol_table(&t);
 }
 
-bool at_global_scope(Analyser *analyser) {
-    return analyser->symbol_table_stack.count == 1;
-}
-
-
-// void resolve_uncertain_type(TypeRef uncertain_type, Analyser *analyser) {
-//     XP_ASSERT_DEFAULT(uncertain_type->kind == Type_uncertain);
-
-//     SymbolInfo *info = find_symbol(symbol_table(), uncertain_type->type_name);
-
-//     if(info == NULL || info->type != uncertain_type) {
-//         // TODO 错误处理: 不存在的类型 或 类型不匹配
-//         XP_ASSERT_DEFAULT(0);
-//     }
-
-//     // 注意: 这里修改了typeref的内容, 会同步变化到符号表的typeref和类型表中的typeref
-//     uncertain_type->kind = Type_struct;
+// bool at_global_scope(Analyser *analyser) {
+    //     return analyser->symbol_table_stack.count == 1;
 // }
 
-// void resolve_type(TypeRef type, Analyser *analyser) {
-//     switch(type->kind) {
-//         case Type_uncertain: {
-//             // resolve_uncertain_type(type, analyser);
-//             error_msg(NULL, "type '%s' is still uncertain", type->type_name.c_str);
-//             XP_ASSERT_DEFAULT(0);
 
-//         } break;
 
-//         case Type_pointer: {
-//             resolve_type(type->pointed_type, analyser);
-//         } break;
-
-//         case Type_function: {
-//             for(isize i = 0; i < type->function_info.param_types.count; i++) {
-//                 resolve_type(type->function_info.param_types[i], analyser);
-//             }
-//             resolve_type(type->function_info.return_type, analyser);
-//         } break;
-
-//         default: {
-
-//         } break;
-//     }
-
-// }
-
-TypeRef resolve_type2(Ast *type_ast, Analyser *analyser) {
+TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
     switch(type_ast->type) {
         case AstType_EasyType: {
             TypeKind kind = type_ast->EasyType.kind;
@@ -73,6 +50,7 @@ TypeRef resolve_type2(Ast *type_ast, Analyser *analyser) {
             return type_ref;
         } break;
 
+        // 目前就是结构体类型
         case AstType_IdentType: {
             xpString type_name = type_ast->IdentType.name;
             SymbolInfo *type_info = find_symbol(symbol_table(), type_name);
@@ -84,8 +62,38 @@ TypeRef resolve_type2(Ast *type_ast, Analyser *analyser) {
         } break;
 
         case AstType_PointerType: {
-            TypeRef pointed_type = resolve_type2(type_ast->PointerType.pointed_type_ast, analyser);
+            TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
             TypeRef type_ref = pointer_type(pointed_type);
+            return type_ref;
+        } break;
+
+        // TODO 数组
+        case AstType_ArrayType: {
+            TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
+            Ast *count_expr = type_ast->ArrayType.count_expr;
+
+
+            resolve_expr(count_expr, analyser);
+            infer_expr_type(count_expr, false, NULL, analyser);
+
+
+            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+            try_constant_expr_folding(count_expr);
+            if(count_expr->type != AstType_Constant) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            i128 count = count_expr->Constant.value;
+            if(count <= 0) {
+                error_msg(&count_expr->token, "array size must be a positive integer");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            TypeRef type_ref = array_type(element_type, cast(usize)count);
             return type_ref;
         } break;
 
@@ -106,7 +114,7 @@ void resolve_struct_decl(Ast *ast, Analyser *analyser) {
         Ast *field_ast = ast->StructDecl.fields[i];
 
         // 解析字段类型, 
-        TypeRef field_type = resolve_type2(field_ast->StructField.type_ast, analyser);
+        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
         array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
 
         if(field_type == struct_type_info->type) {
@@ -116,7 +124,6 @@ void resolve_struct_decl(Ast *ast, Analyser *analyser) {
         }
 
     }
-
 
     update_uncertain_to_struct(struct_type_info->type, field_types);
 }
@@ -150,11 +157,11 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
         array_clear(&param_types);
         for(isize j = 0; j < fn_decl_ast->Function.params.count; j++) {
             Ast *param_ast = fn_decl_ast->Function.params[j];
-            TypeRef param_type = resolve_type2(param_ast->VariableDecl.type_ast, &analyser);
+            TypeRef param_type = resolve_type(param_ast->VariableDecl.type_ast, &analyser);
             array_push_back(&param_types, param_type);
         }
         // 解析返回值类型
-        TypeRef return_type = resolve_type2(fn_decl_ast->Function.return_type_ast, &analyser);
+        TypeRef return_type = resolve_type(fn_decl_ast->Function.return_type_ast, &analyser);
         // 构造函数类型
         TypeRef fn_type = function_type(param_types, return_type);
         // 修正符号表中函数类型
@@ -178,16 +185,6 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
 }
 
 
-void resolve_top_level(Ast *ast, Analyser *analyser);
-void resolve_function_decl(Ast *ast, Analyser *analyser);
-void resolve_struct_decl(Ast *ast, Analyser *analyser);
-void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser);
-void resolve_stmt(Ast *stmt_ast, Analyser *analyser);
-void resolve_expr(Ast *expr_ast, Analyser *analyser);
-void resolve_block(Ast *ast, Analyser *analyser);
-void resolve_constant(Ast *constant, Analyser *analyser);
-void try_constant_expr_folding(Ast *const_expr);
-bool may_fall_through(Ast *ast);
 
 
 
@@ -269,7 +266,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
 
     // TODO CHECK
     if(var_decl_ast->VariableDecl.type_ast != NULL) {
-        var_decl_ast->v_type = resolve_type2(var_decl_ast->VariableDecl.type_ast, analyser);
+        var_decl_ast->v_type = resolve_type(var_decl_ast->VariableDecl.type_ast, analyser);
     } else {
         var_decl_ast->v_type = undefined_type();
     }
@@ -289,15 +286,6 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
             
             // !DEBUG
             infer_expr_type(var_decl_ast->VariableDecl.expr, true, var_decl_ast->v_type, analyser);
-            // infer_expr_type_without_target(var_decl_ast->VariableDecl.expr, analyser);
-            // print_ast(var_decl_ast->VariableDecl.expr);
-
-
-            // if(!is_equal_type(var_decl_ast->v_type, var_decl_ast->VariableDecl.expr->v_type)) {
-            //     // TODO 变量类型和初始化表达式类型不匹配错误处理
-            //     error_msg(&var_decl_ast->VariableDecl.expr->token, "variable decl type mismatch with init expr");
-            //     XP_ASSERT_MSG(0, "variable decl type mismatch with init expr");
-            // }
 
         } else {
             // TODO 有初始化表达式, 无显示指定类型的情况, 类型推导
@@ -495,11 +483,10 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         resolve_expr(expr_ast->CastExpr.expr, analyser);
 
         // TODO CHECK
-        expr_ast->v_type = resolve_type2(expr_ast->CastExpr.target_type_ast, analyser);
+        expr_ast->v_type = resolve_type(expr_ast->CastExpr.target_type_ast, analyser);
 
         // TODO 移除
         expr_ast->CastExpr.target_type = expr_ast->v_type;
-        // resolve_type(expr_ast->CastExpr.target_type, analyser);
     } break;
 
     case AstType_Constant: {
@@ -514,6 +501,12 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
     case AstType_StructFieldExpr: {
         resolve_expr(expr_ast->StructFieldExpr.struct_var_expr, analyser);
+    } break;
+
+    case AstType_ArrayLiteralExpr: {
+        for(isize i = 0; i < expr_ast->ArrayLiteralExpr.elements.count; i++) {
+            resolve_expr(expr_ast->ArrayLiteralExpr.elements[i], analyser);
+        }
     } break;
 
 
@@ -579,7 +572,6 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
         } 
     
     }
-    constant->is_const_expr = true;
 
     return;
 }
@@ -593,6 +585,11 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
 void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
     switch (expr->type)
     {
+
+    case AstType_Constant: {
+        expr->is_const_expr = true;
+    } break;
+
 
     case AstType_BinaryExpr: {
         if(expr->BinaryExpr.left->is_const_expr && expr->BinaryExpr.right->is_const_expr) {

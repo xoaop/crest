@@ -44,6 +44,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a);
 void parse_float(const char *str, TypeKind type_kind, Ast *a);
 
 Ast *parse_struct_init_expr(Parser *p);
+Ast *parse_array_literal(Parser *p);
 
 
 Ast *parse_type(Parser *p);
@@ -67,75 +68,6 @@ AstFile parse_file(Array<Token> tokens) {
 
     return p.f;
 }
-
-
-
-// xp_internal TypeRef parse_base_and_uncertain_type(Parser *p) {
-//     Token curr = curr_token(p);
-    
-//     TypeRef type_ref = NULL;
-//     switch(curr.type) {
-//         case TokenType::KW_void:
-//         case TokenType::KW_bool:
-//         case TokenType::KW_i8:
-//         case TokenType::KW_i32:
-//         case TokenType::KW_i64:
-//         case TokenType::KW_u8:
-//         case TokenType::KW_u32:
-//         case TokenType::KW_u64:
-//         case TokenType::KW_f32:
-//         case TokenType::KW_f64: {
-//             type_ref = easy_type(string_to_type_kind(curr.token_str));
-//         } break;
-        
-//         default: {
-//             type_ref = get_struct_or_uncertain_type(curr.token_str);
-
-//             // 如果没有找到结构体类型或不确定类型, 就创建一个不确定类型
-//             if(type_ref == NULL) {
-//                 type_ref = add_uncertain_type(curr.token_str);
-//             }
-
-//         } break;
-//     }
-    
-//     advance_token(p);
-//     return type_ref;
-// }
-
-
-// TypeRef parse_pointer_type(Parser *p) {
-//     Token curr = curr_token(p);
-
-//     if(curr.type != TokenType::Star) {
-//         return parse_base_and_uncertain_type(p);
-//     }
-
-//     expect(p, TokenType::Star);
-
-//     TypeRef pointed_type = parse_pointer_type(p);
-//     return pointer_type(pointed_type);
-// }
-
-// TypeRef parse_array_type(Parser *p) {
-//     expect(p, TokenType::LeftSquareBracket);
-
-
-
-//     expect(p, TokenType::RightSquareBracket);
-    
-//     XP_TODO;
-// }
-
-// TypeRef parse_type(Parser *p) {
-//     if(curr_token(p).type == TokenType::Star) {
-//         return parse_pointer_type(p);
-//     } else if(curr_token(p).type == TokenType::LeftSquareBracket) {
-//         return parse_array_type(p);
-//     } else {
-//         return parse_base_and_uncertain_type(p);
-//     }
-// }
 
 
 Ast *parse_pointer_type(Parser *p) {
@@ -233,8 +165,6 @@ Ast *parse_top_level(Parser *p) {
 
         a->Function.params = make_array<Ast *>(ast_allocator());
 
-        // Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
-        // TypeRef return_type = NULL;
 
         for(;;) {
             if(curr_token(p).type == TokenType::RightBracket) {
@@ -244,9 +174,6 @@ Ast *parse_top_level(Parser *p) {
             Token ident = expect(p, TokenType::Ident);
             expect(p, TokenType::Colon);
 
-            // TODO: 类型
-            // TypeRef arg_type = parse_type(p);
-            // array_push_back(&param_types, arg_type); 
             Ast *arg_type = parse_type(p);
             
             Ast *param = ast_alloc(AstType_VariableDecl);
@@ -277,7 +204,6 @@ Ast *parse_top_level(Parser *p) {
             return_type = parse_type(p);
         } else {
             // 无返回值
-
             return_type = ast_alloc(AstType_EasyType);
             return_type->EasyType.kind = Type_void;
         }
@@ -327,15 +253,6 @@ Ast *parse_top_level(Parser *p) {
 
         expect(p, TokenType::RightCurlyBracket);
 
-        // TODO 检查
-        TypeRef struct_type_ref = get_uncertain_type(a->StructDecl.name);
-        if(struct_type_ref != NULL) {
-            update_uncertain_to_struct(struct_type_ref, field_types);
-        } else {
-            add_struct_type(a->StructDecl.name, field_types);
-        }
-        
-
     } break;
 
     default:
@@ -368,7 +285,7 @@ xp_internal Ast *parse_block(Parser *p) {
     return a;
 }
 
-//TODO
+// TODO
 xp_internal Ast *parse_stmt(Parser *p) {
     Ast *a = NULL;
 
@@ -638,6 +555,11 @@ xp_internal Ast *parse_factor(Parser *p) {
 
             break;
 
+        case TokenType::LeftSquareBracket:
+            // 数组字面量
+
+            a = parse_array_literal(p);
+            break;
 
         default:
             XP_ASSERT_DEFAULT(0);
@@ -784,7 +706,6 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a) {
 
 
 Ast *parse_struct_init_expr(Parser *p) {
-    // TODO 完成
 
     Ast *a = ast_alloc(AstType_StructInitExpr);
     a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
@@ -810,6 +731,30 @@ Ast *parse_struct_init_expr(Parser *p) {
     }
 
     expect(p, TokenType::RightCurlyBracket);
+
+    return a;
+}
+
+Ast *parse_array_literal(Parser *p) {
+    Ast *a = ast_alloc(AstType_ArrayLiteralExpr);
+    a->ArrayLiteralExpr.elements = make_array<Ast *>(ast_allocator());
+
+    expect(p, TokenType::LeftSquareBracket);
+    for(;;) {
+        if(curr_token(p).type == TokenType::RightSquareBracket) {
+            break;
+        }
+
+        Ast *element_expr = parse_expr(p);
+
+        array_push_back(&a->ArrayLiteralExpr.elements, element_expr);
+
+        if(curr_token(p).type != TokenType::RightSquareBracket) {
+            expect(p, TokenType::Comma);
+        }
+    }
+
+    expect(p, TokenType::RightSquareBracket);
 
     return a;
 }
