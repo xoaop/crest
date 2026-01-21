@@ -110,6 +110,10 @@ struct Ast;
     AST_INFO(ArrayLiteralExpr, "array literal expr", struct {               \
         Array<Ast *> elements;                                              \
     })                                                                      \
+    AST_INFO(IndexExpr, "index expr", struct {                              \
+        Ast *array_or_pointer_expr;                                         \
+        Ast *index_expr;                                                    \
+    })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/
 

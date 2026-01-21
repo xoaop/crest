@@ -45,7 +45,6 @@ struct LLVMState {
     LLVMBasicBlockRef entry;
 };
 
-void load_state(LLVMGenerator *gen, LLVMState state);
-LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, LLVMBasicBlockRef entry);
+
 
 #endif
