@@ -418,10 +418,15 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         resolve_expr(expr_ast->StructFieldExpr.struct_var_expr, analyser);
     } break;
 
-    case AstType_ArrayLiteralExpr: {
-        for(isize i = 0; i < expr_ast->ArrayLiteralExpr.elements.count; i++) {
-            resolve_expr(expr_ast->ArrayLiteralExpr.elements[i], analyser);
+    case AstType_ArrayInitExpr: {
+        for(isize i = 0; i < expr_ast->ArrayInitExpr.elements.count; i++) {
+            resolve_expr(expr_ast->ArrayInitExpr.elements[i], analyser);
         }
+    } break;
+
+    case AstType_IndexExpr: {
+        resolve_expr(expr_ast->IndexExpr.array_var_expr, analyser);
+        resolve_expr(expr_ast->IndexExpr.index_expr, analyser);
     } break;
 
 
@@ -637,7 +642,7 @@ void tag_untyped_expr(Ast *expr, Analyser *analyser) {
 
         case AstType_UnaryExpr: {
             if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_int)) {
-                expr->v_type =easy_type(Type_untyped_int);
+                expr->v_type = easy_type(Type_untyped_int);
             }
 
             if(expr->UnaryExpr.operand->v_type == easy_type(Type_untyped_float)) {
