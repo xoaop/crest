@@ -741,14 +741,14 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     } break;
 
     // TODO
-    case AstType_ArrayLiteralExpr: {
+    case AstType_ArrayInitExpr: {
         LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
 
         // 先用 undef 初始化
         LLVMValueRef array_val = LLVMGetUndef(array_type);
 
-        for(isize i = 0; i < expr->ArrayLiteralExpr.elements.count; i++) {
-            LLVMValueRef element_value = gen_ir_expr(gen, expr->ArrayLiteralExpr.elements[i], state);
+        for(isize i = 0; i < expr->ArrayInitExpr.elements.count; i++) {
+            LLVMValueRef element_value = gen_ir_expr(gen, expr->ArrayInitExpr.elements[i], state);
             array_val = LLVMBuildInsertValue(gen->builder, array_val, element_value, i, "arrayinsertvaltmp");
         }
 
@@ -756,6 +756,21 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     } break;
 
+    case AstType_IndexExpr: {
+        LLVMValueRef array_ptr = gen_ir_expr(gen, expr->IndexExpr.array_var_expr, state, true);
+        LLVMValueRef index_val = gen_ir_expr(gen, expr->IndexExpr.index_expr, state);
+
+        LLVMValueRef indices[] = { index_val };
+
+        LLVMValueRef element_ptr = LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), array_ptr, indices, 1, "elementptrtmp");
+
+        if(is_lvalue_expr) {
+            return element_ptr;
+        } else {
+            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), element_ptr, "loadelementtmp");
+        }
+
+    } break;
 
     default:
         printf("\n-------------------------------------------\n");

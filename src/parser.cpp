@@ -535,15 +535,14 @@ xp_internal Ast *parse_factor(Parser *p) {
                 // 下标访问表达式
 
                 a = ast_alloc(AstType_IndexExpr);
-                a->token = next;
 
                 // 目前仅支持简单变量作为被下标访问对象
-                a->IndexExpr.array_or_pointer_expr = ast_alloc(AstType_VarExpr);
-                a->IndexExpr.array_or_pointer_expr->token = curr;
-                a->IndexExpr.array_or_pointer_expr->VarExpr.name = curr.token_str;
+                a->IndexExpr.array_var_expr = ast_alloc(AstType_VarExpr);
+                a->IndexExpr.array_var_expr->token = expect(p, TokenType::Ident);
+                a->IndexExpr.array_var_expr->VarExpr.name = curr.token_str;
                 
 
-                expect(p, TokenType::LeftSquareBracket);
+                a->token = expect(p, TokenType::LeftSquareBracket);
                 a->IndexExpr.index_expr = parse_expr(p);
                 expect(p, TokenType::RightSquareBracket);
                 
@@ -753,8 +752,8 @@ Ast *parse_struct_init_expr(Parser *p) {
 }
 
 Ast *parse_array_literal(Parser *p) {
-    Ast *a = ast_alloc(AstType_ArrayLiteralExpr);
-    a->ArrayLiteralExpr.elements = make_array<Ast *>(ast_allocator());
+    Ast *a = ast_alloc(AstType_ArrayInitExpr);
+    a->ArrayInitExpr.elements = make_array<Ast *>(ast_allocator());
 
     expect(p, TokenType::LeftSquareBracket);
     for(;;) {
@@ -764,7 +763,7 @@ Ast *parse_array_literal(Parser *p) {
 
         Ast *element_expr = parse_expr(p);
 
-        array_push_back(&a->ArrayLiteralExpr.elements, element_expr);
+        array_push_back(&a->ArrayInitExpr.elements, element_expr);
 
         if(curr_token(p).type != TokenType::RightSquareBracket) {
             expect(p, TokenType::Comma);
