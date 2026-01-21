@@ -42,92 +42,6 @@ void pop_symbol_table(Analyser *analyser) {
 
 
 
-TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
-    switch(type_ast->type) {
-        case AstType_EasyType: {
-            TypeKind kind = type_ast->EasyType.kind;
-            TypeRef type_ref = easy_type(kind);
-            return type_ref;
-        } break;
-
-        // 目前就是结构体类型
-        case AstType_IdentType: {
-            xpString type_name = type_ast->IdentType.name;
-            SymbolInfo *type_info = find_symbol(symbol_table(), type_name);
-            if(type_info == NULL) {
-                error_msg(&type_ast->token, "unknown type '%s'", type_name.c_str);
-                XP_ASSERT_DEFAULT(0);
-            }
-            return type_info->type;
-        } break;
-
-        case AstType_PointerType: {
-            TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
-            TypeRef type_ref = pointer_type(pointed_type);
-            return type_ref;
-        } break;
-
-        // TODO 数组
-        case AstType_ArrayType: {
-            TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
-            Ast *count_expr = type_ast->ArrayType.count_expr;
-
-
-            resolve_expr(count_expr, analyser);
-            infer_expr_type(count_expr, false, NULL, analyser);
-
-
-            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
-                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
-                XP_ASSERT_DEFAULT(0);
-            }
-            try_constant_expr_folding(count_expr);
-            if(count_expr->type != AstType_Constant) {
-                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
-                XP_ASSERT_DEFAULT(0);
-            }
-
-            i128 count = count_expr->Constant.value;
-            if(count <= 0) {
-                error_msg(&count_expr->token, "array size must be a positive integer");
-                XP_ASSERT_DEFAULT(0);
-            }
-
-            TypeRef type_ref = array_type(element_type, cast(usize)count);
-            return type_ref;
-        } break;
-
-        default: {
-            XP_ASSERT_DEFAULT(0);
-        }
-    }
-}
-
-
-void resolve_struct_decl(Ast *ast, Analyser *analyser) {
-    XP_ASSERT_DEFAULT(ast->type == AstType_StructDecl);
-
-    SymbolInfo *struct_type_info = find_symbol(symbol_table(), ast->StructDecl.name);
-
-    Array<StructField> field_types = make_array<StructField>(stage_allocator());
-    for(isize i = 0; i < ast->StructDecl.fields.count; i++) {
-        Ast *field_ast = ast->StructDecl.fields[i];
-
-        // 解析字段类型, 
-        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
-        array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
-
-        if(field_type == struct_type_info->type) {
-            // 字段类型不能和结构体本身相同 错误处理
-            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
-            XP_ASSERT_DEFAULT(0);
-        }
-
-    }
-
-    update_uncertain_to_struct(struct_type_info->type, field_types);
-}
-
 
 void semantic_analysis_ast_file(AstFile *ast_file) {
     defer(xp_free_all(stage_allocator()));
@@ -577,6 +491,93 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
 }
 
 
+
+TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
+    switch(type_ast->type) {
+        case AstType_EasyType: {
+            TypeKind kind = type_ast->EasyType.kind;
+            TypeRef type_ref = easy_type(kind);
+            return type_ref;
+        } break;
+
+        // 目前就是结构体类型
+        case AstType_IdentType: {
+            xpString type_name = type_ast->IdentType.name;
+            SymbolInfo *type_info = find_symbol(symbol_table(), type_name);
+            if(type_info == NULL) {
+                error_msg(&type_ast->token, "unknown type '%s'", type_name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+            return type_info->type;
+        } break;
+
+        case AstType_PointerType: {
+            TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
+            TypeRef type_ref = pointer_type(pointed_type);
+            return type_ref;
+        } break;
+
+        // TODO 数组
+        case AstType_ArrayType: {
+            TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
+            Ast *count_expr = type_ast->ArrayType.count_expr;
+
+
+            resolve_expr(count_expr, analyser);
+            infer_expr_type(count_expr, false, NULL, analyser);
+
+
+            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+            try_constant_expr_folding(count_expr);
+            if(count_expr->type != AstType_Constant) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            i128 count = count_expr->Constant.value;
+            if(count <= 0) {
+                error_msg(&count_expr->token, "array size must be a positive integer");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            TypeRef type_ref = array_type(element_type, cast(usize)count);
+            return type_ref;
+        } break;
+
+        default: {
+            XP_ASSERT_DEFAULT(0);
+        }
+    }
+}
+
+
+void resolve_struct_decl(Ast *ast, Analyser *analyser) {
+    XP_ASSERT_DEFAULT(ast->type == AstType_StructDecl);
+
+    SymbolInfo *struct_type_info = find_symbol(symbol_table(), ast->StructDecl.name);
+
+    Array<StructField> field_types = make_array<StructField>(stage_allocator());
+    for(isize i = 0; i < ast->StructDecl.fields.count; i++) {
+        Ast *field_ast = ast->StructDecl.fields[i];
+
+        // 解析字段类型, 
+        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
+        array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
+
+        if(field_type == struct_type_info->type) {
+            
+            // 字段类型不能和结构体本身相同 错误处理
+            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
+            XP_ASSERT_DEFAULT(0);
+        }
+
+    }
+
+    update_uncertain_to_struct(struct_type_info->type, field_types);
+}
 
 
 
