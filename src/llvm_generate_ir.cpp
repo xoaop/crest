@@ -7,6 +7,9 @@
 #include "ast.hpp"
 
 
+void load_state(LLVMGenerator *gen, LLVMState state);
+LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, LLVMBasicBlockRef entry);
+
 
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type);
 

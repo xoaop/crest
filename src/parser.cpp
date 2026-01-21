@@ -503,11 +503,11 @@ xp_internal Ast *parse_factor(Parser *p) {
             break;
         // VarExpr
         case TokenType::Ident:
+
             if(next.type == TokenType::LeftBracket) {
                 // 函数调用
                 a = ast_alloc(AstType_FunctionCallExpr);
                 a->token = expect(p, TokenType::Ident);
-                a->type = AstType_FunctionCallExpr;
                 a->FunctionCallExpr.name = curr.token_str;
                 expect(p, TokenType::LeftBracket);
 
@@ -529,9 +529,28 @@ xp_internal Ast *parse_factor(Parser *p) {
                 break;
             } else if(next.type == TokenType::LeftCurlyBracket) {
                 // 结构体初始化表达式
+
                 a = parse_struct_init_expr(p);
+            } else if(next.type == TokenType::LeftSquareBracket) {
+                // 下标访问表达式
+
+                a = ast_alloc(AstType_IndexExpr);
+                a->token = next;
+
+                // 目前仅支持简单变量作为被下标访问对象
+                a->IndexExpr.array_or_pointer_expr = ast_alloc(AstType_VarExpr);
+                a->IndexExpr.array_or_pointer_expr->token = curr;
+                a->IndexExpr.array_or_pointer_expr->VarExpr.name = curr.token_str;
+                
+
+                expect(p, TokenType::LeftSquareBracket);
+                a->IndexExpr.index_expr = parse_expr(p);
+                expect(p, TokenType::RightSquareBracket);
+                
+
             } else {
                 // 变量表达式
+
                 a = ast_alloc(AstType_VarExpr);
                 a->token = expect(p, TokenType::Ident);
                 a->type = AstType_VarExpr;
@@ -547,7 +566,6 @@ xp_internal Ast *parse_factor(Parser *p) {
 
             a->type = AstType_CastExpr;
 
-            // a->CastExpr.target_type = parse_type(p);
             a->CastExpr.target_type_ast = parse_type(p);
 
             expect(p, TokenType::RightBracket);
@@ -566,7 +584,6 @@ xp_internal Ast *parse_factor(Parser *p) {
             break;
         }
     }
-    // a->token = curr;
 
     return a;
 }
