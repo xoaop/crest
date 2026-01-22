@@ -136,6 +136,13 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             } else if(tokenizer_curr_character(t) == '=') {
                 token->type = TokenType::MinusEqual;
                 advance_one_character(t);
+            } else if(tokenizer_curr_character(t) == '-') {
+                
+                advance_one_character(t);
+                if(tokenizer_curr_character(t) == '-') {
+                    token->type = TokenType::TripleMinus;
+                    advance_one_character(t);
+                }
             }
 
             break;

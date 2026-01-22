@@ -212,13 +212,14 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
         // TODO 检查
         try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
     } else {
-        if(var_decl_ast->v_type != undefined_type()) {
-            // TODO 有显示指定类型, 无初始化表达式的情况, 报错, 变量必须初始化
-            // XP_ASSERT_DEFAULT(0);
-        } else {
-            // TODO 变量没有指定类型也没有初始化表达式, 无法推导类型错误处理
-            XP_ASSERT_MSG(0, "variable type can not be undefined without init expr");
-        }
+
+        // if(var_decl_ast->v_type != undefined_type()) {
+        //     // TODO 有显示指定类型, 无初始化表达式的情况, 报错, 变量必须初始化
+        //     // XP_ASSERT_DEFAULT(0);
+        // } else {
+        //     // TODO 变量没有指定类型也没有初始化表达式, 无法推导类型错误处理
+        //     XP_ASSERT_MSG(0, "variable type can not be undefined without init expr");
+        // }
     }
 
 

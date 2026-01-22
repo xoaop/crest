@@ -44,7 +44,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a);
 void parse_float(const char *str, TypeKind type_kind, Ast *a);
 
 Ast *parse_struct_init_expr(Parser *p);
-Ast *parse_array_literal(Parser *p);
+Ast *parse_array_init(Parser *p);
 
 
 Ast *parse_type(Parser *p);
@@ -338,6 +338,7 @@ xp_internal Ast *parse_stmt(Parser *p) {
     return a;
 }
 
+
 xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
     Ast *a = ast_alloc(AstType_Undefined);
 
@@ -352,22 +353,59 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
         a->type = AstType_VariableDecl;
         a->VariableDecl.var_name = ident.token_str;
         expect(p, ColonEqual);
-        a->VariableDecl.expr = parse_expr(p);
+
+        // TODO 实现 --- 初始化(即不管) 和 默认0初始化
+        if(curr_token(p).type == TokenType::TripleMinus) {
+            // 无初始化
+
+            expect(p, TokenType::TripleMinus);
+
+            a->VariableDecl.no_zero_init = true;
+        } else {
+            // 有初始化表达式
+
+            a->VariableDecl.no_zero_init = false;
+            a->VariableDecl.expr = parse_expr(p);
+        }
 
         a->VariableDecl.type_ast = NULL;
 
     } else if(next.type == TokenType::Colon) {
         // VariableDecl without init expr
         expect(p, TokenType::Ident);
-
+        
         a->type = AstType_VariableDecl;
         a->VariableDecl.var_name = ident.token_str;
         expect(p, Colon);
         
         a->VariableDecl.type_ast = parse_type(p);
+        
+        // TODO 实现 --- 初始化(即不管) 和 默认0初始化
+        if(curr_token(p).type == TokenType::Equal) {
+            expect(p, TokenType::Equal);
 
-        expect(p, TokenType::Equal);
-        a->VariableDecl.expr = parse_expr(p);
+            if(curr_token(p).type == TokenType::TripleMinus) {
+                // 无初始化
+
+                expect(p, TokenType::TripleMinus);
+
+                a->VariableDecl.no_zero_init = true;
+                a->VariableDecl.expr = NULL;
+            } else {
+                // 有初始化表达式
+
+                a->VariableDecl.no_zero_init = false;
+                a->VariableDecl.expr = parse_expr(p);
+            }
+            
+        } else {
+            // 零初始化
+
+            a->VariableDecl.no_zero_init = false;
+            a->VariableDecl.expr = NULL;
+        }
+
+
     } else if (next.type == TokenType::LeftBracket) {
         // Function Call Expr
         a->type = AstType_FunctionCallExpr;
@@ -531,22 +569,6 @@ xp_internal Ast *parse_factor(Parser *p) {
                 // 结构体初始化表达式
 
                 a = parse_struct_init_expr(p);
-            } else if(next.type == TokenType::LeftSquareBracket) {
-                // 下标访问表达式
-
-                a = ast_alloc(AstType_IndexExpr);
-
-                // 目前仅支持简单变量作为被下标访问对象
-                a->IndexExpr.array_var_expr = ast_alloc(AstType_VarExpr);
-                a->IndexExpr.array_var_expr->token = expect(p, TokenType::Ident);
-                a->IndexExpr.array_var_expr->VarExpr.name = curr.token_str;
-                
-
-                a->token = expect(p, TokenType::LeftSquareBracket);
-                a->IndexExpr.index_expr = parse_expr(p);
-                expect(p, TokenType::RightSquareBracket);
-                
-
             } else {
                 // 变量表达式
 
@@ -575,7 +597,7 @@ xp_internal Ast *parse_factor(Parser *p) {
         case TokenType::LeftSquareBracket:
             // 数组字面量
 
-            a = parse_array_literal(p);
+            a = parse_array_init(p);
             break;
 
         default:
@@ -609,6 +631,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             left->token = curr;
         } else if(curr.type == TokenType::Dot) {
             // 结构体字段访问
+            
             expect(p, TokenType::Dot);
             Token field_ident = expect(p, TokenType::Ident);
 
@@ -619,6 +642,20 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             left = new_left;
             
             left->token = field_ident;
+        } else if(curr.type == TokenType::LeftSquareBracket) {
+            // 下标访问表达式
+
+            expect(p, TokenType::LeftSquareBracket);
+            Ast *index_expr = parse_expr(p);
+            expect(p, TokenType::RightSquareBracket);
+
+            Ast *new_left = ast_alloc(AstType_IndexExpr);
+            new_left->IndexExpr.array_var_expr = left;
+            new_left->IndexExpr.index_expr = index_expr;
+
+            left = new_left;
+
+            left->token = curr;
         } else {
             break;
         }
@@ -751,7 +788,7 @@ Ast *parse_struct_init_expr(Parser *p) {
     return a;
 }
 
-Ast *parse_array_literal(Parser *p) {
+Ast *parse_array_init(Parser *p) {
     Ast *a = ast_alloc(AstType_ArrayInitExpr);
     a->ArrayInitExpr.elements = make_array<Ast *>(ast_allocator());
 

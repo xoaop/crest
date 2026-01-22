@@ -45,6 +45,7 @@
     TOKEN_INFO(Comma, ","),                                     \
     TOKEN_INFO(Arrow, "->"),                                    \
     TOKEN_INFO(Dot, "."),                                       \
+    TOKEN_INFO(TripleMinus, "---"),                             \
     TOKEN_INFO(Integer, "interger"),                            \
     TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \

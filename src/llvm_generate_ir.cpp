@@ -275,9 +275,26 @@ LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState
 
     // 2. 如果有初始值，生成初始值 IR 并存储
     LLVMPositionBuilderAtEnd(gen->builder, state.curr_block);
-    if (variable_decl->VariableDecl.expr) {
+
+    if(variable_decl->VariableDecl.expr != NULL) {
+        // 有初始化表达式
+
         LLVMValueRef init_value = gen_ir_expr(gen, variable_decl->VariableDecl.expr, state);
         LLVMBuildStore(gen->builder, init_value, alloca);
+    } else {
+        // 无初始化表达式
+
+        if(variable_decl->VariableDecl.no_zero_init) {
+            // 无初始化, 不做处理
+            
+            // 无事发生
+        } else {
+            // 零初始化
+            
+            LLVMTypeRef var_type = get_llvm_type_from_type(gen, variable_decl->v_type);
+            LLVMValueRef zero_value = LLVMConstNull(var_type);
+            LLVMBuildStore(gen->builder, zero_value, alloca);
+        }
     }
 
     // 3. 存到变量表
@@ -644,9 +661,15 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             return LLVMBuildNot(gen->builder, operand, "nottmp");
         } else if(expr->UnaryExpr.op == TokenType::And) {
             // 取地址运算符
-            LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->UnaryExpr.operand->VarExpr.name);
-            XP_ASSERT_DEFAULT(alloca != NULL);
-            return *alloca;
+
+            // TODO 改成通过gen_ir_expr获取
+            // LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->UnaryExpr.operand->VarExpr.name);
+            // XP_ASSERT_DEFAULT(alloca != NULL);
+            // return *alloca;
+
+            LLVMValueRef ptr = gen_ir_expr(gen, expr->UnaryExpr.operand, state, true);
+            return ptr;
+
         } else if(expr->UnaryExpr.op == TokenType::Star) {
             // 解引用运算符
             LLVMValueRef ptr = gen_ir_expr(gen, expr->UnaryExpr.operand, state);
