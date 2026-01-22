@@ -22,6 +22,7 @@ void resolve_constant(Ast *constant, Analyser *analyser);
 TypeRef resolve_type(Ast *type_ast, Analyser *analyser);
 void try_constant_expr_folding(Ast *const_expr);
 void tag_expr_const_by_sons(Ast *expr, Analyser *analyser);
+void tag_untyped_expr(Ast *expr, Analyser *analyser);
 bool may_fall_through(Ast *ast);
 
 
@@ -378,7 +379,6 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
         // TODO 检查参数类型是否匹配
         for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
-            // infer_expr_type(expr_ast->FunctionCallExpr.args[i],&info->type.function_info.param_types[i], analyser);
             infer_expr_type(expr_ast->FunctionCallExpr.args[i], true, info->type->function_info.param_types[i], analyser);
         }
         
@@ -440,10 +440,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         XP_ASSERT_DEFAULT(0);
     }
 
-    void tag_expr_const_by_sons(Ast *expr_ast, Analyser *analyser);
     tag_expr_const_by_sons(expr_ast, analyser);
-
-    void tag_untyped_expr(Ast *expr, Analyser *analyser);
     tag_untyped_expr(expr_ast, analyser);
 }
 

@@ -485,15 +485,12 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             }
 
             // 非pointer -> pointer
-            // 合法 非pointer: array[pointed_type]
             if(!is_pointer_type(expr->CastExpr.expr->v_type) && is_pointer_type(expr->CastExpr.target_type)) {
                 
-                if(!(is_array_type(expr->CastExpr.expr->v_type) && get_pointed_type(expr->CastExpr.target_type) == expr->CastExpr.expr->v_type->array_info.element_type)) {
-                    // TODO 错误处理 非相同元素类型数组转换为指针类型
+                // TODO 错误处理 非指针类型转换为指针类型
 
-                    error_msg(&expr->token, "only array type can be casted to pointer type");
-                    XP_ASSERT_MSG(0, "only array type can be casted to pointer type");
-                }
+                error_msg(&expr->token, "non-pointer type cannot be casted to pointer type");
+                XP_ASSERT_MSG(0, "non-pointer type cannot be casted to pointer type");
             }
 
 
