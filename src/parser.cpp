@@ -512,10 +512,9 @@ xp_internal Ast *parse_factor(Parser *p) {
     if(is_unary_op(curr.type)) {
         advance_token(p);
 
-        a = ast_alloc(AstType_Constant);
-        a->type = AstType_UnaryExpr;
+        a = ast_alloc(AstType_UnaryExpr);
         a->UnaryExpr.op = curr.type;
-        a->UnaryExpr.operand = parse_factor(p);
+        a->UnaryExpr.operand = parse_expr(p);
     } else {
         switch (curr.type)
         {
@@ -631,7 +630,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             left->token = curr;
         } else if(curr.type == TokenType::Dot) {
             // 结构体字段访问
-            
+
             expect(p, TokenType::Dot);
             Token field_ident = expect(p, TokenType::Ident);
 
