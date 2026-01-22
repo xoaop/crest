@@ -413,10 +413,14 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
                 expr->v_type = expr->UnaryExpr.operand->v_type;
             }
 
-            // 取地址只能用于变量表达式
             if(expr->UnaryExpr.op == TokenType::And) {
-                if(expr->UnaryExpr.operand->type != AstType_VarExpr) {
-                    error_msg(&expr->token, "address-of operator can only be applied to variable expressions");
+                // if(expr->UnaryExpr.operand->type != AstType_VarExpr) {
+                    //     error_msg(&expr->token, "address-of operator can only be applied to variable expressions");
+                    //     XP_ASSERT_DEFAULT(0);
+                    // }
+                // 取地址只能用于左值
+                if(!expr->UnaryExpr.operand->is_lvalue) {
+                    error_msg(&expr->token, "address-of operator can only be applied to lvalue expressions");
                     XP_ASSERT_DEFAULT(0);
                 }
 
@@ -451,24 +455,57 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
         case AstType_CastExpr: {
             infer_expr_type(expr->CastExpr.expr, false, target_type, analyser);
 
+            // struct -> struct 必须是相同类型
+            if(is_struct_type(expr->CastExpr.expr->v_type) && is_struct_type(expr->CastExpr.target_type)) {
+                if(expr->CastExpr.expr->v_type != expr->CastExpr.target_type) {
+                    // TODO 结构体类型转换必须是相同类型错误处理
 
-            if(expr->CastExpr.expr->v_type != easy_type(Type_bool) && expr->CastExpr.target_type == easy_type(Type_bool)) {
-                // TODO 错误处理 非bool类型转换为bool类型
-                error_msg(&expr->token, "only bool type can be casted to bool type");
-                XP_ASSERT_MSG(0, "only bool type can be casted to bool type");
+                    error_msg(&expr->token, "struct type can only be casted to the same struct type");
+                    XP_ASSERT_DEFAULT(0);
+                }
+            }
+            
+            // array -> array 必须是相同类型
+            if(is_array_type(expr->CastExpr.expr->v_type) && is_array_type(expr->CastExpr.target_type)) {
+                if(expr->CastExpr.expr->v_type != expr->CastExpr.target_type) {
+                    
+                    // TODO 错误处理 数组类型转换必须是相同类型 
+
+                    error_msg(&expr->token, "array type can only be casted to the same array type");
+                    XP_ASSERT_DEFAULT(0);
+                }
             }
 
+            // pointer -> 非pointer 错误
             if(is_pointer_type(expr->CastExpr.expr->v_type) && !is_pointer_type(expr->CastExpr.target_type)) {
                 // TODO 错误处理 指针类型转换为非指针类型
+
                 error_msg(&expr->token, "pointer type cannot be casted to non-pointer type");
                 XP_ASSERT_MSG(0, "pointer type cannot be casted to non-pointer type");
             }
 
+            // 非pointer -> pointer
+            // 合法 非pointer: array[pointed_type]
             if(!is_pointer_type(expr->CastExpr.expr->v_type) && is_pointer_type(expr->CastExpr.target_type)) {
-                // TODO 错误处理 非指针类型转换为指针类型
-                error_msg(&expr->token, "non-pointer type cannot be casted to pointer type");
-                XP_ASSERT_MSG(0, "non-pointer type cannot be casted to pointer type");
+                
+                if(!(is_array_type(expr->CastExpr.expr->v_type) && get_pointed_type(expr->CastExpr.target_type) == expr->CastExpr.expr->v_type->array_info.element_type)) {
+                    // TODO 错误处理 非相同元素类型数组转换为指针类型
+
+                    error_msg(&expr->token, "only array type can be casted to pointer type");
+                    XP_ASSERT_MSG(0, "only array type can be casted to pointer type");
+                }
             }
+
+
+            // 非bool -> bool 错误
+            if(expr->CastExpr.expr->v_type != easy_type(Type_bool) && expr->CastExpr.target_type == easy_type(Type_bool)) {
+                // TODO 错误处理 非bool类型转换为bool类型
+
+                error_msg(&expr->token, "only bool type can be casted to bool type");
+                XP_ASSERT_MSG(0, "only bool type can be casted to bool type");
+            }
+
+
 
             expr->v_type = expr->CastExpr.target_type;
         } break;
@@ -613,7 +650,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             // 检查被下标访问表达式是不是数组类型
             TypeRef ap_type = expr->IndexExpr.array_var_expr->v_type;
             if(!is_array_type(ap_type)) { 
-                error_msg(&expr->token, "only array and pointer types can be indexed");
+                error_msg(&expr->token, "only array types can be indexed");
                 XP_ASSERT_DEFAULT(0);
             }
 

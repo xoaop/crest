@@ -66,6 +66,7 @@ struct Ast;
         xpString var_name;                                                  \
         Ast *expr;                                                          \
         Ast *type_ast;                                                      \
+        bool no_zero_init;                                                  \
     })                                                                      \
     AST_INFO(Assignment, "assignment", struct {                             \
         Ast *left_var_expr;                                                 \
