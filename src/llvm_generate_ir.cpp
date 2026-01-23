@@ -705,17 +705,17 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         return gen_ir_cast_expr(gen, expr, state);
     } break;
 
-    case AstType_StructFieldExpr: {
+    case AstType_FieldAccessExpr: {
         Ast *parent_expr = NULL;
-        if(is_struct_type(expr->StructFieldExpr.struct_var_expr->v_type)) {
-            parent_expr = expr->StructFieldExpr.struct_var_expr;
-        } else if(is_pointer_type(expr->StructFieldExpr.struct_var_expr->v_type) && is_struct_type(get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type))) {
+        if(is_struct_type(expr->FieldAccessExpr.parent_expr->v_type)) {
+            parent_expr = expr->FieldAccessExpr.parent_expr;
+        } else if(is_pointer_type(expr->FieldAccessExpr.parent_expr->v_type) && is_struct_type(get_pointed_type(expr->FieldAccessExpr.parent_expr->v_type))) {
             
             // 如果是指向结构体的指针，则需要先解引用
             parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
             parent_expr->UnaryExpr.op = TokenType::Star;
-            parent_expr->UnaryExpr.operand = expr->StructFieldExpr.struct_var_expr;
-            parent_expr->v_type = get_pointed_type(expr->StructFieldExpr.struct_var_expr->v_type);
+            parent_expr->UnaryExpr.operand = expr->FieldAccessExpr.parent_expr;
+            parent_expr->v_type = get_pointed_type(expr->FieldAccessExpr.parent_expr->v_type);
         } else {
             XP_ASSERT_DEFAULT(0);
         }
@@ -726,7 +726,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         
         isize field_index = -1;
         for(isize i = 0; i < struct_type->struct_fields.count; i++) {
-            if(struct_type->struct_fields[i].name == expr->StructFieldExpr.field_name) {
+            if(struct_type->struct_fields[i].name == expr->FieldAccessExpr.field_name) {
                 field_index = i;
                 break;
             }

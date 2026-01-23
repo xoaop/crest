@@ -100,8 +100,8 @@ struct Ast;
         Ast *target_type_ast;                                               \
         TypeRef target_type;    /* TODO REMOVE */                           \
     })                                                                      \
-    AST_INFO(StructFieldExpr, "struct field expr", struct {                 \
-        Ast *struct_var_expr;                                               \
+    AST_INFO(FieldAccessExpr, "field access expr", struct {                 \
+        Ast *parent_expr;                                                   \
         xpString field_name;                                                \
     })                                                                      \
     AST_INFO(StructInitExpr, "struct init expr", struct {                   \

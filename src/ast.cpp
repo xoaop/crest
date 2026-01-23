@@ -203,10 +203,10 @@ void print_ast(Ast *a) {
         print_ast(a->FunctionCallExpr.args);
         break;
 
-    case AstType_StructFieldExpr:
-        print_with_prefix("struct_var_expr: \n");
-        print_ast(a->StructFieldExpr.struct_var_expr);
-        print_with_prefix("field_name: %s\n", a->StructFieldExpr.field_name.c_str);
+    case AstType_FieldAccessExpr:
+        print_with_prefix("parent_expr: \n");
+        print_ast(a->FieldAccessExpr.parent_expr);
+        print_with_prefix("field_name: %s\n", a->FieldAccessExpr.field_name.c_str);
         break;
 
     case AstType_StructDecl:

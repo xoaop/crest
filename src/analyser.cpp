@@ -415,8 +415,8 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
         }
     } break;
 
-    case AstType_StructFieldExpr: {
-        resolve_expr(expr_ast->StructFieldExpr.struct_var_expr, analyser);
+    case AstType_FieldAccessExpr: {
+        resolve_expr(expr_ast->FieldAccessExpr.parent_expr, analyser);
     } break;
 
     case AstType_ArrayInitExpr: {
@@ -542,8 +542,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
             }
 
             i128 count = count_expr->Constant.value;
-            if(count <= 0) {
-                error_msg(&count_expr->token, "array size must be a positive integer");
+            if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
+                error_msg(&count_expr->token, "array size must be a positive integer and less than max of isize");
                 XP_ASSERT_DEFAULT(0);
             }
 
@@ -631,6 +631,7 @@ void tag_untyped_expr(Ast *expr, Analyser *analyser) {
                 expr->v_type = easy_type(Type_untyped_float);
             } else if((expr->BinaryExpr.left->v_type ==  easy_type(Type_untyped_int) && expr->BinaryExpr.right->v_type == easy_type(Type_untyped_float)) || 
                       (expr->BinaryExpr.left->v_type == easy_type(Type_untyped_float) && expr->BinaryExpr.right->v_type == easy_type(Type_untyped_int))) {
+                
                 // TODO 目前先报错, 后续可以考虑类型提升等规则
                 error_msg(&expr->token, "type mismatch in binary expression with untyped operands");
                 XP_ASSERT_DEFAULT(0);
