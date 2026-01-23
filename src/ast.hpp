@@ -115,6 +115,9 @@ struct Ast;
         Ast *array_var_expr;                                                \
         Ast *index_expr;                                                    \
     })                                                                      \
+    AST_INFO(StringLiteralExpr, "string literal expr", struct {             \
+        xpString str;                                                       \
+    })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/
 
