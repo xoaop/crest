@@ -612,6 +612,22 @@ xp_internal Ast *parse_factor(Parser *p) {
             a = parse_array_init_expr(p);
             break;
 
+        case TokenType::StringLiteral: {
+            
+            // 字符串字面量
+
+            a = ast_alloc(AstType_StringLiteralExpr);
+            a->token = expect(p, TokenType::StringLiteral);
+
+            // TODO: xpString的稳定性的试金石
+            xpString str = a->token.token_str;
+            str.c_str = str.c_str + 1; //跳过开头的引号
+            str.length -= 2; //去掉前后的引号
+            str.capacity -= 2; //去掉前后的引号
+
+            a->StringLiteralExpr.str = str;
+        } break;
+
         default:
             XP_ASSERT_DEFAULT(0);
             break;

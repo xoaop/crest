@@ -1532,8 +1532,17 @@ void xp_string_free(xpString string) {
 }
 
 b32 xp_string_cmp(xpString a, xpString b) {
-    //TODO(xoaop): 替换标准库
-    return strcmp(a.c_str, b.c_str);
+    if(a.length != b.length) {
+        return false;
+    }
+
+    for(isize i = 0; i < a.length; i++) {
+        if(a.c_str[i] != b.c_str[i]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 xpString xp_string_copy(xpAllocator allocator, xpString string) {
