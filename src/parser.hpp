@@ -36,12 +36,12 @@ xp_internal b32 is_binary_op(TokenType type) {
 xp_internal b32 is_unary_op(TokenType type) {
     switch (type)
     {
-    case TokenType::Minus:
-    case TokenType::Exclamation:
+    case TokenType::Minus: // -
+    case TokenType::Exclamation: // !
     
     // 指针运算
-    case TokenType::And:
-    case TokenType::Star:
+    case TokenType::And: // &
+    case TokenType::Star: // *
         return true;
     default:
         return false;
@@ -51,7 +51,7 @@ xp_internal b32 is_unary_op(TokenType type) {
 
 
 //NOTE(xoaop): 越大 优先级越高
-xp_internal isize precedence(TokenType op) {
+xp_internal isize precedence(TokenType op, bool is_unary_op = false) {
 
     //NOTE: 13 - 13 = 0
     isize prec = 13;
@@ -90,8 +90,9 @@ xp_internal isize precedence(TokenType op) {
     //NOTE: 13 - 13 = 0
     return 13 - prec;
 }
-    
-    
+
+
+
 
 struct Parser {
     isize curr_token_index;

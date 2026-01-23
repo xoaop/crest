@@ -319,7 +319,15 @@ bool is_signed_type(TypeRef type) {
 
 bool is_signed_or_bool_type(TypeRef type) {
     XP_ASSERT_DEFAULT(is_integer_or_bool_type(type));
-    return is_signed_type(type) || type->kind == Type_bool;
+    switch(type->kind) {
+    case Type_i8:
+    case Type_i32:
+    case Type_i64:
+    case Type_bool:
+        return true;
+    default:
+        return false;    
+    }
 }
 
 bool is_unsigned_type(TypeRef type) {

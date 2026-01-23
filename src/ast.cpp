@@ -226,6 +226,21 @@ void print_ast(Ast *a) {
         print_with_prefix("field_inits: \n");
         print_ast(a->StructInitExpr.field_inits);
         break;
+
+    case AstType_ArrayInitExpr:
+        print_with_prefix("elements: \n");
+        print_ast(a->ArrayInitExpr.elements);
+        break;
+    
+    case AstType_IndexExpr:
+        print_with_prefix("array_var_expr: \n");
+        print_ast(a->IndexExpr.array_var_expr);
+        print_with_prefix("index_expr: \n");
+        print_ast(a->IndexExpr.index_expr);
+        break;
+    
+    
+
     default:
         break;
     }

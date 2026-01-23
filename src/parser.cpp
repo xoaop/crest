@@ -44,7 +44,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a);
 void parse_float(const char *str, TypeKind type_kind, Ast *a);
 
 Ast *parse_struct_init_expr(Parser *p);
-Ast *parse_array_init(Parser *p);
+Ast *parse_array_init_expr(Parser *p);
 
 
 Ast *parse_type(Parser *p);
@@ -514,7 +514,16 @@ xp_internal Ast *parse_factor(Parser *p) {
 
         a = ast_alloc(AstType_UnaryExpr);
         a->UnaryExpr.op = curr.type;
-        a->UnaryExpr.operand = parse_expr(p);
+
+        
+        // a->UnaryExpr.operand = parse_factor(p);
+        
+        // NOTE: 比 所有二元运算符 优先级都高 就行
+        #define UNARY_OP_PRECEDENCE 114514
+        a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE);
+
+
+
     } else {
         switch (curr.type)
         {
@@ -524,6 +533,8 @@ xp_internal Ast *parse_factor(Parser *p) {
         case TokenType::Float:
             a = parse_constant(p);
             break;
+
+        // 关键字常量
         case TokenType::KW_true:
         case TokenType::KW_false:
         case TokenType::KW_null:
@@ -538,11 +549,13 @@ xp_internal Ast *parse_factor(Parser *p) {
             expect(p, TokenType::RightBracket);
             
             break;
-        // VarExpr
+
+
         case TokenType::Ident:
 
             if(next.type == TokenType::LeftBracket) {
                 // 函数调用
+
                 a = ast_alloc(AstType_FunctionCallExpr);
                 a->token = expect(p, TokenType::Ident);
                 a->FunctionCallExpr.name = curr.token_str;
@@ -596,7 +609,7 @@ xp_internal Ast *parse_factor(Parser *p) {
         case TokenType::LeftSquareBracket:
             // 数组字面量
 
-            a = parse_array_init(p);
+            a = parse_array_init_expr(p);
             break;
 
         default:
@@ -613,6 +626,40 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
 
     Token curr;
     
+
+    // TODO 添加对后缀表达式的支持
+    // TODO 检查
+    for(;;) {
+        curr = curr_token(p);
+        if(curr.type == TokenType::LeftSquareBracket) {
+
+            expect(p, TokenType::LeftSquareBracket);
+            Ast *index_expr = parse_expr(p);
+            expect(p, TokenType::RightSquareBracket);
+            
+            Ast *new_left = ast_alloc(AstType_IndexExpr);
+            new_left->IndexExpr.array_var_expr = left;
+            new_left->IndexExpr.index_expr = index_expr;
+
+            left = new_left;
+
+        } else if(curr.type == TokenType::Dot) {
+
+            expect(p, TokenType::Dot);
+            Token field_ident = expect(p, TokenType::Ident);
+
+            Ast *new_left = ast_alloc(AstType_StructFieldExpr);
+            new_left->StructFieldExpr.struct_var_expr = left;
+            new_left->StructFieldExpr.field_name = field_ident.token_str;
+
+            left = new_left;
+
+        } else {
+            break;
+        }
+    }
+
+
     for(;;) {
         curr = curr_token(p);
         
@@ -628,34 +675,36 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             left = new_left;
 
             left->token = curr;
-        } else if(curr.type == TokenType::Dot) {
-            // 结构体字段访问
+        } 
+        // else if(curr.type == TokenType::Dot) {
+        //     // 结构体字段访问
 
-            expect(p, TokenType::Dot);
-            Token field_ident = expect(p, TokenType::Ident);
+        //     expect(p, TokenType::Dot);
+        //     Token field_ident = expect(p, TokenType::Ident);
 
-            Ast *new_left = ast_alloc(AstType_StructFieldExpr);
-            new_left->StructFieldExpr.struct_var_expr = left;
-            new_left->StructFieldExpr.field_name = field_ident.token_str;
+        //     Ast *new_left = ast_alloc(AstType_StructFieldExpr);
+        //     new_left->StructFieldExpr.struct_var_expr = left;
+        //     new_left->StructFieldExpr.field_name = field_ident.token_str;
             
-            left = new_left;
+        //     left = new_left;
             
-            left->token = field_ident;
-        } else if(curr.type == TokenType::LeftSquareBracket) {
-            // 下标访问表达式
+        //     left->token = field_ident;
+        // } else if(curr.type == TokenType::LeftSquareBracket) {
+        //     // 下标访问表达式
 
-            expect(p, TokenType::LeftSquareBracket);
-            Ast *index_expr = parse_expr(p);
-            expect(p, TokenType::RightSquareBracket);
+        //     expect(p, TokenType::LeftSquareBracket);
+        //     Ast *index_expr = parse_expr(p);
+        //     expect(p, TokenType::RightSquareBracket);
 
-            Ast *new_left = ast_alloc(AstType_IndexExpr);
-            new_left->IndexExpr.array_var_expr = left;
-            new_left->IndexExpr.index_expr = index_expr;
+        //     Ast *new_left = ast_alloc(AstType_IndexExpr);
+        //     new_left->IndexExpr.array_var_expr = left;
+        //     new_left->IndexExpr.index_expr = index_expr;
 
-            left = new_left;
+        //     left = new_left;
 
-            left->token = curr;
-        } else {
+        //     left->token = curr;
+        // } 
+        else {
             break;
         }
 
@@ -787,7 +836,7 @@ Ast *parse_struct_init_expr(Parser *p) {
     return a;
 }
 
-Ast *parse_array_init(Parser *p) {
+Ast *parse_array_init_expr(Parser *p) {
     Ast *a = ast_alloc(AstType_ArrayInitExpr);
     a->ArrayInitExpr.elements = make_array<Ast *>(ast_allocator());
 
