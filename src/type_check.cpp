@@ -1,5 +1,7 @@
 #include "type_check.hpp"
 
+#include "const_fold.hpp"
+
 #include "error_msg.hpp"
 
 bool fit_in_type(i128 value, TypeRef target_type) {
@@ -657,6 +659,22 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
                 error_msg(&expr->IndexExpr.index_expr->token, "index expression must be of integer type");
                 XP_ASSERT_DEFAULT(0);
             }
+
+            // TODO 添加逻辑, 检查常量表达式下标的范围是否越界
+            // 首先判断下标表达式是不是常量表达式
+            // 如果是, 就做常量折叠, 判断是否在范围内
+            // 如果不是, 就不管
+            if(expr->IndexExpr.index_expr->is_const_expr) {
+                try_constant_expr_folding(expr->IndexExpr.index_expr);
+                XP_ASSERT_DEFAULT(expr->IndexExpr.index_expr->type == AstType_Constant && expr->IndexExpr.index_expr->is_const_expr);
+
+                if(expr->IndexExpr.index_expr->Constant.value < 0 || 
+                   expr->IndexExpr.index_expr->Constant.value >= cast(i128)ap_type->array_info.count) {
+                    error_msg(&expr->IndexExpr.index_expr->token, "index expression out of bounds");
+                    XP_ASSERT_DEFAULT(0);
+                }
+            }
+
 
             // 设置下标表达式的类型
             if(is_array_type(ap_type)) {
