@@ -49,6 +49,7 @@
     TOKEN_INFO(Integer, "interger"),                            \
     TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \
+    TOKEN_INFO(StringLiteral, "string literal"),                \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
     TOKEN_INFO(KW_struct, "struct"),                            \
     TOKEN_INFO(KW_void, "void"),                                \
