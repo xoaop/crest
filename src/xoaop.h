@@ -1532,17 +1532,19 @@ void xp_string_free(xpString string) {
 }
 
 b32 xp_string_cmp(xpString a, xpString b) {
-    if(a.length != b.length) {
-        return false;
+    if(a.length > b.length) {
+        return 1;
+    } else if(a.length < b.length) {
+        return -1;
     }
 
     for(isize i = 0; i < a.length; i++) {
         if(a.c_str[i] != b.c_str[i]) {
-            return false;
+            return (a.c_str[i] > b.c_str[i]) ? 1 : -1;
         }
     }
 
-    return true;
+    return 0;
 }
 
 xpString xp_string_copy(xpAllocator allocator, xpString string) {
