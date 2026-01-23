@@ -293,12 +293,32 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             advance_one_character(t);
             break;
 
+        case '"': {
+            token->type = TokenType::StringLiteral;
+            advance_one_character(t); //跳过开头的引号
+
+            while (!tokenizer_end(t) && tokenizer_curr_character(t) != '"') {
+                advance_one_character(t);
+            }
+
+            if(tokenizer_end(t)) {
+                // false表示字符串未闭合就到达文件末尾, 这个token不会被加入token数组
+
+                return false;
+            }
+
+            advance_one_character(t); //跳过结尾的引号
+
+        } break;
+            
+        
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
             // TODO 支持 小数 类型后缀
             tokenizer_scan_number(t, token, old_index);
             // token->type = TokenType::Integer;
             // tokenizer_scan_integer(t);
             break;
+
         
         default: 
         unknown_character: // TODO(xoaop): 不太好
@@ -318,11 +338,11 @@ char tokenizer_curr_character(Tokenizer *t) {
 }
 
 b32 tokenizer_end(Tokenizer *t) {
-    return tokenizer_curr_character(t) == END_OF_CODE;
+    return t->code.c_str[t->curr_character_index] == END_OF_CODE;
 }
 
 xp_internal isize advance_one_character(Tokenizer *t) {
-    if(t->code.c_str[t->curr_character_index] != '\0') {
+    if(!tokenizer_end(t)) {
         t->curr_column_index += 1;
         if(tokenizer_curr_character(t) == '\n') {
             //NOTE(xoaop): RESET
@@ -346,12 +366,16 @@ isize advance_characters(Tokenizer *t, isize count) {
 }
 
 char tokenizer_next_character(Tokenizer *t) {
+    if(t->code.c_str[t->curr_character_index] == END_OF_CODE) {
+        return END_OF_CODE;
+    }
+
     return t->code.c_str[t->curr_character_index + 1];
 }
 
 isize tokenizer_move_until_next_space(Tokenizer *t) {
     isize count = 0;
-    while (tokenizer_curr_character(t) != '\0') {
+    while (!tokenizer_end(t)) {
 
         if(xp_is_space(t->code.c_str[t->curr_character_index])) {
             break;
@@ -364,7 +388,7 @@ isize tokenizer_move_until_next_space(Tokenizer *t) {
 
 isize tokenizer_skip_space(Tokenizer *t) {
     isize count = 0;
-    while (tokenizer_curr_character(t) != END_OF_CODE) {
+    while (!tokenizer_end(t)) {
         if(!xp_is_space(tokenizer_curr_character(t))) {
             break;
         }
