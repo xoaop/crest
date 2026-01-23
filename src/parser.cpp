@@ -648,9 +648,9 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
             expect(p, TokenType::Dot);
             Token field_ident = expect(p, TokenType::Ident);
 
-            Ast *new_left = ast_alloc(AstType_StructFieldExpr);
-            new_left->StructFieldExpr.struct_var_expr = left;
-            new_left->StructFieldExpr.field_name = field_ident.token_str;
+            Ast *new_left = ast_alloc(AstType_FieldAccessExpr);
+            new_left->FieldAccessExpr.parent_expr = left;
+            new_left->FieldAccessExpr.field_name = field_ident.token_str;
 
             left = new_left;
 
@@ -682,9 +682,9 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec) {
         //     expect(p, TokenType::Dot);
         //     Token field_ident = expect(p, TokenType::Ident);
 
-        //     Ast *new_left = ast_alloc(AstType_StructFieldExpr);
-        //     new_left->StructFieldExpr.struct_var_expr = left;
-        //     new_left->StructFieldExpr.field_name = field_ident.token_str;
+        //     Ast *new_left = ast_alloc(AstType_FieldAccessExpr);
+        //     new_left->FieldAccessExpr.struct_var_expr = left;
+        //     new_left->FieldAccessExpr.field_name = field_ident.token_str;
             
         //     left = new_left;
             

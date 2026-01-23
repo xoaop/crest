@@ -510,13 +510,13 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
         } break;
 
         // TODO 检查
-        case AstType_StructFieldExpr: {
-            infer_expr_type(expr->StructFieldExpr.struct_var_expr, false, target_type, analyser);
+        case AstType_FieldAccessExpr: {
+            infer_expr_type(expr->FieldAccessExpr.parent_expr, false, target_type, analyser);
 
             // 检查a.b 中的a是不是: 
             // 1. 结构体
             // 2. 结构体指针
-            TypeRef parent_type = expr->StructFieldExpr.struct_var_expr->v_type;
+            TypeRef parent_type = expr->FieldAccessExpr.parent_expr->v_type;
             if(!(is_struct_type(parent_type)) && (!((is_pointer_type(parent_type)) && (is_struct_type(get_pointed_type(parent_type)))))) {
                 XP_ASSERT_DEFAULT(0);
             }
@@ -535,13 +535,13 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             bool found = false;
             for(isize i = 0; i < parent_type->struct_fields.count; i++) {
                 field = parent_type->struct_fields[i];
-                if(xp_string_cmp(field.name, expr->StructFieldExpr.field_name) == 0) {
+                if(xp_string_cmp(field.name, expr->FieldAccessExpr.field_name) == 0) {
                     found = true;
                     break;
                 }
             }
             if(!found) {
-                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type->type_name.c_str, expr->StructFieldExpr.field_name.c_str);
+                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type->type_name.c_str, expr->FieldAccessExpr.field_name.c_str);
                 XP_ASSERT_DEFAULT(0);
             }
 
