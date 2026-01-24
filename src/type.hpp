@@ -30,6 +30,8 @@ enum TypeKind {
 
     Type_array,
 
+    Type_string, // 字符串
+
 
     Type_untyped_int, // 用于常量表达式推导阶段的字面量类型
     Type_untyped_float,
