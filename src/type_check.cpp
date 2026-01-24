@@ -115,12 +115,20 @@ TypeRef get_compliable_const_type(Ast *constant) {
     }
 }
 
-
+// 检查某表达式是是否可以被当作target_type
 static bool check_target_type(Ast *expr, TypeRef target_type) {
+
+
     if(expr->is_null) {
+        // null可以被当作任意指针类型
+
+        // 如target_type不是指针类型, 那就不行
         if(!is_pointer_type(target_type)) {
             return false;
         }
+    } else if(is_pointer_type(expr->v_type) && target_type == pointer_type(easy_type(Type_void))) {
+        // 任意类型指针都可以隐式转化为*void类型
+        return true;
     } else if(expr->v_type != target_type) {
         return false;
     }
