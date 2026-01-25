@@ -4,39 +4,34 @@
 #include "array.hpp"
 #include "common.hpp"
 
+#define TYPE_KINDS                                      \
+    TYPE_KIND(Undefined, "undefined")                   \
+    TYPE_KIND(i8, "i8")                                 \
+    TYPE_KIND(i32, "i32")                               \
+    TYPE_KIND(i64, "i64")                               \
+    TYPE_KIND(u8, "u8")                                 \
+    TYPE_KIND(u32, "u32")                               \
+    TYPE_KIND(u64, "u64")                               \
+    TYPE_KIND(f32, "f32")                               \
+    TYPE_KIND(f64, "f64")                               \
+    TYPE_KIND(bool, "bool")                             \
+    TYPE_KIND(void, "void")                             \
+    TYPE_KIND(function, "function")                     \
+    TYPE_KIND(pointer, "pointer")                       \
+    TYPE_KIND(struct, "struct")                         \
+    TYPE_KIND(array, "array")                           \
+    TYPE_KIND(string, "string")                         \
+    TYPE_KIND(untyped_int, "untyped_int")               \
+    TYPE_KIND(untyped_float, "untyped_float")           \
+    TYPE_KIND(uncertain, "uncertain")                   \
+/**/
 
 
 enum TypeKind {
-    Type_Undefined = 0,
 
-    
-    Type_i8,
-    Type_i32,
-    Type_i64,
-    Type_u8,
-    Type_u32,
-    Type_u64,
-    Type_f32,
-    Type_f64,
-    
-    Type_bool, // i1 in llvm
-    Type_void,
-
-    Type_function,
-
-    Type_pointer,
-
-    Type_struct,
-
-    Type_array,
-
-    Type_string, // 字符串
-
-
-    Type_untyped_int, // 用于常量表达式推导阶段的字面量类型
-    Type_untyped_float,
-
-    Type_uncertain, // 用于类型推导阶段, 表示类型还不确定
+#define TYPE_KIND(name, str) Type_##name,
+    TYPE_KINDS
+#undef TYPE_KIND
 
 };
 

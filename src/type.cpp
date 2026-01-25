@@ -1,7 +1,13 @@
 #include "type.hpp"
 
 
+static const char *type_strings[] = {
 
+#define TYPE_KIND(name, str) str,
+    TYPE_KINDS
+#undef TYPE_KIND
+
+};
 
 
 
@@ -658,6 +664,20 @@ void update_uncertain_to_struct(TypeRef uncertain_type, Array<StructField> field
 
     uncertain_type->kind = Type_struct;
     uncertain_type->struct_fields = array_copy(&fields, type_allocator());
+}
+
+
+// NOTE: 实际上就是结构体
+TypeRef slice_type(TypeRef array_type) {
+    XP_ASSERT_DEFAULT(array_type->kind == Type_array);
+
+    XP_TODO;
+}
+
+
+
+xpString get_type_str(TypeRef type) {
+    XP_TODO;
 }
 
 
