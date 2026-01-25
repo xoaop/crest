@@ -621,7 +621,7 @@ TypeRef undefined_type() {
 
 
 TypeRef get_or_add_type(Type type) {
-    TypeRef type_ref = xp_interning_table_get(&global_type_table.type_interning_table, type);
+    TypeRef type_ref = get_type(type);
     if(type_ref != NULL) {
         return type_ref;
     }
@@ -675,9 +675,8 @@ TypeRef slice_type(TypeRef array_type) {
 }
 
 
-
-xpString get_type_str(TypeRef type) {
-    XP_TODO;
+xpString get_type_kind_str(TypeKind kind) {
+    return xp_string_c(type_strings[kind]);
 }
 
 

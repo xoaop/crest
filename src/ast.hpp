@@ -28,6 +28,9 @@ struct Ast;
         Ast *element_type_ast;                                              \
         Ast *count_expr;                                                    \
     })                                                                      \
+    AST_INFO(SliceType, "slice type", struct {                              \
+        Ast *element_type_ast;                                              \
+    })                                                                      \
     AST_INFO(Function, "function", struct {                                 \
         xpString name;                                                      \
         Array<Ast *> params;                                                \
