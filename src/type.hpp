@@ -138,7 +138,7 @@ void struct_add_member(Type *type, xpString name, Type member_type);
 
 
 
-
+xpString get_type_kind_str(TypeKind kind);
 
 
 

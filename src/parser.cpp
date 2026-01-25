@@ -137,7 +137,24 @@ Ast *parse_type(Parser *p) {
     if(curr_token(p).type == TokenType::Star) {
         return parse_pointer_type(p);
     } else if(curr_token(p).type == TokenType::LeftSquareBracket) {
-        return parse_array_type(p);
+
+        if(next_token(p).type == TokenType::RightSquareBracket) {
+            // Slice Type
+            
+            Ast *a = ast_alloc(AstType_SliceType);
+
+            expect(p, TokenType::LeftSquareBracket);
+            expect(p, TokenType::RightSquareBracket);
+
+            Ast *element_type_ast = parse_type(p);
+            a->SliceType.element_type_ast = element_type_ast;
+
+            return a;
+        } else {
+            // Array Type
+
+            return parse_array_type(p);
+        }
     } else {
         return parse_basic_and_ident_type(p);
     }
