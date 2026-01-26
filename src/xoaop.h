@@ -314,8 +314,8 @@ xp_define b32 xp_string_cmp(xpString a, xpString b);
 xp_define xpString *xp_string_extend(xpString *string, isize extended_size);
 xp_define isize xp_string_find_char(xpString str, char c);
 xp_define xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str);
-
-
+xp_define xpString *xp_string_append(xpString *str, xpString appended_str);
+xp_define xpString xp_isize_to_string(isize value, xpAllocator allocator);
 
 
 
@@ -1501,7 +1501,7 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
 
     xpString string;
     string.allocator = allocator;
-    string.c_str = cast(char *) xp_alloc(string.allocator, capacity + 1);
+    string.c_str = cast(char *) xp_alloc(string.allocator, capacity + 1); // NOTE: +1是为了末尾的'\0'
     string.capacity = capacity;
     
     // 计算实际长度
@@ -1516,7 +1516,7 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
 
 
     // 清空空间
-    memset(string.c_str, '\0', string.capacity + 1);
+    memset(string.c_str, '\0', string.capacity + 1); // NOTE: +1是为了末尾的'\0'
     // 复制字符串内容
     memcpy(string.c_str, str, string.length);
     
@@ -1528,7 +1528,9 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
 
 
 void xp_string_free(xpString string) {
-    xp_free(string.allocator, string.c_str);
+    if(string.allocator.proc != NULL) {
+        xp_free(string.allocator, string.c_str);
+    }
 }
 
 b32 xp_string_cmp(xpString a, xpString b) {
@@ -1622,6 +1624,22 @@ xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str) {
 
 
     return str;
+}
+
+xpString *xp_string_append(xpString *str, xpString appended_str) {
+    return xp_string_insert(str->length, str, appended_str);
+}
+
+
+xpString xp_isize_to_string(isize value, xpAllocator allocator) {
+    isize len = snprintf(NULL, 0, "%lld", value);
+
+    xpString string = xp_make_string_capacity(allocator, NULL, len);
+    snprintf(string.c_str, string.capacity + 1, "%lld", value);
+    
+    string.length = len;
+
+    return string;
 }
 
 

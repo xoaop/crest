@@ -165,10 +165,11 @@ AST_INFOS
 struct Ast {
     AstType type;
 
-
-    TypeRef v_type; // 该AST节点的类型
     Token token; // 记录该AST对应的第一个token
 
+
+    TypeRef v_type; // 该AST节点的类型
+    ImplicitConversionTag implicit_conversion_tag;
 
     // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式

@@ -551,6 +551,16 @@ TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
             return type_ref;
         } break;
 
+        
+        // Slice应该是一种内置结构体
+        case AstType_SliceType: {
+            TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
+
+            TypeRef slice_type = slice_type_as_struct(elem_type);
+
+            return slice_type;
+        } break;
+
         default: {
             XP_ASSERT_DEFAULT(0);
         }

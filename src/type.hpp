@@ -87,6 +87,10 @@ struct StructField {
 
 
 
+enum class ImplicitConversionTag {
+    None,
+    ArrayToSliceStruct,
+};
 
 
 
@@ -119,6 +123,7 @@ bool is_certain_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
 bool is_array_type(TypeRef type);
+bool is_slice_struct_type(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -139,20 +144,11 @@ void struct_add_member(Type *type, xpString name, Type member_type);
 
 
 xpString get_type_kind_str(TypeKind kind);
-
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_free_temp_allocator);
 
 
 void print_type(TypeRef type);
 
-
-
-
-
-
-// TODO: 大更新, 把ast里的类型信息都改成TypeRef
-// 所有详细类型信息都放在type表里
-// 统一类型获取接口
-// 解决结构体字段信息获取需要额外操作问题
 
 
 
@@ -178,6 +174,8 @@ TypeRef get_struct_type(xpString name);
 TypeRef get_uncertain_type(xpString type_name);
 TypeRef get_struct_or_uncertain_type(xpString name);
 TypeRef undefined_type();
+
+TypeRef slice_type_as_struct(TypeRef elem_type);
 
 
 TypeRef get_or_add_type(Type type);

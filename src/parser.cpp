@@ -140,7 +140,7 @@ Ast *parse_type(Parser *p) {
 
         if(next_token(p).type == TokenType::RightSquareBracket) {
             // Slice Type
-            
+
             Ast *a = ast_alloc(AstType_SliceType);
 
             expect(p, TokenType::LeftSquareBracket);
@@ -619,7 +619,7 @@ xp_internal Ast *parse_factor(Parser *p) {
             a->CastExpr.target_type_ast = parse_type(p);
 
             expect(p, TokenType::RightBracket);
-            a->CastExpr.expr = parse_factor(p);
+            a->CastExpr.expr = parse_expr(p, UNARY_OP_PRECEDENCE);
 
             break;
 

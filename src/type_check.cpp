@@ -129,7 +129,21 @@ static bool check_target_type(Ast *expr, TypeRef target_type) {
     } else if(is_pointer_type(expr->v_type) && target_type == pointer_type(easy_type(Type_void))) {
         // 任意类型指针都可以隐式转化为*void类型
         return true;
-    } else if(expr->v_type != target_type) {
+    }  else if(is_array_type(expr->v_type) && is_slice_struct_type(target_type)) {
+        // 数组可以隐式转化为slice结构体类型
+        
+        // 前提元素类型相同
+        if(target_type->struct_fields[0].type->pointed_type == expr->v_type->array_info.element_type) {
+
+            expr->implicit_conversion_tag = ImplicitConversionTag::ArrayToSliceStruct;
+            return true;
+        } else {
+
+            return false;
+        }
+    }
+    
+    else if(expr->v_type != target_type) {
         return false;
     }
 
@@ -466,7 +480,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             infer_expr_type(expr->CastExpr.expr, false, target_type, analyser);
 
             // struct -> struct 必须是相同类型
-            if(is_struct_type(expr->CastExpr.expr->v_type) && is_struct_type(expr->CastExpr.target_type)) {
+            if(is_struct_type(expr->CastExpr.expr->v_type)) {
                 if(expr->CastExpr.expr->v_type != expr->CastExpr.target_type) {
                     // TODO 结构体类型转换必须是相同类型错误处理
 
@@ -476,7 +490,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             }
             
             // array -> array 必须是相同类型
-            if(is_array_type(expr->CastExpr.expr->v_type) && is_array_type(expr->CastExpr.target_type)) {
+            if(is_array_type(expr->CastExpr.expr->v_type)) {
                 if(expr->CastExpr.expr->v_type != expr->CastExpr.target_type) {
                     
                     // TODO 错误处理 数组类型转换必须是相同类型 
@@ -654,10 +668,14 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             infer_expr_type(expr->IndexExpr.array_var_expr, false, target_type, analyser);
             infer_expr_type(expr->IndexExpr.index_expr, false, target_type, analyser);
 
-            // 检查被下标访问表达式是不是数组类型
-            TypeRef ap_type = expr->IndexExpr.array_var_expr->v_type;
-            if(!is_array_type(ap_type)) { 
-                error_msg(&expr->token, "only array types can be indexed");
+            // TODO 添加对切片类型的支持
+
+            // 检查被下标访问表达式是不是: 
+            // 1.数组类型 
+            // 2.切片类型
+            TypeRef as_type = expr->IndexExpr.array_var_expr->v_type;
+            if(!is_array_type(as_type) && !is_slice_struct_type(as_type)) { 
+                error_msg(&expr->token, "only array or slice struct types can be indexed");
                 XP_ASSERT_DEFAULT(0);
             }
 
@@ -668,27 +686,33 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
                 XP_ASSERT_DEFAULT(0);
             }
 
-            // TODO 添加逻辑, 检查常量表达式下标的范围是否越界
+            // 检查常量表达式下标的范围是否越界
             // 首先判断下标表达式是不是常量表达式
             // 如果是, 就做常量折叠, 判断是否在范围内
             // 如果不是, 就不管
-            if(expr->IndexExpr.index_expr->is_const_expr) {
+
+            if(is_array_type(as_type) && expr->IndexExpr.index_expr->is_const_expr) {
                 try_constant_expr_folding(expr->IndexExpr.index_expr);
                 XP_ASSERT_DEFAULT(expr->IndexExpr.index_expr->type == AstType_Constant && expr->IndexExpr.index_expr->is_const_expr);
 
                 if(expr->IndexExpr.index_expr->Constant.value < 0 || 
-                   expr->IndexExpr.index_expr->Constant.value >= cast(i128)ap_type->array_info.count) {
+                   expr->IndexExpr.index_expr->Constant.value >= cast(i128)as_type->array_info.count) {
                     error_msg(&expr->IndexExpr.index_expr->token, "index expression out of bounds");
                     XP_ASSERT_DEFAULT(0);
                 }
             }
-
-
+            
             // 设置下标表达式的类型
-            if(is_array_type(ap_type)) {
-                expr->v_type = ap_type->array_info.element_type;
+            if(is_array_type(as_type)) {
+                
+                    
+                expr->v_type = as_type->array_info.element_type;
+            } else if(is_slice_struct_type(as_type)) {
+
+
+                expr->v_type = as_type->struct_fields[0].type->pointed_type;
             } else {
-                expr->v_type = get_pointed_type(ap_type);
+                XP_ASSERT_DEFAULT(0);
             }
 
             // 下标表达式是左值
