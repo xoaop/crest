@@ -621,6 +621,32 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->VarExpr.name);
         XP_ASSERT_DEFAULT(alloca != NULL);
 
+        // TODO 处理数组转为切片
+        if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
+
+            LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
+            LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
+            
+            LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
+
+            LLVMValueRef indices[2] = {
+                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
+                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
+            };
+            // 设置数据指针
+            LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
+            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+            
+            // 设置count
+            // TODO i64 换成 isize
+            LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
+
+            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+
+            return slice_struct_value;
+        }
+
+
         if(is_lvalue_expr) {
             return *alloca;
         } else {
@@ -763,7 +789,6 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     } break;
 
-    // TODO
     case AstType_ArrayInitExpr: {
         LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
 
@@ -780,17 +805,44 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     } break;
 
     case AstType_IndexExpr: {
-        LLVMValueRef array_ptr = gen_ir_expr(gen, expr->IndexExpr.array_var_expr, state, true);
+        LLVMValueRef array_or_slice_ptr = gen_ir_expr(gen, expr->IndexExpr.array_var_expr, state, true);
         LLVMValueRef index_val = gen_ir_expr(gen, expr->IndexExpr.index_expr, state);
 
-        LLVMValueRef indices[] = { index_val };
 
-        LLVMValueRef element_ptr = LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), array_ptr, indices, 1, "elementptrtmp");
+        LLVMValueRef indices[2] = { NULL };
+        LLVMValueRef elem_ptr = NULL;
+        if(is_array_type(expr->IndexExpr.array_var_expr->v_type)) {
+            // 数组索引
+            indices[0] = LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0); // 取数组指针的第0个元素, 就是数组本身
+            indices[1] = index_val; // 索引值
+
+            elem_ptr = LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, expr->IndexExpr.array_var_expr->v_type), array_or_slice_ptr, indices, 2, "arrayelementptrtmp");
+
+        } else if(is_slice_struct_type(expr->IndexExpr.array_var_expr->v_type)) {
+            // 切片索引
+            
+            LLVMValueRef slice_val = LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->IndexExpr.array_var_expr->v_type), array_or_slice_ptr, "loadslicetmp");
+            LLVMValueRef data_raw = LLVMBuildExtractValue(gen->builder, slice_val, 0, "slicedataptrtmp");
+
+            TypeRef data_ptr_type = expr->IndexExpr.array_var_expr->v_type->struct_fields[0].type;
+            LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(gen, data_ptr_type);
+            
+
+
+            LLVMValueRef data_typed_ptr = LLVMBuildBitCast(gen->builder, data_raw, data_ptr_llvm_type, "slicedataptrtypedtmp");
+            
+            indices[0] = index_val; // 索引值
+            elem_ptr = LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelementptrtmp");
+
+        } else {
+            XP_ASSERT_DEFAULT(0);
+        }
+
 
         if(is_lvalue_expr) {
-            return element_ptr;
+            return elem_ptr;
         } else {
-            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), element_ptr, "loadelementtmp");
+            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), elem_ptr, "loadelementtmp");
         }
 
     } break;

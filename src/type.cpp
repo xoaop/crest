@@ -357,6 +357,10 @@ bool is_certain_type(TypeRef type) {
     return type->kind != Type_untyped_int && type->kind != Type_untyped_float;
 }
 
+bool is_function_type(TypeRef type) {
+    return type->kind == Type_function;
+}
+
 bool is_pointer_type(TypeRef type) {
     return type->kind == Type_pointer;
 }
@@ -367,6 +371,18 @@ bool is_struct_type(TypeRef type) {
 
 bool is_array_type(TypeRef type) {
     return type->kind == Type_array;
+}
+
+bool is_slice_struct_type(TypeRef type) {
+    if(!is_struct_type(type)) {
+        return false;
+    }
+
+    if(type->type_name.c_str[0] != '[') {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -668,15 +684,136 @@ void update_uncertain_to_struct(TypeRef uncertain_type, Array<StructField> field
 
 
 // NOTE: 实际上就是结构体
-TypeRef slice_type(TypeRef array_type) {
-    XP_ASSERT_DEFAULT(array_type->kind == Type_array);
+TypeRef slice_type_as_struct(TypeRef elem_type) {
+    // XP_ASSERT_DEFAULT(array_type->kind == Type_array);
 
-    XP_TODO;
+
+    
+    xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
+    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
+
+    xp_string_append(&slice_struct_name, elem_str);
+
+
+    Type t = {};
+    t.kind = Type_struct;
+    t.type_name = slice_struct_name;
+
+    TypeRef type_ref = get_struct_type(slice_struct_name);
+    if(type_ref != NULL) {
+        return type_ref;
+    } else {
+
+        Array<StructField> fields = make_array<StructField>(temp_allocator());
+
+
+
+        array_push_back(&fields, StructField { 
+            xp_make_string(type_allocator(), "data"), 
+            pointer_type(elem_type) 
+        });
+        array_push_back(&fields, StructField { 
+            xp_make_string(type_allocator(), "count"), 
+            easy_type(Type_i64) 
+        });
+
+
+
+        return add_struct_type(slice_struct_name, fields);
+    }
+
+    xp_arena_allocator_clear(temp_allocator());
 }
 
 
 xpString get_type_kind_str(TypeKind kind) {
     return xp_string_c(type_strings[kind]);
+}
+
+
+
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_free_temp_allocator) {
+
+    static i32 depth = 0;
+    depth++;
+    defer(depth--);
+
+    // 如果用temp_allocator作为结果的allocator, 那结果就没法返回了, 因为释放了
+    XP_ASSERT_DEFAULT(!(depth == 1 && allocator.data == temp_allocator().data && need_free_temp_allocator == true)); // TODO 这里比较太tricky了
+        
+
+    // 使用temp_allocator避免内存泄漏
+    defer({
+        if(depth == 1) {
+            xp_arena_allocator_clear(temp_allocator());
+        }
+    });
+
+
+    
+
+    
+    if(is_easy_type_kind(type->kind)) {
+
+        return get_type_kind_str(type->kind);
+    } else if(is_pointer_type(type)) {
+        xpString base_str = xp_make_string(allocator, "*");
+
+        // 因为可能有多级指针，所以递归获取, 而且用temp_allocator避免内存泄漏
+        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator(), need_free_temp_allocator);
+
+        xp_string_append(&base_str, pointed_type_str);
+
+        return base_str;
+
+    } else if(is_struct_type(type) || type->kind == Type_uncertain) {
+        // 直接用类型名
+
+        return type->type_name;
+
+    } else if(is_array_type(type)) {
+        xpString base_str = xp_make_string(allocator, "[");
+            
+        xpString count_str = xp_isize_to_string(type->array_info.count, temp_allocator());
+        xp_string_append(&base_str, count_str);
+
+        xp_string_append(&base_str, xp_string_c("]"));
+
+        // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
+        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator(), need_free_temp_allocator);
+
+        xp_string_append(&base_str, elem_type_str);
+
+        return base_str;
+
+    } else if(is_function_type(type)) {
+        xpString func_str = xp_make_string(allocator, "(");
+
+        for(isize i = 0; i < type->function_info.param_types.count; i++) {
+
+            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), need_free_temp_allocator);
+            xp_string_append(&func_str, param_type_str);
+
+            if(i != type->function_info.param_types.count - 1) {
+                xpString comma_str = xp_string_c(", ");
+                xp_string_append(&func_str, comma_str);
+            }
+
+            xpString rb_arrow_str = xp_string_c(") -> ");
+            xp_string_append(&func_str, rb_arrow_str);
+
+            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), need_free_temp_allocator);
+            xp_string_append(&func_str, return_type_str);
+
+            return func_str;
+        }
+
+    } else {
+        XP_ASSERT_DEFAULT(0);
+    }
+    
+    // Unreachable
+    XP_ASSERT_DEFAULT(0);
 }
 
 
