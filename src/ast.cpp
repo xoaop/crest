@@ -36,6 +36,13 @@ Ast *ast_alloc(AstType type) {
     return ast_alloc(type, ast_allocator());
 }
 
+Ast *ast_alloc(AstType type, Token token) {
+    Ast *a = ast_alloc(type);
+    a->token = token;
+    
+    return a;
+}
+
 
 AstFile ast_file_make() {
     AstFile f = {};

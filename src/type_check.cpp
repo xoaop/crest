@@ -644,13 +644,25 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
                 expr->v_type = target_type;
             } else {
                 // 如果没有目标类型
-                // 先推导第一个元素类型
-                infer_expr_type(expr->ArrayInitExpr.elements[0], false, target_type, analyser);
-                TypeRef element_type = expr->ArrayInitExpr.elements[0]->v_type;
-
+                // 先找有没有确定类型的元素
+                TypeRef element_type = undefined_type();
+                bool found_certain_type = false;
+                for(isize i = 0; i < expr->ArrayInitExpr.elements.count; i++) {
+                    if(is_certain_type(expr->ArrayInitExpr.elements[i]->v_type)) {
+                        found_certain_type = true;
+                        element_type = expr->ArrayInitExpr.elements[i]->v_type;
+                        break;
+                    }
+                }
+                if(!found_certain_type) {
+                    // 如果没有确定类型的元素, 那就用第一个元素推导类型
+                    infer_expr_type(expr->ArrayInitExpr.elements[0], false, target_type, analyser);
+                    element_type = expr->ArrayInitExpr.elements[0]->v_type;
+                }
+                // TODO 这里如果没有确定类型的元素, 会多执行一次推导(因为要获取第一个元素类型, 提前推导), 可以优化
 
                 // 推导其他元素类型
-                for(isize i = 1; i < expr->ArrayInitExpr.elements.count; i++) {
+                for(isize i = 0; i < expr->ArrayInitExpr.elements.count; i++) {
                     infer_expr_type(expr->ArrayInitExpr.elements[i], true, element_type, analyser);
 
                     if(element_type != expr->ArrayInitExpr.elements[i]->v_type) {

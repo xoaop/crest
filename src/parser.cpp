@@ -226,10 +226,20 @@ Ast *parse_top_level(Parser *p) {
         }
         a->Function.return_type_ast = return_type;
 
-        
+        // TODO: TEST 临时支持 extern_C 函数
+        a->Function.is_extern_C = false;
+        if(curr_token(p).type == TokenType::KW_extern_C) {
+            expect(p, TokenType::KW_extern_C);
+            a->Function.block = NULL;
+            a->Function.is_extern_C = true;
 
-        a->Function.block = parse_block(p);
-        a->Function.block->Block.is_function_body = true;
+            expect(p, TokenType::Semicolon);
+
+        } else {
+            a->Function.block = parse_block(p);
+            a->Function.block->Block.is_function_body = true;
+        }
+
 
     } break;
     
@@ -426,7 +436,7 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
     } else if (next.type == TokenType::LeftBracket) {
         // Function Call Expr
         a->type = AstType_FunctionCallExpr;
-        a->FunctionCallExpr.name = ident.token_str;
+        a->FunctionCallExpr.name = expect(p, TokenType::Ident).token_str;
         expect(p, TokenType::LeftBracket);
 
         a->FunctionCallExpr.args = make_array<Ast *>(ast_allocator());

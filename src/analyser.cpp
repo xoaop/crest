@@ -140,15 +140,19 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
     for(isize i = 0; i < ast->Function.params.count; i++) {
         resolve_var_decl(ast->Function.params[i], analyser);
     }
+    
+    if(ast->Function.block != NULL) {
+        
 
-    resolve_block(ast->Function.block, analyser);
+        resolve_block(ast->Function.block, analyser);
 
 
-    if(may_fall_through(ast->Function.block)) {
-        if(analyser->curr_function->v_type->function_info.return_type->kind != Type_void) {
-            // TODO 非void函数漏写return错误处理
-            error_msg(&ast->token, "non-void function may fall through without return");
-            XP_ASSERT_MSG(0, "non-void function may fall through without return");
+        if(may_fall_through(ast->Function.block)) {
+            if(analyser->curr_function->v_type->function_info.return_type->kind != Type_void) {
+                // TODO 非void函数漏写return错误处理
+                error_msg(&ast->token, "non-void function may fall through without return");
+                XP_ASSERT_MSG(0, "non-void function may fall through without return");
+            }
         }
     }
 }
@@ -338,8 +342,12 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         XP_ASSERT_DEFAULT(analyser->loop_ast_stack.count > 0);
     } break;
 
-    default: {
+    case AstType_FunctionCallExpr: {
+        resolve_expr(stmt_ast, analyser);
+    } break;
 
+    default: {
+        XP_ASSERT_DEFAULT(0);
     } break;
     
     }

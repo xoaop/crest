@@ -36,6 +36,7 @@ struct Ast;
         Array<Ast *> params;                                                \
         Ast *block;                                                         \
         Ast *return_type_ast;                                               \
+        bool is_extern_C;                                                   \
     })                                                                      \
     AST_INFO(StructDecl, "struct decl", struct {                            \
         xpString name;                                                      \
@@ -190,6 +191,7 @@ extern const char *ast_strs[];
 
 Ast *ast_alloc(AstType type, xpAllocator allocator);
 Ast *ast_alloc(AstType type);
+Ast *ast_alloc(AstType type, Token token);
 Ast ast_make(AstType type);
 AstFile ast_file_make();
 

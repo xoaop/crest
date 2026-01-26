@@ -217,6 +217,11 @@ void gen_ir_astfile(AstFile f) {
 void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     XP_ASSERT_DEFAULT(function->type == AstType_Function);
 
+    // TODO: TEST extern_C
+    if(function->Function.block == NULL) {
+        return;
+    }
+
     LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen->ctx);
     LLVMValueRef func = LLVMGetNamedFunction(gen->module, function->Function.name.c_str);
 
@@ -724,7 +729,18 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         LLVMTypeRef type = LLVMGlobalGetValueType(func);
 
-        return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "calltmp");
+        SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
+
+
+        if(info->type->function_info.return_type == easy_type(Type_void)) {
+            // 无返回值函数调用
+
+            return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "");
+        } else {
+            // 有返回值函数调用
+
+            return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "calltmp");
+        }
     } break;
 
     case AstType_CastExpr: {
