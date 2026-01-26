@@ -32,9 +32,11 @@ void declaration_collect_ast_visitor(Ast *ast, Analyser *analyser, AllDecls *all
         }
 
         // 函数体内的变量声明收集
-        for(isize i = 0; i < ast->Function.block->Block.statements.count; i++) {
-            Ast *stmt = ast->Function.block->Block.statements[i];
-            declaration_collect_ast_visitor(stmt, analyser, all_decls);
+        if(ast->Function.block != NULL) {
+            for(isize i = 0; i < ast->Function.block->Block.statements.count; i++) {
+                Ast *stmt = ast->Function.block->Block.statements[i];
+                declaration_collect_ast_visitor(stmt, analyser, all_decls);
+            }
         }
 
         array_push_back(&all_decls->function_decls, ast);
