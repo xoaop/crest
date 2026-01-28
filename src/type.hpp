@@ -20,7 +20,6 @@
     TYPE_KIND(pointer, "pointer")                       \
     TYPE_KIND(struct, "struct")                         \
     TYPE_KIND(array, "array")                           \
-    TYPE_KIND(string, "string")                         \
     TYPE_KIND(untyped_int, "untyped_int")               \
     TYPE_KIND(untyped_float, "untyped_float")           \
     TYPE_KIND(uncertain, "uncertain")                   \

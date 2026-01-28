@@ -557,6 +557,31 @@ static TypeTable global_type_table;
 
 void init_type_table() {
     xp_interning_table_init(&global_type_table.type_interning_table);
+
+
+    //
+    // 预定义类型
+    //
+
+    // 字符串结构体
+    {
+        xpString string_struct_name = xp_string_c("string");
+
+        Array<StructField> fields = make_array<StructField>(temp_allocator());
+        defer(xp_arena_allocator_clear(temp_allocator()));
+
+        array_push_back(&fields, StructField { 
+            xp_string_c("data"), 
+            pointer_type(easy_type(Type_u8)) 
+        });
+        array_push_back(&fields, StructField { 
+            xp_string_c("count"), 
+            easy_type(Type_i64) // TODO 考虑改成isize
+        });
+
+        add_struct_type(string_struct_name, fields);
+
+    }
 }
 
 
@@ -723,6 +748,19 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     }
 
     xp_arena_allocator_clear(temp_allocator());
+}
+
+// NOTE: 实际上就是结构体
+TypeRef string_type_as_struct() {
+    xpString string_struct_name = xp_string_c("string");
+
+    TypeRef type_ref = get_struct_type(string_struct_name);
+    if(type_ref != NULL) {
+        return type_ref;
+    } else {
+        XP_ASSERT_MSG(0, "string type should be pre-defined");
+    }
+    
 }
 
 
