@@ -123,6 +123,7 @@ bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
 bool is_array_type(TypeRef type);
 bool is_slice_struct_type(TypeRef type);
+bool is_string_struct_type(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -175,7 +176,7 @@ TypeRef get_struct_or_uncertain_type(xpString name);
 TypeRef undefined_type();
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
-
+TypeRef string_type_as_struct();
 
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);

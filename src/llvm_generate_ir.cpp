@@ -455,10 +455,18 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         LLVMBuildBr(gen->builder, gen->loop_stack[gen->loop_stack.count - 1].post_block);
     } break;
 
+
+    case AstType_Block: {
+        state = gen_ir_block(gen, stmt, state);
+        break;
+    }
+
     default: {
         gen_ir_expr(gen, stmt, state);
         break;
     }
+
+    
     }
 
     return state;
@@ -834,8 +842,8 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
             elem_ptr = LLVMBuildGEP2(gen->builder, get_llvm_type_from_type(gen, expr->IndexExpr.array_var_expr->v_type), array_or_slice_ptr, indices, 2, "arrayelementptrtmp");
 
-        } else if(is_slice_struct_type(expr->IndexExpr.array_var_expr->v_type)) {
-            // 切片索引
+        } else if(is_slice_struct_type(expr->IndexExpr.array_var_expr->v_type) || is_string_struct_type(expr->IndexExpr.array_var_expr->v_type)) {
+            // 切片索引 或 字符串索引
             
             LLVMValueRef slice_val = LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->IndexExpr.array_var_expr->v_type), array_or_slice_ptr, "loadslicetmp");
             LLVMValueRef data_raw = LLVMBuildExtractValue(gen->builder, slice_val, 0, "slicedataptrtmp");
@@ -862,6 +870,27 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         }
 
     } break;
+
+    case AstType_StringLiteralExpr: {
+
+        LLVMValueRef str_const = LLVMBuildGlobalString(
+            gen->builder, 
+
+            // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
+            // 不把""当成字符串内容
+            xp_make_string_capacity(stage_allocator(), expr->StringLiteralExpr.str.c_str, expr->StringLiteralExpr.str.length).c_str, 
+            "stringliteraltmp"
+        );
+
+        LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(gen, expr->v_type));
+        
+        str_struct = LLVMBuildInsertValue(gen->builder, str_struct, str_const, 0, "insertstrptrtmp");
+
+        str_struct = LLVMBuildInsertValue(gen->builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->StringLiteralExpr.str.length, 0), 1, "insertstrlenntmp");
+
+        return str_struct;
+    } break;
+
 
     default:
         printf("\n-------------------------------------------\n");

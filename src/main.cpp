@@ -16,14 +16,27 @@
 
 int main(int argc, char** argv) {
     
+    // 内存分配器初始化
     global_allocators_init();
     defer(global_allocators_free());
     
+
+    // 关键字表初始化和测试
     init_keyword_map();
     test_keyword_map();
 
+
+
+    // 全局符号表初始化
+    symbol_table_init();
+
+
     // 类型系统初始化
     init_type_table();
+
+
+
+
 
     // TODO(xoaop): 参数解析
     if(argc < 2) {
@@ -31,7 +44,6 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    symbol_table_init();
     
 
     char const *path = argv[1];
