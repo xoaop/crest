@@ -438,10 +438,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             }
 
             if(expr->UnaryExpr.op == TokenType::And) {
-                // if(expr->UnaryExpr.operand->type != AstType_VarExpr) {
-                    //     error_msg(&expr->token, "address-of operator can only be applied to variable expressions");
-                    //     XP_ASSERT_DEFAULT(0);
-                    // }
+
                 // 取地址只能用于左值
                 if(!expr->UnaryExpr.operand->is_lvalue) {
                     error_msg(&expr->token, "address-of operator can only be applied to lvalue expressions");
@@ -645,6 +642,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             } else {
                 // 如果没有目标类型
                 // 先找有没有确定类型的元素
+
                 TypeRef element_type = undefined_type();
                 bool found_certain_type = false;
                 for(isize i = 0; i < expr->ArrayInitExpr.elements.count; i++) {
