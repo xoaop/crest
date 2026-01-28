@@ -115,6 +115,55 @@ TypeRef get_compliable_const_type(Ast *constant) {
     }
 }
 
+static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
+    switch(expr->type) {
+    case AstType_UnaryExpr: {
+
+        if(expr->UnaryExpr.op == TokenType::Star) {
+
+            if(expr->UnaryExpr.operand->is_lvalue) {
+                return true;
+            } else {
+                return false;
+            }
+
+        } else {
+
+            return false;
+        }
+    } break;
+
+    case AstType_VarExpr: {
+        return true;
+    } break;
+
+    case AstType_IndexExpr: {
+        if(expr->IndexExpr.array_var_expr->is_lvalue) {
+            return true;
+        } else {
+            return false;
+        }
+    } break;
+
+    case AstType_FieldAccessExpr: {
+        if(expr->FieldAccessExpr.parent_expr->is_lvalue) {
+            return true;
+        } else {
+            return false;
+        }
+
+    } break;
+
+    default: {
+        return false;
+    } break;
+
+    }
+
+    return false;
+}
+
+
 // 检查某表达式是是否可以被当作target_type
 static bool check_target_type(Ast *expr, TypeRef target_type) {
 
@@ -358,8 +407,6 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             if(is_return_bool_operator(expr->BinaryExpr.op)) {
                 expr->v_type = easy_type(Type_bool);
             } 
-           
-
             
         } break;
 
@@ -465,9 +512,8 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
                 // 设置解引用后的类型
                 expr->v_type = get_pointed_type(expr->UnaryExpr.operand->v_type);
 
-                // 解引用表达式是左值
-                expr->is_lvalue = true;
             }
+            
 
         } break;
         
@@ -526,6 +572,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
 
 
             expr->v_type = expr->CastExpr.target_type;
+
         } break;
 
         // TODO 检查
@@ -570,12 +617,11 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             // expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
             expr->v_type = field.type;
 
-            // 结构体字段表达式是左值
-            expr->is_lvalue = true;
         } break;
 
         case AstType_StructInitExpr: {
             // 检查是否是结构体类型
+
             SymbolInfo *struct_type_info = find_symbol(symbol_table(), expr->StructInitExpr.struct_type_name);
             if(struct_type_info == NULL || !is_struct_type(struct_type_info->type)) {
                 error_msg(&expr->token, "struct type '%s' not found", expr->StructInitExpr.struct_type_name.c_str);
@@ -599,6 +645,8 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             }
 
             expr->v_type = struct_type_info->type;
+
+
         } break;
 
         // TODO 数组字面量类型检查+推导
@@ -671,7 +719,8 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
 
                 expr->v_type = array_type(element_type, cast(usize)(expr->ArrayInitExpr.elements.count));
             }
-        
+            
+
         } break;
 
         case AstType_IndexExpr: {
@@ -683,8 +732,9 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             // 检查被下标访问表达式是不是: 
             // 1.数组类型 
             // 2.切片类型
+            // 3.字符串类型
             TypeRef as_type = expr->IndexExpr.array_var_expr->v_type;
-            if(!is_array_type(as_type) && !is_slice_struct_type(as_type)) { 
+            if(!is_array_type(as_type) && !is_slice_struct_type(as_type) && !is_string_struct_type(as_type)) {
                 error_msg(&expr->token, "only array or slice struct types can be indexed");
                 XP_ASSERT_DEFAULT(0);
             }
@@ -701,15 +751,19 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             // 如果是, 就做常量折叠, 判断是否在范围内
             // 如果不是, 就不管
 
-            if(is_array_type(as_type) && expr->IndexExpr.index_expr->is_const_expr) {
-                try_constant_expr_folding(expr->IndexExpr.index_expr);
-                XP_ASSERT_DEFAULT(expr->IndexExpr.index_expr->type == AstType_Constant && expr->IndexExpr.index_expr->is_const_expr);
+            if(is_array_type(as_type)) {
 
-                if(expr->IndexExpr.index_expr->Constant.value < 0 || 
-                   expr->IndexExpr.index_expr->Constant.value >= cast(i128)as_type->array_info.count) {
-                    error_msg(&expr->IndexExpr.index_expr->token, "index expression out of bounds");
-                    XP_ASSERT_DEFAULT(0);
+                if(expr->IndexExpr.index_expr->is_const_expr) {
+                    try_constant_expr_folding(expr->IndexExpr.index_expr);
+                    XP_ASSERT_DEFAULT(expr->IndexExpr.index_expr->type == AstType_Constant && expr->IndexExpr.index_expr->is_const_expr);
+    
+                    if(expr->IndexExpr.index_expr->Constant.value < 0 || 
+                       expr->IndexExpr.index_expr->Constant.value >= cast(i128)as_type->array_info.count) {
+                        error_msg(&expr->IndexExpr.index_expr->token, "index expression out of bounds");
+                        XP_ASSERT_DEFAULT(0);
+                    }
                 }
+
             }
             
             // 设置下标表达式的类型
@@ -721,12 +775,18 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
 
 
                 expr->v_type = as_type->struct_fields[0].type->pointed_type;
+            } else if(is_string_struct_type(as_type)) {
+
+                
+                expr->v_type = as_type->struct_fields[0].type->pointed_type;
             } else {
                 XP_ASSERT_DEFAULT(0);
             }
+        } break;
 
-            // 下标表达式是左值
-            expr->is_lvalue = true;
+        case AstType_StringLiteralExpr: {
+            expr->v_type = string_type_as_struct();
+
         } break;
 
 
@@ -734,8 +794,6 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->VarExpr.name);
             expr->v_type = info->type;
 
-            // 变量表达式是左值
-            expr->is_lvalue = true;
         } break;
         case AstType_FunctionCallExpr: {
             SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
@@ -747,6 +805,11 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             XP_ASSERT_DEFAULT(0);
         } break;
     }
+
+
+    // 设置是否是左值
+    expr->is_lvalue = check_is_lvalue(expr, expr->v_type);
+
 
     if(depth == 1) {
         if(has_target) {

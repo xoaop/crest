@@ -439,6 +439,12 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
     } break;
 
 
+    case AstType_StringLiteralExpr: {
+        // TODO 字符串字面量类型处理
+
+        
+    } break;
+
     case AstType_Undefined: {
         XP_ASSERT_DEFAULT(0);
     } break;

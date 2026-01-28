@@ -1,5 +1,19 @@
 #include "type.hpp"
 
+#include "symbol.hpp"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static const char *type_strings[] = {
 
@@ -385,6 +399,18 @@ bool is_slice_struct_type(TypeRef type) {
     return true;
 }
 
+bool is_string_struct_type(TypeRef type) {
+    if(!is_struct_type(type)) {
+        return false;
+    }
+
+    if(xp_string_cmp(type->type_name, xp_string_c("string")) == 0) {
+        return true;
+    }
+
+    return false;
+}
+
 
 int get_type_rank(TypeRef t) {
     switch (t->kind) {
@@ -579,8 +605,13 @@ void init_type_table() {
             easy_type(Type_i64) // TODO 考虑改成isize
         });
 
-        add_struct_type(string_struct_name, fields);
+        TypeRef string_struct_typeref = add_struct_type(string_struct_name, fields);
 
+        // 符号表
+        SymbolInfo string_struct_symbol;
+        string_struct_symbol.name = string_struct_name;
+        string_struct_symbol.type = string_struct_typeref;
+        add_symbol(symbol_table(), string_struct_symbol.name, string_struct_symbol);
     }
 }
 
