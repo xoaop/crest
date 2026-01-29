@@ -15,6 +15,9 @@ struct Ast;
 
 #define AST_INFOS                                                           \
     AST_INFO(Undefined, "undefined", struct {})                             \
+    AST_INFO(Import, "import", struct {                                     \
+        xpString path;                                                      \
+    })                                                                      \
     AST_INFO(EasyType, "easy type", struct {                                \
         TypeKind kind;                                                      \
     })                                                                      \
@@ -141,7 +144,9 @@ struct Ast;
     
 //Ast文件定义
 struct AstFile {
-    Array<Ast *> root;
+    xpString file_path; 
+    
+    Array<Ast *> top_levels;
 };
 
 // Ast类型枚举

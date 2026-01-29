@@ -74,6 +74,7 @@
     TOKEN_INFO(KW_true, "true"),                                \
     TOKEN_INFO(KW_false, "false"),                              \
     TOKEN_INFO(KW_null, "null"),                                \
+    TOKEN_INFO(KW_import, "import"),                            \
     /*      */                                                  \
     /* TEMP */                                                  \
     TOKEN_INFO(KW_extern_C, "extern_C"),                        \

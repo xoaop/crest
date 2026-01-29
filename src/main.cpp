@@ -67,16 +67,16 @@ int main(int argc, char** argv) {
     AstFile f = parse_file(tokenizer.token_array);
     #endif
 
-    print_ast(f.root);
+    print_ast(f.top_levels);
     printf("\n=========================================\n");
 
     semantic_analysis_ast_file(&f);
     
-    print_ast(f.root);
+    print_ast(f.top_levels);
     printf("\n=========================================\n");
 
     gen_ir_astfile(f);
-    print_ast(f.root);
+    print_ast(f.top_levels);
 
     
     

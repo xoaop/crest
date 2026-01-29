@@ -25,10 +25,10 @@ SYMBOL_TYPES
 
 
 
-enum ScopeType {
-    ScopeType_Global,
-    ScopeType_Local,
-};
+// enum ScopeType {
+//     ScopeType_Global,
+//     ScopeType_Local,
+// };
 
 
 struct SymbolInfo {
@@ -36,7 +36,7 @@ struct SymbolInfo {
     TypeRef type;
 
     // TODO 现在先不区分作用域类型, 后面实现
-    ScopeType scope;
+    // ScopeType scope;
     
     // TODO 这个目前好像没什么用, 可以直接用Type
     // SymbolType type;
