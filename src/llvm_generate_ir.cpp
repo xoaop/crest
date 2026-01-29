@@ -173,8 +173,8 @@ void gen_ir_astfile(AstFile f) {
     LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
 
 
-    for(isize i = 0; i < f.root.count; i++) {
-        Ast *top_level = f.root[i];
+    for(isize i = 0; i < f.top_levels.count; i++) {
+        Ast *top_level = f.top_levels[i];
         if(top_level->type == AstType_Function) {
             Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(stage_allocator(), top_level->Function.params.count);
             for(isize j = 0; j < top_level->Function.params.count; j++) {
@@ -189,10 +189,10 @@ void gen_ir_astfile(AstFile f) {
     // printf("%s\n", str);
 
     // TODO
-    for(isize i = 0; i < f.root.count; i++) {
-        switch(f.root[i]->type) {
+    for(isize i = 0; i < f.top_levels.count; i++) {
+        switch(f.top_levels[i]->type) {
             case AstType_Function:
-                gen_ir_function(&gen, f.root[i]);
+                gen_ir_function(&gen, f.top_levels[i]);
                 break;
             case AstType_StructDecl:
                 // TODO 结构体声明处理
@@ -222,7 +222,6 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
         return;
     }
 
-    LLVMTypeRef i32_type = LLVMInt32TypeInContext(gen->ctx);
     LLVMValueRef func = LLVMGetNamedFunction(gen->module, function->Function.name.c_str);
 
     // 1. 创建入口基本块并设置插入点
@@ -247,6 +246,14 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     gen_ir_block(gen, function->Function.block, state);
 
 
+    TypeRef func_type = find_symbol(symbol_table(), function->Function.name)->type;
+    
+
+    if(func_type->function_info.return_type == easy_type(Type_void)) {
+        // void 函数自动添加返回
+
+        LLVMBuildRetVoid(gen->builder);
+    }
     
     // 处理函数末尾没有返回语句的情况
     LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(func);
@@ -466,7 +473,7 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         break;
     }
 
-    
+
     }
 
     return state;

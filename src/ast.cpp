@@ -46,7 +46,7 @@ Ast *ast_alloc(AstType type, Token token) {
 
 AstFile ast_file_make() {
     AstFile f = {};
-    f.root = make_array<Ast *>(ast_allocator());
+    f.top_levels = make_array<Ast *>(ast_allocator());
     return f;
 }
 

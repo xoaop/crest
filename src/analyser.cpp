@@ -90,7 +90,7 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
 
 
     // TODO TEST
-    // print_ast(ast_file->root);
+    // print_ast(ast_file->top_levels);
 
 
     resolve_ast_file(ast_file, &analyser);
@@ -106,8 +106,8 @@ void semantic_analysis_ast_file(AstFile *ast_file) {
 
 void resolve_ast_file(AstFile *ast_file, Analyser *analyser) {
 
-    for(isize i = 0; i < ast_file->root.count; i++) {
-        resolve_top_level(ast_file->root[i], analyser);
+    for(isize i = 0; i < ast_file->top_levels.count; i++) {
+        resolve_top_level(ast_file->top_levels[i], analyser);
     }
 
     return;

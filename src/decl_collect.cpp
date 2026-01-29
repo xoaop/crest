@@ -86,8 +86,8 @@ AllDecls declaration_collect_ast_file(AstFile *file, Analyser *analyser, xpAlloc
     all_decls.variable_decls = make_array<Ast *>(allocator);
     all_decls.function_decls = make_array<Ast *>(allocator);
     
-    for(isize i = 0; i < file->root.count; i++) {
-        declaration_collect_ast_visitor(file->root[i], analyser, &all_decls);
+    for(isize i = 0; i < file->top_levels.count; i++) {
+        declaration_collect_ast_visitor(file->top_levels[i], analyser, &all_decls);
     }
 
     return all_decls;

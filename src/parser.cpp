@@ -1,7 +1,7 @@
 
 #include "parser.hpp"
 
-
+#include "path.hpp"
 
 void parser_init(Parser *parser, Array<Token> tokens) {
     parser->curr_token_index = 0;
@@ -56,6 +56,8 @@ Ast *parse_basic_and_ident_type(Parser *p);
 
 
 AstFile parse_file(Array<Token> tokens) {
+    defer(xp_arena_allocator_clear(stage_allocator()));
+
     Parser p = parser_make(tokens);
 
     for(;;) {
@@ -63,7 +65,7 @@ AstFile parse_file(Array<Token> tokens) {
             break;
         }
         
-        array_push_back<Ast *>(&p.f.root, parse_top_level(&p));
+        array_push_back<Ast *>(&p.f.top_levels, parse_top_level(&p));
     }
 
     return p.f;
@@ -159,6 +161,28 @@ Ast *parse_type(Parser *p) {
         return parse_basic_and_ident_type(p);
     }
 }
+
+
+Ast *parse_import(Parser *p) {
+    Ast *a = ast_alloc(AstType_Import);
+
+    expect(p, TokenType::KW_import);
+
+    Token path_token = expect(p, TokenType::StringLiteral);
+    a->token = path_token;
+
+    xpString raw_path = path_token.token_str;
+    raw_path.c_str = raw_path.c_str + 1;  // 去掉开头的引号
+    raw_path.length -= 2;                 // 去掉结尾的引号
+
+
+    a->Import.path = normalize_path(raw_path, ast_allocator());
+
+    expect(p, TokenType::Semicolon);
+
+    return a;
+}
+
 
 
 Ast *parse_top_level(Parser *p) {
@@ -280,6 +304,10 @@ Ast *parse_top_level(Parser *p) {
 
         expect(p, TokenType::RightCurlyBracket);
 
+    } break;
+
+    case TokenType::KW_import: {
+        return parse_import(p);
     } break;
 
     default:
