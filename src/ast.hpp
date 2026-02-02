@@ -9,20 +9,17 @@
 
 
 
-struct AstFile;
 struct Ast;
 
 
 #define AST_INFOS                                                           \
     AST_INFO(Undefined, "undefined", struct {})                             \
     AST_INFO(Import, "import", struct {                                     \
+        xpString alias;                                                     \
         xpString path;                                                      \
     })                                                                      \
     AST_INFO(EasyType, "easy type", struct {                                \
         TypeKind kind;                                                      \
-    })                                                                      \
-    AST_INFO(IdentType, "ident type", struct {                              \
-        xpString name;                                                      \
     })                                                                      \
     AST_INFO(PointerType, "pointer type", struct {                          \
         Ast *pointed_type_ast;                                              \
@@ -34,6 +31,12 @@ struct Ast;
     AST_INFO(SliceType, "slice type", struct {                              \
         Ast *element_type_ast;                                              \
     })                                                                      \
+    AST_INFO(Ident, "ident", struct {                                       \
+        xpString name;                                                      \
+    })                                                                      \
+    /* AST_INFO(PathIdent, "path ident", struct {   */                         \
+    /*    Array<Ast *> idents;                      */                         \
+    /*})                                            */                         \
     AST_INFO(Function, "function", struct {                                 \
         xpString name;                                                      \
         Array<Ast *> params;                                                \
@@ -79,6 +82,10 @@ struct Ast;
         Ast *left_var_expr;                                                 \
         Ast *right_expr;                                                    \
     })                                                                      \
+    AST_INFO(FieldAccess, "field access", struct {                          \
+        Ast *parent;                                                        \
+        xpString field_name;                                                \
+    })                                                                      \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \
         union {                                                             \
@@ -95,11 +102,11 @@ struct Ast;
         TokenType op;                                                       \
         Ast *operand;                                                       \
     })                                                                      \
-    AST_INFO(VarExpr, "variable expr", struct {                             \
-        xpString name;                                                      \
-    })                                                                      \
+    /*AST_INFO(VarExpr, "variable expr", struct { */                            \
+    /*    Ast *var_name_ast;                      */                            \
+    /*})                                          */                            \
     AST_INFO(FunctionCallExpr, "function call expr", struct {               \
-        xpString name;                                                      \
+        Ast *func_ident;                                                    \
         Array<Ast *> args;                                                  \
     })                                                                      \
     AST_INFO(CastExpr, "cast expr", struct {                                \
@@ -107,12 +114,8 @@ struct Ast;
         Ast *target_type_ast;                                               \
         TypeRef target_type;    /* TODO REMOVE */                           \
     })                                                                      \
-    AST_INFO(FieldAccessExpr, "field access expr", struct {                 \
-        Ast *parent_expr;                                                   \
-        xpString field_name;                                                \
-    })                                                                      \
     AST_INFO(StructInitExpr, "struct init expr", struct {                   \
-        xpString struct_type_name;                                          \
+        Ast *struct_type_ident;                                             \
         Array<Ast *> field_inits;                                           \
     })                                                                      \
     AST_INFO(ArrayInitExpr, "array init expr", struct {                     \
@@ -141,13 +144,7 @@ struct Ast;
 
 
 
-    
-//Ast文件定义
-struct AstFile {
-    xpString file_path; 
-    
-    Array<Ast *> top_levels;
-};
+
 
 // Ast类型枚举
 enum AstType {
@@ -198,7 +195,6 @@ Ast *ast_alloc(AstType type, xpAllocator allocator);
 Ast *ast_alloc(AstType type);
 Ast *ast_alloc(AstType type, Token token);
 Ast ast_make(AstType type);
-AstFile ast_file_make();
 
 
 bool is_add_sub_operator(TokenType t);

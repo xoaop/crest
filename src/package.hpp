@@ -4,7 +4,9 @@
 #include "xoaop.h"
 #include "symbol.hpp"
 #include "ast.hpp"
+#include "ast_file.hpp"
 #include "scope.hpp"
+
 
 struct Package {
     xpString path;

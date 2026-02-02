@@ -3,10 +3,10 @@
 #include "symbol.hpp"
 
 
+#include "context.hpp"
 
 
-
-
+#include "package.hpp"
 
 
 
@@ -55,31 +55,21 @@ TypeKind string_to_type_kind(xpString str) {
 
 
 Type make_type(TypeKind kind) {
-    Type t = {};
+    Type t{};  // 零初始化
     t.kind = kind;
-
-    switch(kind) {
-    case Type_function:
-        // t.function_info.param_types = make_array<Type>(permanent_allocator());
-        // t.function_info.return_type = alloc_type(permanent_allocator(), Type_Undefined);
-        break;
-    case Type_pointer:
-        t.pointed_type = NULL;
-        break;
-    case Type_struct:
-        // t = make_struct_type();
-        break;
-    case Type_array:
-        t.array_info.element_type = NULL;
-        t.array_info.count = 0;
-        break;
-    default: 
-        break;
-    }
-
+    t.type_name = xp_make_string_zero();
 
     return t;
 }
+
+Type *alloc_type(xpAllocator allocator, TypeKind kind) {
+    Type *t = cast(Type *) xp_alloc(allocator, sizeof(Type));
+    *t = make_type(kind);
+    return t;
+}
+
+
+
 
 Type copy_type(Type *src) {
     Type t;
@@ -96,7 +86,8 @@ Type copy_type(Type *src) {
         t.pointed_type = src->pointed_type;
     } break;
     case Type_struct: {
-        t.struct_fields = array_copy(&src->struct_fields, type_allocator());
+        t.struct_info.pkg = src->struct_info.pkg;
+        t.struct_info.struct_fields = array_copy(&src->struct_info.struct_fields, type_allocator());
     } break;
     case Type_array: {
         t.array_info.element_type = src->array_info.element_type;
@@ -113,55 +104,19 @@ Type copy_type(Type *src) {
 }
 
 
-Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer) {
-    XP_ASSERT_DEFAULT(level_of_pointer > 0);
-    XP_ASSERT_DEFAULT(base_type_kind != Type_pointer);
 
-    
-    Type pointer_type = make_type(Type_pointer);
 
-    Type* *curr_pointed_type = &pointer_type.pointed_type;
-    for(isize i = 0; i < level_of_pointer - 1; i++) {
-        Type *next = alloc_type(permanent_allocator(), Type_pointer);
-        *curr_pointed_type = next;
 
-        curr_pointed_type = &(*curr_pointed_type)->pointed_type;
-    }
 
-    *curr_pointed_type = alloc_type(permanent_allocator(), base_type_kind);
+//
+// 
+//
 
-    return pointer_type;
-}
 
-Type make_pointer_type(Type base_type, isize level_of_pointer) {
-    XP_ASSERT_DEFAULT(level_of_pointer > 0);
-    XP_ASSERT_DEFAULT(base_type.kind != Type_pointer);
 
-    
-    Type pointer_type = make_type(Type_pointer);
 
-    Type* *curr_pointed_type = &pointer_type.pointed_type;
-    for(isize i = 0; i < level_of_pointer - 1; i++) {
-        Type *next = alloc_type(permanent_allocator(), Type_pointer);
-        *curr_pointed_type = next;
 
-        curr_pointed_type = &(*curr_pointed_type)->pointed_type;
-    }
 
-    *curr_pointed_type = alloc_type(permanent_allocator(), base_type.kind);
-    *( *curr_pointed_type ) = base_type;
-
-    return pointer_type;
-}
-
-Type make_pointer_type(Type pointed_type) {
-    Type pointer_type = make_type(Type_pointer);
-    pointer_type.pointed_type = alloc_type(permanent_allocator(), pointed_type.kind);
-
-    *(pointer_type.pointed_type) = pointed_type;
-
-    return pointer_type;
-}
 
 TypeRef get_pointed_type(TypeRef pointer_type) {
     XP_ASSERT_DEFAULT(pointer_type->kind == Type_pointer);
@@ -170,10 +125,6 @@ TypeRef get_pointed_type(TypeRef pointer_type) {
     return pointer_type->pointed_type;
 }
 
-void point_to(Type *type, Type *pointed_type) {
-    XP_ASSERT_DEFAULT(type->kind == Type_pointer);
-    type->pointed_type = pointed_type;
-}
 
 TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
     XP_ASSERT_DEFAULT(pointer_type->kind == Type_pointer);
@@ -189,44 +140,18 @@ TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
 
 
 
-Type make_struct_type() {
-    Type struct_type;
-    struct_type.kind = Type_struct;
-    struct_type.struct_fields = make_array<StructField>(permanent_allocator());
-    return struct_type;
-}
 
-
-Type make_struct_type(xpString name) {
-    Type struct_type = make_struct_type();
-    struct_type.type_name = name;
-    return struct_type;
-}
-
-Type make_struct_type(xpString name, Array<StructField> fields) {
-    Type struct_type = {};
-    struct_type.kind = Type_struct;
-    struct_type.type_name = name;
-    struct_type.struct_fields = fields;
-    return struct_type;
-}
-
-
-
-void struct_add_member(Type *type, xpString name, TypeRef member_type) {
-    XP_ASSERT_DEFAULT(type->kind == Type_struct);
-    array_push_back(&type->struct_fields, StructField{name, member_type});
-}
+// Type make_struct_type(xpString name, Array<StructField> fields) {
+//     Type struct_type = {};
+//     struct_type.kind = Type_struct;
+//     struct_type.type_name = name;
+//     struct_type.struct_fields = fields;
+//     return struct_type;
+// }
 
 
 
 
-
-Type *alloc_type(xpAllocator allocator, TypeKind kind) {
-    Type *t = cast(Type *) xp_alloc(allocator, sizeof(Type));
-    *t = make_type(kind);
-    return t;
-}
 
 
 bool is_equal_type(Type a, Type b) {
@@ -254,13 +179,18 @@ bool is_equal_type(Type a, Type b) {
         return is_equal_type(*a.pointed_type, *b.pointed_type);
     
     case Type_struct: 
-        return xp_string_cmp(a.type_name, b.type_name) == 0;
+        return xp_string_equal(a.type_name, b.type_name) && xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path);
 
     // TODO 更多复杂类型比较
     default:
         return true;
     }
 }
+
+
+//
+// IS-TYPE functions
+//
 
 
 
@@ -301,7 +231,7 @@ bool is_easy_type_kind(TypeKind kind) {
 
 // 包括复杂类型和不确定类型
 bool is_hard_type_kind(TypeKind kind) {
-    return is_complex_type_kind(kind) || kind == Type_uncertain;
+    return is_complex_type_kind(kind);
 }
 
 
@@ -410,6 +340,11 @@ bool is_string_struct_type(TypeRef type) {
 
     return false;
 }
+
+
+//
+//
+//
 
 
 int get_type_rank(TypeRef t) {
@@ -563,9 +498,6 @@ void print_type(TypeRef type) {
     case Type_struct:
         printf("struct %s", type->type_name.c_str);
         break;
-    case Type_uncertain:
-        printf("uncertain");
-        break;
 
     case Type_Undefined:
         printf("undefined");
@@ -578,10 +510,16 @@ void print_type(TypeRef type) {
 
 
 
+//
+//
+//
+
+
+
 static TypeTable global_type_table;
 
 
-void init_type_table() {
+void init_type_table(Context *ctx) {
     xp_interning_table_init(&global_type_table.type_interning_table);
 
 
@@ -590,29 +528,33 @@ void init_type_table() {
     //
 
     // 字符串结构体
-    {
-        xpString string_struct_name = xp_string_c("string");
 
-        Array<StructField> fields = make_array<StructField>(temp_allocator());
-        defer(xp_arena_allocator_clear(temp_allocator()));
+    // TODO 移到公共位置, 这里属于API, 不处理特殊类型定义
+    // {
+    //     xpString string_struct_name = xp_string_c("string");
 
-        array_push_back(&fields, StructField { 
-            xp_string_c("data"), 
-            pointer_type(easy_type(Type_u8)) 
-        });
-        array_push_back(&fields, StructField { 
-            xp_string_c("count"), 
-            easy_type(Type_i64) // TODO 考虑改成isize
-        });
+    //     Array<StructField> fields = make_array<StructField>(temp_allocator());
+    //     defer(xp_arena_allocator_clear(temp_allocator()));
 
-        TypeRef string_struct_typeref = add_struct_type(string_struct_name, fields);
+    //     array_push_back(&fields, StructField { 
+    //         xp_string_c("data"), 
+    //         pointer_type(easy_type(Type_u8)) 
+    //     });
+    //     array_push_back(&fields, StructField { 
+    //         xp_string_c("count"), 
+    //         easy_type(Type_i64) // TODO 考虑改成isize
+    //     });
 
-        // 符号表
-        SymbolInfo string_struct_symbol;
-        string_struct_symbol.name = string_struct_name;
-        string_struct_symbol.type = string_struct_typeref;
-        add_symbol(symbol_table(), string_struct_symbol.name, string_struct_symbol);
-    }
+    //     TypeRef string_struct_typeref = add_struct_type(string_struct_name, fields);
+
+    //     // 符号表
+    //     SymbolInfo string_struct_symbol;
+    //     string_struct_symbol.name = string_struct_name;
+    //     string_struct_symbol.type = string_struct_typeref;
+    //     string_struct_symbol.kind = SymbolKind::StructDecl;
+    //     // add_symbol(symbol_table(), string_struct_symbol.name, string_struct_symbol);
+    //     add_symbol_to_scope(&ctx->global_scope, string_struct_name, string_struct_symbol);
+    // }
 }
 
 
@@ -630,9 +572,7 @@ TypeRef pointer_type(TypeRef pointed_type) {
 }
 
 
-TypeRef pointer_type(TypeRef pointed_type, isize level_of_pointer) {
-    XP_TODO;
-}
+
 
 
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type) {
@@ -653,36 +593,50 @@ TypeRef array_type(TypeRef element_type, usize count) {
     return get_or_add_type(t);
 }
 
-
-TypeRef get_struct_type(xpString name) {
+TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields) {
     Type t = {};
     t.kind = Type_struct;
-    t.type_name = name;
+    t.type_name = ident;
+    t.struct_info.pkg = pkg;
+    t.struct_info.struct_fields = fields;
 
-    TypeRef type_ref = get_type(t);
+    TypeRef type_ref = get_or_add_type(t);
 
     return type_ref;
 }
 
-TypeRef get_uncertain_type(xpString type_name) {
+TypeRef unfinished_struct_type(Package *pkg, xpString ident) {
     Type t = {};
-    t.kind = Type_uncertain;
-    t.type_name = type_name;
+    t.kind = Type_struct;
+    t.type_name = ident;
+    t.struct_info.pkg = pkg;
 
-    TypeRef type_ref = get_type(t);
+    TypeRef type_ref = get_or_add_type(t);
 
     return type_ref;
 }
 
-TypeRef get_struct_or_uncertain_type(xpString name) {
-    TypeRef type_ref = get_struct_type(name);
-    if(type_ref != NULL) {
-        return type_ref;
-    }
 
-    type_ref = get_uncertain_type(name);
-    return type_ref;
-}
+
+// TypeRef get_struct_type(Array<StructField> fields) {
+//     Type t = {};
+//     t.kind = Type_struct;
+//     t.struct_fields = fields;
+
+//     TypeRef type_ref = get_type(t);
+
+//     return type_ref;
+// }
+
+// TypeRef add_struct_type(xpString name, Array<StructField> fields) {
+//     Type t = {};
+//     t.kind = Type_struct;
+//     t.type_name = name;
+//     t.struct_fields = fields;
+
+//     return add_type(t);
+// }
+
 
 TypeRef undefined_type() {
     Type t = {};
@@ -713,92 +667,83 @@ TypeRef add_type(Type type) {
     return type_ref;
 }
 
-TypeRef add_uncertain_type(xpString type_name) {
-    Type t = {};
-    t.kind = Type_uncertain;
-    t.type_name = type_name;
 
-    return add_type(t);
-}
-
-TypeRef add_struct_type(xpString name, Array<StructField> fields) {
-    Type t = {};
-    t.kind = Type_struct;
-    t.type_name = name;
-    t.struct_fields = fields;
-
-    return add_type(t);
-}
-
-
-void update_uncertain_to_struct(TypeRef uncertain_type, Array<StructField> fields) {
-    XP_ASSERT_DEFAULT(uncertain_type->kind == Type_uncertain);
-
-    uncertain_type->kind = Type_struct;
-    uncertain_type->struct_fields = array_copy(&fields, type_allocator());
-}
 
 
 // NOTE: 实际上就是结构体
-TypeRef slice_type_as_struct(TypeRef elem_type) {
-    // XP_ASSERT_DEFAULT(array_type->kind == Type_array);
+// TypeRef slice_type_as_struct(TypeRef elem_type) {
+//     // XP_ASSERT_DEFAULT(array_type->kind == Type_array);
 
 
     
-    xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
-    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
+//     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
+//     xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
 
-    xp_string_append(&slice_struct_name, elem_str);
-
-
-    Type t = {};
-    t.kind = Type_struct;
-    t.type_name = slice_struct_name;
-
-    TypeRef type_ref = get_struct_type(slice_struct_name);
-    if(type_ref != NULL) {
-        return type_ref;
-    } else {
-
-        Array<StructField> fields = make_array<StructField>(temp_allocator());
+//     xp_string_append(&slice_struct_name, elem_str);
 
 
+//     Type t = {};
+//     t.kind = Type_struct;
+//     t.type_name = slice_struct_name;
 
-        array_push_back(&fields, StructField { 
-            xp_make_string(type_allocator(), "data"), 
-            pointer_type(elem_type) 
-        });
-        array_push_back(&fields, StructField { 
-            xp_make_string(type_allocator(), "count"), 
-            easy_type(Type_i64) 
-        });
+//     TypeRef type_ref = get_struct_type(slice_struct_name);
+//     if(type_ref != NULL) {
+//         return type_ref;
+//     } else {
+
+//         Array<StructField> fields = make_array<StructField>(temp_allocator());
 
 
 
-        return add_struct_type(slice_struct_name, fields);
-    }
+//         array_push_back(&fields, StructField { 
+//             xp_make_string(type_allocator(), "data"), 
+//             pointer_type(elem_type) 
+//         });
+//         array_push_back(&fields, StructField { 
+//             xp_make_string(type_allocator(), "count"), 
+//             easy_type(Type_i64) 
+//         });
 
-    xp_arena_allocator_clear(temp_allocator());
-}
+
+
+//         return add_struct_type(slice_struct_name, fields);
+//     }
+
+//     xp_arena_allocator_clear(temp_allocator());
+// }
 
 // NOTE: 实际上就是结构体
-TypeRef string_type_as_struct() {
-    xpString string_struct_name = xp_string_c("string");
+// TypeRef string_type_as_struct() {
+//     xpString string_struct_name = xp_string_c("string");
 
-    TypeRef type_ref = get_struct_type(string_struct_name);
-    if(type_ref != NULL) {
-        return type_ref;
-    } else {
-        XP_ASSERT_MSG(0, "string type should be pre-defined");
-    }
+//     TypeRef type_ref = get_struct_type(string_struct_name);
+//     if(type_ref != NULL) {
+//         return type_ref;
+//     } else {
+//         XP_ASSERT_MSG(0, "string type should be pre-defined");
+//     }
     
-}
+// }
+
+
+
 
 
 xpString get_type_kind_str(TypeKind kind) {
     return xp_string_c(type_strings[kind]);
 }
 
+xpString get_type_name(TypeRef type, bool need_free_temp_allocator) {
+
+    // 如果已经有名字就直接返回
+    if(type->type_name.capacity != 0) {
+        return type->type_name;
+    }
+
+    type->type_name = get_or_make_type_str(type, permanent_allocator(), need_free_temp_allocator);
+
+    return type->type_name;
+}
 
 
 xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_free_temp_allocator) {
@@ -835,7 +780,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
 
         return base_str;
 
-    } else if(is_struct_type(type) || type->kind == Type_uncertain) {
+    } else if(is_struct_type(type)) {
         // 直接用类型名
 
         return type->type_name;
@@ -886,6 +831,20 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 template<>
 usize xp_hash_func(Type *type) {
     switch(type->kind) {
@@ -927,14 +886,20 @@ usize xp_hash_func(Type *type) {
             return cast(usize)(xp_hash_combine_u64(hash_pointer, hash_pointed_type));
         } break;
 
-        // 目前的uncertain只可能表示不确定的结构体类型, 所以哈希逻辑和struct一样
-        // 这也使得uncertain可以修改为struct而不导致哈希值变化
-        case Type_uncertain: 
-        case Type_struct: {
 
-            // 用类型名哈希, 不考虑字段列表
-            // 这样可以让字段列表修改的同时不改变哈希值, 方便类型不完整的struct声明
-            return xp_hash_func(&type->type_name);
+        case Type_struct: {
+            u64 hash_struct = Type_struct;
+            u64 hash_type_name = cast(u64)(xp_hash_func(&type->type_name));
+
+            // package用path作为哈希值
+            u64 hash_package = cast(u64)(xp_hash_func(&type->struct_info.pkg->path));
+
+
+            u64 hash_value = xp_hash_combine_u64(hash_struct, hash_type_name);
+            hash_value = xp_hash_combine_u64(hash_value, hash_package);
+
+
+            return cast(usize)(hash_value);
         } break;
 
         case Type_array: {
@@ -953,6 +918,11 @@ usize xp_hash_func(Type *type) {
     
     }
 }
+
+
+
+
+
 
 
 

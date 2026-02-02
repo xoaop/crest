@@ -1,29 +1,39 @@
 #include "resolve_depend.hpp"
 
-#include "xoaop.h"
+
 #include "ast.hpp"
 #include "tokenizer.hpp"
 #include "parser.hpp"
-#include "package.hpp"
 
 #include "path.hpp"
 
+#include "error_msg.hpp"
 
 
 
+#include "context.hpp"
+
+
+
+enum class PackageState {
+    Unresolved,
+    Resolving,
+    Resolved,
+};
 
 
 
 
 void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imports);
-AstFile tokenize_and_parse_file(const char *path);
+AstFile tokenize_and_parse_file(const char *path, Scope *parent);
 Array<Package> resolve_dependencies(xpString main_dir_path);
-Package resolve_package(const char *path_of_package_dir);
+Package tokenize_and_parse_package(const char *path_of_package_dir);
 Array<xpString> resolve_import_paths(AstFile ast_file);
 Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array<xpString> relative_import_paths);
 
 
-
+bool check_directory_legel(xpString path);
+bool check_file_legal(xpString path);
 
 
 
@@ -34,7 +44,7 @@ Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array
 // 
 // 输入文件路径, 把源文件tokenize并parse为AstFile
 //
-AstFile tokenize_and_parse_file(const char *path) {
+AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
     xpString code_str = file_to_string(path, permanent_allocator());
     
     Tokenizer tokenizer;
@@ -67,26 +77,40 @@ void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imports) {
 Array<Package> resolve_dependencies(xpString main_dir_path) {
     // 所有package所在
     Array<Package> packages = make_array<Package>(permanent_allocator());
+    Array<PackageState> package_states = make_array<PackageState>(stage_allocator());
+
+    auto add_new_package = [&](Package pkg) {
+        array_push_back(&packages, pkg);
+            array_push_back(&package_states, PackageState::Unresolved);
+    };
+    auto update_package_state = [&](isize package_index, PackageState new_state) {
+        package_states[package_index] = new_state;
+    };
+
+    if(!check_directory_legel(main_dir_path)) {
+        // TODO ERROR: main package路径不合法
+        error_msg(NULL, "main package path is not a valid directory: %s", main_dir_path.c_str);
+        return packages;
+    }
 
     // 解析主package
-    Package main_package = resolve_package(main_dir_path.c_str);
-    array_push_back(&packages, main_package);
+    Package main_package = tokenize_and_parse_package(main_dir_path.c_str);
+    add_new_package(main_package);
 
 
     // 检查每个package的import, 添加新的package
-    for(isize i = 0; true; i++) {
+    for(isize i = 0; i < packages.count; i++) {
 
 
-        bool all_resolved = true;
-
-
-        
-        
-        
         Package pkg = packages[i];
+        update_package_state(i, PackageState::Resolving);
 
         for(isize j = 0; j < pkg.ast_files.count; j++) {
             AstFile ast_file = pkg.ast_files[j];
+
+
+
+
 
             // 获取该文件import的所有package路径
             Array<xpString> relative_import_paths = resolve_import_paths(ast_file);
@@ -98,34 +122,44 @@ Array<Package> resolve_dependencies(xpString main_dir_path) {
             for(isize k = 0; k < absolute_import_paths.count; k++) {
                 xpString abs_import_path = absolute_import_paths[k];
 
-                // 检查该package是否已经解析过
+                if(!check_directory_legel(abs_import_path)) {
+                    // TODO ERROR: import路径不合法
+                    error_msg(NULL, "import path is not a valid directory: %s", abs_import_path.c_str);
+                    continue;
+                }
+
+                // 检查该package是否已经解析过 或 正在解析中
                 bool already_resolved = false;
                 for(isize m = 0; m < packages.count; m++) {
                     if(xp_string_cmp(packages[m].path, abs_import_path) == 0) {
+
+                        if(package_states[m] == PackageState::Resolving) {
+                            // TODO ERROR: 循环依赖
+
+                            error_msg(NULL, "circular dependency detected for package: %s", abs_import_path.c_str);
+                            XP_ASSERT_DEFAULT(0);
+                        }
+
                         already_resolved = true;
                         break;
                     }
+
                 }
-
+                
                 if(!already_resolved) {
-                    all_resolved = false;
-                }
 
-
-                if(!already_resolved) {
                     // 解析该package
-                    Package imported_package = resolve_package(abs_import_path.c_str);
+                    Package imported_package = tokenize_and_parse_package(abs_import_path.c_str);
 
                     // 添加到packages列表
-                    array_push_back(&packages, imported_package);
+                    add_new_package(imported_package);
                 }
             }
-        
+
+            
         }
 
-        if(all_resolved) {
-            break;
-        }
+        update_package_state(i, PackageState::Resolved);
 
 
     }
@@ -141,7 +175,7 @@ Array<Package> resolve_dependencies(xpString main_dir_path) {
 // 根据package目录路径得到package, 包括：
 // 1. 解析该目录底下所有.crest文件为AstFile，并存入Package结构体中
 // 2. 创建Package的Scope
-Package resolve_package(const char *path_of_package_dir) {
+Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
     xpString package_dir_path = xp_make_string(permanent_allocator(), path_of_package_dir);
 
@@ -152,13 +186,14 @@ Package resolve_package(const char *path_of_package_dir) {
     Package package = make_package(package_dir_path, permanent_allocator());
     for(isize i = 0; i < crest_files.count; i++) {
         xpString crest_file_path = crest_files[i];
-        AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
+        AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str, &package.package_scope);
 
         array_push_back(&package.ast_files, ast_file);
     }
 
     return package;
 }
+
 
 
 
@@ -182,6 +217,8 @@ Array<xpString> resolve_import_paths(AstFile ast_file) {
 }
 
 
+
+
 Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array<xpString> relative_import_paths) {
     Array<xpString> absolute_import_paths = make_array<xpString>(permanent_allocator());
 
@@ -192,4 +229,13 @@ Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array
     }
 
     return absolute_import_paths;
+}
+
+
+bool check_directory_legel(xpString path) {
+    return is_existing_directory(path);
+}
+
+bool check_file_legal(xpString path) {
+    return is_existing_file(path);
 }

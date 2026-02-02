@@ -2,109 +2,557 @@
 
 #include "common.hpp"
 
-#include "decl_collect.hpp"
+#include "context.hpp"
 
 #include "type_check.hpp"
 #include "const_fold.hpp"
 
 #include "error_msg.hpp"
 
+#include "path.hpp"
 
 
-void resolve_top_level(Ast *ast, Analyser *analyser);
-void resolve_function_decl(Ast *ast, Analyser *analyser);
-void resolve_struct_decl(Ast *ast, Analyser *analyser);
-void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser);
-void resolve_stmt(Ast *stmt_ast, Analyser *analyser);
-void resolve_expr(Ast *expr_ast, Analyser *analyser);
-void resolve_block(Ast *ast, Analyser *analyser);
-void resolve_constant(Ast *constant, Analyser *analyser);
-TypeRef resolve_type(Ast *type_ast, Analyser *analyser);
+void analyser_init(Analyser *analyser, Scope *curr_scope, Package *pkg, Array<Package> all_packages) {
+    analyser->pkg = pkg;
+    analyser->current_scope = curr_scope;
+    analyser->all_packages = all_packages;
+}
+
+Analyser make_analyser(Scope *curr_scope, Package *pkg, Array<Package> all_packages) {
+    Analyser analyser = {};
+    analyser_init(&analyser, curr_scope, pkg, all_packages);
+    return analyser;
+}
+
+Analyser make_analyser(Scope *curr_scope, Package *pkg) {
+    // without all_packages
+    Analyser analyser = {};
+    analyser.current_scope = curr_scope;
+    analyser.pkg = pkg;
+
+    return analyser;
+}
+
+
+
+
+
+
+
+
+
+//
+// Analyser
+//
+
+void resolve_ast_file(AstFile *ast_file, Analyser analyser);
+void resolve_top_level(Ast *ast, Analyser analyser);
+void resolve_function_decl(Ast *ast, Analyser analyser);
+
+void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
+void resolve_stmt(Ast *stmt_ast, Analyser analyser);
+void resolve_expr(Ast *expr_ast, Analyser analyser);
+void resolve_block(Ast *ast, Analyser analyser);
+void resolve_constant(Ast *constant, Analyser analyser);
+TypeRef resolve_type(Ast *type_ast, Analyser analyser);
 void try_constant_expr_folding(Ast *const_expr);
-void tag_expr_const_by_sons(Ast *expr, Analyser *analyser);
-void tag_untyped_expr(Ast *expr, Analyser *analyser);
+void tag_expr_const_by_sons(Ast *expr, Analyser analyser);
+void tag_untyped_expr(Ast *expr, Analyser analyser);
 bool may_fall_through(Ast *ast);
 
 
 
+//
+// Symbol Binding
+//
 
-void push_symbol_table(Analyser *analyser) {
-    SymbolTable table = make_symbol_table(xp_heap_allocator());
-    array_push_back(&analyser->symbol_table_stack, table);
+
+
+void bind_symbols_for_all_packages(Array<Package> all_packages);
+void bind_top_level_symbols_in_package(Package *pkg, Array<Package> all_packages);
+void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> all_packages);
+TypeRef resolve_function_decl_type(Ast *decl, Analyser analyser);
+void resolve_struct_decl(Ast *ast, Analyser analyser);
+
+
+
+SymbolInfo *find_symbol_by_ident_or_fieldaccess_in_other_packages(Ast *ident_ast, Analyser analyser) {
+
+    switch(ident_ast->type)
+    {
+        
+        
+    case AstType_Ident: {
+        // 如果只是个单独的标识符, 那么就在当前作用域链里找, 直到全局作用域
+
+
+        SymbolInfo *symbol_info = find_symbol_in_scope_list_until(
+            ScopeType::Global,
+            analyser.current_scope,
+            ident_ast->Ident.name
+        );
+
+        return symbol_info;
+
+    } break;
+    
+    case AstType_FieldAccess: {
+
+        Ast *parent = ident_ast->FieldAccess.parent;
+        xpString field_name = ident_ast->FieldAccess.field_name;
+
+        switch(parent->type)
+        {
+        case AstType_Ident: {
+            SymbolInfo *parent_symbol = find_symbol_in_scope_list_until(ScopeType::Package, analyser.current_scope, parent->Ident.name);
+
+            if(parent_symbol == NULL) {
+                return NULL;
+            }
+
+            if(parent_symbol->kind == SymbolKind::PackageImport) {
+                // 在被import的package里找field_name符号
+
+                Package *imported_package = parent_symbol->imported_package;
+
+                SymbolInfo *field_symbol = find_symbol_in_scope_list_until(
+                    ScopeType::Package,
+                    &imported_package->package_scope,
+                    field_name
+                );
+
+                return field_symbol;
+            } else if(parent_symbol->kind == SymbolKind::StructDecl) {
+                // 这个函数只是用来查符号的, 不检查结构体字段访问合法性, 直接返回NULL
+
+                return NULL;
+            } else {
+                // 未知情况, 按理不该触发, 若不然, 只能是bug
+
+                XP_ASSERT_DEFAULT(0);
+            }
+
+        } break;
+        
+        case AstType_FieldAccess: {
+            // 目前不支持嵌套的field access作为package访问符号
+
+            XP_ASSERT_DEFAULT(0);
+        } break;
+        
+        default: {
+            // 只能是表达式, 如(*(ptr + 1))
+            return NULL;
+
+        } break;
+        }
+
+    } break;
+
+    default:
+        XP_ASSERT_DEFAULT(0);
+        return NULL;
+    }
 }
 
-void pop_symbol_table(Analyser *analyser) {
-    SymbolTable t = array_pop_back(&analyser->symbol_table_stack);
-    free_symbol_table(&t);
+
+
+
+
+
+//
+//
+//
+
+
+
+
+
+
+
+
+void bind_symbols_for_all_packages(Array<Package> all_packages) {
+
+    // TODO 添加全局符号, 如string类型
+
+
+
+    for(isize i = 0; i < all_packages.count; i++) {
+        bind_top_level_symbols_in_package(&all_packages[i], all_packages);
+    }
 }
 
-// bool at_global_scope(Analyser *analyser) {
-    //     return analyser->symbol_table_stack.count == 1;
-// }
+
+
+void bind_top_level_symbols_in_package(Package *pkg, Array<Package> all_packages) {
+    
+    // NOTE: 别忘了创建package scope
+    pkg->package_scope = make_scope(&context()->global_scope, ScopeType::Package, permanent_allocator());
+
+
+    for(isize i = 0; i < pkg->ast_files.count; i++) {
+        AstFile *ast_file = &pkg->ast_files[i];
+        bind_symbol_in_file(ast_file, pkg, all_packages);
+    }
+}
 
 
 
+void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> all_packages) {
 
-void semantic_analysis_ast_file(AstFile *ast_file) {
-    defer(xp_free_all(stage_allocator()));
+    // NOTE: 创建文件作用域
+    ast_file->file_scope = make_scope(&curr_pkg->package_scope, ScopeType::File, permanent_allocator());
+
+    for(isize i = 0; i < ast_file->top_levels.count; i++) {
+        Ast *top_level = ast_file->top_levels[i];
+
+        switch(top_level->type) {
+            case AstType_Import: {
+                SymbolInfo *info =
+                    find_symbol_in_scope_list_until(ScopeType::File, &ast_file->file_scope, top_level->Import.alias);
+
+                if(info != NULL && info->kind != SymbolKind::PackageImport) {
+                    // TODO Warning: import名字冲突
+                    error_msg(&top_level->token, "imported package '%s' name conflicts with existing symbol", top_level->Import.alias.c_str);
+                    XP_ASSERT_DEFAULT(0);
+
+                    break;
+                } else if(info != NULL) {
+                    // 已经import过该package
+
+                    error_msg(&top_level->token, "package name '%s' already imported", top_level->Import.alias.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                    break;
+                }
 
 
-    Analyser analyser;
-    analyser_init(&analyser, permanent_allocator());
+
+                SymbolInfo import_symbol = {};
+                import_symbol.kind = SymbolKind::PackageImport;
+                import_symbol.name = top_level->Import.alias;
+                import_symbol.type = undefined_type();
+
+                // 查找被import的package
+                Package *imported_package = NULL;
+                for(isize j = 0; j < all_packages.count; j++) {
+                    if(xp_string_equal(all_packages[j].path, concat_path(xp_string_c(context()->main_src_dir_path), top_level->Import.path, stage_allocator()))) {
+                        imported_package = &all_packages[j];
+                        break;
+                    }
+                }
+
+                // TODO 把检查import的包是否存在放到这里, 而不是resolve_depend里
+                if(imported_package == NULL) {
+                    // TODO ERROR: 未找到被import的package
+                    error_msg(&top_level->token, "imported package '%s' not found", top_level->Import.alias.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                }
 
 
-    // 收集所有结构体声明、函数声明、变量声明(目前只有局部变量)
-    AllDecls all_decls = declaration_collect_ast_file(ast_file, &analyser, stage_allocator());
+                import_symbol.imported_package = imported_package;
 
 
-    // 进行结构体声明field类型解析
-    for(isize i = 0; i < all_decls.struct_decls.count; i++) {
-        resolve_struct_decl(all_decls.struct_decls[i], &analyser);
+                // import是文件作用域的符号
+                add_symbol_to_scope(&ast_file->file_scope, import_symbol.name, import_symbol);
+
+            } break;
+
+            case AstType_Function: {
+                SymbolInfo *info = find_symbol_in_scope_list_until(ScopeType::Package, &ast_file->file_scope, top_level->Function.name);
+                if(info != NULL && info->kind == SymbolKind::FunctionDecl) {
+
+                    // TODO ERROR: function重复定义
+                    error_msg(&top_level->token, "function '%s' repeated definition", top_level->Function.name.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                } else if(info != NULL) {
+
+                    // TODO ERROR: 名字冲突
+                    error_msg(&top_level->token, "symbol '%s' already defined with different kind", top_level->Function.name.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+
+                SymbolInfo func_symbol = {};
+                func_symbol.kind = SymbolKind::FunctionDecl;
+                func_symbol.name = top_level->Function.name;
+
+                // 函数是包作用域的符号
+                add_symbol_to_scope(&curr_pkg->package_scope, func_symbol.name, func_symbol);
+
+
+                top_level->v_type = resolve_function_decl_type(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
+            } break;
+
+            case AstType_StructDecl: {
+
+                SymbolInfo *info = find_symbol_in_scope_list_until(ScopeType::Package, &ast_file->file_scope, top_level->StructDecl.name);
+                if(info != NULL && info->kind == SymbolKind::StructDecl) {
+
+                    // TODO ERROR: struct重复定义
+                    error_msg(&top_level->token, "struct '%s' repeated definition", top_level->StructDecl.name.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                } else if(info != NULL) {
+
+                    // TODO ERROR: 名字冲突
+                    error_msg(&top_level->token, "symbol '%s' already defined with different kind", top_level->StructDecl.name.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                }
+
+
+                SymbolInfo struct_symbol = {};
+                struct_symbol.kind = SymbolKind::StructDecl;
+                struct_symbol.name = top_level->StructDecl.name;
+                struct_symbol.type = unfinished_struct_type(curr_pkg, top_level->StructDecl.name);
+
+                // 结构体是包作用域的符号
+                add_symbol_to_scope(&curr_pkg->package_scope, struct_symbol.name, struct_symbol);
+
+                // 解析结构体声明的字段类型, 补充符号表
+                resolve_struct_decl(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
+
+            } break;
+
+            default: {
+                // TODO ERROR: 不支持的top level类型
+                error_msg(&top_level->token, "unsupported top level AST type for symbol binding");
+                XP_ASSERT_DEFAULT(0);
+            } break;
+        }
+
     }
 
+}
 
-    // 进行函数声明的类型解析, 修正符号表中函数类型
-    Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
-    for(isize i = 0; i < all_decls.function_decls.count; i++) {
-        Ast *fn_decl_ast = all_decls.function_decls[i];
-        SymbolInfo *fn_info = find_symbol(symbol_table(), fn_decl_ast->Function.name);
+
+
+TypeRef resolve_function_decl_type(Ast *decl, Analyser analyser) {
+    SymbolInfo *func_info = find_symbol_in_scope_list_until_with_kind(ScopeType::Package, analyser.current_scope, decl->Function.name, SymbolKind::FunctionDecl);
+    XP_ASSERT_DEFAULT(func_info != NULL);
+
+    Array<TypeRef> param_types = make_array<TypeRef>(type_allocator());
+    for(isize i = 0; i < decl->Function.params.count; i++) {
+        Ast *param_ast = decl->Function.params[i];
 
         // 解析参数类型
-        array_clear(&param_types);
-        for(isize j = 0; j < fn_decl_ast->Function.params.count; j++) {
-            Ast *param_ast = fn_decl_ast->Function.params[j];
-            TypeRef param_type = resolve_type(param_ast->VariableDecl.type_ast, &analyser);
-            array_push_back(&param_types, param_type);
-        }
-        // 解析返回值类型
-        TypeRef return_type = resolve_type(fn_decl_ast->Function.return_type_ast, &analyser);
-        // 构造函数类型
-        TypeRef fn_type = function_type(param_types, return_type);
-        // 修正符号表中函数类型
-        fn_info->type = fn_type;
-
-        // TODO 考虑是否移除这个, 但目前感觉也方便
-        // 修正函数声明ast的类型
-        fn_decl_ast->v_type = fn_type;
+        TypeRef param_type = resolve_type(param_ast->VariableDecl.type_ast, analyser);
+        array_push_back(&param_types, param_type);
     }
 
+    // 解析返回值类型
+    TypeRef return_type = resolve_type(decl->Function.return_type_ast, analyser);
 
-    // TODO TEST
-    // print_ast(ast_file->top_levels);
+    func_info->type = function_type(param_types, return_type);
+
+    return func_info->type;
+}
 
 
-    resolve_ast_file(ast_file, &analyser);
 
-    // analyser_free(&analyser);
-    // *symbol_table() = analyser.symbol_table_stack[0];
-    return;
+void resolve_struct_decl(Ast *decl, Analyser analyser) {
+    SymbolInfo *struct_type_info = find_symbol_in_scope_list_until_with_kind(ScopeType::Package, analyser.current_scope, decl->StructDecl.name, SymbolKind::StructDecl);
+    XP_ASSERT_DEFAULT(struct_type_info != NULL);
+
+    Array<StructField> field_types = make_array<StructField>(type_allocator());
+    for(isize i = 0; i < decl->StructDecl.fields.count; i++) {
+        Ast *field_ast = decl->StructDecl.fields[i];
+
+        // 解析字段类型, 
+        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
+        array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
+
+        if(field_type == struct_type_info->type) {
+            
+            // 字段类型不能和结构体本身相同 错误处理
+            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
+            XP_ASSERT_DEFAULT(0);
+        }
+
+    }
+
+    struct_type_info->type->struct_info.struct_fields = field_types;
 }
 
 
 
 
 
-void resolve_ast_file(AstFile *ast_file, Analyser *analyser) {
+
+TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
+    XP_ASSERT_DEFAULT(type_ast != NULL);
+
+    switch (type_ast->type) {
+        case AstType_EasyType: {
+            return easy_type(type_ast->EasyType.kind);
+        } break;
+
+        
+        case AstType_PointerType: {
+            TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
+            return pointer_type(pointed_type);
+        } break;
+
+        
+        case AstType_Ident: {
+            SymbolInfo *type_info = find_symbol_by_ident_or_fieldaccess_in_other_packages(type_ast, analyser);
+            if(type_info == NULL || type_info->kind != SymbolKind::StructDecl) {
+
+                // TODO ERROR: 未定义的类型
+                error_msg(&type_ast->token, "undefined type '%s'", type_ast->Ident.name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+            
+            return type_info->type;
+        } break;
+
+        // 作为类型, parent只能是package, child只能是类型(目前只有结构体)名
+        case AstType_FieldAccess: {
+            Ast *parent_ident = type_ast->FieldAccess.parent;
+            xpString field_ident = type_ast->FieldAccess.field_name;
+
+            SymbolInfo *package_symbol_info = find_symbol_by_ident_or_fieldaccess_in_other_packages(parent_ident, analyser);
+            if(package_symbol_info == NULL || package_symbol_info->kind != SymbolKind::PackageImport) {
+                // TODO ERROR: 未定义的package
+                error_msg(&parent_ident->token, "undefined package '%s'", parent_ident->Ident.name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            Package *imported_package = package_symbol_info->imported_package;
+
+            // 在被import的package里找 结构体类型
+            SymbolInfo *type_symbol_info = find_symbol_in_scope_list_until_with_kind(
+                ScopeType::Package,
+                &imported_package->package_scope,
+                field_ident,
+                SymbolKind::StructDecl
+            );
+
+            if(type_symbol_info == NULL) {
+                // TODO ERROR: 未定义的 结构体类型
+                error_msg(&type_ast->token, "undefined symbol '%s' in package '%s'", field_ident.c_str, imported_package->path.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            return type_symbol_info->type;
+        } break;
+            
+
+
+        case AstType_ArrayType: {
+            TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
+            Ast *count_expr = type_ast->ArrayType.count_expr;
+
+
+            resolve_expr(count_expr, analyser);
+            infer_expr_type(count_expr, false, NULL, analyser);
+
+
+            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+            try_constant_expr_folding(count_expr);
+            if(count_expr->type != AstType_Constant) {
+                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            i128 count = count_expr->Constant.value;
+            if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
+                error_msg(&count_expr->token, "array size must be a positive integer and less than max of isize");
+                XP_ASSERT_DEFAULT(0);
+            }
+
+            TypeRef type_ref = array_type(element_type, cast(usize)count);
+            return type_ref;
+        } break;
+
+
+        // TODO
+        // Slice应该是一种内置结构体
+        // case AstType_SliceType: {
+        //     TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
+
+        //     TypeRef slice_type = slice_type_as_struct(elem_type);
+
+        //     return slice_type;
+        // } break;
+
+
+        default: {
+            XP_ASSERT_DEFAULT(0);
+        }
+
+    }
+}
+
+
+
+void resolve_field_access_expr(Ast *field_access, Analyser analyser) {
+    Ast *parent = field_access->FieldAccess.parent;
+    resolve_expr(parent, analyser);
+}
+
+
+
+
+//
+// Analyser
+//
+
+
+
+
+
+
+
+
+
+
+
+Analyser new_scope(Analyser old_state, ScopeType type) {
+    Scope *new_scope = alloc_scope(
+        old_state.current_scope,
+        type,
+        stage_allocator()
+    );
+    
+    Analyser new_state = old_state;
+    new_state.current_scope = new_scope;
+
+
+    return new_state;
+}
+
+
+void sema_analysis_all_packages(Array<Package> all_packages) {
+    defer(xp_arena_allocator_clear(stage_allocator()));
+
+
+
+
+    bind_symbols_for_all_packages(all_packages);
+
+
+
+
+    for(isize i = 0; i < all_packages.count; i++) {
+        Package *pkg = &all_packages[i];
+
+        for(isize j = 0; j < pkg->ast_files.count; j++) {
+            AstFile *ast_file = &pkg->ast_files[j];
+            
+            resolve_ast_file(ast_file, make_analyser(&ast_file->file_scope, pkg, all_packages));
+        }
+    }
+
+
+}
+
+
+
+
+
+void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
 
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
         resolve_top_level(ast_file->top_levels[i], analyser);
@@ -114,28 +562,31 @@ void resolve_ast_file(AstFile *ast_file, Analyser *analyser) {
 }
 
 
-void resolve_top_level(Ast *ast, Analyser *analyser) {
-    switch (ast->type) {
-    case AstType_Function:
-        resolve_function_decl(ast, analyser);
-        break;
+void resolve_top_level(Ast *ast, Analyser analyser) {
+    // 目前只有函数需要解析, 别的top level AST在符号绑定阶段已经解析完毕
 
-    case AstType_StructDecl:
-        // resolve_struct_decl(ast, analyser);
-        break;
+    switch (ast->type) {
+
+
+    
+    case AstType_Function: {
+        Analyser new_sc = new_scope(analyser, ScopeType::Function);
+        new_sc.curr_func = ast;
+        resolve_function_decl(ast, new_sc);
+    } break;
+
+    // case AstType_StructDecl:
+    //     // resolve_struct_decl(ast, analyser);
+    //     break;
         
     default:
-        XP_ASSERT_DEFAULT(0);
+        // XP_ASSERT_DEFAULT(0);
         break;
     }
 }
 
 
-void resolve_function_decl(Ast *ast, Analyser *analyser) {
-    new_scope(analyser);
-
-    analyser->curr_function = ast;
-    defer(analyser->curr_function = NULL);
+void resolve_function_decl(Ast *ast, Analyser analyser) {
 
     for(isize i = 0; i < ast->Function.params.count; i++) {
         resolve_var_decl(ast->Function.params[i], analyser);
@@ -148,7 +599,7 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
 
 
         if(may_fall_through(ast->Function.block)) {
-            if(analyser->curr_function->v_type->function_info.return_type->kind != Type_void) {
+            if(analyser.curr_func->v_type->function_info.return_type->kind != Type_void) {
                 // TODO 非void函数漏写return错误处理
                 error_msg(&ast->token, "non-void function may fall through without return");
                 XP_ASSERT_MSG(0, "non-void function may fall through without return");
@@ -160,7 +611,7 @@ void resolve_function_decl(Ast *ast, Analyser *analyser) {
 
 
 
-void resolve_block(Ast *ast, Analyser *analyser) {
+void resolve_block(Ast *ast, Analyser analyser) {
     if(ast->Block.is_function_body) {
         for(isize i = 0; i < ast->Block.statements.count; i++) {
             resolve_stmt(ast->Block.statements[i], analyser);
@@ -169,20 +620,25 @@ void resolve_block(Ast *ast, Analyser *analyser) {
     }
 
 
-    new_scope(analyser);
+    
     for(isize i = 0; i < ast->Block.statements.count; i++) {
-        resolve_stmt(ast->Block.statements[i], analyser);
+        resolve_stmt(ast->Block.statements[i], new_scope(analyser, ScopeType::Block));
     }
 }
 
-void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
-    SymbolInfo *existing = find_symbol(&analyser->symbol_table_stack, var_decl_ast->VariableDecl.var_name);
+void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
+
+    // 目前变量可以遮蔽外层作用域的变量, 函数定义, 结构体定义
+    // TODO: 是否允许遮蔽, 或者警告
+
+    SymbolInfo *existing = find_symbol_in_curr_scope_with_kind(analyser.current_scope, var_decl_ast->VariableDecl.var_name, SymbolKind::VarDecl);
     if(existing != NULL) {
         // TODO(xoaop): 异常处理, 同一作用域变量重复声明
         printf("---------------------------------");
         print_ast(var_decl_ast);
         XP_ASSERT_MSG(0, "var decl repeat in the same scope");
     }
+
 
     // TODO CHECK
     if(var_decl_ast->VariableDecl.type_ast != NULL) {
@@ -211,12 +667,16 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
             // TODO 有初始化表达式, 无显示指定类型的情况, 类型推导
             // infer_expr_type(var_decl_ast->VariableDecl.expr, NULL, analyser);
             infer_expr_type(var_decl_ast->VariableDecl.expr, false, {}, analyser);
+
+            XP_ASSERT_DEFAULT(var_decl_ast->VariableDecl.expr->v_type != undefined_type());
+
             var_decl_ast->v_type = var_decl_ast->VariableDecl.expr->v_type;
         }
 
         // TODO 检查
         try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
     } else {
+        // 零初始化变量
 
         // if(var_decl_ast->v_type != undefined_type()) {
         //     // TODO 有显示指定类型, 无初始化表达式的情况, 报错, 变量必须初始化
@@ -230,17 +690,18 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser *analyser) {
 
 
     SymbolInfo info = {
+        .kind = SymbolKind::VarDecl,
         .name = var_decl_ast->VariableDecl.var_name,
         .type = var_decl_ast->v_type,
     };
-    add_symbol(&analyser->symbol_table_stack, var_decl_ast->VariableDecl.var_name, info);
+    add_symbol_to_scope(analyser.current_scope, var_decl_ast->VariableDecl.var_name, info);
 
 
     return;
 }
 
 
-void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
+void resolve_stmt(Ast *stmt_ast, Analyser analyser) {
 
     switch (stmt_ast->type)
     {
@@ -281,10 +742,8 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     } break;
 
     case AstType_ForStmt: {
-        new_scope(analyser);
+        new_scope(analyser, ScopeType::LoopBlock);
 
-        array_push_back(&analyser->loop_ast_stack, stmt_ast);
-        defer(array_pop_back(&analyser->loop_ast_stack));
         
         if(stmt_ast->ForStmt.init != NULL)
             resolve_stmt(stmt_ast->ForStmt.init, analyser);
@@ -305,15 +764,15 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
         if(stmt_ast->ReturnStmt.expr != NULL) {
             resolve_expr(stmt_ast->ReturnStmt.expr, analyser);
 
-            if(analyser->curr_function->v_type->function_info.return_type == easy_type(Type_void)) {
+            if(analyser.curr_func->v_type->function_info.return_type == easy_type(Type_void)) {
                 // TODO 错误处理, return 语句不应有返回值 在void函数中
                 error_msg(&stmt_ast->token, "return statement should not have expression in void function");
                 XP_ASSERT_DEFAULT(0);
             }
 
-            infer_expr_type(stmt_ast->ReturnStmt.expr, true, analyser->curr_function->v_type->function_info.return_type, analyser);
+            infer_expr_type(stmt_ast->ReturnStmt.expr, true, analyser.curr_func->v_type->function_info.return_type, analyser);
         } else {
-            if(analyser->curr_function->v_type->function_info.return_type != easy_type(Type_void)) {
+            if(analyser.curr_func->v_type->function_info.return_type != easy_type(Type_void)) {
                 // TODO 错误处理, return 语句缺少返回值 在非void函数中
                 error_msg(&stmt_ast->token, "return statement missing expression in non-void function");
                 XP_ASSERT_DEFAULT(0);
@@ -329,21 +788,20 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     
     case AstType_Break: {
         // TODO 错误处理, break 必须在循环体内
-        if(analyser->loop_ast_stack.count == 0) {
+        if(analyser.current_scope->scope_type != ScopeType::LoopBlock) {
             error_msg(&stmt_ast->token, "break statement not within loop");
         }
-        XP_ASSERT_DEFAULT(analyser->loop_ast_stack.count > 0);
     } break;
     case AstType_Continue: {
         // TODO 错误处理, continue 必须在循环体内
-        if(analyser->loop_ast_stack.count == 0) {
+        if(analyser.current_scope->scope_type != ScopeType::LoopBlock) {
             error_msg(&stmt_ast->token, "continue statement not within loop");
         }
-        XP_ASSERT_DEFAULT(analyser->loop_ast_stack.count > 0);
     } break;
 
     case AstType_FunctionCallExpr: {
         resolve_expr(stmt_ast, analyser);
+        infer_expr_type(stmt_ast, false, NULL, analyser);
     } break;
 
     default: {
@@ -353,34 +811,42 @@ void resolve_stmt(Ast *stmt_ast, Analyser *analyser) {
     }
 } 
 
-void resolve_expr(Ast *expr_ast, Analyser *analyser) {
+void resolve_expr(Ast *expr_ast, Analyser analyser) {
     if(expr_ast == NULL) {
         return;
     }
 
     switch (expr_ast->type)
     {
-    case AstType_VarExpr: {
-        SymbolInfo *entry;
-        if(!(entry = find_symbol(&analyser->symbol_table_stack, expr_ast->VarExpr.name))) {
-            // TODO: 错误处理, 使用未声明变量 
+    case AstType_Ident: {
+        SymbolInfo *entry = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr_ast, analyser);
+        if(entry == NULL) {
+            // TODO: 错误处理, 使用未声明符号
             XP_ASSERT_DEFAULT(0);
         }
+
+        // if(entry->kind != SymbolKind::VarDecl) {
+        //     // TODO: 错误处理, 变量表达式引用了非变量符号
+        //     XP_ASSERT_DEFAULT(0);
+        // }
 
 
     } break;
     case AstType_FunctionCallExpr: {
         
+        // 检查函数标识符符号是否存在
+        resolve_expr(expr_ast->FunctionCallExpr.func_ident, analyser);
+
         for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
             resolve_expr(expr_ast->FunctionCallExpr.args[i], analyser);
         }
 
 
         // TODO 函数类型检查
-        SymbolInfo *info = find_symbol(symbol_table(), expr_ast->FunctionCallExpr.name);
-
-        // TODO 是否是函数
-        XP_ASSERT_MSG(info != NULL && info->type->kind == Type_function, "function not exist");
+        SymbolInfo *info = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr_ast->FunctionCallExpr.func_ident, analyser);
+        
+        // TODO 检查函数符号是不是函数
+        XP_ASSERT_MSG(info->kind == SymbolKind::FunctionDecl, "called symbol is not a function");
 
         // TODO 参数个数是否匹配
         XP_ASSERT_MSG(info->type->function_info.param_types.count == expr_ast->FunctionCallExpr.args.count, "function arg count mismatch");
@@ -418,13 +884,52 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
     } break;
 
     case AstType_StructInitExpr: {
+        
+        // 保证类型存在
+        SymbolInfo *symbol = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr_ast->StructInitExpr.struct_type_ident, analyser);
+        if(symbol == NULL || symbol->kind != SymbolKind::StructDecl) {
+            // TODO ERROR: 未定义的结构体类型
+            error_msg(&expr_ast->token, "you try to initialize undefined struct type");
+            XP_ASSERT_DEFAULT(0);
+        }
+
         for(isize i = 0; i < expr_ast->StructInitExpr.field_inits.count; i++) {
             resolve_expr(expr_ast->StructInitExpr.field_inits[i], analyser);
         }
     } break;
 
-    case AstType_FieldAccessExpr: {
-        resolve_expr(expr_ast->FieldAccessExpr.parent_expr, analyser);
+    case AstType_FieldAccess: {
+        // NOTE: resolve阶段, 对存在于表达式的FieldAccess只检查作为符号访问的合法性
+        // 与类型信息无关, 结构体字段访问的合法性在类型检查阶段检查
+
+
+        // 检查了parent(作为符号)是否存在
+        resolve_expr(expr_ast->FieldAccess.parent, analyser);
+
+        if(expr_ast->FieldAccess.parent->type == AstType_Ident) {
+            // 如果是标识符, 再发现是package, 检查符号存不存在, 
+            // 别的就是结构体字段访问, 不在这里检查合法性, 在类型检查阶段检查
+
+            SymbolInfo *parent_symbol = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr_ast->FieldAccess.parent, analyser);
+            if(parent_symbol->kind == SymbolKind::PackageImport) {
+                // 在被import的package里找field_name符号
+
+                Package *imported_package = parent_symbol->imported_package;
+
+                SymbolInfo *field_symbol = find_symbol_in_scope_list_until(
+                    ScopeType::Package,
+                    &imported_package->package_scope,
+                    expr_ast->FieldAccess.field_name
+                );
+
+                if(field_symbol == NULL) {
+                    // TODO ERROR: 未定义的符号
+                    error_msg(&expr_ast->token, "undefined symbol '%s' in package '%s'", expr_ast->FieldAccess.field_name.c_str, imported_package->path.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                }
+            }
+        }
+
     } break;
 
     case AstType_ArrayInitExpr: {
@@ -461,7 +966,7 @@ void resolve_expr(Ast *expr_ast, Analyser *analyser) {
 
 
 
-void resolve_constant(Ast *constant, Analyser *analyser) {
+void resolve_constant(Ast *constant, Analyser analyser) {
     Token token = constant->token;
     xpString val_str = token.token_str;
 
@@ -510,108 +1015,8 @@ void resolve_constant(Ast *constant, Analyser *analyser) {
 
 
 
-TypeRef resolve_type(Ast *type_ast, Analyser *analyser) {
-    switch(type_ast->type) {
-        case AstType_EasyType: {
-            TypeKind kind = type_ast->EasyType.kind;
-            TypeRef type_ref = easy_type(kind);
-            return type_ref;
-        } break;
 
-        // 目前就是结构体类型
-        case AstType_IdentType: {
-            xpString type_name = type_ast->IdentType.name;
-            SymbolInfo *type_info = find_symbol(symbol_table(), type_name);
-            if(type_info == NULL) {
-                error_msg(&type_ast->token, "unknown type '%s'", type_name.c_str);
-                XP_ASSERT_DEFAULT(0);
-            }
-            return type_info->type;
-        } break;
-
-        case AstType_PointerType: {
-            TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
-            TypeRef type_ref = pointer_type(pointed_type);
-            return type_ref;
-        } break;
-
-        // TODO 数组
-        case AstType_ArrayType: {
-            TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
-            Ast *count_expr = type_ast->ArrayType.count_expr;
-
-
-            resolve_expr(count_expr, analyser);
-            infer_expr_type(count_expr, false, NULL, analyser);
-
-
-            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
-                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
-                XP_ASSERT_DEFAULT(0);
-            }
-            try_constant_expr_folding(count_expr);
-            if(count_expr->type != AstType_Constant) {
-                error_msg(&count_expr->token, "array size expression must be a constant integer expression");
-                XP_ASSERT_DEFAULT(0);
-            }
-
-            i128 count = count_expr->Constant.value;
-            if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
-                error_msg(&count_expr->token, "array size must be a positive integer and less than max of isize");
-                XP_ASSERT_DEFAULT(0);
-            }
-
-            TypeRef type_ref = array_type(element_type, cast(usize)count);
-            return type_ref;
-        } break;
-
-        
-        // Slice应该是一种内置结构体
-        case AstType_SliceType: {
-            TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
-
-            TypeRef slice_type = slice_type_as_struct(elem_type);
-
-            return slice_type;
-        } break;
-
-        default: {
-            XP_ASSERT_DEFAULT(0);
-        }
-    }
-}
-
-
-void resolve_struct_decl(Ast *ast, Analyser *analyser) {
-    XP_ASSERT_DEFAULT(ast->type == AstType_StructDecl);
-
-    SymbolInfo *struct_type_info = find_symbol(symbol_table(), ast->StructDecl.name);
-
-    Array<StructField> field_types = make_array<StructField>(stage_allocator());
-    for(isize i = 0; i < ast->StructDecl.fields.count; i++) {
-        Ast *field_ast = ast->StructDecl.fields[i];
-
-        // 解析字段类型, 
-        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
-        array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
-
-        if(field_type == struct_type_info->type) {
-            
-            // 字段类型不能和结构体本身相同 错误处理
-            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
-            XP_ASSERT_DEFAULT(0);
-        }
-
-    }
-
-    update_uncertain_to_struct(struct_type_info->type, field_types);
-}
-
-
-
-
-
-void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
+void tag_expr_const_by_sons(Ast *expr, Analyser analyser) {
     switch (expr->type)
     {
 
@@ -644,7 +1049,7 @@ void tag_expr_const_by_sons(Ast *expr, Analyser *analyser) {
     }
 }
 
-void tag_untyped_expr(Ast *expr, Analyser *analyser) {
+void tag_untyped_expr(Ast *expr, Analyser analyser) {
     switch(expr->type) {
         case AstType_BinaryExpr: {
             if(expr->BinaryExpr.left->v_type == easy_type(Type_untyped_int) &&
@@ -728,135 +1133,4 @@ bool may_fall_through(Ast *ast) {
 
 
 
-
-
-
-
-
-
-
-void analyser_init(Analyser *analyser, xpAllocator allocator) {
-    analyser->loop_ast_stack = make_array<Ast *>(allocator);
-    analyser->symbol_table_stack = make_array<SymbolTable>(allocator);
-
-    // NOTE: 这是全局符号表
-    array_push_back(&analyser->symbol_table_stack, make_symbol_table(permanent_allocator()));
-
-    // 记录当前正在解析的函数
-    analyser->curr_function = NULL;
-}
-
-void analyser_free(Analyser *analyser) {
-    array_free(&analyser->loop_ast_stack);
-    array_free(&analyser->symbol_table_stack);
-}
-
-
-
-
-
-
-
-// TODO Remove
-void ast_visitor(Array<Ast *> ast_array, AstVisitorFunc visit_func[AstType_COUNT], Analyser *analyser) {
-    XP_ASSERT_DEFAULT(visit_func != NULL);
-
-    for(isize i = 0; i < ast_array.count; i++) {
-        ast_visitor(ast_array[i], visit_func, analyser);
-    }
-}
-
-
-
-
-
-// TODO Remove
-void ast_visitor(Ast *ast, AstVisitorFunc visit_func[AstType_COUNT], Analyser *analyser) {
-    XP_ASSERT_DEFAULT(visit_func != NULL);
-
-    if(ast == NULL) {
-        return;
-    }
-
-    if(visit_func[ast->type] != NULL) {
-        visit_func[ast->type](ast, analyser);
-    }
-
-    switch (ast->type)
-    {
-        case AstType_Function: {
-            new_scope(analyser);
-            for(isize i = 0; i < ast->Function.params.count; i++) {
-                ast_visitor(ast->Function.params[i], visit_func, analyser);
-            }
-            ast_visitor(ast->Function.block, visit_func, analyser);
-        } break;
-
-        case AstType_Block: {
-            if(ast->Block.is_function_body) {
-                for(isize i = 0; i < ast->Block.statements.count; i++) {
-                    ast_visitor(ast->Block.statements[i], visit_func, analyser);
-                }
-                break;
-            }
-
-            new_scope(analyser);
-            for(isize i = 0; i < ast->Block.statements.count; i++) {
-                ast_visitor(ast->Block.statements[i], visit_func, analyser);
-            }
-        } break;
-
-        case AstType_IfStmt: {
-            ast_visitor(ast->IfStmt.condition, visit_func, analyser);
-            ast_visitor(ast->IfStmt.then_block, visit_func, analyser);
-            ast_visitor(ast->IfStmt.else_block, visit_func, analyser);
-        } break;
-
-        case AstType_ForStmt: {
-
-            new_scope(analyser);
-
-            array_push_back(&analyser->loop_ast_stack, ast);
-            
-            ast_visitor(ast->ForStmt.init, visit_func, analyser);
-            ast_visitor(ast->ForStmt.condition, visit_func, analyser);
-            ast_visitor(ast->ForStmt.post, visit_func, analyser);
-            ast_visitor(ast->ForStmt.body, visit_func, analyser);
-
-            array_pop_back(&analyser->loop_ast_stack);
-        } break;
-
-        case AstType_ReturnStmt: {
-            ast_visitor(ast->ReturnStmt.expr, visit_func, analyser);
-        } break;
-
-        case AstType_VariableDecl: {
-            ast_visitor(ast->VariableDecl.expr, visit_func, analyser);
-        } break;
-
-        case AstType_Assignment: {
-            ast_visitor(ast->Assignment.left_var_expr, visit_func, analyser);
-            ast_visitor(ast->Assignment.right_expr, visit_func, analyser);
-        } break;
-
-        case AstType_BinaryExpr: {
-            ast_visitor(ast->BinaryExpr.left, visit_func, analyser);
-            ast_visitor(ast->BinaryExpr.right, visit_func, analyser);
-        } break;
-
-        case AstType_UnaryExpr: {
-            ast_visitor(ast->UnaryExpr.operand, visit_func, analyser);
-        } break;
-
-        case AstType_FunctionCallExpr: {
-            for(isize i = 0; i < ast->FunctionCallExpr.args.count; i++) {
-                ast_visitor(ast->FunctionCallExpr.args[i], visit_func, analyser);
-            }
-        } break;
-
-        default: {
-            // Nope
-        } break;
-    }
-}
 

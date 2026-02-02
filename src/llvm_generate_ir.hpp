@@ -2,6 +2,7 @@
 #define CREST_LLVM_GENERATE_IR_HPP
 
 #include "parser.hpp"
+#include "package.hpp"
 
 #include "llvm-c/Core.h"
 #include "llvm-c/Target.h"
@@ -15,6 +16,10 @@ struct LLVMLoopBlocks {
     LLVMBasicBlockRef merge_block;
 };
 
+
+
+// LLVM IR 生成器, 保存生成一个Module所需的状态
+// 目前一个Module就代表一个package
 struct LLVMGenerator {
     LLVMContextRef ctx;
     LLVMModuleRef module;
@@ -27,16 +32,19 @@ struct LLVMGenerator {
     Array<LLVMLoopBlocks> loop_stack;
 
     xpHashMap<xpString, LLVMTypeRef> struct_types;
+
+    xpHashSet<xpString> declared_extern_functions;
+
+    Package *pkg;
+    Scope *curr_file_scope;
 };
 
 
 
 
-void init_llvm_generator(LLVMGenerator *gen);
-void free_llvm_generator(LLVMGenerator *gen);
 
+void gen_ir_all_packages(Array<Package> all_packages);
 
-void gen_ir_astfile(AstFile f);
 
 
 struct LLVMState {

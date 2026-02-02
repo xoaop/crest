@@ -6,6 +6,8 @@
 
 #include "ast.hpp"
 
+#include "analyser.hpp"
+
 
 void load_state(LLVMGenerator *gen, LLVMState state);
 LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, LLVMBasicBlockRef entry);
@@ -13,6 +15,9 @@ LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, L
 
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type);
 
+
+void gen_ir_package(Package *pkg);
+void gen_ir_astfile(AstFile f, LLVMGenerator *gen);
 void gen_ir_function(LLVMGenerator *gen, Ast *function);
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
 LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state);
@@ -22,9 +27,9 @@ LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state)
 
 
 
-void init_llvm_generator(LLVMGenerator *gen) {
+void init_llvm_generator(LLVMGenerator *gen, Package *pkg, xpAllocator allocator) {
     gen->ctx = LLVMContextCreate();
-    gen->module = LLVMModuleCreateWithNameInContext("my_module", gen->ctx);
+    gen->module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, gen->ctx);
     gen->builder = LLVMCreateBuilderInContext(gen->ctx);
 
     LLVMTargetRef target;
@@ -49,11 +54,15 @@ void init_llvm_generator(LLVMGenerator *gen) {
 
 
 
-    gen->locals = xp_hash_map_make<xpString, LLVMValueRef>(permanent_allocator());
+    gen->locals = xp_hash_map_make<xpString, LLVMValueRef>(allocator);
 
-    gen->loop_stack = make_array<LLVMLoopBlocks>(permanent_allocator());
+    gen->loop_stack = make_array<LLVMLoopBlocks>(allocator);
 
-    gen->struct_types = xp_hash_map_make<xpString, LLVMTypeRef>(permanent_allocator());
+    gen->struct_types = xp_hash_map_make<xpString, LLVMTypeRef>(allocator);
+
+    gen->declared_extern_functions = xp_hash_set_make<xpString>(allocator);
+
+    gen->pkg = pkg;
     return;
 }
 
@@ -99,6 +108,83 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
 }
 
 
+
+TypeRef get_extern_func_type_by_full_ident_ast(Ast *field_access, LLVMGenerator *gen) {
+    XP_ASSERT_DEFAULT(field_access->type == AstType_FieldAccess);
+
+    xpString parent_name = field_access->FieldAccess.parent->Ident.name;
+    xpString field_name = field_access->FieldAccess.field_name;
+
+    SymbolInfo *import_symbol = find_symbol_in_curr_scope_with_kind(
+        gen->curr_file_scope,
+        parent_name,
+        SymbolKind::PackageImport
+    );
+
+    Package *imported_package = import_symbol->imported_package;
+
+    SymbolInfo *func_symbol = find_symbol_in_scope_list_until_with_kind(
+        ScopeType::Package,
+        &imported_package->package_scope,
+        field_name,
+        SymbolKind::FunctionDecl
+    );
+
+
+    return func_symbol->type;
+}
+
+
+
+xpString get_func_full_name(Ast *func_decl_or_call, LLVMGenerator *gen) {
+
+    Package *pkg_of_func = gen->pkg;
+    xpString func_name;
+
+    if(func_decl_or_call->type == AstType_Function) {
+
+        func_name = func_decl_or_call->Function.name;
+
+    } else if(func_decl_or_call->type == AstType_FunctionCallExpr) {
+
+        Ast *func_ident = func_decl_or_call->FunctionCallExpr.func_ident;
+
+        if(func_ident->type == AstType_Ident) {
+            func_name = func_ident->Ident.name;
+        } else if(func_ident->type == AstType_FieldAccess) {
+            func_name = func_ident->FieldAccess.field_name;
+
+            SymbolInfo *import_symbol = find_symbol_in_curr_scope_with_kind(
+                gen->curr_file_scope,
+                func_ident->FieldAccess.parent->Ident.name,
+                SymbolKind::PackageImport
+            );
+
+            pkg_of_func = import_symbol->imported_package;
+
+        } else {
+            XP_ASSERT_DEFAULT(0);
+        }
+
+    } else {
+        XP_ASSERT_DEFAULT(0);
+    }
+
+    if(xp_string_equal(func_name, xp_string_c("main"))) {
+        return func_name;
+    }
+
+    auto dot = xpOption<xpString>(xp_string_c("."));
+    return xp_string_concat_mid(
+        pkg_of_func->path,
+        func_name,
+        dot,
+        stage_allocator()
+    );
+}
+
+
+
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
     switch(type->kind) {
         case Type_void:
@@ -124,20 +210,27 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
         }
         case Type_struct: {
 
+            xpString full_type_name = xp_string_concat_mid(
+                type->struct_info.pkg->path, 
+                type->type_name,
+                xpOption<xpString>(xp_string_c(".")),
+                stage_allocator()
+            );
+
             // 如果已经存在该结构体类型, 直接返回
-            LLVMTypeRef *existing_struct_type = xp_hash_map_get(gen->struct_types, type->type_name);
+            LLVMTypeRef *existing_struct_type = xp_hash_map_get(gen->struct_types, full_type_name);
             if(existing_struct_type != NULL) {
                 return *existing_struct_type;
             }
 
-
-            LLVMTypeRef *struct_type = xp_hash_map_insert(&gen->struct_types, type->type_name, LLVMStructCreateNamed(gen->ctx, type->type_name.c_str));
+            LLVMTypeRef struct_ty = LLVMStructCreateNamed(gen->ctx, full_type_name.c_str);
+            LLVMTypeRef *struct_type = xp_hash_map_insert(&gen->struct_types, full_type_name, struct_ty);
             
             
-            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(stage_allocator(), type->struct_fields.count);
+            Array<LLVMTypeRef> field_types = make_array_len<LLVMTypeRef>(stage_allocator(), type->struct_info.struct_fields.count);
             
-            for(isize i = 0; i < type->struct_fields.count; i++) {
-                StructField field = type->struct_fields[i];
+            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+                StructField field = type->struct_info.struct_fields[i];
                 LLVMTypeRef field_llvm_type = get_llvm_type_from_type(gen, field.type);
                 array_push_back(&field_types, field_llvm_type);
             }
@@ -152,64 +245,105 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
             return LLVMArrayType(element_type, (unsigned)type->array_info.count);
         }
 
+        case Type_function: {
+            Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(stage_allocator(), type->function_info.param_types.count);
+            for(isize i = 0; i < type->function_info.param_types.count; i++) {
+                array_push_back(&params, get_llvm_type_from_type(gen, type->function_info.param_types[i]));
+            }
+            
+            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(gen, type->function_info.return_type), params.data, params.count, 0);
+            
+            return func_type;
+        } break;
+
         default:
             XP_ASSERT_DEFAULT(0);
     }
 }
 
 
-
-void gen_ir_astfile(AstFile f) {
-
-    defer(xp_arena_allocator_clear(temp_allocator()));
+void gen_ir_all_packages(Array<Package> all_packages) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
     LLVMInitializeNativeTarget();
 
 
+    for(isize i = 0; i < all_packages.count; i++) {
+        gen_ir_package(&all_packages[i]);
+    }
+
+}
+
+
+void gen_ir_package(Package *pkg) {
     LLVMGenerator gen;
-    init_llvm_generator(&gen);
+    init_llvm_generator(&gen, pkg, stage_allocator());
 
     LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
 
+    // 声明当前包中的所有函数
+    for(isize i = 0; i < pkg->ast_files.count; i++) {
+        AstFile f = pkg->ast_files[i];
 
-    for(isize i = 0; i < f.top_levels.count; i++) {
-        Ast *top_level = f.top_levels[i];
-        if(top_level->type == AstType_Function) {
-            Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(stage_allocator(), top_level->Function.params.count);
-            for(isize j = 0; j < top_level->Function.params.count; j++) {
-                array_push_back(&params, get_llvm_type_from_type(&gen, top_level->Function.params[j]->v_type));
+        gen.curr_file_scope = &f.file_scope;
+        for(isize i = 0; i < f.top_levels.count; i++) {
+            Ast *top_level = f.top_levels[i];
+
+            if(top_level->type == AstType_Function) {
+                xpString full_func_name = get_func_full_name(top_level, &gen);
+
+                LLVMValueRef function = LLVMAddFunction(
+                    gen.module, 
+                    full_func_name.c_str,
+                    get_llvm_type_from_type(&gen, top_level->v_type)
+                );
             }
-            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(&gen, top_level->v_type->function_info.return_type), params.data, params.count, 0);
-            LLVMValueRef function = LLVMAddFunction(gen.module, top_level->Function.name.c_str, func_type);
         }
     }
 
-    // char *str = LLVMPrintModuleToString(gen.module); // For debug
-    // printf("%s\n", str);
+    for(isize i = 0; i < pkg->ast_files.count; i++) {
+        gen.curr_file_scope = &pkg->ast_files[i].file_scope;
+        gen_ir_astfile(pkg->ast_files[i], &gen);
+    }
+
+
+    // 输出 .ll 文件
+    char *error = nullptr;
+
+    xpString ll_file_path = xp_make_string(stage_allocator(), "output/");
+    xpString ll_file_name = xp_string_replace_char(pkg->path, '/', '_', stage_allocator());
+    xp_string_append(&ll_file_path, ll_file_name);
+    xp_string_append(&ll_file_path, xp_string_c(".ll"));
+    
+    if(LLVMPrintModuleToFile(gen.module, ll_file_path.c_str, &error)) {
+        fprintf(stderr, "Error writing .ll file: %s\n", error);
+        LLVMDisposeMessage(error);
+    }
+    
+    free_llvm_generator(&gen);
+
+}
+
+void gen_ir_astfile(AstFile f, LLVMGenerator *gen) {
+    
 
     // TODO
     for(isize i = 0; i < f.top_levels.count; i++) {
         switch(f.top_levels[i]->type) {
             case AstType_Function:
-                gen_ir_function(&gen, f.top_levels[i]);
+                gen_ir_function(gen, f.top_levels[i]);
                 break;
             case AstType_StructDecl:
                 // TODO 结构体声明处理
+                break;
+            case AstType_Import:
+                // TODO import 处理
                 break;
             default:
                 XP_ASSERT_DEFAULT(0);
         }
     }
 
-    // 输出 .ll 文件
-    char *error = nullptr;
-    if (LLVMPrintModuleToFile(gen.module, "output.ll", &error) != 0) {
-        fprintf(stderr, "Error writing .ll file: %s\n", error);
-        LLVMDisposeMessage(error);
-    }
-
-    free_llvm_generator(&gen);
 }
 
 
@@ -222,7 +356,7 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
         return;
     }
 
-    LLVMValueRef func = LLVMGetNamedFunction(gen->module, function->Function.name.c_str);
+    LLVMValueRef func = LLVMGetNamedFunction(gen->module, get_func_full_name(function, gen).c_str);
 
     // 1. 创建入口基本块并设置插入点
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(gen->ctx, func, "entry");
@@ -246,7 +380,8 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     gen_ir_block(gen, function->Function.block, state);
 
 
-    TypeRef func_type = find_symbol(symbol_table(), function->Function.name)->type;
+    // TypeRef func_type = find_symbol(symbol_table(), function->Function.name)->type;
+    TypeRef func_type = function->v_type;
     
 
     if(func_type->function_info.return_type == easy_type(Type_void)) {
@@ -637,40 +772,106 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
 LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr) {
     switch (expr->type)
     {
-    case AstType_VarExpr: {
-        LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->VarExpr.name);
+
+    case AstType_FieldAccess: {
+        // parent是 package名(如fmt) 或 结构体变量名(如 person) 
+        Ast *parent = expr->FieldAccess.parent;
+
+        LLVMValueRef parent_value = NULL;
+        if(expr->FieldAccess.parent->type == AstType_FieldAccess) {
+            parent_value = gen_ir_expr(gen, parent, state);
+        } else if(expr->FieldAccess.parent->type == AstType_Ident) {
+            if(parent->v_type == undefined_type()) {
+                // 包外变量访问
+                XP_ASSERT_DEFAULT(0); // TODO 包外全局变量访问
+            } else {
+                // 结构体字段访问
+                parent_value = gen_ir_expr(gen, parent, state);
+            }
+        }
+
+        //
+        // 目前这里一定是结构体字段访问, 不用分支
+        //
+
+        Ast *parent_expr = NULL;
+        if(is_struct_type(expr->FieldAccess.parent->v_type)) {
+            parent_expr = expr->FieldAccess.parent;
+        } else if(is_pointer_type(expr->FieldAccess.parent->v_type) && is_struct_type(get_pointed_type(expr->FieldAccess.parent->v_type))) {
+            
+            // 如果是指向结构体的指针，则需要先解引用
+            parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
+            parent_expr->UnaryExpr.op = TokenType::Star;
+            parent_expr->UnaryExpr.operand = expr->FieldAccess.parent;
+            parent_expr->v_type = get_pointed_type(expr->FieldAccess.parent->v_type);
+        } else {
+            XP_ASSERT_DEFAULT(0);
+        }
+
+        TypeRef struct_type = parent_expr->v_type;
+        // Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
+        
+        
+        isize field_index = -1;
+        for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
+            if(struct_type->struct_info.struct_fields[i].name == expr->FieldAccess.field_name) {
+                field_index = i;
+                break;
+            }
+        }
+        XP_ASSERT_DEFAULT(field_index != -1);
+        
+
+        if(is_lvalue_expr) {
+            // 这里正好发现is_lvalue_expr用来获取指针的场景
+            LLVMValueRef struct_ptr = gen_ir_expr(gen, parent_expr, state, true);
+
+            LLVMValueRef field_ptr = LLVMBuildStructGEP2(gen->builder, get_llvm_type_from_type(gen, struct_type), struct_ptr, field_index, "fieldptrtmp");
+            return field_ptr;
+        } else {
+            LLVMValueRef struct_val = gen_ir_expr(gen, parent_expr, state);
+            LLVMValueRef field_val = LLVMBuildExtractValue(gen->builder, struct_val, field_index, "fieldextractedtmp");
+            return field_val;
+        }
+
+    } break;
+
+    case AstType_Ident: {
+        // 作为表达式的ident, 只能是变量, 非变量的Ident在相应的地方处理, 而不是交给这里处理
+
+        LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->Ident.name);
         XP_ASSERT_DEFAULT(alloca != NULL);
 
         // TODO 处理数组转为切片
-        if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
+        // if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
 
-            LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
-            LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
+        //     LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
+        //     LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
             
-            LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
+        //     LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
 
-            LLVMValueRef indices[2] = {
-                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
-                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
-            };
-            // 设置数据指针
-            LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
-            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+        //     LLVMValueRef indices[2] = {
+        //         LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
+        //         LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
+        //     };
+        //     // 设置数据指针
+        //     LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
+        //     slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
             
-            // 设置count
-            // TODO i64 换成 isize
-            LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
+        //     // 设置count
+        //     // TODO i64 换成 isize
+        //     LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
 
-            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+        //     slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
 
-            return slice_struct_value;
-        }
+        //     return slice_struct_value;
+        // }
 
 
         if(is_lvalue_expr) {
             return *alloca;
         } else {
-            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), *alloca, expr->VarExpr.name.c_str);
+            return LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->v_type), *alloca, expr->Ident.name.c_str);
         }
     } break;
     case AstType_Constant: {
@@ -734,7 +935,34 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     } break;
 
     case AstType_FunctionCallExpr: {
-        LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.name.c_str);
+
+        LLVMValueRef func = NULL;
+
+        xpString full_func_name = get_func_full_name(expr, gen);
+        if(expr->FunctionCallExpr.func_ident->type == AstType_FieldAccess) {
+            // 包外函数调用，如 pkg.Func()
+
+            Ast *field_access = expr->FunctionCallExpr.func_ident;
+
+            if(xp_hash_set_get(&gen->declared_extern_functions, full_func_name) == NULL) {
+                // 还没有声明过该外部函数，先声明
+                TypeRef f_type = get_extern_func_type_by_full_ident_ast(field_access, gen);
+
+                LLVMTypeRef func_type = get_llvm_type_from_type(gen, f_type);
+                LLVMAddFunction(gen->module, full_func_name.c_str, func_type);
+
+                xp_hash_set_insert(&gen->declared_extern_functions, full_func_name);
+            }
+
+            func = LLVMGetNamedFunction(gen->module, full_func_name.c_str);
+        } else {
+            // 包内函数调用
+
+            func = LLVMGetNamedFunction(gen->module, full_func_name.c_str);
+        }
+
+
+        // LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.name.c_str);
 
         Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(stage_allocator(), expr->FunctionCallExpr.args.count);
         for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
@@ -744,10 +972,10 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         LLVMTypeRef type = LLVMGlobalGetValueType(func);
 
-        SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
+        // SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
+        TypeRef return_type = expr->v_type;
 
-
-        if(info->type->function_info.return_type == easy_type(Type_void)) {
+        if(return_type == easy_type(Type_void)) {
             // 无返回值函数调用
 
             return LLVMBuildCall2(gen->builder, type, func, args.data, args.count, "");
@@ -762,48 +990,6 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         return gen_ir_cast_expr(gen, expr, state);
     } break;
 
-    case AstType_FieldAccessExpr: {
-        Ast *parent_expr = NULL;
-        if(is_struct_type(expr->FieldAccessExpr.parent_expr->v_type)) {
-            parent_expr = expr->FieldAccessExpr.parent_expr;
-        } else if(is_pointer_type(expr->FieldAccessExpr.parent_expr->v_type) && is_struct_type(get_pointed_type(expr->FieldAccessExpr.parent_expr->v_type))) {
-            
-            // 如果是指向结构体的指针，则需要先解引用
-            parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
-            parent_expr->UnaryExpr.op = TokenType::Star;
-            parent_expr->UnaryExpr.operand = expr->FieldAccessExpr.parent_expr;
-            parent_expr->v_type = get_pointed_type(expr->FieldAccessExpr.parent_expr->v_type);
-        } else {
-            XP_ASSERT_DEFAULT(0);
-        }
-
-        TypeRef struct_type = parent_expr->v_type;
-        // Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
-        
-        
-        isize field_index = -1;
-        for(isize i = 0; i < struct_type->struct_fields.count; i++) {
-            if(struct_type->struct_fields[i].name == expr->FieldAccessExpr.field_name) {
-                field_index = i;
-                break;
-            }
-        }
-        XP_ASSERT_DEFAULT(field_index != -1);
-        
-
-        if(is_lvalue_expr) {
-            // 这里正好发现is_lvalue_expr用来获取指针的场景
-            LLVMValueRef struct_ptr = gen_ir_expr(gen, parent_expr, state, true);
-
-            LLVMValueRef field_ptr = LLVMBuildStructGEP2(gen->builder, get_llvm_type_from_type(gen, struct_type), struct_ptr, field_index, "fieldptrtmp");
-            return field_ptr;
-        } else {
-            LLVMValueRef struct_val = gen_ir_expr(gen, parent_expr, state);
-            LLVMValueRef field_val = LLVMBuildExtractValue(gen->builder, struct_val, field_index, "fieldextractedtmp");
-            return field_val;
-        }
-
-    } break;
     
     case AstType_StructInitExpr: {
         LLVMTypeRef struct_type = get_llvm_type_from_type(gen, expr->v_type);
@@ -855,7 +1041,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             LLVMValueRef slice_val = LLVMBuildLoad2(gen->builder, get_llvm_type_from_type(gen, expr->IndexExpr.array_var_expr->v_type), array_or_slice_ptr, "loadslicetmp");
             LLVMValueRef data_raw = LLVMBuildExtractValue(gen->builder, slice_val, 0, "slicedataptrtmp");
 
-            TypeRef data_ptr_type = expr->IndexExpr.array_var_expr->v_type->struct_fields[0].type;
+            TypeRef data_ptr_type = expr->IndexExpr.array_var_expr->v_type->struct_info.struct_fields[0].type;
             LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(gen, data_ptr_type);
             
 
@@ -915,11 +1101,11 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
         
         
         LLVMValueRef result = nullptr;
-        for(isize i = 0; i < type->struct_fields.count; i++) {
+        for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
             LLVMValueRef left_field = LLVMBuildExtractValue(gen->builder, left, i, "leftextracttmp");
             LLVMValueRef right_field = LLVMBuildExtractValue(gen->builder, right, i, "rightextracttmp");
             
-            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_fields[i].type);
+            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_info.struct_fields[i].type);
             
             if(result == nullptr) {
                 result = field_cmp;
