@@ -25,27 +25,36 @@ SYMBOL_TYPES
 
 
 
-// enum ScopeType {
-//     ScopeType_Global,
-//     ScopeType_Local,
-// };
+enum class SymbolKind {
+    FunctionDecl,
+    StructDecl,
+    PackageImport,
 
+    VarDecl,
+};
+
+
+
+struct Package;
 
 struct SymbolInfo {
+    SymbolKind kind;
     xpString name;
-    TypeRef type;
-
+    
     // TODO 现在先不区分作用域类型, 后面实现
     // ScopeType scope;
     
     // TODO 这个目前好像没什么用, 可以直接用Type
     // SymbolType type;
-    // TODO 目前不需要特定的数据, 先注释掉
-    // union {
-    //     #define SYMBOL_TYPE(type_name, ...) XP_JOIN_2(SymbolInfo, type_name) type_name;
-    //     SYMBOL_TYPES
-    //     #undef SYMBOL_TYPE
-    // };
+    
+    TypeRef type;
+    union {
+
+        // function decl or struct decl
+
+        // import
+        Package *imported_package;
+    };
 
 };
 
@@ -70,8 +79,6 @@ SymbolTable make_symbol_table(xpAllocator allocator);
 void free_symbol_table(SymbolTable *table);
 
 
-SymbolTable* symbol_table();
-void symbol_table_init();
 
 
 b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info);

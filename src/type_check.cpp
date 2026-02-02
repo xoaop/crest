@@ -133,8 +133,16 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
         }
     } break;
 
-    case AstType_VarExpr: {
-        return true;
+    // case AstType_VarExpr: {
+    //     return true;
+    // } break;
+
+    case AstType_Ident: {
+        if(v_type == undefined_type()) {
+            return false;
+        } else {
+            return true;
+        }
     } break;
 
     case AstType_IndexExpr: {
@@ -145,8 +153,8 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
         }
     } break;
 
-    case AstType_FieldAccessExpr: {
-        if(expr->FieldAccessExpr.parent_expr->is_lvalue) {
+    case AstType_FieldAccess: {
+        if(expr->FieldAccess.parent->is_lvalue) {
             return true;
         } else {
             return false;
@@ -182,7 +190,7 @@ static bool check_target_type(Ast *expr, TypeRef target_type) {
         // 数组可以隐式转化为slice结构体类型
         
         // 前提元素类型相同
-        if(target_type->struct_fields[0].type->pointed_type == expr->v_type->array_info.element_type) {
+        if(target_type->struct_info.struct_fields[0].type->pointed_type == expr->v_type->array_info.element_type) {
 
             expr->implicit_conversion_tag = ImplicitConversionTag::ArrayToSliceStruct;
             return true;
@@ -201,7 +209,7 @@ static bool check_target_type(Ast *expr, TypeRef target_type) {
 
 
 
-void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *analyser) {
+void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser analyser) {
     static isize depth = 0;
 
     depth += 1;
@@ -575,70 +583,91 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
 
         } break;
 
-        // TODO 检查
-        case AstType_FieldAccessExpr: {
-            infer_expr_type(expr->FieldAccessExpr.parent_expr, false, target_type, analyser);
+        // TODO FIRST 实现
+        case AstType_FieldAccess: {
 
-            // 检查a.b 中的a是不是: 
-            // 1. 结构体
-            // 2. 结构体指针
-            TypeRef parent_type = expr->FieldAccessExpr.parent_expr->v_type;
-            if(!(is_struct_type(parent_type)) && (!((is_pointer_type(parent_type)) && (is_struct_type(get_pointed_type(parent_type)))))) {
-                XP_ASSERT_DEFAULT(0);
-            }
-            if(is_struct_type(parent_type)) {
-                // parent_type = find_symbol(symbol_table(), parent_type->type_name)->type;
+            Ast *parent = expr->FieldAccess.parent;
+            xpString field_name = expr->FieldAccess.field_name;
 
+            infer_expr_type(parent, has_target, target_type, analyser);
+
+            bool is_struct_field_access = false;
+            TypeRef parent_struct_type = NULL;
+
+            if(parent->v_type == undefined_type()) {
+                // 表示parent是个包名
+
+                is_struct_field_access = false;
+            } else if(is_struct_type(parent->v_type)) {
+                // 结构体变量名
+                is_struct_field_access = true;
+
+                parent_struct_type = parent->v_type;
+
+            } else if(is_pointer_type(parent->v_type) && is_struct_type(get_pointed_type(parent->v_type))) {
+                // 结构体指针变量名
+                is_struct_field_access = true;
+
+                // 获取指针指向的结构体类型, 方便后面检查字段
+                parent_struct_type = get_pointed_type(parent->v_type);
             } else {
-                parent_type = get_pointed_type(parent_type);
-                // parent_type = find_symbol(symbol_table(), parent_type->type_name)->type;
-            }
-
-
-            
-            // 检查a.b中, a有没有b这个字段
-            StructField field;
-            bool found = false;
-            for(isize i = 0; i < parent_type->struct_fields.count; i++) {
-                field = parent_type->struct_fields[i];
-                if(xp_string_cmp(field.name, expr->FieldAccessExpr.field_name) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if(!found) {
-                error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_type->type_name.c_str, expr->FieldAccessExpr.field_name.c_str);
+                error_msg(&parent->token, "field access parent expression must be a struct type or package name");
                 XP_ASSERT_DEFAULT(0);
             }
 
+            if(is_struct_field_access) {
+                
+                // 检查a.b中, a有没有b这个字段
+                StructField field;
+                bool found = false;
+                for(isize i = 0; i < parent_struct_type->struct_info.struct_fields.count; i++) {
+                    field = parent_struct_type->struct_info.struct_fields[i];
+                    if(xp_string_cmp(field.name, expr->FieldAccess.field_name) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if(!found) {
+                    error_msg(&expr->token, "struct type '%s' has no field named '%s'", parent_struct_type->type_name.c_str, expr->FieldAccess.field_name.c_str);
+                    XP_ASSERT_DEFAULT(0);
+                }
+    
+    
+                // 如果不是结构体类型, 直接从字段类型赋值
+                // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
+                // expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
+                expr->v_type = field.type;
+            } else {
+                // 包名.符号名
 
-            // 如果不是结构体类型, 直接从字段类型赋值
-            // 如果是结构体类型, 从符号表中找到字段类型信息再赋值
-            // expr->v_type = get_type_detail_if_have(symbol_table(), field.type);
-            expr->v_type = field.type;
+                // 符号存在性和符号类别已在resolve阶段检查过了
+
+                SymbolInfo *package_info = find_symbol_by_ident_or_fieldaccess_in_other_packages(parent, analyser);
+            
+                SymbolInfo *field_info = find_symbol_in_curr_scope(&package_info->imported_package->package_scope, field_name);
+
+                expr->v_type = field_info->type;
+            }
+
 
         } break;
 
         case AstType_StructInitExpr: {
             // 检查是否是结构体类型
 
-            SymbolInfo *struct_type_info = find_symbol(symbol_table(), expr->StructInitExpr.struct_type_name);
-            if(struct_type_info == NULL || !is_struct_type(struct_type_info->type)) {
-                error_msg(&expr->token, "struct type '%s' not found", expr->StructInitExpr.struct_type_name.c_str);
-                XP_ASSERT_DEFAULT(0);
-            }
+            SymbolInfo *struct_type_info = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr->StructInitExpr.struct_type_ident, analyser);
 
             // 检查字段数量是否匹配
-            if(struct_type_info->type->struct_fields.count != expr->StructInitExpr.field_inits.count) {
+            if(struct_type_info->type->struct_info.struct_fields.count != expr->StructInitExpr.field_inits.count) {
                 error_msg(&expr->token, "struct init field count does not match struct type field count");
                 XP_ASSERT_DEFAULT(0);
             }
 
             // 检查字段初始化表达式类型是否和字段类型匹配
             for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
-                infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type->struct_fields[i].type, analyser);
+                infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type->struct_info.struct_fields[i].type, analyser);
                 
-                if(!check_target_type(expr->StructInitExpr.field_inits[i], struct_type_info->type->struct_fields[i].type)) {
+                if(!check_target_type(expr->StructInitExpr.field_inits[i], struct_type_info->type->struct_info.struct_fields[i].type)) {
                     error_msg(&expr->StructInitExpr.field_inits[i]->token, "struct field init expression type does not match struct field type");
                     XP_ASSERT_DEFAULT(0);
                 }
@@ -774,29 +803,29 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser *
             } else if(is_slice_struct_type(as_type)) {
 
 
-                expr->v_type = as_type->struct_fields[0].type->pointed_type;
+                expr->v_type = as_type->struct_info.struct_fields[0].type->pointed_type;
             } else if(is_string_struct_type(as_type)) {
 
                 
-                expr->v_type = as_type->struct_fields[0].type->pointed_type;
+                expr->v_type = as_type->struct_info.struct_fields[0].type->pointed_type;
             } else {
                 XP_ASSERT_DEFAULT(0);
             }
         } break;
 
         case AstType_StringLiteralExpr: {
-            expr->v_type = string_type_as_struct();
+            // expr->v_type = string_type_as_struct();
 
         } break;
 
 
-        case AstType_VarExpr: {
-            SymbolInfo *info = find_symbol(&analyser->symbol_table_stack, expr->VarExpr.name);
+        case AstType_Ident: {
+            SymbolInfo *info = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr, analyser);
             expr->v_type = info->type;
 
         } break;
         case AstType_FunctionCallExpr: {
-            SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
+            SymbolInfo *info = find_symbol_by_ident_or_fieldaccess_in_other_packages(expr->FunctionCallExpr.func_ident, analyser);
             expr->v_type = info->type->function_info.return_type;
         } break;
 

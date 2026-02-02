@@ -26,17 +26,6 @@ bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b) {
 // Symbol Table
 //
 
-SymbolTable global_symbol_table;
-
-
-// *NOTE: 仅用于analyser阶段后的全局符号表访问
-SymbolTable* symbol_table() {
-    return &global_symbol_table;
-}
-
-void symbol_table_init() {
-    global_symbol_table.symbols = xp_hash_map_make<xpString, SymbolInfo>(permanent_allocator());
-}
 
 SymbolTable make_symbol_table(xpAllocator allocator) {
     SymbolTable table = {};
@@ -70,37 +59,3 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
     return info;
 }
 
-
-b8 add_symbol(Array<SymbolTable> *symbol_table_stack, xpString name, SymbolInfo info) {
-    SymbolTable *current_table = &(*symbol_table_stack)[symbol_table_stack->count - 1];
-    return add_symbol(current_table, name, info);
-}
-
-SymbolInfo *find_symbol(Array<SymbolTable> *symbol_table_stack, xpString name) {
-    for(isize i = symbol_table_stack->count - 1; i >= 0; i--) {
-        SymbolTable *table = &(*symbol_table_stack)[i];
-        SymbolInfo *info = find_symbol(table, name);
-        if(info != NULL) {
-            return info;
-        }
-    }
-
-    return NULL;
-}
-
-
-
-
-
-// Type get_type_detail_if_have(SymbolTable *table, Type type) {
-//     if(type.kind == Type_struct || type.kind == Type_function) {
-//         SymbolInfo *info = find_symbol(table, type.type_name);
-
-//         XP_ASSERT_DEFAULT(info != NULL);
-//         XP_ASSERT_DEFAULT(is_equal_type(info->type, type));
-
-//         return info->type;
-//     } 
-
-//     return type;
-// }

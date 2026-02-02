@@ -7,11 +7,29 @@
 
 
 enum class ScopeType {
-    Package, 
-    File, 
-    Function,  // 函数的Block
-    Block,     // 不是函数的Block
-    LoopBlock, // 循环块 
+
+    // 全局作用域, 包括:
+    // 内置类型, 如string
+    Global,
+
+    // package作用域, 包括:
+    // 包下所有文件的所有函数声明, 结构体声明
+    Package,
+
+    // 文件作用域， 包括:
+    // import的package
+    File,
+    
+
+    // 函数的Block, 包括:
+    // 函数参数变量
+    Function,  
+
+    // 不是函数的Block
+    Block,     
+
+    // 循环块
+    LoopBlock,
 };
 
 struct Scope {
@@ -23,7 +41,15 @@ struct Scope {
 
 
 Scope make_scope(Scope *parent, ScopeType type, xpAllocator allocator);
+Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator);
+void free_scope(Scope *scope);
 
-
+Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
+bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
+SymbolInfo *find_symbol_in_curr_scope(Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_in_scope_list_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_in_scope_list(Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_in_curr_scope_with_kind(Scope *scope, xpString symbol_ident, SymbolKind symbol_kind);
+SymbolInfo *find_symbol_in_scope_list_until_with_kind(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, SymbolKind symbol_kind);
 
 #endif

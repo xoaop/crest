@@ -44,11 +44,6 @@ Ast *ast_alloc(AstType type, Token token) {
 }
 
 
-AstFile ast_file_make() {
-    AstFile f = {};
-    f.top_levels = make_array<Ast *>(ast_allocator());
-    return f;
-}
 
 bool is_add_sub_operator(TokenType t) {
     return t == TokenType::Add || t == TokenType::Minus;
@@ -155,9 +150,9 @@ void print_ast(Ast *a) {
         print_with_prefix("operand: \n");
         print_ast(a->UnaryExpr.operand);
         break;
-    case AstType_VarExpr:
-        print_with_prefix("name: %s\n", a->VarExpr.name.c_str);
-        break;
+    // case AstType_VarExpr:
+    //     // print_with_prefix("name: %s\n", a->VarExpr.name.c_str);
+    //     break;
     case AstType_Assignment:
         print_with_prefix("left_var_expr: \n");
         print_ast(a->Assignment.left_var_expr);
@@ -205,15 +200,15 @@ void print_ast(Ast *a) {
         print_ast(a->CastExpr.expr);
         break;
     case AstType_FunctionCallExpr:
-        print_with_prefix("name: %s\n", a->FunctionCallExpr.name.c_str);
+        // print_with_prefix("name: %s\n", a->FunctionCallExpr.name.c_str);
         print_with_prefix("args: \n");
         print_ast(a->FunctionCallExpr.args);
         break;
 
-    case AstType_FieldAccessExpr:
+    case AstType_FieldAccess:
         print_with_prefix("parent_expr: \n");
-        print_ast(a->FieldAccessExpr.parent_expr);
-        print_with_prefix("field_name: %s\n", a->FieldAccessExpr.field_name.c_str);
+        print_ast(a->FieldAccess.parent);
+        print_with_prefix("field_name: %s\n", a->FieldAccess.field_name.c_str);
         break;
 
     case AstType_StructDecl:
@@ -229,7 +224,7 @@ void print_ast(Ast *a) {
         break;
 
     case AstType_StructInitExpr: 
-        print_with_prefix("struct_type: %s\n", a->StructInitExpr.struct_type_name.c_str);        
+        // print_with_prefix("struct_type: %s\n", a->StructInitExpr.struct_type_name.c_str);        
         print_with_prefix("field_inits: \n");
         print_ast(a->StructInitExpr.field_inits);
         break;

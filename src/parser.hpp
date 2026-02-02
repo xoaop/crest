@@ -7,6 +7,7 @@
 #include "common.hpp"
 
 #include "ast.hpp"
+#include "ast_file.hpp"
 
 
 xp_internal b32 is_binary_op(TokenType type) {
@@ -101,8 +102,6 @@ struct Parser {
 };
 
 
-Ast ast_make(AstType type);
-AstFile ast_file_make();
 
 Parser parser_make(Array<Token> tokens);
 void parser_init(Parser *parser, Array<Token> tokens);

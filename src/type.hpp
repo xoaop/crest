@@ -22,7 +22,6 @@
     TYPE_KIND(array, "array")                           \
     TYPE_KIND(untyped_int, "untyped_int")               \
     TYPE_KIND(untyped_float, "untyped_float")           \
-    TYPE_KIND(uncertain, "uncertain")                   \
 /**/
 
 
@@ -45,9 +44,11 @@ bool is_equal_type(Type a, Type b);
 
 struct StructField;
 
+struct Package;
+
 struct Type {
     TypeKind kind;
-    xpString type_name; // 目前仅用于struct等复合类型的记录
+    xpString type_name;
     
     union {
         
@@ -61,7 +62,11 @@ struct Type {
         TypeRef pointed_type;
         
         // 结构体
-        Array<StructField> struct_fields;
+        struct {
+            Package *pkg;
+            Array<StructField> struct_fields;
+        } struct_info;
+
         
         
         // 数组
@@ -138,9 +143,6 @@ TypeRef get_common_type(TypeRef a, TypeRef b);
 bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult);
 
 
-void point_to(Type *type, Type *pointed_type);
-void struct_add_member(Type *type, xpString name, Type member_type);
-
 
 
 xpString get_type_kind_str(TypeKind kind);
@@ -160,30 +162,30 @@ static constexpr size_t TYPE_TABLE_CAPACITY = 16384;
 struct TypeTable {
     xpInterningTable<Type, TYPE_TABLE_CAPACITY> type_interning_table;
 };
-void init_type_table();
+
+// TODO 移除
+struct Context;
+void init_type_table(Context *ctx);
 
 
 
 
 TypeRef easy_type(TypeKind kind);
 TypeRef pointer_type(TypeRef pointed_type);
-TypeRef pointer_type(TypeRef pointed_type, isize level_of_pointer);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
-TypeRef get_struct_type(xpString name);
-TypeRef get_uncertain_type(xpString type_name);
-TypeRef get_struct_or_uncertain_type(xpString name);
+TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields);
 TypeRef undefined_type();
 
+TypeRef unfinished_struct_type(Package *pkg, xpString ident);
+
+
 TypeRef slice_type_as_struct(TypeRef elem_type);
-TypeRef string_type_as_struct();
+// TypeRef string_type_as_struct();
 
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);
 TypeRef add_type(Type type);
-TypeRef add_uncertain_type(xpString type_name);
-TypeRef add_struct_type(xpString name, Array<StructField> fields);
-void update_uncertain_to_struct(TypeRef uncertain_type, Array<StructField> fields);
 
 template<>
 usize xp_hash_func(Type *type);

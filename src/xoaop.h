@@ -307,16 +307,18 @@ typedef struct xpSlice {
 xp_define xpString xp_string_c(char const *str);
 xp_define xpString xp_make_string(xpAllocator allocator, char const *str);
 xp_define xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize capacity);
+xp_define xpString xp_make_string_zero();
 xp_define xpString xp_make_string_from_slice(xpAllocator allocator, xpSlice slice);
 xp_define xpString xp_string_copy(xpAllocator allocator, xpString string);
 xp_define void xp_string_free(xpString string);
 xp_define b32 xp_string_cmp(xpString a, xpString b);
+xp_define b32 xp_string_equal(xpString a, xpString b);
 xp_define xpString *xp_string_extend(xpString *string, isize extended_size);
 xp_define isize xp_string_find_char(xpString str, char c);
 xp_define xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str);
 xp_define xpString *xp_string_append(xpString *str, xpString appended_str);
 xp_define xpString xp_isize_to_string(isize value, xpAllocator allocator);
-
+xp_define xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator);
 
 
 
@@ -359,8 +361,9 @@ size_t xp_strlen_char32(const char32_t* s);
 
 
 
+
 /*
-    Macros
+Macros
 */
 
 // 为了标识实现作为模板函数的接口
@@ -390,17 +393,17 @@ void xp_zero_array(void *array, isize capacity) {
 
 
 /*
-    Defer In CPP
+Defer In CPP
 */
 
-    #if __cplusplus >= 201703L
+#if __cplusplus >= 201703L
 
 #include <functional> // TODO(xoaop): REMOVE
 template<typename F>
 struct xpDeferWrapper {
-
+    
     xpDeferWrapper(F defer_func): defer_func(defer_func) {
-
+        
     }
     ~xpDeferWrapper() {
         defer_func();
@@ -415,10 +418,10 @@ struct xpDeferWrapper {
 
 
 
-    #endif // __cplusplus >= 201703L
+#endif // __cplusplus >= 201703L
 
 /*
-    Option
+Option
 */
 enum class xpOptionEnum {
     None,
@@ -427,40 +430,35 @@ enum class xpOptionEnum {
 
 template<typename T>
 struct xpOption {
+    public:
+    
+    xpOption() : kind(xpOptionEnum::None) {}
+    xpOption(T val) : kind(xpOptionEnum::Some), value(val) {}
+    
+    bool has_value() {
+        return kind == xpOptionEnum::Some;
+    }
+    
+    bool is_none() {
+        return kind == xpOptionEnum::None;
+    }
+    
+    T unwrap() {
+        XP_ASSERT_DEFAULT(kind == xpOptionEnum::Some);
+        return value;
+    }
+    
+    
+    private:
     xpOptionEnum kind;
     T value;
 };
 
-template<typename T>
-xpOption<T> xp_option_make_some(T value) {
-    xpOption<T> opt = {};
-    opt.kind = xpOptionEnum::Some;
-    opt.value = value;
-    return opt;
-}
-
-template<typename T>
-xpOption<T> xp_option_make_none() {
-    xpOption<T> opt = {};
-    opt.kind = xpOptionEnum::None;
-    return opt;
-}
-
-template<typename T>
-b32 xp_option_is_none(xpOption<T>& opt) {
-    return opt.kind == xpOptionEnum::None;
-}
-
-template<typename T>
-T xp_option_unwrap(xpOption<T>& opt) {
-    XP_ASSERT(xp_option_is_none(opt));
-    return opt.value;
-}
 
 
 
 /*
-    HashMap
+HashMap
 */
 
 //hash函数接口定义
@@ -480,7 +478,7 @@ struct xpHashMap {
     
     xpAllocator allocator;
     xpHashMapEntry<K, V> *entries;
-
+    
     isize count;
     isize capacity;
 };
@@ -491,7 +489,7 @@ xpHashMap<K, V> xp_hash_map_make(xpAllocator allocator) {
     xpHashMap<K, V> hash_map = {};
     hash_map.allocator = allocator;
     hash_map.entries = NULL;
-
+    
     hash_map.count = 0;
     hash_map.capacity = 0;
     
@@ -508,7 +506,7 @@ xpHashMap<K, V> xp_hash_map_copy(xpHashMap<K, V> *o, xpAllocator allocator) {
     xpHashMap<K, V> copy = *o;
     copy.entries = xp_alloc_array<xpHashMapEntry<K, V>>(allocator, copy.capacity);
     memcpy(copy.entries, o->entries, sizeof(xpHashMapEntry<K, V>) * copy.capacity);
-
+    
     return copy;
 }
 
@@ -517,7 +515,7 @@ xpHashMap<K, V> xp_hash_map_copy(xpHashMap<K, V> *o, xpAllocator allocator) {
 template<typename K, typename V>
 void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
     XP_ASSERT(new_capacity > map->capacity);
-
+    
     if(map->entries == NULL) {
         map->entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
         xp_zero(map->entries, sizeof(xpHashMapEntry<K, V>) * new_capacity);
@@ -527,7 +525,7 @@ void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
         for(isize i = 0; i < new_capacity; ++i) {
             new_entries[i].used = false;
         }
-
+        
         for(isize i = 0; i < map->capacity; ++i) {
             xpHashMapEntry<K, V> *old_entry = &map->entries[i];
             if(old_entry->used) {
@@ -541,10 +539,10 @@ void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
             }
         }
         xp_free(map->allocator, map->entries);
-
+        
         map->entries = new_entries;
     }
-
+    
     map->capacity = new_capacity;
     return;
 }
@@ -556,23 +554,23 @@ V *xp_hash_map_insert(xpHashMap<K, V> *map, K key, V value) {
         xp_hash_map_extend(map, map->capacity + map->capacity / 2 + 1);
     }
     usize hash_value = xp_hash_func(&key);
-
+    
     usize index = hash_value % map->capacity;
     usize original_index = index;
     do {
-       xpHashMapEntry<K, V> *entry = &map->entries[index];
+        xpHashMapEntry<K, V> *entry = &map->entries[index];
         if(entry->used == false) {
             entry->key = key;
             entry->value = value;
             entry->used = true;
-
+            
             map->count += 1;
             return &entry->value;
         } else if(entry->key == key) {
             entry->value = value;
             return NULL;
         }
-
+        
         index = (index + 1) % map->capacity;
     } while(index != original_index);
     
@@ -587,7 +585,7 @@ xpHashMapEntry<K, V> *xp_hash_map_get_entry(xpHashMap<K, V> map, K key) {
     if(map.count == 0) {
         return NULL;
     }
-
+    
     usize hash_value = xp_hash_func(&key);
     usize index = hash_value % map.capacity;
     usize original_index = index;
@@ -598,10 +596,10 @@ xpHashMapEntry<K, V> *xp_hash_map_get_entry(xpHashMap<K, V> map, K key) {
         } else if(entry->key == key) {
             return entry;
         }
-
+        
         index = (index + 1) % map.capacity;
     } while(index != original_index);
-
+    
     return NULL;
 }
 
@@ -641,7 +639,7 @@ isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first
             return i;
         }
     }
-
+    
     *first_entry = NULL;
     return -1;
 }
@@ -654,7 +652,7 @@ isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntr
             return i;
         }
     }
-
+    
     *next_entry = NULL;
     return -1;
 }
@@ -662,7 +660,7 @@ isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntr
 
 
 /*
-    HashSet
+HashSet
 */
 
 template<typename K>
@@ -676,7 +674,7 @@ template<typename K>
 struct xpHashSet {
     xpAllocator allocator;
     xpHashSetEntry<K> *entries;
-
+    
     isize count;
     isize capacity;
 };
@@ -686,11 +684,10 @@ xpHashSet<K> xp_hash_set_make(xpAllocator allocator) {
     xpHashSet<K> hash_set = {};
     hash_set.allocator = allocator;
     hash_set.entries = NULL;
-
+    
     hash_set.count = 0;
     hash_set.capacity = 0;
-
-    hash_set.enable_rehash = true;
+    
     return hash_set;
 }
 
@@ -709,7 +706,7 @@ xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
     xpHashSet<K> copy = *set;
     copy.entries = xp_alloc_array<xpHashSetEntry<K>>(allocator, copy.capacity);
     memcpy(copy.entries, set->entries, sizeof(xpHashSetEntry<K>) * copy.capacity);
-
+    
     return copy;
 }
 
@@ -717,7 +714,7 @@ xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
 template<typename K>
 void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
     XP_ASSERT_DEFAULT(new_capacity > set->capacity);
-
+    
     if(set->entries == NULL) {
         set->entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
         xp_zero(set->entries, sizeof(xpHashSetEntry<K>) * new_capacity);
@@ -727,7 +724,7 @@ void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
         for(isize i = 0; i < new_capacity; ++i) {
             new_entries[i].used = false;
         }
-
+        
         for(isize i = 0; i < set->capacity; ++i) {
             xpHashSetEntry<K> *old_entry = &set->entries[i];
             if(old_entry->used) {
@@ -741,10 +738,10 @@ void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
             }
         }
         xp_free(set->allocator, set->entries);
-
+        
         set->entries = new_entries;
     }
-
+    
     set->capacity = new_capacity;
     return;
 }
@@ -756,17 +753,17 @@ K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
         xp_hash_set_extend(set, set->capacity + set->capacity / 2 + 1);
     }
     usize hash_value = xp_hash_func(&key);
-
+    
     usize index = hash_value % set->capacity;
     usize original_index = index;
-
+    
     
     do {
-       xpHashSetEntry<K> *entry = &set->entries[index];
+        xpHashSetEntry<K> *entry = &set->entries[index];
         if(entry->used == false) {
             entry->key = key;
             entry->used = true;
-
+            
             set->count += 1;
             return &entry->key;
         } else if(entry->key == key) {
@@ -787,20 +784,20 @@ xpHashSetEntry<K> *xp_hash_set_get_entry(xpHashSet<K> *set, K key) {
     }
     
     usize hash_value = xp_hash_func(&key);
-
+    
     usize index = hash_value % set->capacity;
     usize original_index = index;
     do {
-       xpHashSetEntry<K> *entry = &set->entries[index];
+        xpHashSetEntry<K> *entry = &set->entries[index];
         if(entry->used == false) {
             return NULL;
         } else if(entry->key == key) {
             return entry;
         }
-
+        
         index = (index + 1) % set->capacity;
     } while(index != original_index);
-
+    
     return NULL;
 }
 
@@ -817,7 +814,7 @@ b32 xp_hash_set_find(xpHashSet<K> *set, K key) {
     if((entry = xp_hash_set_get_entry(set, key)) != NULL) {
         return true;
     }
-
+    
     return false;
 }
 
@@ -829,7 +826,7 @@ b32 xp_hash_set_remove(xpHashSet<K> *set, K key) {
         entry->used = false;
         return true;
     }
-
+    
     return false;
 }
 
@@ -850,15 +847,15 @@ struct xpInterningEntry {
 
 template<typename T, size_t CAPACITY>
 struct xpInterningTable {
-
+    
     xpArena arena; // 只能是独立的ArenaAllocator
     xpAllocator allocator; // 只能是独立的ArenaAllocator
-
+    
     xpInterningEntry<T> buckets[CAPACITY];
-
+    
     isize count;
-
-
+    
+    
     static constexpr size_t capacity = CAPACITY;
 };
 
@@ -882,20 +879,20 @@ xpInterningEntry<T> *xp_interning_table_get_entry(xpInterningTable<T, CAPACITY> 
     }
     
     usize hash_value = xp_hash_func(&key);
-
+    
     usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
     usize original_index = index;
     do {
-       xpInterningEntry<T> *entry = &table->buckets[index];
+        xpInterningEntry<T> *entry = &table->buckets[index];
         if(entry->used == false) {
             return NULL;
         } else if(*(entry->key_ptr) == (key)) {
             return entry;
         }
-
+        
         index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
     } while(index != original_index);
-
+    
     return NULL;
 }
 
@@ -910,26 +907,26 @@ T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
     if(table->count >= table->capacity) {
         return NULL; // 满了
     }
-
+    
     usize hash_value = xp_hash_func(&key);
     usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
     usize original_index = index;
-
+    
     do {
-       xpInterningEntry<T> *entry = &table->buckets[index];
+        xpInterningEntry<T> *entry = &table->buckets[index];
         if(entry->used == false) {
             T *stored_key_ptr = xp_alloc<T>(table->allocator);
             *stored_key_ptr = key;
-
+            
             entry->key_ptr = stored_key_ptr;
             entry->used = true;
-
+            
             table->count += 1;
             return stored_key_ptr;
         } else if(*(entry->key_ptr) == (key)) {
             return NULL; // 重复插入当作失败处理
         }
-
+        
         index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
     } while(index != original_index);
     
@@ -940,8 +937,11 @@ T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
 
 
 
+//
+// xpString CPP 相关操作声明
+//
 
-
+xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator);
 
 
 
@@ -1526,6 +1526,15 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
     return string;
 }
 
+xpString xp_make_string_zero() {
+    xpString string;
+    string.allocator = {NULL, NULL};
+    string.c_str = NULL;
+    string.length = 0;
+    string.capacity = 0;
+    return string;
+}
+
 
 void xp_string_free(xpString string) {
     if(string.allocator.proc != NULL) {
@@ -1547,6 +1556,10 @@ b32 xp_string_cmp(xpString a, xpString b) {
     }
 
     return 0;
+}
+
+b32 xp_string_equal(xpString a, xpString b) {
+    return xp_string_cmp(a, b) == 0;
 }
 
 xpString xp_string_copy(xpAllocator allocator, xpString string) {
@@ -1631,6 +1644,7 @@ xpString *xp_string_append(xpString *str, xpString appended_str) {
 }
 
 
+
 xpString xp_isize_to_string(isize value, xpAllocator allocator) {
     isize len = snprintf(NULL, 0, "%lld", value);
 
@@ -1640,6 +1654,18 @@ xpString xp_isize_to_string(isize value, xpAllocator allocator) {
     string.length = len;
 
     return string;
+}
+
+xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator) {
+    xpString new_string = xp_string_copy(allocator, string);
+
+    for(isize i = 0; i < new_string.length; i++) {
+        if(new_string.c_str[i] == old_char) {
+            new_string.c_str[i] = new_char;
+        }
+    }
+
+    return new_string;
 }
 
 
@@ -1788,6 +1814,20 @@ void print_i128(i128 n) {
 bool xpString::operator== (xpString other) const {
     b32 xp_string_cmp(xpString a, xpString b);
     return !xp_string_cmp(*this, other);
+}
+
+
+
+xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator) {
+    xpString result = xp_string_copy(allocator, a);
+
+    if(middle.has_value()) {
+        xp_string_append(&result, middle.unwrap());
+    }
+
+    xp_string_append(&result, b);
+
+    return result;
 }
 
 
