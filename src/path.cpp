@@ -79,3 +79,15 @@ bool is_existing_file(xpString path) {
 bool is_existing_directory(xpString path) {
     return is_path_exists(path) && is_directory(path);
 }
+
+
+
+
+Path::Path(xpString raw_path_str, xpAllocator allocator) {
+    
+}
+
+
+Path::~Path() {
+
+}
