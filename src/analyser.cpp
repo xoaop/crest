@@ -52,7 +52,7 @@ void resolve_function_decl(Ast *ast, Analyser analyser);
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
-void resolve_block(Ast *ast, Analyser analyser);
+void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 void resolve_constant(Ast *constant, Analyser analyser);
 TypeRef resolve_type(Ast *type_ast, Analyser analyser);
 void try_constant_expr_folding(Ast *const_expr);
@@ -257,32 +257,6 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
 
             } break;
 
-            case AstType_Function: {
-                SymbolInfo *info = find_symbol_in_scope_list_until(ScopeType::Package, &ast_file->file_scope, top_level->Function.name);
-                if(info != NULL && info->kind == SymbolKind::FunctionDecl) {
-
-                    // TODO ERROR: function重复定义
-                    error_msg(&top_level->token, "function '%s' repeated definition", top_level->Function.name.c_str);
-                    XP_ASSERT_DEFAULT(0);
-                } else if(info != NULL) {
-
-                    // TODO ERROR: 名字冲突
-                    error_msg(&top_level->token, "symbol '%s' already defined with different kind", top_level->Function.name.c_str);
-                    XP_ASSERT_DEFAULT(0);
-                }
-
-
-                SymbolInfo func_symbol = {};
-                func_symbol.kind = SymbolKind::FunctionDecl;
-                func_symbol.name = top_level->Function.name;
-
-                // 函数是包作用域的符号
-                add_symbol_to_scope(&curr_pkg->package_scope, func_symbol.name, func_symbol);
-
-
-                top_level->v_type = resolve_function_decl_type(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
-            } break;
-
             case AstType_StructDecl: {
 
                 SymbolInfo *info = find_symbol_in_scope_list_until(ScopeType::Package, &ast_file->file_scope, top_level->StructDecl.name);
@@ -307,9 +281,11 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
                 // 结构体是包作用域的符号
                 add_symbol_to_scope(&curr_pkg->package_scope, struct_symbol.name, struct_symbol);
 
-                // 解析结构体声明的字段类型, 补充符号表
-                resolve_struct_decl(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
 
+            } break;
+
+            case AstType_Function: {
+                // 函数符号的绑定放到后面, 因为函数类型依赖结构体类型
             } break;
 
             default: {
@@ -317,6 +293,58 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
                 error_msg(&top_level->token, "unsupported top level AST type for symbol binding");
                 XP_ASSERT_DEFAULT(0);
             } break;
+        }
+
+    }
+
+    // NOTE: 绑定函数符号, 需要在结构体和import绑定之后, 因为函数涉及到类型, 依赖结构体声明的符号
+    for(isize i = 0; i < ast_file->top_levels.count; i++) {
+        Ast *top_level = ast_file->top_levels[i];
+
+
+        switch(top_level->type)
+        {
+
+        case AstType_StructDecl: {
+
+            // 解析结构体声明的字段类型, 补充符号表
+            resolve_struct_decl(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
+        } break;
+
+        case AstType_Function: {
+            
+            SymbolInfo *info = find_symbol_in_scope_list_until(ScopeType::Package, &ast_file->file_scope, top_level->Function.name);
+            if(info != NULL && info->kind == SymbolKind::FunctionDecl) {
+    
+                // TODO ERROR: function重复定义
+                error_msg(&top_level->token, "function '%s' repeated definition", top_level->Function.name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            } else if(info != NULL) {
+    
+                // TODO ERROR: 名字冲突
+                error_msg(&top_level->token, "symbol '%s' already defined with different kind", top_level->Function.name.c_str);
+                XP_ASSERT_DEFAULT(0);
+            }
+    
+    
+            SymbolInfo func_symbol = {};
+            func_symbol.kind = SymbolKind::FunctionDecl;
+            func_symbol.name = top_level->Function.name;
+    
+            // 函数是包作用域的符号
+            add_symbol_to_scope(&curr_pkg->package_scope, func_symbol.name, func_symbol);
+    
+    
+            top_level->v_type = resolve_function_decl_type(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
+        } break;
+
+        case AstType_Import: {
+            // do nothing
+        } break;
+
+        
+        default:
+            break;
         }
 
     }
@@ -595,7 +623,7 @@ void resolve_function_decl(Ast *ast, Analyser analyser) {
     if(ast->Function.block != NULL) {
         
 
-        resolve_block(ast->Function.block, analyser);
+        resolve_block(ast->Function.block, analyser, true);
 
 
         if(may_fall_through(ast->Function.block)) {
@@ -611,7 +639,7 @@ void resolve_function_decl(Ast *ast, Analyser analyser) {
 
 
 
-void resolve_block(Ast *ast, Analyser analyser) {
+void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
     if(ast->Block.is_function_body) {
         for(isize i = 0; i < ast->Block.statements.count; i++) {
             resolve_stmt(ast->Block.statements[i], analyser);
@@ -619,10 +647,12 @@ void resolve_block(Ast *ast, Analyser analyser) {
         return;
     }
 
-
+    if(need_new_scope) {
+        analyser = new_scope(analyser, ScopeType::Block);
+    }
     
     for(isize i = 0; i < ast->Block.statements.count; i++) {
-        resolve_stmt(ast->Block.statements[i], new_scope(analyser, ScopeType::Block));
+        resolve_stmt(ast->Block.statements[i], analyser);
     }
 }
 
@@ -735,29 +765,32 @@ void resolve_stmt(Ast *stmt_ast, Analyser analyser) {
         infer_expr_type(stmt_ast->IfStmt.condition, true, condition_expr_type, analyser);
         
 
-        resolve_block(stmt_ast->IfStmt.then_block, analyser);
+        resolve_block(stmt_ast->IfStmt.then_block, analyser, true);
 
         if(stmt_ast->IfStmt.else_block != NULL)
-            resolve_block(stmt_ast->IfStmt.else_block, analyser);
+            resolve_block(stmt_ast->IfStmt.else_block, analyser, true);
     } break;
 
     case AstType_ForStmt: {
-        new_scope(analyser, ScopeType::LoopBlock);
+        Analyser for_scope = new_scope(analyser, ScopeType::LoopBlock);
 
         
         if(stmt_ast->ForStmt.init != NULL)
-            resolve_stmt(stmt_ast->ForStmt.init, analyser);
+            resolve_stmt(stmt_ast->ForStmt.init, for_scope);
 
         if(stmt_ast->ForStmt.condition != NULL)
-            resolve_expr(stmt_ast->ForStmt.condition, analyser);
+            resolve_expr(stmt_ast->ForStmt.condition, for_scope);
         
 
-        infer_expr_type(stmt_ast->ForStmt.condition, true, easy_type(Type_bool), analyser);
+        infer_expr_type(stmt_ast->ForStmt.condition, true, easy_type(Type_bool), for_scope);
 
         if(stmt_ast->ForStmt.post != NULL)
-            resolve_stmt(stmt_ast->ForStmt.post, analyser);
+            resolve_stmt(stmt_ast->ForStmt.post, for_scope);
         
-        resolve_block(stmt_ast->ForStmt.body, analyser);
+
+        // 对于for 循环体的block, 不创建新作用域, 而是和init. condition. post共享同一作用域
+        // 同时ScopeType::LoopBlock也标记了这是一个循环体作用域
+        resolve_block(stmt_ast->ForStmt.body, for_scope, false);
     } break;
 
     case AstType_ReturnStmt: {
@@ -783,7 +816,9 @@ void resolve_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
 
     case AstType_Block: {
-        resolve_block(stmt_ast, analyser);
+        // 作为statement的block, 只是单纯的花括号, 没有设计如if/for那样的控制流语义
+
+        resolve_block(stmt_ast, analyser, true);
     } break;
     
     case AstType_Break: {

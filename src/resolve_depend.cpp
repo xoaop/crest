@@ -1,5 +1,6 @@
 #include "resolve_depend.hpp"
 
+#include <filesystem>
 
 #include "ast.hpp"
 #include "tokenizer.hpp"
@@ -54,6 +55,7 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
     AstFile f = parse_file(tokenizer.token_array);
 
     f.file_path = xp_make_string(permanent_allocator(), path);
+    f.code_string = code_str;
 
     return f;
 }
@@ -74,7 +76,7 @@ void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imports) {
 
 
 
-Array<Package> resolve_dependencies(xpString main_dir_path) {
+Array<Package> resolve_dependencies(xpString main_path) {
     // 所有package所在
     Array<Package> packages = make_array<Package>(permanent_allocator());
     Array<PackageState> package_states = make_array<PackageState>(stage_allocator());
@@ -87,14 +89,39 @@ Array<Package> resolve_dependencies(xpString main_dir_path) {
         package_states[package_index] = new_state;
     };
 
-    if(!check_directory_legel(main_dir_path)) {
+    if(!check_directory_legel(main_path) && !check_file_legal(main_path)) {
         // TODO ERROR: main package路径不合法
-        error_msg(NULL, "main package path is not a valid directory: %s", main_dir_path.c_str);
+        error_msg(NULL, "input path is not invalid directory or file: %s", main_path.c_str);
         return packages;
     }
 
+    xpString main_dir_path;
+
+    Package main_package;
+    if(is_existing_directory(main_path)) {
+        context()->main_src_dir_path = main_path.c_str;
+
+        // main_dir_path是一个目录
+        main_package = tokenize_and_parse_package(main_path.c_str);
+
+        main_dir_path = main_path;
+    } else if(is_existing_file(main_path)) {
+        // main_dir_path是一个文件, 它是main package的唯一文件
+        std::filesystem::path p{std::string(main_path.c_str, (size_t)main_path.length)};
+        xpString parent_dir_path = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
+
+        context()->main_src_dir_path = parent_dir_path.c_str;
+        main_dir_path = parent_dir_path;
+        
+        main_package = make_package(parent_dir_path, permanent_allocator());
+        
+        AstFile main_file = tokenize_and_parse_file(main_path.c_str, &main_package.package_scope);
+
+        array_push_back(&main_package.ast_files, main_file);
+    }
+
     // 解析主package
-    Package main_package = tokenize_and_parse_package(main_dir_path.c_str);
+    // Package main_package = tokenize_and_parse_package(main_dir_path.c_str);
     add_new_package(main_package);
 
 

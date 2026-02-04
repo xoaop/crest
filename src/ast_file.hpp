@@ -12,6 +12,9 @@ struct AstFile {
     
     Array<Ast *> top_levels;
     Scope file_scope;
+
+
+    xpString code_string;
 };
 
 
