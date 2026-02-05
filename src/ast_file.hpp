@@ -5,6 +5,7 @@
 
 #include "scope.hpp"
 
+#include "source_code.hpp"
 
 //Ast文件定义
 struct AstFile {
@@ -13,8 +14,8 @@ struct AstFile {
     Array<Ast *> top_levels;
     Scope file_scope;
 
+    SourceCode source_code;
 
-    xpString code_string;
 };
 
 

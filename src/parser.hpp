@@ -9,6 +9,7 @@
 #include "ast.hpp"
 #include "ast_file.hpp"
 
+#include "source_code.hpp"
 
 xp_internal b32 is_binary_op(TokenType type) {
     switch (type)
@@ -106,7 +107,7 @@ struct Parser {
 Parser parser_make(Array<Token> tokens);
 void parser_init(Parser *parser, Array<Token> tokens);
 
-AstFile parse_file(Array<Token> tokens);
+AstFile parse_file(Array<Token> tokens, SourceCode src_code);
 
 
 

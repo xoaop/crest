@@ -671,59 +671,57 @@ TypeRef add_type(Type type) {
 
 
 // NOTE: 实际上就是结构体
-// TypeRef slice_type_as_struct(TypeRef elem_type) {
-//     // XP_ASSERT_DEFAULT(array_type->kind == Type_array);
-
-
+TypeRef slice_type_as_struct(TypeRef elem_type) {
     
-//     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
-//     xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
+    xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
+    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
 
-//     xp_string_append(&slice_struct_name, elem_str);
+    xp_string_append(&slice_struct_name, elem_str);
 
 
-//     Type t = {};
-//     t.kind = Type_struct;
-//     t.type_name = slice_struct_name;
+    Type t = {};
+    t.kind = Type_struct;
+    t.type_name = slice_struct_name;
 
-//     TypeRef type_ref = get_struct_type(slice_struct_name);
-//     if(type_ref != NULL) {
-//         return type_ref;
-//     } else {
 
-//         Array<StructField> fields = make_array<StructField>(temp_allocator());
+    Array<StructField> fields = make_array<StructField>(temp_allocator());
 
 
 
-//         array_push_back(&fields, StructField { 
-//             xp_make_string(type_allocator(), "data"), 
-//             pointer_type(elem_type) 
-//         });
-//         array_push_back(&fields, StructField { 
-//             xp_make_string(type_allocator(), "count"), 
-//             easy_type(Type_i64) 
-//         });
+    array_push_back(&fields, StructField { 
+        xp_make_string(type_allocator(), "data"), 
+        pointer_type(elem_type) 
+    });
+    array_push_back(&fields, StructField { 
+        xp_make_string(type_allocator(), "count"), 
+        easy_type(Type_i64) 
+    });
 
 
 
-//         return add_struct_type(slice_struct_name, fields);
-//     }
+    return struct_type(&context()->global_blank_package, slice_struct_name, fields);
 
-//     xp_arena_allocator_clear(temp_allocator());
-// }
+    xp_arena_allocator_clear(temp_allocator());
+}
 
 // NOTE: 实际上就是结构体
-// TypeRef string_type_as_struct() {
-//     xpString string_struct_name = xp_string_c("string");
+TypeRef string_type_as_struct() {
+    xpString string_struct_name = xp_string_c("string");
 
-//     TypeRef type_ref = get_struct_type(string_struct_name);
-//     if(type_ref != NULL) {
-//         return type_ref;
-//     } else {
-//         XP_ASSERT_MSG(0, "string type should be pre-defined");
-//     }
+    Type t = {};
+    t.kind = Type_struct;
+    t.type_name = string_struct_name;
+    t.struct_info.pkg = &context()->global_blank_package;
+
+    TypeRef type_ref = get_type(t);
     
-// }
+    if(type_ref != NULL) {
+        return type_ref;
+    } else {
+        XP_ASSERT_MSG(0, "string type should be pre-defined");
+    }
+    
+}
 
 
 

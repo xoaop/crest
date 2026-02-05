@@ -174,6 +174,30 @@ SymbolInfo *find_symbol_by_ident_or_fieldaccess_in_other_packages(Ast *ident_ast
 void bind_symbols_for_all_packages(Array<Package> all_packages) {
 
     // TODO 添加全局符号, 如string类型
+    {
+        xpString string_struct_name = xp_string_c("string");
+
+        Array<StructField> fields = make_array<StructField>(temp_allocator());
+        defer(xp_arena_allocator_clear(temp_allocator()));
+
+        array_push_back(&fields, StructField { 
+            xp_string_c("data"), 
+            pointer_type(easy_type(Type_u8)) 
+        });
+        array_push_back(&fields, StructField { 
+            xp_string_c("count"), 
+            easy_type(Type_i64) // TODO 考虑改成isize
+        });
+
+        TypeRef string_struct_typeref = struct_type(&context()->global_blank_package, string_struct_name, fields);
+
+        // 符号表
+        SymbolInfo string_struct_symbol;
+        string_struct_symbol.name = string_struct_name;
+        string_struct_symbol.type = string_struct_typeref;
+        string_struct_symbol.kind = SymbolKind::StructDecl;
+        add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
+    }
 
 
 
@@ -187,7 +211,7 @@ void bind_symbols_for_all_packages(Array<Package> all_packages) {
 void bind_top_level_symbols_in_package(Package *pkg, Array<Package> all_packages) {
     
     // NOTE: 别忘了创建package scope
-    pkg->package_scope = make_scope(&context()->global_scope, ScopeType::Package, permanent_allocator());
+    pkg->package_scope = make_scope(&context()->global_blank_package.package_scope, ScopeType::Package, permanent_allocator());
 
 
     for(isize i = 0; i < pkg->ast_files.count; i++) {
@@ -330,6 +354,7 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
             SymbolInfo func_symbol = {};
             func_symbol.kind = SymbolKind::FunctionDecl;
             func_symbol.name = top_level->Function.name;
+            func_symbol.is_extern_c = top_level->Function.is_extern_C;
     
             // 函数是包作用域的符号
             add_symbol_to_scope(&curr_pkg->package_scope, func_symbol.name, func_symbol);
@@ -497,13 +522,13 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
         // TODO
         // Slice应该是一种内置结构体
-        // case AstType_SliceType: {
-        //     TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
+        case AstType_SliceType: {
+            TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
 
-        //     TypeRef slice_type = slice_type_as_struct(elem_type);
+            TypeRef slice_type = slice_type_as_struct(elem_type);
 
-        //     return slice_type;
-        // } break;
+            return slice_type;
+        } break;
 
 
         default: {
@@ -980,8 +1005,8 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
 
     case AstType_StringLiteralExpr: {
-        // TODO 字符串字面量类型处理
-
+        // TODO 放到type_check阶段处理
+        expr_ast->v_type = string_type_as_struct();
         
     } break;
 

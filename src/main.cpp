@@ -35,9 +35,9 @@ int main(int argc, char** argv) {
 
     
     // 初始化context
-    context()->global_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
+    context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
+    context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
     
-
 
     // 类型系统初始化
     init_type_table(context());

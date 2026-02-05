@@ -50,7 +50,8 @@ struct SymbolInfo {
     TypeRef type;
     union {
 
-        // function decl or struct decl
+        // function decl
+        bool is_extern_c;
 
         // import
         Package *imported_package;
