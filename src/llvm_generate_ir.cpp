@@ -43,7 +43,7 @@ void init_llvm_generator(LLVMGenerator *gen, Package *pkg, xpAllocator allocator
     gen->target_machine = LLVMCreateTargetMachine(
         target,
         LLVMGetDefaultTargetTriple(),
-        "x86_64",
+        "x86-64",
         "",
         LLVMCodeGenLevelDefault,
         LLVMRelocDefault,
@@ -296,7 +296,7 @@ void gen_ir_package(Package *pkg) {
     LLVMGenerator gen;
     init_llvm_generator(&gen, pkg, stage_allocator());
 
-    LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
+    // LLVMSetTarget(gen.module, "x86_64-pc-windows-msvc");
 
     // 声明当前包中的所有函数
     for(isize i = 0; i < pkg->ast_files.count; i++) {
@@ -330,10 +330,22 @@ void gen_ir_package(Package *pkg) {
     xpString ll_file_path = xp_make_string(stage_allocator(), "output/");
     xpString ll_file_name = xp_string_replace_char(pkg->path, '/', '_', stage_allocator());
     xp_string_append(&ll_file_path, ll_file_name);
-    xp_string_append(&ll_file_path, xp_string_c(".ll"));
+    xp_string_append(&ll_file_path, xp_string_c(".o"));
     
-    if(LLVMPrintModuleToFile(gen.module, ll_file_path.c_str, &error)) {
-        fprintf(stderr, "Error writing .ll file: %s\n", error);
+    // if(LLVMPrintModuleToFile(gen.module, ll_file_path.c_str, &error)) {
+    //     fprintf(stderr, "Error writing .ll file: %s\n", error);
+    //     LLVMDisposeMessage(error);
+    // }
+    
+    // 生成.o文件
+    if(LLVMTargetMachineEmitToFile(
+        gen.target_machine,
+        gen.module,
+        ll_file_path.c_str,
+        LLVMObjectFile,
+        &error
+    )) {
+        fprintf(stderr, "Error writing object file: %s\n", error);
         LLVMDisposeMessage(error);
     }
     
