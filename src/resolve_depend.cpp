@@ -50,12 +50,12 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
     
     Tokenizer tokenizer;
     tokenizer_init(&tokenizer, code_str);
-    tokenize(&tokenizer);
+    SourceCode src_code = tokenize(&tokenizer);
 
-    AstFile f = parse_file(tokenizer.token_array);
+    AstFile f = parse_file(tokenizer.token_array, src_code);
 
     f.file_path = xp_make_string(permanent_allocator(), path);
-    f.code_string = code_str;
+    f.source_code = src_code;
 
     return f;
 }

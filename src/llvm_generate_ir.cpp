@@ -141,9 +141,15 @@ xpString get_func_full_name(Ast *func_decl_or_call, LLVMGenerator *gen) {
     Package *pkg_of_func = gen->pkg;
     xpString func_name;
 
+    bool is_extern_c = false;
+
     if(func_decl_or_call->type == AstType_Function) {
 
         func_name = func_decl_or_call->Function.name;
+
+        if(func_decl_or_call->Function.is_extern_C) {
+            is_extern_c = true;
+        }
 
     } else if(func_decl_or_call->type == AstType_FunctionCallExpr) {
 
@@ -166,11 +172,22 @@ xpString get_func_full_name(Ast *func_decl_or_call, LLVMGenerator *gen) {
             XP_ASSERT_DEFAULT(0);
         }
 
+        SymbolInfo *func_symbol = find_symbol_in_curr_scope_with_kind(
+            &pkg_of_func->package_scope,
+            func_name,
+            SymbolKind::FunctionDecl
+        );
+
+        if(func_symbol->is_extern_c) {
+            is_extern_c = true;
+        }
+
     } else {
         XP_ASSERT_DEFAULT(0);
     }
 
-    if(xp_string_equal(func_name, xp_string_c("main"))) {
+    // TODO 检查extern C
+    if(xp_string_equal(func_name, xp_string_c("main")) || is_extern_c) {
         return func_name;
     }
 
@@ -843,29 +860,29 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         XP_ASSERT_DEFAULT(alloca != NULL);
 
         // TODO 处理数组转为切片
-        // if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
+        if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
 
-        //     LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
-        //     LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
+            LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
+            LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
             
-        //     LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
+            LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
 
-        //     LLVMValueRef indices[2] = {
-        //         LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
-        //         LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
-        //     };
-        //     // 设置数据指针
-        //     LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
-        //     slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+            LLVMValueRef indices[2] = {
+                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
+                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
+            };
+            // 设置数据指针
+            LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
+            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
             
-        //     // 设置count
-        //     // TODO i64 换成 isize
-        //     LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
+            // 设置count
+            // TODO i64 换成 isize
+            LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
 
-        //     slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
 
-        //     return slice_struct_value;
-        // }
+            return slice_struct_value;
+        }
 
 
         if(is_lvalue_expr) {

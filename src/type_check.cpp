@@ -814,7 +814,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser a
         } break;
 
         case AstType_StringLiteralExpr: {
-            // expr->v_type = string_type_as_struct();
+            
 
         } break;
 

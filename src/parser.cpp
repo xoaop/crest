@@ -57,10 +57,11 @@ Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
 
 
 
-AstFile parse_file(Array<Token> tokens) {
+AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
     Parser p = parser_make(tokens);
+    p.f.source_code = src_code;
 
     for(;;) {
         if(p.curr_token_index == tokens.count) {

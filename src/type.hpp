@@ -181,7 +181,7 @@ TypeRef unfinished_struct_type(Package *pkg, xpString ident);
 
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
-// TypeRef string_type_as_struct();
+TypeRef string_type_as_struct();
 
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);

@@ -6,6 +6,9 @@
 
 #include "type.hpp"
 
+#include "span.hpp"
+#include "source_code.hpp"
+
 // NOTE: Keyword是可以直接加在TOKEN_INFO不用修改别的地方的
 // 而别的Token需要在tokenizer加上处理逻辑
 #define TOKEN_INFOS                                             \
@@ -103,6 +106,8 @@ struct Token {
     xpString file_path;
     isize line_index;
     isize column_index;
+
+    Span span;
 };
 
 
@@ -113,10 +118,12 @@ struct Tokenizer {
 
     isize curr_line_index;
     isize curr_column_index;
+
+    Array<BytePos> line_start_indices;
 };
 
 void tokenizer_init(Tokenizer* t, xpString code);
-void tokenize(Tokenizer* t);
+SourceCode tokenize(Tokenizer* t);
 b32 tokenizer_get_token(Tokenizer* t, Token *token);
 char tokenizer_curr_character(Tokenizer *t);
 b32 tokenizer_end(Tokenizer *t);

@@ -60,12 +60,14 @@ void tokenizer_init(Tokenizer *t, xpString code) {
     t->code = code;
     t->curr_line_index = 1;
     t->curr_column_index = 1;
+
+    t->line_start_indices = make_array<BytePos>(permanent_allocator());
 }
 
 
 xp_internal isize advance_one_character(Tokenizer *t);
 
-void tokenize(Tokenizer *t) {
+SourceCode tokenize(Tokenizer *t) {
     Token temp;
 
     for(;;) {
@@ -82,7 +84,9 @@ void tokenize(Tokenizer *t) {
         array_push_back(&t->token_array, temp);
     }
 
-    return;
+    SourceCode source_code = make_source_code(t->code, t->line_start_indices);
+
+    return source_code;
 }
 
 
@@ -326,6 +330,8 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
 
         if(token->token_str.capacity == 0) {
             token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+            
+            token->span = make_span(old_index, t->curr_character_index);
         }
     }
 
@@ -347,6 +353,9 @@ xp_internal isize advance_one_character(Tokenizer *t) {
             //NOTE(xoaop): RESET
             t->curr_line_index += 1;
             t->curr_column_index = 1;
+
+            //记录行起始位置
+            array_push_back(&t->line_start_indices, t->curr_character_index + 1);
         }
 
         t->curr_character_index += 1;
@@ -519,6 +528,8 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     token->type = token_type;
     
     token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+    token->span = make_span(old_index, t->curr_character_index);
+
     advance_characters(t, len);
     return;
 }
