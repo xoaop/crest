@@ -723,7 +723,9 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser a
                 TypeRef element_type = undefined_type();
                 bool found_certain_type = false;
                 for(isize i = 0; i < expr->ArrayInitExpr.elements.count; i++) {
-                    if(is_certain_type(expr->ArrayInitExpr.elements[i]->v_type)) {
+                    TypeRef elem_type = expr->ArrayInitExpr.elements[i]->v_type;
+
+                    if(is_certain_type(elem_type) && elem_type != undefined_type()) {
                         found_certain_type = true;
                         element_type = expr->ArrayInitExpr.elements[i]->v_type;
                         break;
@@ -814,7 +816,7 @@ void infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser a
         } break;
 
         case AstType_StringLiteralExpr: {
-            
+            expr->v_type = string_type_as_struct();
 
         } break;
 

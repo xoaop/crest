@@ -22,6 +22,13 @@ int main(int argc, char** argv) {
     
     defer(printf("\n\nEXIT!"));
 
+    // LLVM初始化
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
+    LLVMInitializeNativeAsmParser();
+    LLVMInitializeNativeDisassembler();
+
+
     // 内存分配器初始化
     global_allocators_init();
     defer(global_allocators_free());

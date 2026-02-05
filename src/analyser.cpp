@@ -800,17 +800,20 @@ void resolve_stmt(Ast *stmt_ast, Analyser analyser) {
         Analyser for_scope = new_scope(analyser, ScopeType::LoopBlock);
 
         
-        if(stmt_ast->ForStmt.init != NULL)
+        if(stmt_ast->ForStmt.init != NULL) {
             resolve_stmt(stmt_ast->ForStmt.init, for_scope);
+        }
 
-        if(stmt_ast->ForStmt.condition != NULL)
+        if(stmt_ast->ForStmt.condition != NULL) {
             resolve_expr(stmt_ast->ForStmt.condition, for_scope);
+            infer_expr_type(stmt_ast->ForStmt.condition, true, easy_type(Type_bool), for_scope);
+        }
         
 
-        infer_expr_type(stmt_ast->ForStmt.condition, true, easy_type(Type_bool), for_scope);
 
-        if(stmt_ast->ForStmt.post != NULL)
+        if(stmt_ast->ForStmt.post != NULL) {
             resolve_stmt(stmt_ast->ForStmt.post, for_scope);
+        }
         
 
         // 对于for 循环体的block, 不创建新作用域, 而是和init. condition. post共享同一作用域
@@ -1005,8 +1008,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
 
     case AstType_StringLiteralExpr: {
-        // TODO 放到type_check阶段处理
-        expr_ast->v_type = string_type_as_struct();
+
         
     } break;
 
