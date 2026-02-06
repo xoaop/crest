@@ -58,7 +58,6 @@ int main(int argc, char** argv) {
     }
 
     char const *path_of_main_dir = argv[1];
-    // context()->main_src_dir_path = path_of_main_dir;
 
     Array<Package> all_packages = resolve_dependencies(xp_make_string(permanent_allocator(), path_of_main_dir));
 

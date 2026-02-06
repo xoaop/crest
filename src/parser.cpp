@@ -837,12 +837,12 @@ Ast *parse_constant(Parser *p) {
     
     
     if(curr.type == TokenType::Integer) {
-        parse_integer(curr.token_str.c_str, curr.type_kind_of_number, a);
+        parse_integer(curr.number_info.pure_number_str.c_str, curr.number_info.type_kind_of_number, a);
         expect(p, TokenType::Integer);
     }
 
     if(curr.type == TokenType::Float) {
-        parse_float(curr.token_str.c_str, curr.type_kind_of_number, a);
+        parse_float(curr.number_info.pure_number_str.c_str, curr.number_info.type_kind_of_number, a);
         expect(p, TokenType::Float);
     }
 

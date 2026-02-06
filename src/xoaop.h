@@ -938,6 +938,26 @@ T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
 
 
 //
+// Pair
+//
+
+template<typename A, typename B>
+struct xpPair {
+    A first;
+    B second;
+};
+
+template<typename A, typename B>
+xpPair<A, B> xp_make_pair(A first, B second) {
+    xpPair<A, B> pair = {};
+    pair.first = first;
+    pair.second = second;
+    return pair;
+}
+
+
+
+//
 // xpString CPP 相关操作声明
 //
 

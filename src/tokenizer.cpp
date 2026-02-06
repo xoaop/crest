@@ -58,10 +58,11 @@ void tokenizer_init(Tokenizer *t, xpString code) {
     t->curr_character_index = 0;
     t->token_array = make_array<Token>(permanent_allocator());
     t->code = code;
-    t->curr_line_index = 1;
-    t->curr_column_index = 1;
+    // t->curr_line_index = 1;
+    // t->curr_column_index = 1;
 
     t->line_start_indices = make_array<BytePos>(permanent_allocator());
+    array_push_back(&t->line_start_indices, cast(BytePos)0); // 第一行起始位置是0
 }
 
 
@@ -86,6 +87,27 @@ SourceCode tokenize(Tokenizer *t) {
 
     SourceCode source_code = make_source_code(t->code, t->line_start_indices);
 
+    #ifdef DEBUG_PRINT 
+    printf("===== TOKEN LIST START =====\n");
+    for(isize i = 0; i < t->token_array.count; i++) {
+        Token *token = &t->token_array[i];
+
+        auto start = cal_line_column_index_of_byte_pos(&source_code, token->span.start);
+        auto end = cal_line_column_index_of_byte_pos(&source_code, token->span.end);
+        printf("Token[%3lld]: Type: %-20s Str: %-15.*s Span: [%lld:%lld - %lld:%lld] BytePos[%lld - %lld]\n",
+            i, 
+            get_token_str(token->type), 
+            cast(int)token->token_str.length, token->token_str.c_str,
+            start.first, start.second,
+            end.first, end.second,
+            token->span.start, token->span.end
+        );
+        
+    }
+    printf("===== TOKEN LIST END =====\n");
+    #endif // DEBUG_PRINT
+
+
     return source_code;
 }
 
@@ -100,8 +122,8 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
         return false;
     }
     
-    token->line_index = t->curr_line_index;
-    token->column_index = t->curr_column_index;
+    // token->line_index = t->curr_line_index;
+    // token->column_index = t->curr_column_index;
     
     isize old_index = t->curr_character_index;
     if(is_letter(tokenizer_curr_character(t))) {
@@ -117,7 +139,6 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             token->type = *type;
         }
         token->token_str = str;
-
 
     } else {
         switch (tokenizer_curr_character(t)) {
@@ -325,15 +346,18 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
         
         default: 
         unknown_character: // TODO(xoaop): 不太好
-            XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
+            // XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
+            XP_ASSERT_DEFAULT(0);
         }
 
         if(token->token_str.capacity == 0) {
             token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
-            
-            token->span = make_span(old_index, t->curr_character_index);
         }
     }
+
+
+    token->span = make_span(old_index, t->curr_character_index);
+
 
     return true;
 }
@@ -348,11 +372,11 @@ b32 tokenizer_end(Tokenizer *t) {
 
 xp_internal isize advance_one_character(Tokenizer *t) {
     if(!tokenizer_end(t)) {
-        t->curr_column_index += 1;
+        // t->curr_column_index += 1; 
         if(tokenizer_curr_character(t) == '\n') {
             //NOTE(xoaop): RESET
-            t->curr_line_index += 1;
-            t->curr_column_index = 1;
+            // t->curr_line_index += 1;
+            // t->curr_column_index = 1;
 
             //记录行起始位置
             array_push_back(&t->line_start_indices, t->curr_character_index + 1);
@@ -520,16 +544,18 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     
     
     if(i < 8) {
-        token->type_kind_of_number = string_to_type_kind(xp_string_c(postfix[i]));
+        token->number_info.type_kind_of_number = string_to_type_kind(xp_string_c(postfix[i]));
     } else {
-        token->type_kind_of_number = Type_Undefined;
+        token->number_info.type_kind_of_number = Type_Undefined;
     }
 
     token->type = token_type;
-    
-    token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
-    token->span = make_span(old_index, t->curr_character_index);
 
+    token->number_info.pure_number_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+    
+    
     advance_characters(t, len);
+
+
     return;
 }

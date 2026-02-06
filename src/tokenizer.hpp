@@ -100,7 +100,11 @@ struct Token {
     xpString token_str;
 
     union {
-        TypeKind type_kind_of_number; // 用于标记带类型后缀的数字(整数, 浮点数)
+        struct {
+            xpString pure_number_str;     // 不带类型后缀的纯数字字符串
+            TypeKind type_kind_of_number; // 用于标记带类型后缀的数字(整数, 浮点数)
+        } number_info;
+
     };
     
     xpString file_path;
@@ -116,8 +120,8 @@ struct Tokenizer {
     Array<Token> token_array;
     xpString code;
 
-    isize curr_line_index;
-    isize curr_column_index;
+    // isize curr_line_index;
+    // isize curr_column_index;
 
     Array<BytePos> line_start_indices;
 };
