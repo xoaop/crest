@@ -1030,7 +1030,6 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
 void resolve_constant(Ast *constant, Analyser analyser) {
     Token token = constant->token;
-    xpString val_str = token.token_str;
 
     // printf("Resolving constant: %s\n", val_str.c_str);
 
@@ -1059,8 +1058,8 @@ void resolve_constant(Ast *constant, Analyser analyser) {
 
     // 整型常量
     
-    if(token.type_kind_of_number != Type_Undefined) {
-        constant->v_type = easy_type(token.type_kind_of_number);
+    if(token.number_info.type_kind_of_number != Type_Undefined) {
+        constant->v_type = easy_type(token.number_info.type_kind_of_number);
     } else {
 
         // 无类型后缀的数字字面量, 先标记为untyped类型, 等待类型推导

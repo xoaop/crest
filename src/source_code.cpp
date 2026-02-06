@@ -26,16 +26,15 @@ SourceCode make_source_code(xpString code_string, xpAllocator allocator) {
 }
 
 
-
-void cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos, BytePos *out_line_index, BytePos *out_column_index) {
-    isize line_count = cast(BytePos) src_code->line_start_indices.count;
+xpPair<BytePos, BytePos> cal_line_column_idx(Array<BytePos> line_start_indices, BytePos byte_pos) {
+    isize line_count = line_start_indices.count;
 
     isize left_idx = 0;
     isize right_idx = line_count;
     while(left_idx < right_idx) {
         BytePos mid_idx = left_idx + ((right_idx - left_idx) / 2);
 
-        if(src_code->line_start_indices[mid_idx] <= byte_pos) {
+        if(line_start_indices[mid_idx] <= byte_pos) {
             left_idx = mid_idx + 1;
         } else {
             right_idx = mid_idx;
@@ -47,13 +46,16 @@ void cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos, B
         left_idx = left_idx - 1;
     }
 
-    BytePos line_start_pos = src_code->line_start_indices[left_idx];
+    BytePos line_start_pos = line_start_indices[left_idx];
     BytePos line_index = left_idx + 1; // 行号从1开始计数
     BytePos column_index = byte_pos - line_start_pos + 1;
 
-    XP_ASSERT_DEFAULT(out_column_index != NULL && out_line_index != NULL);
-    *out_line_index = line_index;
-    *out_column_index = column_index;
-    return;
+    xpPair line_column = xp_make_pair(line_index, column_index);
+    return line_column;
+}
+
+
+xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos) {
+    return cal_line_column_idx(src_code->line_start_indices, byte_pos);
 }
 

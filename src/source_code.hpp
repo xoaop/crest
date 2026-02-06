@@ -15,7 +15,7 @@ struct SourceCode {
 SourceCode make_source_code(xpString code_string, Array<BytePos> line_start_indices);
 SourceCode make_source_code(xpString code_string, xpAllocator allocator);
 
-
-void cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos, BytePos *out_line_index, BytePos *out_column_index);
+xpPair<BytePos, BytePos> cal_line_column_idx(Array<BytePos> line_start_indices, BytePos byte_pos);
+xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos);
 
 #endif
