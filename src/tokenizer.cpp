@@ -5,17 +5,10 @@
 #include "common.hpp"
 #include "string_map.hpp"
 
+#include "context.hpp"
+
 #define END_OF_CODE '\0'
 
-//TODO(xoaop): 可能失效
-#define TOKEN_SLICE_FIX(token_type) \
-xp_slice_make(cast(void *)get_token_str(token_type), xp_strlen_c(get_token_str(token_type)))
-
-// TokenType token_strings[] = {
-//     #define TOKEN_INFO(type, str) type
-//         TOKEN_INFOS
-//     #undef TOKEN_INFO
-// };
 
 const char* token_strings[] = {
     #define TOKEN_INFO(type, str) str
@@ -54,46 +47,61 @@ xp_internal const char *get_token_str(TokenType type) {
 }
 
 
-void tokenizer_init(Tokenizer *t, xpString code) {
+
+void tokenizer_init(Tokenizer *t, xpString file_path, xpString code) {
     t->curr_character_index = 0;
     t->token_array = make_array<Token>(permanent_allocator());
-    t->code = code;
-    // t->curr_line_index = 1;
-    // t->curr_column_index = 1;
-
-    t->line_start_indices = make_array<BytePos>(permanent_allocator());
-    array_push_back(&t->line_start_indices, cast(BytePos)0); // 第一行起始位置是0
+    t->source_code = make_source_code(file_path, code, permanent_allocator());
 }
 
 
 xp_internal isize advance_one_character(Tokenizer *t);
 
-SourceCode tokenize(Tokenizer *t) {
-    Token temp;
+xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code) {
+
+    Tokenizer t;
+    tokenizer_init(&t, file_path, code);
+
 
     for(;;) {
-        temp.token_str.capacity = 0;
+        auto result = tokenizer_get_token(&t);
+        
+        
+        
+        xpOption<Token> token_option = result.first;
+        if(token_option.has_value()) {
+            Token token = token_option.unwrap();
+            
+            if(token.type == TokenType::CommentLine) {
+                // 注释行不加入token数组
+                continue;
+            }
+            
+            array_push_back(&t.token_array, token);
+        }
 
-        if(!tokenizer_get_token(t, &temp)) {
+
+        bool has_next = result.second;
+        if(!has_next) {
+
+            // End Of Tokens
+            Token end = {};
+            end.type = TokenType::EndOfTokens;
+            end.span = make_span(t.source_code.code_string.length, t.source_code.code_string.length);
+
+
+            array_push_back(&t.token_array, end);
             break;
         }
-
-        if(temp.type == TokenType::CommentLine) {
-            continue;
-        }
-
-        array_push_back(&t->token_array, temp);
     }
-
-    SourceCode source_code = make_source_code(t->code, t->line_start_indices);
 
     #ifdef DEBUG_PRINT 
     printf("===== TOKEN LIST START =====\n");
-    for(isize i = 0; i < t->token_array.count; i++) {
-        Token *token = &t->token_array[i];
+    for(isize i = 0; i < t.token_array.count; i++) {
+        Token *token = &t.token_array[i];
 
-        auto start = cal_line_column_index_of_byte_pos(&source_code, token->span.start);
-        auto end = cal_line_column_index_of_byte_pos(&source_code, token->span.end);
+        auto start = cal_line_column_index_of_byte_pos(t.source_code, token->span.start);
+        auto end = cal_line_column_index_of_byte_pos(t.source_code, token->span.end);
         printf("Token[%3lld]: Type: %-20s Str: %-15.*s Span: [%lld:%lld - %lld:%lld] BytePos[%lld - %lld]\n",
             i, 
             get_token_str(token->type), 
@@ -108,88 +116,88 @@ SourceCode tokenize(Tokenizer *t) {
     #endif // DEBUG_PRINT
 
 
-    return source_code;
+    return xp_make_pair(t.source_code, t.token_array);
 }
 
 
 // NOTE(xoaop): Key Function Of Tokenizer
-b32 tokenizer_get_token(Tokenizer *t, Token *token) {
+xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
     //跳过空格
     tokenizer_skip_space(t);
     
     //结束
     if(tokenizer_end(t)) {
-        return false;
+        return xp_make_pair(xpOption<Token>::none(), false);
     }
     
-    // token->line_index = t->curr_line_index;
-    // token->column_index = t->curr_column_index;
+    Token token = {};
     
+
     isize old_index = t->curr_character_index;
     if(is_letter(tokenizer_curr_character(t))) {
-        token->type = TokenType::Ident;
+        token.type = TokenType::Ident;
         while (is_letter_or_digit(tokenizer_curr_character(t))) {
             advance_one_character(t);
         }
 
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
-        xpString str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+        xpString str = xp_make_string_capacity(permanent_allocator(), t->source_code.code_string.c_str + old_index, t->curr_character_index - old_index);
         TokenType *type = NULL;
         if((type = string_map_get(keyword_map, str)) != NULL) {
-            token->type = *type;
+            token.type = *type;
         }
-        token->token_str = str;
+        token.token_str = str;
 
     } else {
         switch (tokenizer_curr_character(t)) {
         case '+':
-            token->type = TokenType::Add;
+            token.type = TokenType::Add;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::AddEqual;
+                token.type = TokenType::AddEqual;
                 advance_one_character(t);
             }
             break;
         case '-':
-            token->type = TokenType::Minus;
+            token.type = TokenType::Minus;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '>') {
-                token->type = TokenType::Arrow;
+                token.type = TokenType::Arrow;
                 advance_one_character(t);
             } else if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::MinusEqual;
+                token.type = TokenType::MinusEqual;
                 advance_one_character(t);
             } else if(tokenizer_curr_character(t) == '-') {
                 
                 advance_one_character(t);
                 if(tokenizer_curr_character(t) == '-') {
-                    token->type = TokenType::TripleMinus;
+                    token.type = TokenType::TripleMinus;
                     advance_one_character(t);
                 }
             }
 
             break;
         case '*':
-            token->type = TokenType::Star;
+            token.type = TokenType::Star;
             advance_one_character(t);
             
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::StarEqual;
+                token.type = TokenType::StarEqual;
                 advance_one_character(t);
             }
             break;
         case '/':
-            token->type = TokenType::ForwardSlash;
+            token.type = TokenType::ForwardSlash;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::ForwardSlashEqual;
+                token.type = TokenType::ForwardSlashEqual;
                 advance_one_character(t);
             } else if(tokenizer_curr_character(t) == '/') {
                 
-                token->type = TokenType::CommentLine;
+                token.type = TokenType::CommentLine;
                 advance_one_character(t);
                 while (!tokenizer_end(t) && tokenizer_curr_character(t) != '\n') {
                     advance_one_character(t);
@@ -197,129 +205,127 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             }
             break;
         case '%':
-            token->type = TokenType::Percent;
+            token.type = TokenType::Percent;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::PercentEqual;
+                token.type = TokenType::PercentEqual;
                 advance_one_character(t);
             }
             break;
         case '!':
-            token->type = TokenType::Exclamation;
+            token.type = TokenType::Exclamation;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::ExclamationEqual;
+                token.type = TokenType::ExclamationEqual;
                 advance_one_character(t);
             }
             break;
         case '=':
-            token->type = TokenType::Equal;
+            token.type = TokenType::Equal;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::DoubleEqual;
+                token.type = TokenType::DoubleEqual;
                 advance_one_character(t);
             }
             break;
         case '>':
-            token->type = TokenType::GreaterThan;
+            token.type = TokenType::GreaterThan;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::GreaterEqual;
+                token.type = TokenType::GreaterEqual;
                 advance_one_character(t);
             }
             break;
         case '<':
-            token->type = TokenType::LessThan;
+            token.type = TokenType::LessThan;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::LessEqual;
+                token.type = TokenType::LessEqual;
                 advance_one_character(t);
             }
             break;
         case '&':
-            token->type = TokenType::And;
+            token.type = TokenType::And;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '&') {
-                token->type = TokenType::DoubleAnd;
+                token.type = TokenType::DoubleAnd;
                 advance_one_character(t);
             }
             break;
         case '|':
-            token->type = TokenType::DoubleOr;
+            token.type = TokenType::DoubleOr;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '|') {
-                token->type = TokenType::DoubleOr;
+                token.type = TokenType::DoubleOr;
                 advance_one_character(t);
-            } else {
-                goto unknown_character;
             }
             break;
         case ':':
-            token->type = TokenType::Colon;
+            token.type = TokenType::Colon;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == ':') {
-                token->type = TokenType::DoubleColon;
+                token.type = TokenType::DoubleColon;
                 advance_one_character(t);
             } else if(tokenizer_curr_character(t) == '=') {
-                token->type = TokenType::ColonEqual;
+                token.type = TokenType::ColonEqual;
                 advance_one_character(t);
             }
 
             break;
         case ';':
-            token->type = TokenType::Semicolon;
+            token.type = TokenType::Semicolon;
             advance_one_character(t);
             break;
         case '(':
-            token->type = TokenType::LeftBracket;
+            token.type = TokenType::LeftBracket;
             advance_one_character(t);
             break;
 
         case ')':
-            token->type = TokenType::RightBracket;
+            token.type = TokenType::RightBracket;
             advance_one_character(t);
             break;
 
         case '[':
-            token->type = TokenType::LeftSquareBracket;
+            token.type = TokenType::LeftSquareBracket;
             advance_one_character(t);
             break;
             
         case ']':
-            token->type = TokenType::RightSquareBracket;
+            token.type = TokenType::RightSquareBracket;
             advance_one_character(t);
             break;
         
         case '{':
-            token->type = TokenType::LeftCurlyBracket;
+            token.type = TokenType::LeftCurlyBracket;
             advance_one_character(t);
             break;
 
         case '}':
-            token->type = TokenType::RightCurlyBracket;
+            token.type = TokenType::RightCurlyBracket;
             advance_one_character(t);
             break;
 
         case ',': 
-            token->type = TokenType::Comma;
+            token.type = TokenType::Comma;
             advance_one_character(t);
             break;
 
         case '.':
-            token->type = TokenType::Dot;
+            token.type = TokenType::Dot;
             advance_one_character(t);
             break;
 
         case '"': {
-            token->type = TokenType::StringLiteral;
+            token.type = TokenType::StringLiteral;
             advance_one_character(t); //跳过开头的引号
 
             while (!tokenizer_end(t) && tokenizer_curr_character(t) != '"') {
@@ -329,7 +335,14 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             if(tokenizer_end(t)) {
                 // false表示字符串未闭合就到达文件末尾, 这个token不会被加入token数组
 
-                return false;
+                context()->reporter.report(
+                    ErrorLevel::Error, 
+                    make_span(old_index, t->curr_character_index),
+                    t->source_code,
+                    "string literal not closed"
+                );
+
+                return xp_make_pair(xpOption<Token>(), false);
             }
 
             advance_one_character(t); //跳过结尾的引号
@@ -338,8 +351,8 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
             
         
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
-            tokenizer_scan_number(t, token, old_index);
-            // token->type = TokenType::Integer;
+            tokenizer_scan_number(t, &token, old_index);
+            // token.type = TokenType::Integer;
             // tokenizer_scan_integer(t);
             break;
 
@@ -347,27 +360,36 @@ b32 tokenizer_get_token(Tokenizer *t, Token *token) {
         default: 
         unknown_character: // TODO(xoaop): 不太好
             // XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
-            XP_ASSERT_DEFAULT(0);
+            // XP_ASSERT_DEFAULT(0);
+
+            context()->reporter.report(
+                ErrorLevel::Error, 
+                make_span(old_index, t->curr_character_index),
+                t->source_code,
+                "unknown character '%c'",
+                tokenizer_curr_character(t)
+            );
+            advance_one_character(t);
+
+            return xp_make_pair(xpOption<Token>::none(), true);
         }
 
-        if(token->token_str.capacity == 0) {
-            token->token_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
-        }
+        token.token_str = xp_make_string_capacity(permanent_allocator(), t->source_code.code_string.c_str + old_index, t->curr_character_index - old_index);
     }
 
 
-    token->span = make_span(old_index, t->curr_character_index);
+    token.span = make_span(old_index, t->curr_character_index);
 
 
-    return true;
+    return xp_make_pair(xpOption<Token>(token), true);
 }
 
 char tokenizer_curr_character(Tokenizer *t) {
-    return t->code.c_str[t->curr_character_index];
+    return t->source_code.code_string.c_str[t->curr_character_index];
 }
 
 b32 tokenizer_end(Tokenizer *t) {
-    return t->code.c_str[t->curr_character_index] == END_OF_CODE;
+    return t->source_code.code_string.c_str[t->curr_character_index] == END_OF_CODE;
 }
 
 xp_internal isize advance_one_character(Tokenizer *t) {
@@ -379,7 +401,7 @@ xp_internal isize advance_one_character(Tokenizer *t) {
             // t->curr_column_index = 1;
 
             //记录行起始位置
-            array_push_back(&t->line_start_indices, t->curr_character_index + 1);
+            // array_push_back(&t->source_code.line_start_indices, t->curr_character_index + 1);
         }
 
         t->curr_character_index += 1;
@@ -398,18 +420,18 @@ isize advance_characters(Tokenizer *t, isize count) {
 }
 
 char tokenizer_next_character(Tokenizer *t) {
-    if(t->code.c_str[t->curr_character_index] == END_OF_CODE) {
+    if(t->source_code.code_string.c_str[t->curr_character_index] == END_OF_CODE) {
         return END_OF_CODE;
     }
 
-    return t->code.c_str[t->curr_character_index + 1];
+    return t->source_code.code_string.c_str[t->curr_character_index + 1];
 }
 
 isize tokenizer_move_until_next_space(Tokenizer *t) {
     isize count = 0;
     while (!tokenizer_end(t)) {
 
-        if(xp_is_space(t->code.c_str[t->curr_character_index])) {
+        if(xp_is_space(t->source_code.code_string.c_str[t->curr_character_index])) {
             break;
         }
         count += advance_one_character(t);
@@ -551,7 +573,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     token->type = token_type;
 
-    token->number_info.pure_number_str = xp_make_string_capacity(permanent_allocator(), t->code.c_str + old_index, t->curr_character_index - old_index);
+    token->number_info.pure_number_str = xp_make_string_capacity(permanent_allocator(), t->source_code.code_string.c_str + old_index, t->curr_character_index - old_index);
     
     
     advance_characters(t, len);
