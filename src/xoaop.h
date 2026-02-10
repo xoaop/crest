@@ -116,6 +116,7 @@ void print_i128(i128 n);
 
 
 #define XP_TODO XP_ASSERT_DEFAULT(0)
+#define UNREACHABLE() XP_ASSERT_MSG(0, "unreachable\n")
 
 
 #ifndef cast
@@ -432,6 +433,14 @@ template<typename T>
 struct xpOption {
     public:
     
+    static xpOption<T> none() {
+        return xpOption();
+    }
+
+    static xpOption<T> some(T value) {
+        return xpOption(value);
+    }
+
     xpOption() : kind(xpOptionEnum::None) {}
     xpOption(T val) : kind(xpOptionEnum::Some), value(val) {}
     
