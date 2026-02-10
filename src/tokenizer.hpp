@@ -81,7 +81,8 @@
     /*      */                                                  \
     /* TEMP */                                                  \
     TOKEN_INFO(KW_extern_C, "extern_C"),                        \
-    TOKEN_INFO(__END__OF__KEYWORD__, "")                        \
+    TOKEN_INFO(__END__OF__KEYWORD__, ""),                       \
+    TOKEN_INFO(EndOfTokens, "end of tokens")                    \
 /**/                                  
 
 
@@ -89,7 +90,7 @@ extern const char* token_strings[];
     
 enum TokenType: u8 {
     #define TOKEN_INFO(type, str) type
-        TOKEN_INFOS
+    TOKEN_INFOS
     #undef TOKEN_INFO
 };
 
@@ -117,18 +118,15 @@ struct Token {
 
 struct Tokenizer {
     isize curr_character_index;
+
     Array<Token> token_array;
-    xpString code;
 
-    // isize curr_line_index;
-    // isize curr_column_index;
-
-    Array<BytePos> line_start_indices;
+    SourceCode source_code;
 };
 
 void tokenizer_init(Tokenizer* t, xpString code);
-SourceCode tokenize(Tokenizer* t);
-b32 tokenizer_get_token(Tokenizer* t, Token *token);
+xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code);
+xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t);
 char tokenizer_curr_character(Tokenizer *t);
 b32 tokenizer_end(Tokenizer *t);
 isize tokenizer_move_until_next_space(Tokenizer *t);
@@ -153,6 +151,8 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
 
     xpString str = xp_make_string_capacity(allocator, NULL, size);
     fread(str.c_str, 1, size, file);
+
+    str.length = xp_strlen_c(str.c_str);
 
     fclose(file);
 
