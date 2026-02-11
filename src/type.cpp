@@ -618,29 +618,16 @@ TypeRef unfinished_struct_type(Package *pkg, xpString ident) {
 
 
 
-// TypeRef get_struct_type(Array<StructField> fields) {
-//     Type t = {};
-//     t.kind = Type_struct;
-//     t.struct_fields = fields;
-
-//     TypeRef type_ref = get_type(t);
-
-//     return type_ref;
-// }
-
-// TypeRef add_struct_type(xpString name, Array<StructField> fields) {
-//     Type t = {};
-//     t.kind = Type_struct;
-//     t.type_name = name;
-//     t.struct_fields = fields;
-
-//     return add_type(t);
-// }
-
-
 TypeRef undefined_type() {
     Type t = {};
     t.kind = Type_Undefined;
+
+    return get_or_add_type(t);
+}
+
+TypeRef error_type() {
+    Type t = {};
+    t.kind = Type_error;
 
     return get_or_add_type(t);
 }
@@ -850,6 +837,7 @@ usize xp_hash_func(Type *type) {
         // 基本类型
         // 由于没有额外类型信息, 直接用kind作为hash值
         case Type_Undefined:
+        case Type_error:
 
         case Type_i8:
         case Type_i32:
