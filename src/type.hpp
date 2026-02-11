@@ -22,6 +22,9 @@
     TYPE_KIND(array, "array")                           \
     TYPE_KIND(untyped_int, "untyped_int")               \
     TYPE_KIND(untyped_float, "untyped_float")           \
+                                                        \
+                                                        \
+    TYPE_KIND(error, "error")                           \
 /**/
 
 
@@ -176,12 +179,13 @@ TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
 TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields);
 TypeRef undefined_type();
+TypeRef error_type();
 
 TypeRef unfinished_struct_type(Package *pkg, xpString ident);
 
-
 TypeRef slice_type_as_struct(TypeRef elem_type);
 TypeRef string_type_as_struct();
+
 
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);
