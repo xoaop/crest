@@ -14,6 +14,10 @@ struct Ast;
 
 #define AST_INFOS                                                           \
     AST_INFO(Undefined, "undefined", struct {})                             \
+    AST_INFO(BadDecl, "bad decl", struct {})                                \
+    AST_INFO(BadStmt, "bad stmt", struct {})                                \
+    AST_INFO(BadExpr, "bad expr", struct {})                                \
+    AST_INFO(BadType, "bad type", struct {})                                \
     AST_INFO(Import, "import", struct {                                     \
         xpString alias;                                                     \
         xpString path;                                                      \
@@ -34,9 +38,6 @@ struct Ast;
     AST_INFO(Ident, "ident", struct {                                       \
         xpString name;                                                      \
     })                                                                      \
-    /* AST_INFO(PathIdent, "path ident", struct {   */                         \
-    /*    Array<Ast *> idents;                      */                         \
-    /*})                                            */                         \
     AST_INFO(Function, "function", struct {                                 \
         xpString name;                                                      \
         Array<Ast *> params;                                                \
@@ -102,9 +103,6 @@ struct Ast;
         TokenType op;                                                       \
         Ast *operand;                                                       \
     })                                                                      \
-    /*AST_INFO(VarExpr, "variable expr", struct { */                            \
-    /*    Ast *var_name_ast;                      */                            \
-    /*})                                          */                            \
     AST_INFO(FunctionCallExpr, "function call expr", struct {               \
         Ast *func_ident;                                                    \
         Array<Ast *> args;                                                  \
@@ -185,6 +183,8 @@ struct Ast {
         AST_INFOS
         #undef AST_INFO
     };
+
+    Span span; // 该AST节点对应的源代码范围, 主要用于错误提示
     
 };
 
@@ -205,8 +205,7 @@ bool is_logic_operator(TokenType t);
 bool is_return_bool_operator(TokenType t);
 
 
-void print_ast(Ast *a);
-void print_ast(Array<Ast *> a_arr);
+void print_ast(Array<Ast*> a_arr, i32 depth = 0, bool is_last = true);
 
 xpAllocator ast_allocator();
 
