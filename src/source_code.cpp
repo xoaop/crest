@@ -1,7 +1,8 @@
 #include "source_code.hpp"
 
-SourceCode make_source_code(xpString code_string, Array<isize> line_start_indices) {
+SourceCode make_source_code(xpString file_path, xpString code_string, Array<isize> line_start_indices) {
     SourceCode source_code;
+    source_code.file_path = file_path;
     source_code.code_string = code_string;
     source_code.line_start_indices = line_start_indices;
 
@@ -9,15 +10,15 @@ SourceCode make_source_code(xpString code_string, Array<isize> line_start_indice
 }
 
 
-SourceCode make_source_code(xpString code_string, xpAllocator allocator) {
-    SourceCode source_code = make_source_code(code_string, make_array<BytePos>(allocator));
+SourceCode make_source_code(xpString file_path, xpString code_string, xpAllocator allocator) {
+    SourceCode source_code = make_source_code(file_path, code_string, make_array<BytePos>(allocator));
     
     // 计算行起始位置
     BytePos count = cast(BytePos) code_string.length;
     array_push_back(&source_code.line_start_indices, cast(BytePos)0); // 第一行起始位置是0
     for(BytePos i = 0; i < count; i++) {
         if(code_string.c_str[i] == '\n') {
-            array_push_back(&source_code.line_start_indices, i + 1);
+            array_push_back(&source_code.line_start_indices, i + 1); // 下一行的起始位置是当前字符的下一个位置
         }
     }
 
@@ -55,7 +56,21 @@ xpPair<BytePos, BytePos> cal_line_column_idx(Array<BytePos> line_start_indices, 
 }
 
 
-xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode *src_code, BytePos byte_pos) {
-    return cal_line_column_idx(src_code->line_start_indices, byte_pos);
+xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode src_code, BytePos byte_pos) {
+    return cal_line_column_idx(src_code.line_start_indices, byte_pos);
 }
 
+xpString get_line_str_of_pos(SourceCode code, BytePos pos, xpAllocator allocator) {
+
+    auto line_column = cal_line_column_index_of_byte_pos(code, pos);
+    BytePos line_index = line_column.first;
+    BytePos column_index = line_column.second;
+    isize line_count = code.line_start_indices.count;
+
+
+    BytePos line_start_pos = code.line_start_indices[line_index - 1]; // line_index从1开始计数，所以要减1得到正确的行起始位置
+    BytePos line_end_pos = (line_index < line_count) ? code.line_start_indices[line_index] - 1 : code.code_string.length; // 如果是最后一行，行结束位置就是code_string的长度，否则就是下一行的起始位置减1
+
+    xpString line_str = xp_make_string_capacity(allocator, code.code_string.c_str + line_start_pos, line_end_pos - line_start_pos);
+    return line_str;
+}
