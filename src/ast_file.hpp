@@ -9,8 +9,6 @@
 
 //Ast文件定义
 struct AstFile {
-    xpString file_path; 
-    
     Array<Ast *> top_levels;
     Scope file_scope;
 
