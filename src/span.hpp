@@ -13,6 +13,8 @@ struct Span {
 
 Span make_span(isize start, isize end);
 
+Span merge(Span a, Span b);
+
 
 
 #endif
