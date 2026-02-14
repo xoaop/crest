@@ -465,7 +465,8 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
     if(curr_token(p).type == TokenType::ColonEqual) {
         // VariableDecl without type annotation
 
-        // TODO error_msg
+        a = ast_alloc(AstType_VariableDecl, left_expr->token);
+
         if(left_expr->type != AstType_Ident) {
             context()->reporter.report(
                 ErrorLevel::Error,
@@ -473,11 +474,13 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
                 p->f.source_code,
                 "expected identifier before ':=' in variable declaration, got right value expression that can not be variable name"
             );
+
+            a->VariableDecl.var_name = xp_string_c(""); // 有可能乱码, 若left_expr不是Ident
+        } else {
+            a->VariableDecl.var_name = left_expr->Ident.name; // 有可能乱码, 若left_expr不是Ident
         }
         // XP_ASSERT_DEFAULT(left_expr->type == AstType_Ident);
 
-        a = ast_alloc(AstType_VariableDecl, left_expr->token);
-        a->VariableDecl.var_name = left_expr->Ident.name; // 有可能乱码, 若left_expr不是Ident
 
         expect(p, ColonEqual);
 

@@ -135,6 +135,27 @@ TypeRef get_extern_func_type_by_full_ident_ast(Ast *field_access, LLVMGenerator 
 }
 
 
+LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value) {
+    if(LLVMIsALoadInst(value)) {
+        // 如果是load指令, 直接返回被加载的地址
+
+        return LLVMGetOperand(value, 0);
+    } else if(LLVMIsAAllocaInst(value)) {
+        // 如果是alloca指令, 直接返回
+        return value;
+    } else if(LLVMIsAGlobalVariable(value)) {
+        // 如果是全局变量, 直接返回
+        return value;
+    }
+
+    // 否则, 需要先把值存到内存中, 再返回地址
+    LLVMTypeRef value_type = LLVMTypeOf(value);
+    LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(gen, LLVMGetInsertBlock(gen->builder), "temp", value_type);
+    LLVMBuildStore(gen->builder, value, temp_alloca);
+    return temp_alloca;
+}
+
+
 
 xpString get_func_full_name(Ast *func_decl_or_call, LLVMGenerator *gen) {
 
@@ -643,10 +664,41 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
     return state;
 }
 
+LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, Ast *array_expr) {
+    // NOTE: 目前为止, array_type的来源只有数组变量和数组字面量, 注意在处理这两种类型都要检查要不要调用这个函数来进行数组到切片的隐式转换
+
+
+    LLVMTypeRef array_type = get_llvm_type_from_type(gen, array_expr->v_type);
+    LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(array_expr->v_type->array_info.element_type));
+    
+    LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
+
+    LLVMValueRef indices[2] = {
+        LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
+        LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
+    };
+    // 设置数据指针
+    LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, array_value_ptr, indices, 2, "arraydataptrtmp");
+    slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+    
+    // 设置count
+    // TODO i64 换成 isize
+    LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), array_expr->v_type->array_info.count, 0);
+
+    slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+
+    return slice_struct_value;
+}
+
 
 LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState state) {
     
     LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
+
+    if(is_array_type(cast_expr->CastExpr.expr->v_type) && is_slice_struct_type(cast_expr->CastExpr.target_type)) {
+        // 数组到切片的隐式转换
+        return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, expr_val), cast_expr->CastExpr.expr);
+    }
 
     if(size_of_type(gen, cast_expr->CastExpr.target_type) > size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
         // 扩展
@@ -871,29 +923,9 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         LLVMValueRef *alloca = xp_hash_map_get(gen->locals, expr->Ident.name);
         XP_ASSERT_DEFAULT(alloca != NULL);
 
-        // TODO 处理数组转为切片
+        // 数组到切片的隐式转换
         if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
-
-            LLVMTypeRef array_type = get_llvm_type_from_type(gen, expr->v_type);
-            LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(expr->v_type->array_info.element_type));
-            
-            LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
-
-            LLVMValueRef indices[2] = {
-                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0),
-                LLVMConstInt(LLVMInt32TypeInContext(gen->ctx), 0, 0)
-            };
-            // 设置数据指针
-            LLVMValueRef data_ptr = LLVMBuildGEP2(gen->builder, array_type, *alloca, indices, 2, "arraytoslice.data.ptr");
-            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
-            
-            // 设置count
-            // TODO i64 换成 isize
-            LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->v_type->array_info.count, 0);
-
-            slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
-
-            return slice_struct_value;
+            return gen_array_value_to_slice_cast(gen, *alloca, expr);
         }
 
 
@@ -1046,6 +1078,11 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             array_val = LLVMBuildInsertValue(gen->builder, array_val, element_value, i, "arrayinsertvaltmp");
         }
 
+        if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
+            // 数组到切片的隐式转换
+            return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, array_val), expr);
+        }
+
         return array_val;
 
     } break;
@@ -1116,7 +1153,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     default:
         printf("\n-------------------------------------------\n");
-        print_ast(expr);
+        // print_ast(expr);
         XP_ASSERT_DEFAULT(0);
     }
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <format>
+#include <chrono>
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
@@ -19,6 +20,7 @@
 
 int main(int argc, char** argv) {
     
+    auto start_time = std::chrono::high_resolution_clock::now();
     
     defer(printf("\n\nEXIT!"));
 
@@ -74,6 +76,10 @@ int main(int argc, char** argv) {
     gen_ir_all_packages(all_packages);
 
     
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    
+    printf("\n\ntime: %lld ms\n", duration.count());
     
     return 0;
 }

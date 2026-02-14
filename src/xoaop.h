@@ -309,6 +309,7 @@ xp_define xpString xp_string_c(char const *str);
 xp_define xpString xp_make_string(xpAllocator allocator, char const *str);
 xp_define xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize capacity);
 xp_define xpString xp_make_string_zero();
+xp_define xpString xp_string_to_c_style(xpString string, xpAllocator allocator);
 xp_define xpString xp_make_string_from_slice(xpAllocator allocator, xpSlice slice);
 xp_define xpString xp_string_copy(xpAllocator allocator, xpString string);
 xp_define void xp_string_free(xpString string);
@@ -1562,6 +1563,11 @@ xpString xp_make_string_zero() {
     string.length = 0;
     string.capacity = 0;
     return string;
+}
+
+xpString xp_string_to_c_style(xpString string, xpAllocator allocator) {
+    xpString c_style_string = xp_string_copy(allocator, string);
+    return c_style_string;
 }
 
 

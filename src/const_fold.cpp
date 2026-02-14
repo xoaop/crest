@@ -2,6 +2,53 @@
 
 #include "error_msg.hpp"
 
+
+
+Value Value::make(i128 val) {
+    Value v = {};
+    v.type = Type::Integer;
+    v.int_value = val;
+    return v;
+}
+Value Value::make(double val) {
+    Value v = {};
+    v.type = Type::Float;
+    v.float_value = val;
+    return v;
+}
+
+Value::Type Value::get_type() const {
+    return type;
+}
+
+
+i128 Value::get_as_integer() const {
+    XP_ASSERT_DEFAULT(type == Type::Integer);
+    return int_value;
+}
+
+double Value::get_as_float() const {
+    XP_ASSERT_DEFAULT(type == Type::Float);
+    return float_value;
+}
+
+void Value::set(i128 val) {
+    type = Type::Integer;
+    int_value = val;
+}
+
+void Value::set(double val) {
+    type = Type::Float;
+    float_value = val;
+}
+
+
+
+
+
+
+
+
 i128 operation_integer_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
     XP_ASSERT_DEFAULT(left_c->type == AstType_Constant);
     XP_ASSERT_DEFAULT(right_c == NULL || right_c->type == AstType_Constant);
@@ -186,9 +233,9 @@ end:
 
 
 
-void try_constant_expr_folding(Ast *const_expr) {
+bool try_constant_expr_folding(Ast *const_expr) {
     if(const_expr->is_const_expr == false) {
-        return;
+        return false;
     }
 
 
@@ -201,14 +248,17 @@ void try_constant_expr_folding(Ast *const_expr) {
         Ast *left;
         Ast *right;
         if(const_expr->type == AstType_BinaryExpr) {
-            try_constant_expr_folding(const_expr->BinaryExpr.left);
-            try_constant_expr_folding(const_expr->BinaryExpr.right);
+            if(!try_constant_expr_folding(const_expr->BinaryExpr.left) || !try_constant_expr_folding(const_expr->BinaryExpr.right)) {
+                return false;
+            }
 
             op_type = const_expr->BinaryExpr.op;
             left = const_expr->BinaryExpr.left;
             right = const_expr->BinaryExpr.right;
         } else {
-            try_constant_expr_folding(const_expr->UnaryExpr.operand);
+            if(!try_constant_expr_folding(const_expr->UnaryExpr.operand)) {
+                return false;
+            }
 
             op_type = const_expr->UnaryExpr.op;
             left = const_expr->UnaryExpr.operand;
@@ -230,8 +280,10 @@ void try_constant_expr_folding(Ast *const_expr) {
 
         if(check_literal_overflow(const_expr->v_type->kind, result, dresult)) {
             // TODO 常量溢出错误处理
-            error_msg(&const_expr->token, "constant overflowed");
-            XP_ASSERT_MSG(0, "constant overflowed");
+            // error_msg(&const_expr->token, "constant overflowed");
+            // XP_ASSERT_MSG(0, "constant overflowed");
+
+            return false;
         }
 
         Ast constant = ast_make(AstType_Constant);
@@ -248,7 +300,9 @@ void try_constant_expr_folding(Ast *const_expr) {
     } break;
 
     case AstType_CastExpr: {
-        try_constant_expr_folding(const_expr->CastExpr.expr);
+        if(!try_constant_expr_folding(const_expr->CastExpr.expr)) {
+            return false;
+        }
 
         i128 result = const_expr->CastExpr.expr->Constant.value;
         double dresult = const_expr->CastExpr.expr->Constant.float_value;
@@ -349,7 +403,9 @@ void try_constant_expr_folding(Ast *const_expr) {
 
         if(check_literal_overflow(target_type->kind, result, dresult)) {
             // TODO 常量溢出错误处理
-            XP_ASSERT_MSG(0, "constant overflowed");
+            // XP_ASSERT_MSG(0, "constant overflowed");
+
+            return false;
         }
 
         Ast constant = ast_make(AstType_Constant);
@@ -370,6 +426,8 @@ void try_constant_expr_folding(Ast *const_expr) {
     default:
         break;
     }
+
+    return true;
 }
 
 
