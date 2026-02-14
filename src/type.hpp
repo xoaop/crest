@@ -49,6 +49,15 @@ struct StructField;
 
 struct Package;
 
+struct Ast;
+
+enum class ResolveState {
+    Unresolved,   // 还未解析
+    Resolving,    // 正在解析中
+    Resolved,     // 已经解析完毕
+};
+
+
 struct Type {
     TypeKind kind;
     xpString type_name;
@@ -68,6 +77,10 @@ struct Type {
         struct {
             Package *pkg;
             Array<StructField> struct_fields;
+
+            ResolveState resolve_state;
+            Ast *decl_ast;
+
         } struct_info;
 
         
