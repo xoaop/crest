@@ -141,7 +141,7 @@ void test_keyword_map();
 xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     FILE *file = NULL;
     
-    if(fopen_s(&file, path, "r")) {
+    if(fopen_s(&file, path, "rb")) {
         printf("Read File Failed: %s\n", path);
     }
 
