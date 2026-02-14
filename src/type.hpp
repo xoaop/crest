@@ -140,6 +140,7 @@ bool is_signed_or_bool_type(TypeRef type);
 bool is_unsigned_type(TypeRef type);
 bool is_float_type(TypeRef type);
 bool is_certain_type(TypeRef type);
+bool is_untyped_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
 bool is_array_type(TypeRef type);

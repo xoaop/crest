@@ -298,7 +298,28 @@ bool is_float_type(TypeRef type) {
 }
 
 bool is_certain_type(TypeRef type) {
-    return type->kind != Type_untyped_int && type->kind != Type_untyped_float;
+    switch(type->kind) {
+        case Type_void:
+        case Type_i8: 
+        case Type_i32:
+        case Type_i64:
+        case Type_u8:
+        case Type_u32:
+        case Type_u64:
+        case Type_f32:
+        case Type_f64:
+        case Type_bool:
+        case Type_pointer:
+        case Type_struct: 
+        case Type_array:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_untyped_type(TypeRef type) {
+    return type->kind == Type_untyped_int || type->kind == Type_untyped_float;
 }
 
 bool is_function_type(TypeRef type) {
@@ -373,16 +394,14 @@ TypeRef get_common_type(TypeRef a, TypeRef b) {
 
     if(is_integer_type(a) && is_integer_type(b)) {
         if (is_signed_type(a) != is_signed_type(b)) {
-            XP_ASSERT_DEFAULT(0);
+            return error_type();
         }
 
         return (get_type_rank(a) >= get_type_rank(b)) ? a : b;
     }
 
-
-    XP_ASSERT_DEFAULT(0);
     
-    return NULL;
+    return error_type();
 }
 
 
