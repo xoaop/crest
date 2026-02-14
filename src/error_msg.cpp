@@ -17,10 +17,7 @@ void error_msg(Token *token, const char *fmt, ...) {
 
 
 
-void ErrorReporter::report(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
+void ErrorReporter::report_args(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, va_list args) {
     ErrorMsg msg;
     msg.level = level;
     msg.highlight_span = highlight_span;
@@ -33,9 +30,21 @@ void ErrorReporter::report(ErrorLevel level, Span highlight_span, SourceCode src
 
     array_push_back(&error_msgs, msg);
 
-    va_end(args);
+    if(level == ErrorLevel::Error) {
+        error_count += 1;
+    } else if(level == ErrorLevel::Warning) {
+        warning_count += 1;
+    }
 
     return;
+}
+
+void ErrorReporter::report(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    defer(va_end(args));
+
+    report_args(level, highlight_span, src_code, fmt, args);
 }
 
 void ErrorReporter::report_error(Span highlight_span, SourceCode src_code, const char *fmt, ...) {
@@ -43,7 +52,7 @@ void ErrorReporter::report_error(Span highlight_span, SourceCode src_code, const
     va_start(args, fmt);
     defer(va_end(args));
 
-    report(ErrorLevel::Error, highlight_span, src_code, fmt, args);
+    report_args(ErrorLevel::Error, highlight_span, src_code, fmt, args);
 }
 
 void ErrorReporter::print_msg() {
@@ -52,6 +61,11 @@ void ErrorReporter::print_msg() {
     #define COLOR_GREEN "\033[32m"
     #define COLOR_BLUE "\033[34m"
 
+    if(error_msgs.count == 0) {
+        return;
+    }
+
+    printf("\n%td error(s), %td warning(s) found:\n\n", error_count, warning_count);
     
     for (size_t i = 0; i < error_msgs.count; ++i) {
         ErrorMsg *msg = &error_msgs[i];
@@ -72,7 +86,7 @@ void ErrorReporter::print_msg() {
         auto start = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.start);
         auto end = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.end);
 
-        fprintf(stderr, "%s:%lld:%lld: %s%s%s: %s\n",
+        printf("%s:%lld:%lld: %s%s%s: %s\n",
             msg->src_code.file_path.c_str,
             start.first, start.second,
             color_code,
@@ -85,17 +99,17 @@ void ErrorReporter::print_msg() {
         xpString line_str = get_line_str_of_pos(msg->src_code, msg->highlight_span.start, xp_heap_allocator());
         defer(xp_string_free(line_str));
 
-        fprintf(stderr, "%s", line_str.c_str);
+        printf("%s", line_str.c_str);
 
-        fprintf(stderr, "\n");
+        printf("\n");
 
         for(isize i = 0; i < start.second - 1; i++) {
-            fprintf(stderr, " ");
+            printf(" ");
         }
         for(isize i = 0; i < end.second - start.second; i++) {
-            fprintf(stderr, "%s^%s", COLOR_GREEN, COLOR_RESET);
+            printf("%s^%s", COLOR_GREEN, COLOR_RESET);
         }
-        fprintf(stderr, "\n");
+        printf("\n");
 
 
     }
