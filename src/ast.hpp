@@ -6,7 +6,7 @@
 
 #include "type.hpp"
 
-
+#include "symbol.hpp"
 
 
 struct Ast;
@@ -172,6 +172,8 @@ struct Ast {
     TypeRef v_type; // 该AST节点的类型
     ImplicitConversionTag implicit_conversion_tag;
 
+    SymbolInfo *ast_symbol; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
+
     // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式
     bool is_lvalue = false;     // 该AST是否是一个左值表达式
@@ -197,6 +199,8 @@ Ast *ast_alloc(AstType type, Token token);
 Ast ast_make(AstType type);
 
 
+bool is_binary_op(TokenType type);
+bool is_unary_op(TokenType type);
 bool is_add_sub_operator(TokenType t);
 bool is_equal_compare_operator(TokenType t);
 bool is_compare_operator(TokenType t);

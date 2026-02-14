@@ -44,6 +44,47 @@ Ast *ast_alloc(AstType type, Token token) {
 }
 
 
+bool is_binary_op(TokenType type) {
+    switch (type)
+    {
+    case Add:
+    case Minus:
+    case Star:
+    case ForwardSlash:
+    case Percent:
+    case GreaterThan:
+    case GreaterEqual:
+    case LessThan:
+    case LessEqual:
+    case DoubleEqual:
+    case ExclamationEqual:
+    case DoubleAnd:
+    case DoubleOr:
+        return true;
+    default:
+        return false;
+    }
+
+    return false;
+}
+
+bool is_unary_op(TokenType type) {
+    switch (type)
+    {
+    case TokenType::Minus: // -
+    case TokenType::Exclamation: // !
+    
+    // 指针运算
+    case TokenType::And: // &
+    case TokenType::Star: // *
+        return true;
+    default:
+        return false;
+    }
+    return false;
+}
+
+
 
 bool is_add_sub_operator(TokenType t) {
     return t == TokenType::Add || t == TokenType::Minus;
@@ -108,7 +149,7 @@ xp_internal void print_line(i32 depth, bool is_last, const char* format, ...) {
 
 // 主函数：打印单个 Ast 节点
 void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
-    if (a == NULL) {`
+    if (a == NULL) {
         print_line(depth, is_last, "(null)");
         return;
     }

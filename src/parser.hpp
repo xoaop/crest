@@ -11,45 +11,6 @@
 
 #include "source_code.hpp"
 
-xp_internal b32 is_binary_op(TokenType type) {
-    switch (type)
-    {
-    case Add:
-    case Minus:
-    case Star:
-    case ForwardSlash:
-    case Percent:
-    case GreaterThan:
-    case GreaterEqual:
-    case LessThan:
-    case LessEqual:
-    case DoubleEqual:
-    case ExclamationEqual:
-    case DoubleAnd:
-    case DoubleOr:
-        return true;
-    default:
-        return false;
-    }
-
-    return false;
-}
-
-xp_internal b32 is_unary_op(TokenType type) {
-    switch (type)
-    {
-    case TokenType::Minus: // -
-    case TokenType::Exclamation: // !
-    
-    // 指针运算
-    case TokenType::And: // &
-    case TokenType::Star: // *
-        return true;
-    default:
-        return false;
-    }
-    return false;
-}
 
 
 //NOTE(xoaop): 越大 优先级越高
