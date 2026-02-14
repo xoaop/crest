@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
     
+    context()->reporter = make_error_reporter(permanent_allocator());
 
     // 类型系统初始化
     init_type_table(context());
@@ -61,11 +62,18 @@ int main(int argc, char** argv) {
 
     Array<Package> all_packages = resolve_dependencies(xp_make_string(permanent_allocator(), path_of_main_dir));
 
-
     sema_analysis_all_packages(all_packages);
+    
+    context()->reporter.print_msg();
+
+    if(context()->reporter.error_msgs.count > 0) {
+        // 如果有错误信息, 就不继续生成IR了
+        return -1;
+    }
 
     gen_ir_all_packages(all_packages);
 
+    
     
     return 0;
 }
