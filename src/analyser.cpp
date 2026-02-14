@@ -300,7 +300,10 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
                 SymbolInfo struct_symbol = {};
                 struct_symbol.kind = SymbolKind::StructDecl;
                 struct_symbol.name = top_level->StructDecl.name;
+                
                 struct_symbol.type = unfinished_struct_type(curr_pkg, top_level->StructDecl.name);
+                struct_symbol.type->struct_info.decl_ast = top_level;
+                struct_symbol.type->struct_info.resolve_state = ResolveState::Unresolved;
 
                 // 结构体是包作用域的符号
                 add_symbol_to_scope(&curr_pkg->package_scope, struct_symbol.name, struct_symbol);
@@ -330,6 +333,14 @@ void bind_symbol_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> al
         {
 
         case AstType_StructDecl: {
+
+            SymbolInfo *struct_symbol_info = find_symbol_in_scope_list_until_with_kind(ScopeType::Package, &ast_file->file_scope, top_level->StructDecl.name, SymbolKind::StructDecl);
+            if(struct_symbol_info == NULL) {
+                break; // 说明前面符号绑定阶段已经报过错了, 这里就不继续解析了
+            }
+            if(struct_symbol_info->type->struct_info.resolve_state == ResolveState::Resolved) {
+                break; // 已经解析过了, 可能是之前解析另一个struct的时候递归解析到的, 直接跳过
+            }
 
             // 解析结构体声明的字段类型, 补充符号表
             resolve_struct_decl(top_level, make_analyser(&ast_file->file_scope, curr_pkg, all_packages));
@@ -413,11 +424,21 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
         TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
         array_push_back(&field_types, StructField{field_ast->StructField.name, field_type});
 
-        if(field_type == struct_type_info->type) {
-            
-            // 字段类型不能和结构体本身相同 错误处理
-            error_msg(&field_ast->token, "struct field type can not be the same as struct type itself");
-            XP_ASSERT_DEFAULT(0);
+        if(is_struct_type(field_type)) {
+            if(field_type->struct_info.resolve_state == ResolveState::Unresolved) {
+                // 递归解析struct字段的struct类型, 可能会有循环依赖
+                resolve_struct_decl(field_type->struct_info.decl_ast, analyser);
+            } else if(field_type->struct_info.resolve_state == ResolveState::Resolving) {
+                // 循环依赖, 报错
+                context()->reporter.report_error(
+                    field_ast->span, analyser.curr_ast_file->source_code,
+                    "circular dependency detected in struct declarations involving struct '%s'",
+                    field_type->type_name.c_str
+                );
+
+                struct_type_info->type = error_type();
+                break;
+            }
         }
 
     }
