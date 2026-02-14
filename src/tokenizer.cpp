@@ -1,3 +1,22 @@
+///
+// TODO: UTF-8: 目前还不支持utf-8中非ascii字符当作一个character, 
+// 会导致中文后面的token的位置信息不正确(中文占不止一个character, 但编辑器里是当作一个位置的), 
+// eg: 
+
+// test\fail\infer_expr_type_all_error\1.cst:108:26: Error: expression cannot be indexed because it is not an array, slice struct or string struct type
+//         你好世界a := 1[0]; 
+//            应: ^    实际:^^^^
+
+// 需要改成支持utf-8的character
+// 不过至少现在还没有影响, 毕竟只有单行注释, 中文后面不可能有token了
+// 以后如果支持多行注释或者字符串字面量里允许有中文, 就必须支持utf-8的character了
+///
+
+
+
+
+
+
 #include <stdio.h>
 #include <ctype.h>
 
@@ -74,10 +93,10 @@ xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code) {
             
             if(token.type == TokenType::CommentLine) {
                 // 注释行不加入token数组
-                continue;
+            } else {
+                array_push_back(&t.token_array, token);
             }
             
-            array_push_back(&t.token_array, token);
         }
 
 
@@ -394,16 +413,6 @@ b32 tokenizer_end(Tokenizer *t) {
 
 xp_internal isize advance_one_character(Tokenizer *t) {
     if(!tokenizer_end(t)) {
-        // t->curr_column_index += 1; 
-        if(tokenizer_curr_character(t) == '\n') {
-            //NOTE(xoaop): RESET
-            // t->curr_line_index += 1;
-            // t->curr_column_index = 1;
-
-            //记录行起始位置
-            // array_push_back(&t->source_code.line_start_indices, t->curr_character_index + 1);
-        }
-
         t->curr_character_index += 1;
         return 1;
     }
