@@ -28,13 +28,19 @@ struct ErrorMsg {
 
 
 struct ErrorReporter {
+    
+    void report_args(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, va_list args);
+    void report(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, ...);
+    void report_error(Span highlight_span, SourceCode src_code, const char *fmt, ...);
+    
+    void print_msg();
+
+
     Array<ErrorMsg> error_msgs;
 
-    void report(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, ...);
-
-    void report_error(Span highlight_span, SourceCode src_code, const char *fmt, ...);
-
-    void print_msg();
+private:
+    isize warning_count;
+    isize error_count;
 };
 
 
