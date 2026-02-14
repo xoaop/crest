@@ -48,14 +48,13 @@ bool check_file_legal(xpString path);
 AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
     xpString code_str = file_to_string(path, permanent_allocator());
     
-    Tokenizer tokenizer;
-    tokenizer_init(&tokenizer, code_str);
-    SourceCode src_code = tokenize(&tokenizer);
+    xpPair<SourceCode, Array<Token>> src_code_and_tokens = tokenize(xp_make_string(permanent_allocator(), path), code_str);
+    SourceCode src_code = src_code_and_tokens.first;
+    Array<Token> tokens = src_code_and_tokens.second;
 
-    AstFile f = parse_file(tokenizer.token_array, src_code);
+    AstFile f = parse_file(tokens, src_code);
 
-    f.file_path = xp_make_string(permanent_allocator(), path);
-    f.source_code = src_code;
+    // f.file_path = xp_make_string(permanent_allocator(), path);
 
     return f;
 }
@@ -151,11 +150,13 @@ Array<Package> resolve_dependencies(xpString main_path) {
 
                 if(!check_directory_legel(abs_import_path)) {
                     // TODO ERROR: import路径不合法
-                    error_msg(NULL, "import path is not a valid directory: %s", abs_import_path.c_str);
+                    // error_msg(NULL, "import path is not a valid directory: %s", abs_import_path.c_str);
                     continue;
                 }
 
                 // 检查该package是否已经解析过 或 正在解析中
+
+                // TODO: 目前似乎永远不会出现正在解析中的情况
                 bool already_resolved = false;
                 for(isize m = 0; m < packages.count; m++) {
                     if(xp_string_cmp(packages[m].path, abs_import_path) == 0) {
@@ -163,8 +164,8 @@ Array<Package> resolve_dependencies(xpString main_path) {
                         if(package_states[m] == PackageState::Resolving) {
                             // TODO ERROR: 循环依赖
 
+                            UNREACHABLE();
                             error_msg(NULL, "circular dependency detected for package: %s", abs_import_path.c_str);
-                            XP_ASSERT_DEFAULT(0);
                         }
 
                         already_resolved = true;
@@ -227,12 +228,12 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
 // 获取一个文件import的所有依赖的package路径(相对于项目根目录)
 Array<xpString> resolve_import_paths(AstFile ast_file) {
-    xpString file_path = ast_file.file_path;
+    xpString file_path = ast_file.source_code.file_path;
 
-    Array<Ast *> imports = make_array<Ast *>(permanent_allocator());
+    Array<Ast *> imports = make_array<Ast *>(stage_allocator());
     collect_all_imports_in_ast_file(ast_file, &imports);
 
-    Array<xpString> imported_paths = make_array<xpString>(permanent_allocator());
+    Array<xpString> imported_paths = make_array<xpString>(stage_allocator());
     for(isize i = 0; i < imports.count; i++) {
         Ast *import_ast = imports[i];
         xpString import_path = import_ast->Import.path;

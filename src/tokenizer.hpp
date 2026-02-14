@@ -154,6 +154,9 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
 
     str.length = xp_strlen_c(str.c_str);
 
+    // DEBUG
+    // printf("\n\n%*s\n\n", cast(int)str.length, str.c_str);
+
     fclose(file);
 
     return str;
