@@ -20,6 +20,7 @@ enum class ValueState {
 };
 
 enum class ValueErrorKind {
+    ErrorValue,
     UsingRuntimeValue,
     TypeError,
     Overflow,
@@ -28,6 +29,8 @@ enum class ValueErrorKind {
     OperatorError,
     Other,
 };
+
+using ValueResult = xpResult<Value, ValueErrorKind>;
 
 
 struct Value {
@@ -43,7 +46,7 @@ struct Value {
 
     TypeRef type = NULL;
     ValueState state = ValueState::Unsolved; // 主要用于求值过程中检测循环依赖
-    ValueErrorKind error_kind; // 当state == Error时, 该字段表示错误的具体类型
+    // ValueErrorKind error_kind; // 当state == Error时, 该字段表示错误的具体类型
     
     bool is_runtime_value = false; // 是否是运行时值, 主要用于区分常量和非常量, 以及在求值过程中区分是否需要求值
 
@@ -83,7 +86,7 @@ Value make_comptime_sovled_val(TypeRef type);
 Value make_value_for_var_decl(TypeRef type);
 Value make_value(TypeRef type);
 Value make_value(TypeRef type, bool is_runtime);
-Value make_error_value(ValueErrorKind error_kind);
+Value make_error_value();
 
 //
 // Value Getters

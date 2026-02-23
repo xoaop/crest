@@ -2,29 +2,29 @@
 
 
 
-Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
-    if(v1.state == ValueState::Error) {
-        return make_error_value(v1.error_kind);
+ValueResult eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
+    if(v1.has_error()) {
+        return ValueResult::err(ValueErrorKind::ErrorValue);
     }
     if(v2.state == ValueState::Error) {
-        return make_error_value(v2.error_kind);
+        return ValueResult::err(ValueErrorKind::ErrorValue);
     }
 
 
     if(v1.is_runtime_value || v2.is_runtime_value) {
-        return make_error_value(ValueErrorKind::UsingRuntimeValue);
+        return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
     }
 
     // 目前只处理整数, 浮点数, bool类型的二元表达式, 其他类型的二元表达式如指针、结构体、数组等的二元表达式不在编译时求值的范围内
     if(!((is_integer_or_untyped_type(v1.type) && is_integer_or_untyped_type(v2.type)) ||
          (is_float_or_untyped_type(v1.type) && is_float_or_untyped_type(v2.type)) ||
          (v1.type == easy_type(Type_bool) && v2.type == easy_type(Type_bool)))) {
-        return make_error_value(ValueErrorKind::TypeError);
+        return ValueResult::err(ValueErrorKind::TypeError);
     }
 
     // 在只有整数, 浮点数, bool类型的情况下, 只有当两个操作数类型完全相同时才进行计算, 否则报错, 例如untyped int和i32不进行计算, untyped float和f64不进行计算, i32和f32不进行计算等
     if(v1.type != v2.type) {
-        return make_error_value(ValueErrorKind::TypeError);
+        return ValueResult::err(ValueErrorKind::TypeError);
     }
 
 
@@ -44,7 +44,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.float_value = v1.float_value + v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);
             }
         } break;
 
@@ -52,11 +52,11 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             if(is_int_or_untyped) {
                 is_int_overflow = xp_check_i128_sub_overflow(v1.integer_value, v2.integer_value, &result.integer_value);
             } else if(is_float_or_untyped) {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             } else if(is_float_or_untyped) {
                 result.float_value = v1.float_value - v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -66,34 +66,34 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.float_value = v1.float_value * v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
         case TokenType::ForwardSlash: {
             if(is_int_or_untyped) {
                 if(v2.integer_value == 0) {
-                    return make_error_value(ValueErrorKind::DivideByZero);
+                    return ValueResult::err(ValueErrorKind::DivideByZero);
                 }
                 is_int_overflow = xp_check_i128_div_overflow(v1.integer_value, v2.integer_value, &result.integer_value);
             } else if(is_float_or_untyped) {
                 if(v2.float_value == 0.0) {
-                    return make_error_value(ValueErrorKind::DivideByZero);
+                    return ValueResult::err(ValueErrorKind::DivideByZero);
                 }
                 result.float_value = v1.float_value / v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
         case TokenType::Percent: {
             if(is_int_or_untyped) {
                 if(v2.integer_value == 0) {
-                    return make_error_value(ValueErrorKind::DivideByZero);
+                    return ValueResult::err(ValueErrorKind::DivideByZero);
                 }
                 is_int_overflow = xp_check_i128_mod_overflow(v1.integer_value, v2.integer_value, &result.integer_value);
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -104,7 +104,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.bool_value = v1.float_value > v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -114,7 +114,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.bool_value = v1.float_value < v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -124,7 +124,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.bool_value = v1.float_value >= v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -134,7 +134,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_float_or_untyped) {
                 result.bool_value = v1.float_value <= v2.float_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -146,7 +146,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_bool) {
                 result.bool_value = v1.bool_value == v2.bool_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -158,7 +158,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             } else if(is_bool) {
                 result.bool_value = v1.bool_value != v2.bool_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -166,7 +166,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             if(is_bool) {
                 result.bool_value = v1.bool_value && v2.bool_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
         } break;
 
@@ -174,13 +174,13 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
             if(is_bool) {
                 result.bool_value = v1.bool_value || v2.bool_value;
             } else {
-                return make_error_value(ValueErrorKind::TypeError);
+                return ValueResult::err(ValueErrorKind::TypeError);;
             }
             
         } break;
 
         default: {
-            return make_error_value(ValueErrorKind::OperatorError);
+            return ValueResult::err(ValueErrorKind::OperatorError);
         } break;
     }
 
@@ -188,11 +188,11 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
     // 检查内置溢出
     if(is_int_or_untyped) {
         if(is_int_overflow) {
-            return make_error_value(ValueErrorKind::Overflow);
+            return ValueResult::err(ValueErrorKind::Overflow);
         }
     } else if(is_float_or_untyped) {
         if(xp_check_f64_is_inf(result.float_value)) {
-            return make_error_value(ValueErrorKind::Overflow);
+            return ValueResult::err(ValueErrorKind::Overflow);
         }
     }
 
@@ -208,7 +208,7 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
         }
     }
     if(overflowed) {
-        return make_error_value(ValueErrorKind::Overflow);
+        return ValueResult::err(ValueErrorKind::Overflow);
     }
 
     // 设置结果类型
@@ -223,19 +223,19 @@ Value eval_binary_expr(Value& v1, Value& v2, TokenType op_type) {
     }
     
 
-    return result;
+    return ValueResult::ok(result);
 }
 
 
 
-Value eval_unary_expr(Value& v, TokenType op_type) {
-    if(v.state == ValueState::Error) {
-        return make_error_value(v.error_kind);
+ValueResult eval_unary_expr(Value& v, TokenType op_type) {
+    if(v.has_error()) {
+        return ValueResult::err(ValueErrorKind::ErrorValue);
     }
 
 
     if(v.is_runtime_value) {
-        return make_error_value(ValueErrorKind::UsingRuntimeValue);
+        return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
     }
 
 
@@ -245,19 +245,19 @@ Value eval_unary_expr(Value& v, TokenType op_type) {
         case TokenType::Exclamation:
             return unary_boolean_value(v, op_type);
         default:
-            return make_error_value(ValueErrorKind::OperatorError);
+            return ValueResult::err(ValueErrorKind::OperatorError);
     }
 }
 
 
 // 一元算数
-Value unary_arithmetic_value(Value& v, TokenType op_type) {
+ValueResult unary_arithmetic_value(Value& v, TokenType op_type) {
     if(v.is_runtime_value) {
-        return make_error_value(ValueErrorKind::UsingRuntimeValue);
+        return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
     }
 
     if(!is_integer_or_untyped_type(v.type) && !is_float_or_untyped_type(v.type)) {
-        return make_error_value(ValueErrorKind::TypeError);
+        return ValueResult::err(ValueErrorKind::TypeError);
     }
 
     Value result = make_value();
@@ -267,7 +267,7 @@ Value unary_arithmetic_value(Value& v, TokenType op_type) {
                 result.integer_value = -v.integer_value;
             } break;
             default: {
-                return make_error_value(ValueErrorKind::OperatorError);
+                return ValueResult::err(ValueErrorKind::OperatorError);
             } break;
         }
 
@@ -285,7 +285,7 @@ Value unary_arithmetic_value(Value& v, TokenType op_type) {
                 result.float_value = -v.float_value;
             } break;
             default: {
-                return make_error_value(ValueErrorKind::OperatorError);
+                return ValueResult::err(ValueErrorKind::OperatorError);
             } break;
         }
 
@@ -297,10 +297,10 @@ Value unary_arithmetic_value(Value& v, TokenType op_type) {
             overflowed = check_float_overflow(result.float_value, v.type);
         }
     } else {
-        return make_error_value(ValueErrorKind::TypeError);
+        return ValueResult::err(ValueErrorKind::TypeError);;
     }
 
-    return result;
+    return ValueResult::ok(result);
 
 }
 
@@ -311,13 +311,13 @@ Value unary_arithmetic_value(Value& v, TokenType op_type) {
 /// @param v 
 /// @param op_type 
 /// @return 
-Value unary_boolean_value(Value& v, TokenType op_type) {
+ValueResult unary_boolean_value(Value& v, TokenType op_type) {
     if(v.is_runtime_value) {
-        return make_error_value(ValueErrorKind::UsingRuntimeValue);
+        return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
     }
 
     if(v.type != easy_type(Type_bool)) {
-        return make_error_value(ValueErrorKind::TypeError);
+        return ValueResult::err(ValueErrorKind::TypeError);;
     }
 
     Value result = make_comptime_sovled_val(undefined_type());
@@ -326,11 +326,11 @@ Value unary_boolean_value(Value& v, TokenType op_type) {
             result.bool_value = !v.bool_value;
         } break;
         default: {
-            return make_error_value(ValueErrorKind::OperatorError);
+            return ValueResult::err(ValueErrorKind::OperatorError);
         } break;
     }
 
     result.set_type(easy_type(Type_bool));
 
-    return result;
+    return ValueResult::ok(result);
 }
