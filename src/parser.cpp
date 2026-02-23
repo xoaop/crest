@@ -1141,8 +1141,10 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-    a->Constant.value = val;
-
+    
+    Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
+    value.integer_value = val;
+    a->Constant.value = value;
 }
 
 void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
@@ -1208,7 +1210,10 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-    a->Constant.float_value = val;
+    
+    Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
+    value.float_value = val;
+    a->Constant.value = value;
     
     return;
 }

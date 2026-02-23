@@ -171,12 +171,14 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_Constant: {
+            // TODO: 更正确地打印常量值, 目前只处理了整数和浮点数, 其他类型的常量还没有处理
+
             print_branch(depth + 1, false);
             printf("value: ");
-            print_i128(a->Constant.value);
+            print_i128(a->Constant.value.integer_value);
             putchar('\n');
 
-            print_line(depth + 1, true, "float_value: %f", a->Constant.float_value);
+            print_line(depth + 1, true, "float_value: %f", a->Constant.value.float_value);
             break;
         }
 

@@ -2,6 +2,34 @@
 
 #include "error_msg.hpp"
 
+struct Valuee {
+    enum class Type {
+        Integer,
+        Float,
+    } type;
+
+    static Valuee make(i128 val);
+    static Valuee make(double val);
+
+    Valuee() = default;
+
+    Type get_type() const;
+    i128 get_as_integer() const;
+    double get_as_float() const;
+    void set(i128 val);
+    void set(double val);
+
+    // TODO: 实现运算符重载, 直接用表达式的方式计算, 这样就不需要写operation_integer_ast和operation_float_ast了
+
+private:
+    union {
+        i128 int_value;
+        double float_value;
+    };
+
+    bool has_error = false;
+};
+
 
 
 Valuee Valuee::make(i128 val) {
@@ -53,8 +81,15 @@ i128 operation_integer_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
     XP_ASSERT_DEFAULT(left_c->type == AstType_Constant);
     XP_ASSERT_DEFAULT(right_c == NULL || right_c->type == AstType_Constant);
 
-    i128 left = left_c->Constant.value;
+    i128 left;
     i128 right;
+
+    if(left_c->v_type == easy_type(Type_bool)) {
+        left = left_c->Constant.value.bool_value;
+    } else {
+        left = left_c->Constant.value.integer_value;
+    }
+
     
     i128 result = 0;
 
@@ -66,7 +101,12 @@ i128 operation_integer_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
     }
 
 binary_operation:
-    right = right_c->Constant.value;
+    if(right_c->v_type == easy_type(Type_bool)) {
+        right = right_c->Constant.value.bool_value;
+    } else {
+        right = right_c->Constant.value.integer_value;
+    }
+
     switch(op_type) {
         case TokenType::Add: {
             result = left + right;
@@ -159,7 +199,7 @@ double operation_float_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
     XP_ASSERT_DEFAULT(left_c->type == AstType_Constant);
     XP_ASSERT_DEFAULT(right_c == NULL || right_c->type == AstType_Constant);
 
-    double left = left_c->Constant.float_value;
+    double left = left_c->Constant.value.float_value;
     double right;
     
     double result = 0.0;
@@ -171,7 +211,7 @@ double operation_float_ast(TokenType op_type, Ast *left_c, Ast *right_c) {
 
 
 binary_operation:
-    right = right_c->Constant.float_value;
+    right = right_c->Constant.value.float_value;
     switch(op_type) {
         case TokenType::Add: {
             result = left + right;
@@ -289,12 +329,20 @@ bool try_constant_expr_folding(Ast *const_expr) {
         Ast constant = ast_make(AstType_Constant);
         constant.is_const_expr = true;
         constant.v_type = const_expr->v_type;
+        constant.span = const_expr->span;
 
-        if(is_integer_or_bool_type(const_expr->v_type)) {
-            constant.Constant.value = result;
+        Value result_val = make_comptime_sovled_val(const_expr->v_type);
+
+        if(is_integer_type(const_expr->v_type)) {
+            result_val.integer_value = result;
         } else if(is_float_type(const_expr->v_type)) {
-            constant.Constant.float_value = dresult;
+            result_val.float_value = dresult;
+        } else if(const_expr->v_type == easy_type(Type_bool)) {
+            result_val.bool_value = (result != 0);
         }
+
+        constant.Constant.value = result_val;
+
 
         *const_expr = constant;
     } break;
@@ -304,8 +352,14 @@ bool try_constant_expr_folding(Ast *const_expr) {
             return false;
         }
 
-        i128 result = const_expr->CastExpr.expr->Constant.value;
-        double dresult = const_expr->CastExpr.expr->Constant.float_value;
+        i128 result;
+        if(is_integer_type(const_expr->CastExpr.expr->v_type)) {
+            result = const_expr->CastExpr.expr->Constant.value.integer_value;
+        } else if(const_expr->CastExpr.expr->v_type == easy_type(Type_bool)) {
+            result = const_expr->CastExpr.expr->Constant.value.bool_value;
+        }
+
+        double dresult = const_expr->CastExpr.expr->Constant.value.float_value;
         
         TypeRef target_type = const_expr->CastExpr.target_type;
 
@@ -410,14 +464,19 @@ bool try_constant_expr_folding(Ast *const_expr) {
 
         Ast constant = ast_make(AstType_Constant);
         constant.is_const_expr = true;
+        constant.span = const_expr->span;
+
+        Value result_val = make_comptime_sovled_val(target_type);
         
         if(is_integer_or_bool_type(target_type)) {
-            constant.Constant.value = result;
+            result_val.integer_value = result;
         } else if(is_float_type(target_type)) {
-            constant.Constant.float_value = dresult;
+            result_val.float_value = dresult;
         }
 
         constant.v_type = target_type;
+
+        constant.Constant.value = result_val;
 
         *const_expr = constant;
     } break;
