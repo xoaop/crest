@@ -1062,7 +1062,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
     
     case AstType_Break: {
-        if(analyser.current_scope->scope_type != ScopeType::LoopBlock) {
+        if(get_upper_scope_with_type(analyser.current_scope, ScopeType::LoopBlock) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->span, analyser.curr_ast_file->source_code,
                 "break statement not within loop"
@@ -1070,7 +1070,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
         }
     } break;
     case AstType_Continue: {
-        if(analyser.current_scope->scope_type != ScopeType::LoopBlock) {
+        if(get_upper_scope_with_type(analyser.current_scope, ScopeType::LoopBlock) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->span, analyser.curr_ast_file->source_code,
                 "continue statement not within loop"
