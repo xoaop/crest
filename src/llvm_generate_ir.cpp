@@ -139,7 +139,7 @@ LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state, bool nee
 LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state);
 LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr = false);
 LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state);
-
+LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, TypeRef array_value_type);
 
 
 void init_llvm_generator(LLVMGenerator *gen, Package *pkg, xpAllocator allocator) {
@@ -411,6 +411,13 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
             return func_type;
         } break;
 
+        // *NOTE: 这两种类型只会在常量出现, 且一定会被转为其它类型
+        case Type_untyped_int:
+            return LLVMInt128TypeInContext(gen->ctx);
+        case Type_untyped_float:
+            return LLVMDoubleTypeInContext(gen->ctx);
+
+
         default:
             XP_ASSERT_DEFAULT(0);
     }
@@ -510,7 +517,39 @@ void gen_ir_package(Package *pkg) {
 }
 
 
-LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value) {
+LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type, LLVMValueRef value) {
+
+    if(is_array_type(from_type) && is_slice_struct_type(to_type)) {
+        // 数组到切片的隐式转换
+        return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, value), from_type);
+    }
+
+    if(size_of_type(gen, to_type) > size_of_type(gen, from_type)) {
+        // 扩展
+        if(is_signed_type(from_type)) {
+            // 有符号扩展
+            return LLVMBuildSExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "sexttmp");
+        } else {
+            // 无符号扩展
+            return LLVMBuildZExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "zexttmp");
+        }
+        
+    } else if(size_of_type(gen, to_type) < size_of_type(gen, from_type)) {
+        // 截断
+        return LLVMBuildTrunc(gen->builder, value, get_llvm_type_from_type(gen, to_type), "trunctmp");
+    } else {
+        // 相等，直接返回
+        return value;
+    }
+
+}
+
+
+
+LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<TypeRef> expected_type) {
+     // TODO 其他类型的常量
+
+    LLVMValueRef llvm_val = NULL;
     switch(value.type->kind) {
         case Type_i8:
         case Type_u8:
@@ -518,20 +557,22 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value) {
         case Type_u32:
         case Type_i64:
         case Type_u64:
+            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)get_integer_value(value), is_signed_or_bool_type(value.type));
+            break;
         case Type_bool:
-            return LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)get_integer_value(value), is_signed_or_bool_type(value.type));
+            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)get_bool_value(value), is_signed_or_bool_type(value.type));
             break;
         case Type_f32:
         case Type_f64:
-            return LLVMConstReal(get_llvm_type_from_type(gen, value.type), cast(double)get_float_value(value));
+            llvm_val = LLVMConstReal(get_llvm_type_from_type(gen, value.type), cast(double)get_float_value(value));
             break;
 
         case Type_untyped_int: 
-            return LLVMConstInt(LLVMInt128TypeInContext(gen->ctx), cast(unsigned long long)get_integer_value(value), false);
+            llvm_val = LLVMConstInt(LLVMInt128TypeInContext(gen->ctx), cast(unsigned long long)get_integer_value(value), false);
             break;
 
         case Type_untyped_float:
-            return LLVMConstReal(LLVMDoubleTypeInContext(gen->ctx), cast(double)get_float_value(value));
+            llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(gen->ctx), cast(double)get_float_value(value));
             break;
 
         default:
@@ -540,6 +581,13 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value) {
             return NULL;
             break;
     }
+
+    if(expected_type.has_value()) {
+        return gen_ir_cast(gen, value.type, expected_type.unwrap(), llvm_val);
+    } else {
+        return llvm_val;
+    }
+
 }
 
 
@@ -911,12 +959,12 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
     return state;
 }
 
-LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, Ast *array_expr) {
+LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, TypeRef array_value_type) {
     // NOTE: 目前为止, array_type的来源只有数组变量和数组字面量, 注意在处理这两种类型都要检查要不要调用这个函数来进行数组到切片的隐式转换
 
 
-    LLVMTypeRef array_type = get_llvm_type_from_type(gen, array_expr->v_type);
-    LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(array_expr->v_type->array_info.element_type));
+    LLVMTypeRef array_type = get_llvm_type_from_type(gen, array_value_type);
+    LLVMTypeRef slice_struct_type = get_llvm_type_from_type(gen, slice_type_as_struct(array_value_type->array_info.element_type));
     
     LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
 
@@ -930,7 +978,7 @@ LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef arra
     
     // 设置count
     // TODO i64 换成 isize
-    LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), array_expr->v_type->array_info.count, 0);
+    LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), array_value_type->array_info.count, 0);
 
     slice_struct_value = LLVMBuildInsertValue(gen->builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
 
@@ -938,32 +986,33 @@ LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef arra
 }
 
 
+
 LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState state) {
-    
-    LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
+    // LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
 
-    if(is_array_type(cast_expr->CastExpr.expr->v_type) && is_slice_struct_type(cast_expr->CastExpr.target_type)) {
-        // 数组到切片的隐式转换
-        return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, expr_val), cast_expr->CastExpr.expr);
-    }
+    // if(is_array_type(cast_expr->CastExpr.expr->v_type) && is_slice_struct_type(cast_expr->CastExpr.target_type)) {
+    //     // 数组到切片的隐式转换
+    //     return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, expr_val), cast_expr->CastExpr.expr->v_type);
+    // }
 
-    if(size_of_type(gen, cast_expr->CastExpr.target_type) > size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
-        // 扩展
-        if(is_signed_type(cast_expr->CastExpr.expr->v_type)) {
-            // 有符号扩展
-            return LLVMBuildSExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "sexttmp");
-        } else {
-            // 无符号扩展
-            return LLVMBuildZExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "zexttmp");
-        }
+    // if(size_of_type(gen, cast_expr->CastExpr.target_type) > size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
+    //     // 扩展
+    //     if(is_signed_type(cast_expr->CastExpr.expr->v_type)) {
+    //         // 有符号扩展
+    //         return LLVMBuildSExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "sexttmp");
+    //     } else {
+    //         // 无符号扩展
+    //         return LLVMBuildZExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "zexttmp");
+    //     }
         
-    } else if(size_of_type(gen, cast_expr->CastExpr.target_type) < size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
-        // 截断
-        return LLVMBuildTrunc(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "trunctmp");
-    } else {
-        // 相等，直接返回
-        return expr_val;
-    }
+    // } else if(size_of_type(gen, cast_expr->CastExpr.target_type) < size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
+    //     // 截断
+    //     return LLVMBuildTrunc(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "trunctmp");
+    // } else {
+    //     // 相等，直接返回
+    //     return expr_val;
+    // }
+    return gen_ir_cast(gen, cast_expr->CastExpr.expr->v_type, cast_expr->CastExpr.target_type, gen_ir_expr(gen, cast_expr->CastExpr.expr, state));
 }
 
 
@@ -1124,7 +1173,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
                 expr->FieldAccess.field_name
             );
 
-            return gen_llvm_val_by_value(gen, outer_val_info->value);
+            return gen_llvm_val_by_value(gen, outer_val_info->value, xpOption<TypeRef>(expr->v_type));
         }
 
 
@@ -1193,7 +1242,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
     
             // 数组到切片的隐式转换
             if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
-                return gen_array_value_to_slice_cast(gen, alloca, expr);
+                return gen_array_value_to_slice_cast(gen, alloca, expr->v_type);
             }
     
     
@@ -1205,7 +1254,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         } else if(!info->value.is_runtime_value){
             // 常量, 直接从scope获取值生成llvmvalue
-            LLVMValueRef const_val = gen_llvm_val_by_value(gen, info->value);
+            LLVMValueRef const_val = gen_llvm_val_by_value(gen, info->value, xpOption<TypeRef>(expr->v_type));
             XP_ASSERT_DEFAULT(const_val != NULL);
 
             return const_val;
@@ -1216,11 +1265,11 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     } break;
     case AstType_Constant: {
-        if(is_float_type(expr->v_type)) {
-            // 浮点数常量
-            double float_value = expr->Constant.float_value;
-            return LLVMConstReal(get_llvm_type_from_type(gen,  expr->v_type), float_value);
-        }
+        // if(is_float_type(expr->v_type)) {
+        //     // 浮点数常量
+        //     double float_value = expr->Constant.float_value;
+        //     return LLVMConstReal(get_llvm_type_from_type(gen,  expr->v_type), float_value);
+        // }
 
         if(expr->is_null) {
             // null 常量
@@ -1228,8 +1277,10 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             return LLVMConstNull(LLVMPointerType(LLVMVoidTypeInContext(gen->ctx), 0));
         }
 
-        LLVMBool is_signed = cast(LLVMBool) is_signed_or_bool_type(expr->v_type);
-        return LLVMConstInt(get_llvm_type_from_type(gen, expr->v_type), expr->Constant.value, is_signed);
+        return gen_llvm_val_by_value(gen, expr->Constant.value, xpOption<TypeRef>(expr->v_type));
+
+        // LLVMBool is_signed = cast(LLVMBool) is_signed_or_bool_type(expr->v_type);
+        // return LLVMConstInt(get_llvm_type_from_type(gen, expr->v_type), expr->Constant.value, is_signed);
     } break;
     case AstType_UnaryExpr: {
         // 一元表达式（如负号）
@@ -1360,7 +1411,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         if(expr->implicit_conversion_tag == ImplicitConversionTag::ArrayToSliceStruct) {
             // 数组到切片的隐式转换
-            return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, array_val), expr);
+            return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, array_val), expr->v_type);
         }
 
         return array_val;

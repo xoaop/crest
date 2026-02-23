@@ -26,18 +26,18 @@ bool check_untyped_float_to_type(double value, TypeRef target_type) {
     return !check_float_overflow(value, target_type);
 }
 
-bool check_untyped_to_type(Ast *constant, TypeRef target_type) {
-    XP_ASSERT_DEFAULT(constant->type == AstType_Constant);
+// bool check_untyped_to_type(Ast *constant, TypeRef target_type) {
+//     XP_ASSERT_DEFAULT(constant->type == AstType_Constant);
 
-    if(constant->v_type == easy_type(Type_untyped_int)) {
-        return check_untyped_int_to_type(constant->Constant.value, target_type);
-    } else if(constant->v_type == easy_type(Type_untyped_float)) {
-        return check_untyped_float_to_type(constant->Constant.float_value, target_type);
-    } else {
-        UNREACHABLE();
-        return false;
-    }
-}
+//     if(constant->v_type == easy_type(Type_untyped_int)) {
+//         return check_untyped_int_to_type(constant->Constant.value, target_type);
+//     } else if(constant->v_type == easy_type(Type_untyped_float)) {
+//         return check_untyped_float_to_type(constant->Constant.float_value, target_type);
+//     } else {
+//         UNREACHABLE();
+//         return false;
+//     }
+// }
 
 bool check_untyped_to_type(Value& val, TypeRef target_type) {
     if(val.type == easy_type(Type_untyped_int)) {
@@ -76,18 +76,18 @@ TypeRef get_compliable_float_type(double value) {
 
 }
 
-TypeRef get_compliable_const_type(Ast *constant) {
-    XP_ASSERT_DEFAULT(is_untyped_type(constant->v_type));
+// TypeRef get_compliable_const_type(Ast *constant) {
+//     XP_ASSERT_DEFAULT(is_untyped_type(constant->v_type));
 
-    if(constant->v_type == easy_type(Type_untyped_int)) {
-        return get_compliable_integer_type(constant->Constant.value);
-    } else if(constant->v_type == easy_type(Type_untyped_float)) {
-        return get_compliable_float_type(constant->Constant.float_value);
-    } else {
-        UNREACHABLE();
-        return undefined_type();
-    }
-}
+//     if(constant->v_type == easy_type(Type_untyped_int)) {
+//         return get_compliable_integer_type(constant->Constant.value);
+//     } else if(constant->v_type == easy_type(Type_untyped_float)) {
+//         return get_compliable_float_type(constant->Constant.float_value);
+//     } else {
+//         UNREACHABLE();
+//         return undefined_type();
+//     }
+// }
 
 
 TypeRef get_compliable_const_type(Value& val) {
@@ -106,16 +106,16 @@ TypeRef get_compliable_const_type(Value& val) {
    
 
 
-TypeRef get_compliable_const_type(Valuee value) {
-    if(value.get_type() == Valuee::Type::Integer) {
-        return get_compliable_integer_type(value.get_as_integer());
-    } else if(value.get_type() == Valuee::Type::Float) {
-        return get_compliable_float_type(value.get_as_float());
-    } else {
-        UNREACHABLE();
-        return undefined_type();
-    }
-}
+// TypeRef get_compliable_const_type(Valuee value) {
+//     if(value.get_type() == Valuee::Type::Integer) {
+//         return get_compliable_integer_type(value.get_as_integer());
+//     } else if(value.get_type() == Valuee::Type::Float) {
+//         return get_compliable_float_type(value.get_as_float());
+//     } else {
+//         UNREACHABLE();
+//         return undefined_type();
+//     }
+// }
 
 
 
@@ -293,14 +293,15 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 Token token = expr->token;
                 if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
                     result_type = easy_type(Type_bool);
-                    expr->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
-    
+                    expr->Constant.value.bool_value = (token.type == TokenType::KW_true) ? 1 : 0;
+                    expr->Constant.value.set_type(result_type);
                     break;
                 }
     
                 if(token.type == TokenType::KW_null) {
                     result_type = pointer_type(easy_type(Type_void));
-                    expr->Constant.value = 0;
+                    expr->Constant.value.set_type(result_type);
+                    // expr->Constant.value = 0;
                     expr->is_null = true;
     
                     break;
@@ -309,48 +310,53 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 // 无类型后缀的数字字面量, 先标记为untyped类型, 等待类型推导
                 if(token.type == TokenType::Integer) {
                     result_type = easy_type(Type_untyped_int);
+                    expr->Constant.value.set_type(result_type);
                 } else if(token.type == TokenType::Float) {
                     result_type = easy_type(Type_untyped_float);
+                    expr->Constant.value.set_type(result_type);
                 }
 
                 if(token.number_info.type_kind_of_number != Type_Undefined) {
                     TypeRef postfix_type = easy_type(token.number_info.type_kind_of_number);
 
-                    expr->v_type = result_type;
-                    if(!check_untyped_to_type(expr, postfix_type)) {
+                    if(!check_untyped_to_type(expr->Constant.value, postfix_type)) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
                             "constant value can't convert to type specified by suffix"
                         );
                         result_type = error_type();
+                        expr->Constant.value.set_type(result_type);
 
                         break;
                     } else {
                         result_type = postfix_type;
+                        expr->Constant.value.set_type(result_type);
                     }
 
                 }
             } else {
                 result_type = expr->v_type;
+                expr->Constant.value.set_type(result_type);
             }
 
 
             // TODO: ABSTRACT
             if(is_untyped_type(result_type)) {
                 if(has_target) {
-                    expr->v_type = result_type;
-                    if(!check_untyped_to_type(expr, target_type)) {
+                    if(!check_untyped_to_type(expr->Constant.value, target_type)) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
                             "constant value can't convert to target type"
                         );
                         result_type = error_type();
+                        expr->Constant.value.set_type(result_type);
                     } else {
                         result_type = target_type;
+                        expr->Constant.value.set_type(result_type);
                     }
                 } else if(!allow_untyped) {
-                    expr->v_type = result_type; 
-                    result_type = get_compliable_const_type(expr);
+                    result_type = get_compliable_const_type(expr->Constant.value);
+                    expr->Constant.value.set_type(result_type);
                     if(result_type == error_type()) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
@@ -358,10 +364,12 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                         );
                     } else {
                         result_type = result_type;
+                        expr->Constant.value.set_type(result_type);
                     }
                 } else {
                     // 允许无类型常量存在, 先标记为untyped类型, 等待后续使用时推导
                     result_type = result_type;
+                    expr->Constant.value.set_type(result_type);
                 }
             }
             

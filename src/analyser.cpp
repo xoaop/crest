@@ -611,23 +611,23 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
         } break;
 
         case AstType_Constant: {
-            Value const_value = make_value()
-            .set_is_runtime(false)
-            .set_type(expr->v_type)
-            .set_value_state(ValueState::Solved);
+            // Value const_value = make_value()
+            // .set_is_runtime(false)
+            // .set_type(expr->v_type)
+            // .set_value_state(ValueState::Solved);
             
 
-            if(is_integer_or_untyped_type(expr->v_type)) {
-                const_value.integer_value = expr->Constant.value;
-            } else if(is_float_or_untyped_type(expr->v_type)) {
-                const_value.float_value = expr->Constant.float_value;
-            } else if(expr->v_type == easy_type(Type_bool)) {
-                const_value.bool_value = cast(bool)expr->Constant.value;
-            } else {
-                UNREACHABLE();
-            }
+            // if(is_integer_or_untyped_type(expr->v_type)) {
+            //     const_value.integer_value = expr->Constant.value;
+            // } else if(is_float_or_untyped_type(expr->v_type)) {
+            //     const_value.float_value = expr->Constant.float_value;
+            // } else if(expr->v_type == easy_type(Type_bool)) {
+            //     const_value.bool_value = cast(bool)expr->Constant.value;
+            // } else {
+            //     UNREACHABLE();
+            // }
 
-            return ValueResult::ok(const_value);
+            return ValueResult::ok(expr->Constant.value);
         } break;
 
 
@@ -919,12 +919,12 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         
         
         if(var_decl_ast->v_type != undefined_type()) {
-            // TODO 有显示指定类型和初始化表达式的情况, 类型检查
+            // 有显示指定类型和初始化表达式的情况, 类型检查
             
             infer_expr_type(var_decl_ast->VariableDecl.expr, true, var_decl_ast->v_type, analyser, false);
 
         } else {
-            // TODO 有初始化表达式, 无显示指定类型的情况, 类型推导
+            // 有初始化表达式, 无显示指定类型的情况, 类型推导
             // infer_expr_type(var_decl_ast->VariableDecl.expr, NULL, analyser);
             infer_expr_type(var_decl_ast->VariableDecl.expr, false, {}, analyser, false);
 
@@ -941,8 +941,8 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
                 var_decl_ast->VariableDecl.var_name.c_str
             );
         } else {
-            // TODO 检查
-            try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
+            // TODO 用现有的eval_comptime_expr代替
+            // try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
         }
 
     } else {
@@ -1412,25 +1412,45 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
                 return error_type();
             }    
 
-            if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
+            // if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
+            //     context()->reporter.report_error(
+            //         count_expr->span, analyser.curr_ast_file->source_code,
+            //         "array size expression must be a constant integer expression"
+            //     );    
+
+            //     return error_type();
+            // }    
+
+            ValueResult count_val_result = eval_comptime_expr(count_expr, analyser);
+            if(count_val_result.is_err()) {
+                context()->reporter.report_error(
+                    count_expr->span, analyser.curr_ast_file->source_code,
+                    "not a valid constant expression for array size"
+                );    
+
+                return error_type();
+            }
+
+            Value count_val = count_val_result.as_ok();
+            if(!is_integer_type(count_val.type)) {
                 context()->reporter.report_error(
                     count_expr->span, analyser.curr_ast_file->source_code,
                     "array size expression must be a constant integer expression"
                 );    
 
                 return error_type();
-            }    
+            }
 
-            if(!try_constant_expr_folding(count_expr)) {
-                context()->reporter.report_error(
-                    count_expr->span, analyser.curr_ast_file->source_code,
-                    "failed to fold array size expression to constant"
-                );    
+            // if(!try_constant_expr_folding(count_expr)) {
+            //     context()->reporter.report_error(
+            //         count_expr->span, analyser.curr_ast_file->source_code,
+            //         "failed to fold array size expression to constant"
+            //     );    
 
-                return error_type();
-            }    
+            //     return error_type();
+            // }    
 
-            i128 count = count_expr->Constant.value;
+            i128 count = get_integer_value(count_val);
             if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
 
                 context()->reporter.report_error(
