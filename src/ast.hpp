@@ -19,7 +19,6 @@ struct Ast;
     AST_INFO(BadExpr, "bad expr", struct {})                                \
     AST_INFO(BadType, "bad type", struct {})                                \
     AST_INFO(Import, "import", struct {                                     \
-        xpString alias;                                                     \
         xpString path;                                                      \
     })                                                                      \
     AST_INFO(EasyType, "easy type", struct {                                \
@@ -37,17 +36,6 @@ struct Ast;
     })                                                                      \
     AST_INFO(Ident, "ident", struct {                                       \
         xpString name;                                                      \
-    })                                                                      \
-    AST_INFO(Function, "function", struct {                                 \
-        xpString name;                                                      \
-        Array<Ast *> params;                                                \
-        Ast *block;                                                         \
-        Ast *return_type_ast;                                               \
-        bool is_extern_C;                                                   \
-    })                                                                      \
-    AST_INFO(StructDecl, "struct decl", struct {                            \
-        xpString name;                                                      \
-        Array<Ast *> fields;                                                \
     })                                                                      \
     AST_INFO(StructField, "struct field", struct {                          \
         xpString name;                                                      \
@@ -125,6 +113,26 @@ struct Ast;
     })                                                                      \
     AST_INFO(StringLiteralExpr, "string literal expr", struct {             \
         xpString str;                                                       \
+    })                                                                      \
+\
+\
+\
+\
+\
+\
+/* TODO: 支持值类型 */\
+    AST_INFO(FunctionDeclValue, "function decl value", struct {             \
+        Array<Ast *> params;                                                \
+        Ast *block;                                                         \
+        Ast *return_type_ast;                                               \
+        bool is_extern_c;                                                   \
+    })                                                                      \
+    AST_INFO(StructDeclValue, "struct decl value", struct {                 \
+        Array<Ast *> fields;                                                \
+    })                                                                      \
+    AST_INFO(ConstDecl, "const decl", struct {                              \
+        xpString name;                                                      \
+        Ast *value_ast;                                                     \
     })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \
 /**/

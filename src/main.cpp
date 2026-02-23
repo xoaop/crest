@@ -46,7 +46,8 @@ int main(int argc, char** argv) {
     // 初始化context
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-    
+    context()->ast_scope_map = xp_hash_map_make<Ast *, Scope *>(permanent_allocator());
+
     context()->reporter = make_error_reporter(permanent_allocator());
 
     // 类型系统初始化
@@ -63,8 +64,9 @@ int main(int argc, char** argv) {
     char const *path_of_main_dir = argv[1];
 
     Array<Package> all_packages = resolve_dependencies(xp_make_string(permanent_allocator(), path_of_main_dir));
+    context()->all_packages = all_packages;
 
-    sema_analysis_all_packages(all_packages);
+    sema_analysis_all_packages(&context()->all_packages);
     
     context()->reporter.print_msg();
 

@@ -4,40 +4,40 @@
 
 
 
-Value Value::make(i128 val) {
-    Value v = {};
+Valuee Valuee::make(i128 val) {
+    Valuee v = {};
     v.type = Type::Integer;
     v.int_value = val;
     return v;
 }
-Value Value::make(double val) {
-    Value v = {};
+Valuee Valuee::make(double val) {
+    Valuee v = {};
     v.type = Type::Float;
     v.float_value = val;
     return v;
 }
 
-Value::Type Value::get_type() const {
+Valuee::Type Valuee::get_type() const {
     return type;
 }
 
 
-i128 Value::get_as_integer() const {
+i128 Valuee::get_as_integer() const {
     XP_ASSERT_DEFAULT(type == Type::Integer);
     return int_value;
 }
 
-double Value::get_as_float() const {
+double Valuee::get_as_float() const {
     XP_ASSERT_DEFAULT(type == Type::Float);
     return float_value;
 }
 
-void Value::set(i128 val) {
+void Valuee::set(i128 val) {
     type = Type::Integer;
     int_value = val;
 }
 
-void Value::set(double val) {
+void Valuee::set(double val) {
     type = Type::Float;
     float_value = val;
 }

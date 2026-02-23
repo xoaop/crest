@@ -14,7 +14,7 @@
 
 struct Analyser {    
 
-    Array<Package> all_packages;
+    Array<Package> *all_packages;
 
     Package *pkg;
     Scope *current_scope;
@@ -27,10 +27,10 @@ struct Analyser {
 
 
 
-void sema_analysis_all_packages(Array<Package> all_packages);
-SymbolInfo *find_symbol_by_ident_or_fieldaccess_in_other_packages(Ast *ident_ast, Analyser analyser);
+void sema_analysis_all_packages(Array<Package> *all_packages);
+SymbolInfo *find_symbol_by_ident_or_fieldaccess(Ast *ident_ast, Analyser analyser);
 
-
+TypeRef resolve_type(Ast *type_ast, Analyser analyser);
 
 
 #endif // CREST_ANALYSIS_HPP

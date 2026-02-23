@@ -42,17 +42,19 @@ bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info) {
     return add_symbol(&scope->symbols, symbol_ident, info);
 }
 
-
-SymbolInfo *find_symbol_in_scope_list(Scope *scope, xpString symbol_ident) {
-    return find_symbol_in_scope_list_until(ScopeType::Global, scope, symbol_ident);
+SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident) {
+    XP_ASSERT_DEFAULT(scope != NULL);
+    
+    return find_symbol(&scope->symbols, symbol_ident);
 }
 
-SymbolInfo *find_symbol_in_scope_list_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident) {
+
+SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident) {
     XP_ASSERT_DEFAULT(scope != NULL);
     
     Scope *curr = scope;
     while (curr != NULL) {
-        SymbolInfo *info = find_symbol_in_curr_scope(curr, symbol_ident);
+        SymbolInfo *info = find_symbol_curr(curr, symbol_ident);
         if(info != NULL) {
             return info;
         }
@@ -67,24 +69,24 @@ SymbolInfo *find_symbol_in_scope_list_until(ScopeType top_scope_type, Scope *sco
     return NULL;
 }
 
-
-SymbolInfo *find_symbol_in_curr_scope(Scope *scope, xpString symbol_ident) {
-    XP_ASSERT_DEFAULT(scope != NULL);
-    
-    return find_symbol(&scope->symbols, symbol_ident);
+SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident) {
+    return find_symbol_until(ScopeType::Global, scope, symbol_ident);
 }
 
 
-SymbolInfo *find_symbol_in_curr_scope_with_kind(Scope *scope, xpString symbol_ident, SymbolKind symbol_kind) {
+
+
+
+SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind) {
     XP_ASSERT_DEFAULT(scope != NULL);
     
-    SymbolInfo *info = find_symbol_in_curr_scope(scope, symbol_ident);
+    SymbolInfo *info = find_symbol_curr(scope, symbol_ident);
 
     if(info == NULL) {
         return NULL;
     }
 
-    if(info->kind != symbol_kind) {
+    if(info->value.type->kind != type_kind) {
         return NULL;
     }
 
@@ -92,16 +94,16 @@ SymbolInfo *find_symbol_in_curr_scope_with_kind(Scope *scope, xpString symbol_id
 }
 
 
-SymbolInfo *find_symbol_in_scope_list_until_with_kind(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, SymbolKind symbol_kind) {
+SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind) {
     XP_ASSERT_DEFAULT(scope != NULL);
     
-    SymbolInfo *info = find_symbol_in_scope_list_until(top_scope_type, scope, symbol_ident);
+    SymbolInfo *info = find_symbol_until(top_scope_type, scope, symbol_ident);
 
     if(info == NULL) {
         return NULL;
     }
 
-    if(info->kind != symbol_kind) {
+    if(info->value.type->kind != type_kind) {
         return NULL;
     }
 

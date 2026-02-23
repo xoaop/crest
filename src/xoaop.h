@@ -67,7 +67,20 @@ typedef usize uintptr;
     /* MSVC does not support __int128, so i128 is not defined */
 #endif
 
+#define I128_MIN (((i128)1) << 127)
+#define I128_MAX ((((~(i128)0) >> 1)))
+
+
 void print_i128(i128 n);
+
+bool xp_check_i128_add_overflow(i128 a, i128 b, i128* result);
+bool xp_check_i128_sub_overflow(i128 a, i128 b, i128* result);
+bool xp_check_i128_mul_overflow(i128 a, i128 b, i128* result);
+bool xp_check_i128_div_overflow(i128 a, i128 b, i128* result);
+bool xp_check_i128_mod_overflow(i128 a, i128 b, i128* result);
+bool xp_check_i128_neg_overflow(i128 a, i128* result);
+
+bool xp_check_f64_is_inf(f64 value);
 
 
 /*
@@ -457,6 +470,17 @@ struct xpOption {
         XP_ASSERT_DEFAULT(kind == xpOptionEnum::Some);
         return value;
     }
+
+
+    bool operator==(const xpOption<T>& other) const {
+        if (kind != other.kind) {
+            return false;
+        }
+        if (kind == xpOptionEnum::None) {
+            return true; // 两个都是None
+        }
+        return value == other.value; // 比较Some的值
+    }
     
     
     private:
@@ -474,6 +498,11 @@ HashMap
 //hash函数接口定义
 template<typename K>
 usize xp_hash_func(K *key);
+
+template<typename T>
+usize xp_hash_func(T* *key) {
+    return reinterpret_cast<usize>(*key);
+}
 
 
 template<typename K, typename V>
@@ -1829,6 +1858,63 @@ void print_i128(i128 n) {
     }
     printf("%s", &buf[i]);
 }
+
+bool xp_check_i128_add_overflow(i128 a, i128 b, i128 *result) {
+    return __builtin_add_overflow(a, b, result);
+}
+
+bool xp_check_i128_sub_overflow(i128 a, i128 b, i128 *result) {
+    return __builtin_sub_overflow(a, b, result);
+}
+
+bool xp_check_i128_mul_overflow(i128 a, i128 b, i128 *result) {
+    return __builtin_mul_overflow(a, b, result);
+}
+
+bool xp_check_i128_div_overflow(i128 a, i128 b, i128 *result) {
+    if (b == 0) {
+        return true; // 除以零溢出
+    }
+    if (a == I128_MIN && b == -1) {
+        return true; // 最小值除以 -1 溢出
+    }
+
+    *result = a / b;
+
+    return false;
+}
+
+bool xp_check_i128_mod_overflow(i128 a, i128 b, i128 *result) {
+    if (b == 0) {
+        return true; // 除以零溢出
+    }
+    if (a == I128_MIN && b == -1) {
+        *result = 0; // 最小值 mod -1 的结果是 0
+        return false;
+    }
+
+    *result = a % b;
+
+    return false;
+}
+
+bool xp_check_i128_neg_overflow(i128 a, i128 *result) {
+    if (a == I128_MIN) {
+        return true; // 最小值取反溢出
+    }
+
+    *result = -a;
+
+    return false;
+}
+
+bool xp_check_f64_is_inf(f64 value) {
+    return isinf(value);
+}
+
+
+
+
 
 
 #if defined(__cplusplus)

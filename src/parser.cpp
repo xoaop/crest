@@ -45,10 +45,8 @@ xp_internal Ast *parse_block(Parser *p);
 
 
 Ast *parse_top_level(Parser *p);
-xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p);
 xp_internal Ast *parse_if(Parser *p);
 xp_internal Ast *parse_for(Parser *p);
-xp_internal Ast *parse_stmt(Parser *p);
 
 
 xp_internal Ast *parse_factor(Parser *p, bool has_struct_init);
@@ -71,7 +69,8 @@ Ast *parse_basic_and_ident_type(Parser *p);
 Ast *parse_ident(Parser *p);
 Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
 
-
+Ast *parse_stmt2(Parser *p);
+Ast *parse_named_stmt(Parser *p);
 
 
 
@@ -87,7 +86,8 @@ AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
             break;
         }
         
-        array_push_back<Ast *>(&p.f.top_levels, parse_top_level(&p));
+        // array_push_back<Ast *>(&p.f.top_levels, parse_top_level(&p));
+        array_push_back(&p.f.top_levels, parse_stmt2(&p));
     }
 
     print_ast(p.f.top_levels);
@@ -214,9 +214,6 @@ Ast *parse_import(Parser *p) {
 
     Ast *a = ast_alloc(AstType_Import, import_token);
     a->Import.path = normalize_path(raw_path, ast_allocator());
-
-    // TODO 支持别名
-    a->Import.alias = get_last_component_of_path(a->Import.path, ast_allocator());
     
     a->span = merge(import_token.span, path_succ.first.span);
 
@@ -225,267 +222,193 @@ Ast *parse_import(Parser *p) {
 
 
 
-Ast *parse_top_level(Parser *p) {
-
-    // TODO: TEMP
-    if(curr_token(p).type == TokenType::KW_import) {
-        Ast *a = parse_import(p);
-        return a;
-    } 
-
-
-    Token ident;
-    auto ident_result = expect2(p, TokenType::Ident);
-    if(!ident_result.second) {
-        advance_to_next_top_level(p);
-        return ast_alloc(AstType_BadDecl);
-    }
-    ident = ident_result.first;
-
-    expect2(p, TokenType::DoubleColon);
-
-
-    Ast *a = NULL;
-    switch(curr_token(p).type)
-    {
-
-    // 函数声明
-    case TokenType::LeftBracket: {
-        a = ast_alloc(AstType_Function, ident);
-
-        a->Function.name = ident.token_str;
-
-        expect2(p, TokenType::LeftBracket);
-
-        
-        a->Function.params = make_array<Ast *>(ast_allocator());
-        for(;;) {
-            if(reach_end(p) || curr_token(p).type == TokenType::RightBracket) {
-                break;
-            }
-
-            Token ident = expect(p, TokenType::Ident);
-            expect2(p, TokenType::Colon);
-
-            Ast *arg_type = parse_type(p);
-            
-            Ast *param = ast_alloc(AstType_VariableDecl, ident);
-            param->VariableDecl.type_ast = arg_type;
-            param->VariableDecl.var_name = ident.token_str;
-            //TODO(xoaop): 支持默认参数
-            param->VariableDecl.expr = NULL;
-            param->span = merge(ident.span, arg_type->span);
-
-            array_push_back(&a->Function.params, param);
-
-            if(curr_token(p).type != TokenType::RightBracket) {
-                expect2(p, TokenType::Comma);
-            }
-
-        }
-        
-        expect(p, TokenType::RightBracket);
-
-        Ast *return_type = NULL;
-        if(curr_token(p).type == TokenType::Arrow) {
-            // 有返回值
-            advance_token(p); // 跳过箭头
-            return_type = parse_type(p);
-        } else {
-            // 无返回值
-            return_type = ast_alloc(AstType_EasyType, curr_token(p)); // 这个token不会被使用到, 只是为了记录span, 也不存在
-            return_type->EasyType.kind = Type_void;
-            return_type->span = return_type->token.span;
-        }
-        a->Function.return_type_ast = return_type;
-
-        // TODO: TEST 临时支持 extern_C 函数
-        a->Function.is_extern_C = false;
-        if(curr_token(p).type == TokenType::KW_extern_C) {
-            Token extern_c_token = expect(p, TokenType::KW_extern_C);
-            a->Function.block = NULL;
-            a->Function.is_extern_C = true;
-            a->span = merge(a->token.span, extern_c_token.span);
-
-            expect(p, TokenType::Semicolon);
-
-        } else {
-            a->span = merge(a->token.span, return_type->span); // 配合return_type的span, 注意无返回值的情况
-
-            a->Function.block = parse_block(p);
-            a->Function.block->Block.is_function_body = true;
-        }
-
-
-    } break;
+// TODO FINISH
+Ast *parse_struct_value(Parser *p) {
+    auto name_succ = expect2(p, TokenType::KW_struct);
     
+    expect(p, TokenType::LeftCurlyBracket);
 
-    // 结构体声明
-    case TokenType::KW_struct: {
-        a = ast_alloc(AstType_StructDecl, ident);
-
-        a->StructDecl.name = ident.token_str;
-
-        expect(p, TokenType::KW_struct);
-        expect(p, TokenType::LeftCurlyBracket);
-
-        a->StructDecl.fields = make_array<Ast *>(ast_allocator());
-
-        Array<StructField> field_types = make_array<StructField>(stage_allocator());
-        for(;;) {
-            if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
-                break;
-            }
-
-            
-            Token field_ident = expect(p, TokenType::Ident);
-            expect(p, TokenType::Colon);
-            Ast *field_type_ast = parse_type(p);
-            
-            Ast *field_ast = ast_alloc(AstType_StructField, field_ident);
-            field_ast->StructField.name = field_ident.token_str;
-            field_ast->StructField.type_ast = field_type_ast;
-            field_ast->span = merge(field_ident.span, field_type_ast->span);
-
-
-            expect(p, TokenType::Semicolon);
-            
-            array_push_back(&a->StructDecl.fields, field_ast);
+    Array<Ast *> field_types = make_array<Ast *>(ast_allocator());
+    while(!reach_end(p)) {
+        if(curr_token(p).type == TokenType::RightCurlyBracket) {
+            break;
         }
 
-        Token rcb = expect(p, TokenType::RightCurlyBracket);
-        a->span = merge(a->token.span, rcb.span);
+        Token field_name_token = expect(p, TokenType::Ident);
+        expect(p, TokenType::Colon);
+        Ast *type_ast = parse_type(p);
 
-    } break;
+        
+        Ast *field_ast = ast_alloc(AstType_StructField, field_name_token);
+        field_ast->StructField.name = field_name_token.token_str;
+        field_ast->StructField.type_ast = type_ast;
+        field_ast->span = merge(field_name_token.span, type_ast->span);
+        array_push_back(&field_types, field_ast);
+        
 
-    default:
-        report_unexpected(p, "struct (for struct decl) or ( (for function decl)");
-
-        a = ast_alloc(AstType_BadDecl, ident);
-        a->span = merge(ident.span, curr_token(p).span);
-
-        advance_to_next_top_level(p);
-
-        // XP_ASSERT_DEFAULT(0);
-        break;
+        if(curr_token(p).type != TokenType::RightCurlyBracket) {
+            expect(p, TokenType::Comma);
+        }
     }
-
-    return a;
-}
-
-
-
-
-
-
-xp_internal Ast *parse_block(Parser *p) {
-    Ast *a = ast_alloc(AstType_Block, expect(p, TokenType::LeftCurlyBracket));
-    auto stmts = make_array<Ast *>(ast_allocator());
-
-
-    while (curr_token(p).type != TokenType::RightCurlyBracket && !reach_end(p)) {
-        array_push_back(&stmts, parse_stmt(p));
-    }
-    a->Block.statements = stmts;
-    a->Block.is_function_body = false; // NOTE: 默认不是函数体, 函数部分需要单独设置
 
     Token rcb = expect(p, TokenType::RightCurlyBracket);
 
-    a->span = merge(a->token.span, rcb.span);
+
+    Ast *a = ast_alloc(AstType_StructDeclValue, name_succ.first);
+    a->StructDeclValue.fields = field_types;
+    a->span = merge(name_succ.first.span, rcb.span);
 
     return a;
 }
 
-// TODO
-xp_internal Ast *parse_stmt(Parser *p) {
-    Ast *a = NULL;
 
-    Token ident;
-    switch (curr_token(p).type)
-    {
-    case TokenType::KW_if:
-        a = parse_if(p);
-        break;
-    case TokenType::KW_for:
-        a = parse_for(p);
-        break;
-    case TokenType::KW_switch:
-        //TODO(xoaop): switch 语句
-        break;
-    case TokenType::LeftCurlyBracket:
-        a = parse_block(p);
-        break;
-    case TokenType::KW_return:
-        a = ast_alloc(AstType_ReturnStmt);
-        a->token = expect(p, TokenType::KW_return);
+Ast *parse_function_value(Parser *p) {
+    expect(p, TokenType::LeftBracket);
 
-        if(curr_token(p).type != TokenType::Semicolon) {
-            a->ReturnStmt.expr = parse_expr(p, 0, true);
-            a->span = merge(a->token.span, a->ReturnStmt.expr->span);
-        } else {
-            a->ReturnStmt.expr = NULL;
-            a->span = a->token.span;
+    Array<Ast *> params = make_array<Ast *>(ast_allocator());
+    while(!reach_end(p)) {
+        if(curr_token(p).type == TokenType::RightBracket) {
+            break;
         }
 
-        expect(p, TokenType::Semicolon);
-        break;
-    case TokenType::KW_break:
-        a = ast_alloc(AstType_Break);
-        a->token = expect(p, TokenType::KW_break);
-        a->span = a->token.span;
-        expect(p, TokenType::Semicolon);
-        break;
-    case TokenType::KW_continue:
-        a = ast_alloc(AstType_Continue);
-        a->token = expect(p, TokenType::KW_continue);
-        a->span = a->token.span;
-        expect(p, TokenType::Semicolon);
-        break;
+        Token param_name_token = expect(p, TokenType::Ident);
+        expect(p, TokenType::Colon);
+        Ast *param_type_ast = parse_type(p);
 
-    default:
-        // VariableDecl Or Assignment
-        a = parse_var_decl_or_assign_or_fncall(p);
-        expect(p, TokenType::Semicolon);
-        break;
+        Ast *param_ast = ast_alloc(AstType_VariableDecl, param_name_token);
+        param_ast->VariableDecl.var_name = param_name_token.token_str;
+        param_ast->VariableDecl.type_ast = param_type_ast;
+        param_ast->span = merge(param_name_token.span, param_type_ast->span);
+
+        array_push_back(&params, param_ast);
+
+        if(curr_token(p).type != TokenType::RightBracket) {
+            expect(p, TokenType::Comma);
+        }
     }
 
-    XP_ASSERT_DEFAULT(a != NULL);
+    Token rb = expect(p, TokenType::RightBracket);
+
+    Ast *return_type_ast = NULL;
+    if(curr_token(p).type == TokenType::Arrow) {
+        // 有返回值类型
+        expect(p, TokenType::Arrow);
+        return_type_ast = parse_type(p);
+    } else {
+        Ast *void_ast = ast_alloc(AstType_EasyType, rb);
+        void_ast->EasyType.kind = Type_void;
+        void_ast->span = rb.span; // TODO: FIX
+
+        return_type_ast = void_ast;
+    }
+
+    bool is_extern_c = false;
+    if(curr_token(p).type == TokenType::KW_extern_C) {
+        is_extern_c = true;
+        advance_token(p);
+    } 
+
+    Ast *block_ast = NULL;
+    if(is_extern_c) {
+        // extern C函数没有函数体
+
+        block_ast = NULL;
+    } else {
+        block_ast = parse_block(p);
+        block_ast->Block.is_function_body = true; // 标记这是一个函数体, 方便后面类型检查时区分普通块和函数体
+    }
+
+
+
+
+
+
+    Ast *a = ast_alloc(AstType_FunctionDeclValue, rb);
+    a->FunctionDeclValue.params = params;
+    a->FunctionDeclValue.block = block_ast;
+    a->FunctionDeclValue.return_type_ast = return_type_ast;
+    a->FunctionDeclValue.is_extern_c = is_extern_c;
+    a->span = merge(rb.span, block_ast->span);
+
     return a;
 }
 
-xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
-    Ast *a = NULL;
+Ast *parse_assignment_or_expr(Parser *p, bool has_struct_init = true) {
+    Ast *left = parse_expr(p, 0, true);
 
-    Ast *left_expr = parse_expr(p, 0, true);
-    if(left_expr->type == AstType_FunctionCallExpr) {
-        // 函数调用表达式
-        return left_expr;
+    if(curr_token(p).type == TokenType::Equal) {
+        Token equal_token = expect(p, TokenType::Equal);
+        Ast *right = parse_expr(p, 0, has_struct_init);
+
+        Ast *a = ast_alloc(AstType_Assignment, left->token);
+        a->Assignment.left_var_expr = left;
+        a->Assignment.right_expr = right;
+        a->span = merge(left->span, right->span);
+
+        return a;
+    } else {
+        return left;
+    }
+}
+
+
+Ast *parse_const_decl(Parser *p) {
+    Token name_token;
+    auto name_succ = expect2(p, TokenType::Ident);
+    name_token = name_succ.first;
+
+    expect(p, TokenType::DoubleColon);
+
+
+    Ast *value_ast = NULL;
+    Token curr = curr_token(p);
+    switch(curr_token(p).type) {
+    case TokenType::KW_struct: 
+        value_ast = parse_struct_value(p);
+        break;
+    case TokenType::LeftBracket: 
+        value_ast = parse_function_value(p);
+        break;
+    case TokenType::KW_import:
+        value_ast = parse_import(p);
+        break;
+    default:
+        value_ast = parse_expr(p, 0, true);
+        break;
     }
 
-    if(curr_token(p).type == TokenType::ColonEqual) {
+
+    Ast *const_decl = ast_alloc(AstType_ConstDecl, name_token);
+    const_decl->ConstDecl.name = name_token.token_str;
+    const_decl->ConstDecl.value_ast = value_ast;
+    const_decl->span = merge(name_token.span, value_ast->span);
+
+    return const_decl;
+}
+
+
+
+
+Ast *parse_var_decl(Parser *p) {
+
+    Token name_token;
+    auto name_succ = expect2(p, TokenType::Ident);
+    name_token = name_succ.first;
+
+    Ast *a = NULL;
+    Token curr = curr_token(p);
+    switch(curr.type) {
+    case TokenType::ColonEqual: {
         // VariableDecl without type annotation
 
-        a = ast_alloc(AstType_VariableDecl, left_expr->token);
+        expect(p, TokenType::ColonEqual);
 
-        if(left_expr->type != AstType_Ident) {
-            context()->reporter.report(
-                ErrorLevel::Error,
-                curr_token(p).span,
-                p->f.source_code,
-                "expected identifier before ':=' in variable declaration, got right value expression that can not be variable name"
-            );
+        a = ast_alloc(AstType_VariableDecl, name_token);
 
-            a->VariableDecl.var_name = xp_string_c(""); // 有可能乱码, 若left_expr不是Ident
-        } else {
-            a->VariableDecl.var_name = left_expr->Ident.name; // 有可能乱码, 若left_expr不是Ident
-        }
-        // XP_ASSERT_DEFAULT(left_expr->type == AstType_Ident);
+        a->VariableDecl.var_name = name_token.token_str;
 
-
-        expect(p, ColonEqual);
-
-        // TODO 实现 --- 初始化(即不管) 和 默认0初始化
-        if(curr_token(p).type == TokenType::TripleMinus) {
+        Token curr = curr_token(p);
+        if(curr.type == TokenType::TripleMinus) {
             // 无初始化
 
             Token tm = expect(p, TokenType::TripleMinus);
@@ -503,37 +426,25 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
         }
 
         a->VariableDecl.type_ast = NULL;
+    } break;
 
-    } else if(curr_token(p).type == TokenType::Colon) {
+    case TokenType::Colon: {
         // VariableDecl with type annotation
-        
-        a = ast_alloc(AstType_VariableDecl, left_expr->token);
-
-        // TODO error_msg
-        if(left_expr->type != AstType_Ident) {
-            context()->reporter.report(
-                ErrorLevel::Error,
-                curr_token(p).span,
-                p->f.source_code,
-                "expected identifier before ':' in variable declaration, got right value expression that can not be variable name"
-            );
-
-            a->VariableDecl.var_name = xp_string_c(""); // 有可能乱码, 若left_expr不是Ident
-        } else {
-            a->VariableDecl.var_name = left_expr->Ident.name;
-        }
-
-
         
         expect(p, Colon);
         
+        a = ast_alloc(AstType_VariableDecl, name_token);
+
+        a->VariableDecl.var_name = name_token.token_str;
+
         a->VariableDecl.type_ast = parse_type(p);
         
-        // TODO 实现 --- 初始化(即不管) 和 默认0初始化
-        if(curr_token(p).type == TokenType::Equal) {
+        Token curr = curr_token(p);
+        if(curr.type == TokenType::Equal) {
             expect(p, TokenType::Equal);
 
-            if(curr_token(p).type == TokenType::TripleMinus) {
+            Token curr = curr_token(p);
+            if(curr.type == TokenType::TripleMinus) {
                 // 无初始化
 
                 Token tm = expect(p, TokenType::TripleMinus);
@@ -560,57 +471,273 @@ xp_internal Ast *parse_var_decl_or_assign_or_fncall(Parser *p) {
             a->span = merge(a->token.span, a->VariableDecl.type_ast->span);
         }
 
+    } break;
 
-    } else if (curr_token(p).type == TokenType::LeftBracket) {
-        // Function Call Expr
-        
-        // TODO error_msg
-        if(left_expr->type != AstType_Ident && !(left_expr->type == AstType_FieldAccess && left_expr->FieldAccess.parent->type == AstType_Ident)) {
-            context()->reporter.report(
-                ErrorLevel::Error,
-                curr_token(p).span,
-                p->f.source_code,
-                "expected identifier or field access with pure ident as parent before '(' in function call expression, got right value expression that can not be function name"
-            );
-        }
-        // XP_ASSERT_DEFAULT(left_expr->type == AstType_Ident || (left_expr->type == AstType_FieldAccess && left_expr->FieldAccess.parent->type == AstType_Ident));
+    default: {
+        UNREACHABLE();
+    } break;
 
-
-
-        a = ast_alloc(AstType_FunctionCallExpr, left_expr->token);
-        a->FunctionCallExpr.func_ident = left_expr;
-        expect(p, TokenType::LeftBracket);
-
-        a->FunctionCallExpr.args = make_array<Ast *>(ast_allocator());
-        for(;;) {
-            if(reach_end(p) || curr_token(p).type == TokenType::RightBracket) {
-                break;
-            }
-
-            Ast *arg = parse_expr(p, 0, true);
-            array_push_back(&a->FunctionCallExpr.args, arg);
-
-            if(curr_token(p).type != TokenType::RightBracket) {
-                expect(p, TokenType::Comma);
-            }
-        }
-
-        Token rb = expect(p, TokenType::RightBracket);
-        a->span = merge(a->token.span, rb.span);
-    } else {
-        // 赋值表达式
-        a = ast_alloc(AstType_Assignment, left_expr->token);
-
-        Ast *lvalue_expr = left_expr;
-        expect(p, TokenType::Equal);
-
-        Ast *right = parse_expr(p, 0, true);
-
-        a->Assignment.left_var_expr = lvalue_expr;
-        a->Assignment.right_expr = right;
-
-        a->span = merge(lvalue_expr->span, right->span);
     }
+
+    return a;
+}
+
+
+Ast *parse_stmt2(Parser *p) {
+    Token curr = curr_token(p);
+    Token next = next_token(p);
+
+    Ast *a = NULL;
+    switch(curr.type) {
+    case TokenType::KW_if:
+        a = parse_if(p);
+        break;
+
+    case TokenType::KW_for:
+        a = parse_for(p);
+        break;
+    
+    
+    case TokenType::LeftCurlyBracket:
+        a = parse_block(p);
+        break;
+
+    case TokenType::KW_return:
+        a = ast_alloc(AstType_ReturnStmt, curr);
+        advance_token(p);
+
+        if(curr_token(p).type != TokenType::Semicolon) {
+            a->ReturnStmt.expr = parse_expr(p, 0, true);
+            a->span = merge(a->token.span, a->ReturnStmt.expr->span);
+        } else {
+            a->ReturnStmt.expr = NULL;
+            a->span = a->token.span;
+        }
+
+        expect(p, TokenType::Semicolon);
+        break;
+
+    case TokenType::KW_break:
+        a = ast_alloc(AstType_Break);
+        a->token = expect(p, TokenType::KW_break);
+        a->span = a->token.span;
+        expect(p, TokenType::Semicolon);
+        break;
+
+    case TokenType::KW_continue:
+        a = ast_alloc(AstType_Continue);
+        a->token = expect(p, TokenType::KW_continue);
+        a->span = a->token.span;
+        expect(p, TokenType::Semicolon);
+        break;
+    
+    case TokenType::Ident: 
+        if(next.type == TokenType::ColonEqual || next.type == TokenType::Colon) {
+            a = parse_var_decl(p);
+            expect(p, TokenType::Semicolon);
+
+        } else if(next.type == TokenType::DoubleColon) {
+            a = parse_const_decl(p);
+        } else {
+            a = parse_assignment_or_expr(p);
+            expect(p, TokenType::Semicolon);
+
+        }
+        break;
+    
+    // TODO: 放到parse_const_decl里去处理
+    case TokenType::KW_import:
+        a = parse_import(p);
+
+        // 特殊处理, 包装成ConstDecl, 这样就不需要在顶层语义分析阶段单独处理import了
+        {
+            Ast *import_ast = a;
+            a = ast_alloc(AstType_ConstDecl, import_ast->token);
+            a->ConstDecl.name = get_last_component_of_path(import_ast->Import.path, ast_allocator());
+            a->ConstDecl.value_ast = import_ast;
+            a->span = import_ast->span;
+        }
+
+
+        break;
+
+    default:
+        a = parse_assignment_or_expr(p);
+        expect(p, TokenType::Semicolon);
+        break;
+    }
+
+    return a;
+}
+
+
+// Ast *parse_top_level(Parser *p) {
+
+//     // TODO: TEMP
+//     if(curr_token(p).type == TokenType::KW_import) {
+//         Ast *a = parse_import(p);
+//         return a;
+//     } 
+
+
+//     Token ident;
+//     auto ident_result = expect2(p, TokenType::Ident);
+//     if(!ident_result.second) {
+//         advance_to_next_top_level(p);
+//         return ast_alloc(AstType_BadDecl);
+//     }
+//     ident = ident_result.first;
+
+//     expect2(p, TokenType::DoubleColon);
+
+
+//     Ast *a = NULL;
+//     switch(curr_token(p).type)
+//     {
+
+//     // 函数声明
+//     case TokenType::LeftBracket: {
+//         a = ast_alloc(
+
+//         a->Function.name = ident.token_str;
+
+//         expect2(p, TokenType::LeftBracket);
+
+        
+//         a->Function.params = make_array<Ast *>(ast_allocator());
+//         for(;;) {
+//             if(reach_end(p) || curr_token(p).type == TokenType::RightBracket) {
+//                 break;
+//             }
+
+//             Token ident = expect(p, TokenType::Ident);
+//             expect2(p, TokenType::Colon);
+
+//             Ast *arg_type = parse_type(p);
+            
+//             Ast *param = ast_alloc(AstType_VariableDecl, ident);
+//             param->VariableDecl.type_ast = arg_type;
+//             param->VariableDecl.var_name = ident.token_str;
+//             //TODO(xoaop): 支持默认参数
+//             param->VariableDecl.expr = NULL;
+//             param->span = merge(ident.span, arg_type->span);
+
+//             array_push_back(&a->Function.params, param);
+
+//             if(curr_token(p).type != TokenType::RightBracket) {
+//                 expect2(p, TokenType::Comma);
+//             }
+
+//         }
+        
+//         expect(p, TokenType::RightBracket);
+
+//         Ast *return_type = NULL;
+//         if(curr_token(p).type == TokenType::Arrow) {
+//             // 有返回值
+//             advance_token(p); // 跳过箭头
+//             return_type = parse_type(p);
+//         } else {
+//             // 无返回值
+//             return_type = ast_alloc(AstType_EasyType, curr_token(p)); // 这个token不会被使用到, 只是为了记录span, 也不存在
+//             return_type->EasyType.kind = Type_void;
+//             return_type->span = return_type->token.span;
+//         }
+//         a->Function.return_type_ast = return_type;
+
+//         // TODO: TEST 临时支持 extern_C 函数
+//         a->Function.is_extern_C = false;
+//         if(curr_token(p).type == TokenType::KW_extern_C) {
+//             Token extern_c_token = expect(p, TokenType::KW_extern_C);
+//             a->Function.block = NULL;
+//             a->Function.is_extern_C = true;
+//             a->span = merge(a->token.span, extern_c_token.span);
+
+//             expect(p, TokenType::Semicolon);
+
+//         } else {
+//             a->span = merge(a->token.span, return_type->span); // 配合return_type的span, 注意无返回值的情况
+
+//             a->Function.block = parse_block(p);
+//             a->Function.block->Block.is_function_body = true;
+//         }
+
+
+//     } break;
+    
+
+//     // 结构体声明
+//     case TokenType::KW_struct: {
+//         a = ast_alloc(AstType_StructDecl, ident);
+
+//         a->StructDecl.name = ident.token_str;
+
+//         expect(p, TokenType::KW_struct);
+//         expect(p, TokenType::LeftCurlyBracket);
+
+//         a->StructDecl.fields = make_array<Ast *>(ast_allocator());
+
+//         Array<StructField> field_types = make_array<StructField>(stage_allocator());
+//         for(;;) {
+//             if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
+//                 break;
+//             }
+
+            
+//             Token field_ident = expect(p, TokenType::Ident);
+//             expect(p, TokenType::Colon);
+//             Ast *field_type_ast = parse_type(p);
+            
+//             Ast *field_ast = ast_alloc(AstType_StructField, field_ident);
+//             field_ast->StructField.name = field_ident.token_str;
+//             field_ast->StructField.type_ast = field_type_ast;
+//             field_ast->span = merge(field_ident.span, field_type_ast->span);
+
+
+//             expect(p, TokenType::Semicolon);
+            
+//             array_push_back(&a->StructDecl.fields, field_ast);
+//         }
+
+//         Token rcb = expect(p, TokenType::RightCurlyBracket);
+//         a->span = merge(a->token.span, rcb.span);
+
+//     } break;
+
+//     default:
+//         report_unexpected(p, "struct (for struct decl) or ( (for function decl)");
+
+//         a = ast_alloc(AstType_BadDecl, ident);
+//         a->span = merge(ident.span, curr_token(p).span);
+
+//         advance_to_next_top_level(p);
+
+//         // XP_ASSERT_DEFAULT(0);
+//         break;
+//     }
+
+//     return a;
+// }
+
+
+
+
+
+
+xp_internal Ast *parse_block(Parser *p) {
+    Ast *a = ast_alloc(AstType_Block, expect(p, TokenType::LeftCurlyBracket));
+    auto stmts = make_array<Ast *>(ast_allocator());
+
+
+    while (curr_token(p).type != TokenType::RightCurlyBracket && !reach_end(p)) {
+        array_push_back(&stmts, parse_stmt2(p));
+    }
+    a->Block.statements = stmts;
+    a->Block.is_function_body = false; // NOTE: 默认不是函数体, 函数部分需要单独设置
+
+    Token rcb = expect(p, TokenType::RightCurlyBracket);
+
+    a->span = merge(a->token.span, rcb.span);
 
     return a;
 }
@@ -656,7 +783,7 @@ xp_internal Ast *parse_for(Parser *p) {
     // TODO 换成现代 for 语法, 而不是现在的 C 风格 for 语法
     // init
     if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.init = parse_var_decl_or_assign_or_fncall(p);
+        a->ForStmt.init = parse_var_decl(p); // 只允许变量声明
     } else {
         a->ForStmt.init = NULL;
     }
@@ -664,7 +791,7 @@ xp_internal Ast *parse_for(Parser *p) {
 
     // condition
     if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.condition = parse_expr(p, 0, false);
+        a->ForStmt.condition = parse_expr(p, 0, true);
     } else {
         a->ForStmt.condition = NULL;
     }
@@ -672,7 +799,7 @@ xp_internal Ast *parse_for(Parser *p) {
 
     // post
     if(curr_token(p).type != TokenType::LeftCurlyBracket) {
-        a->ForStmt.post = parse_var_decl_or_assign_or_fncall(p);
+        a->ForStmt.post = parse_assignment_or_expr(p, false); // for循环的post部分不允许出现结构体初始化表达式, 因为语法上不好区分, 例如 a = {1, 2} 是赋值表达式还是结构体初始化表达式, 只能当作赋值表达式来解析, 这样就要求for循环的post部分不能出现结构体初始化表达式了
 
         if(a->ForStmt.post->type != AstType_Assignment) {
             context()->reporter.report(
@@ -819,7 +946,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
             // 下标访问表达式
 
             expect(p, TokenType::LeftSquareBracket);
-            Ast *index_expr = parse_expr(p);
+            Ast *index_expr = parse_expr(p, 0, true);
             Token rsb = expect(p, TokenType::RightSquareBracket);
             
             Ast *new_left = ast_alloc(AstType_IndexExpr, curr);
@@ -842,7 +969,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
                     break;
                 }
 
-                Ast *arg = parse_expr(p);
+                Ast *arg = parse_expr(p, 0, true);
                 array_push_back(&a->FunctionCallExpr.args, arg);
 
                 if(curr_token(p).type != TokenType::RightBracket) {
@@ -907,7 +1034,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
         
         if(is_binary_op(curr.type) && precedence(curr.type) > min_prec) {
             advance_token(p);
-            Ast *right = parse_expr(p, precedence(curr.type));
+            Ast *right = parse_expr(p, precedence(curr.type), has_struct_init);
             Ast *new_left = ast_alloc(AstType_BinaryExpr, curr);
 
             new_left->BinaryExpr.op = curr.type;
@@ -956,11 +1083,16 @@ Ast *parse_constant(Parser *p) {
 void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     XP_ASSERT_DEFAULT(str != NULL && a != NULL);
 
+    bool has_minus = false;
+    if(str[0] == '-') {
+        has_minus = true;
+        str++; // 跳过负号, 因为strtoumax不处理负号, 需要我们自己处理
+    }
 
     // 解析
     char *end = NULL;
     errno = 0;
-    uintmax_t val = strtoumax(str, &end, 0);
+    i128 val = strtoumax(str, &end, 0);
 
     // 检查解析完成
     if(end == str) {
@@ -978,10 +1110,25 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         );
     }
 
+    // 检查负数字面量
+    if(has_minus) {
+        if(val > cast(i128)INTMAX_MAX) { 
+            context()->reporter.report(
+                ErrorLevel::Error,
+                a->token.span,
+                p->f.source_code,
+                "integer literal '-%s' is too small",
+                str
+            );
+        }
+
+        val = -val;
+    }
+
     
     // 检查溢出(类型)
     if(type_kind != Type_Undefined) {
-        if(!check_literal_overflow(type_kind, cast(i128)val, 0.0)) {
+        if(check_integer_overflow(val, easy_type(type_kind))) {
             context()->reporter.report(
                 ErrorLevel::Error,
                 a->token.span,
@@ -994,7 +1141,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-    a->Constant.value = cast(i128)val;
+    a->Constant.value = val;
 
 }
 
@@ -1048,7 +1195,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     // 检查溢出(类型)
     if(type_kind != Type_Undefined) {
-        if(!check_literal_overflow(type_kind, 0, val)) {
+        if(!check_float_overflow(val, easy_type(type_kind))) {
             context()->reporter.report(
                 ErrorLevel::Error,
                 a->token.span,
