@@ -6,68 +6,44 @@
 
 #include "context.hpp"
 
-bool fit_in_type(i128 value, TypeRef target_type) {
-    bool fit = false;
-
-    switch(target_type->kind) {
-        case Type_i8:
-            fit = (value >= INT8_MIN && value <= INT8_MAX);
-            break;
-        case Type_i32:
-            fit = (value >= INT32_MIN && value <= INT32_MAX);
-            break;
-        case Type_i64:
-            fit = (value >= INT64_MIN && value <= INT64_MAX);
-            break;
-        case Type_u8:
-            fit = (value >= 0 && value <= UINT8_MAX);
-            break;
-        case Type_u32:
-            fit = (value >= 0 && value <= UINT32_MAX);
-            break;
-        case Type_u64:
-            fit = (value >= 0 && value <= UINT64_MAX);
-            break;
-        default:
-            break;
+bool check_untyped_int_to_type(i128 value, TypeRef target_type) {
+    // 如连整数类型都不是, 那肯定无法转化
+    if(!is_integer_or_untyped_type(target_type)) {
+        return false;
     }
 
-    return fit;
+    // 在整数的基础上, 再检查溢出
+    return !check_integer_overflow(value, target_type);
 }
 
-bool fit_in_type(double value, TypeRef target_type) {
-    bool fit = false;
-    switch(target_type->kind) {
-        case Type_f32:
-            fit = (value >= -3.4028235e+38 && value <= 3.4028235e+38);
-            break;
-        case Type_f64:
-            fit = true;
-            break;
-        default:
-            break;
+bool check_untyped_float_to_type(double value, TypeRef target_type) {
+    // 如连浮点数类型都不是, 那肯定无法转化
+    if(!is_float_or_untyped_type(target_type)) {
+        return false;
     }
-    return fit;
+
+    // 在浮点数的基础上, 再检查溢出
+    return !check_float_overflow(value, target_type);
 }
 
-bool fit_in_type(Ast *constant, TypeRef target_type) {
+bool check_untyped_to_type(Ast *constant, TypeRef target_type) {
     XP_ASSERT_DEFAULT(constant->type == AstType_Constant);
 
-    if(is_integer_type(constant->v_type) || constant->v_type == easy_type(Type_untyped_int)) {
-        return fit_in_type(constant->Constant.value, target_type);
-    } else if(is_float_type(constant->v_type) || constant->v_type == easy_type(Type_untyped_float)) {
-        return fit_in_type(constant->Constant.float_value, target_type);
+    if(constant->v_type == easy_type(Type_untyped_int)) {
+        return check_untyped_int_to_type(constant->Constant.value, target_type);
+    } else if(constant->v_type == easy_type(Type_untyped_float)) {
+        return check_untyped_float_to_type(constant->Constant.float_value, target_type);
     } else {
         UNREACHABLE();
         return false;
     }
 }
 
-bool fit_in_type(Value value, TypeRef target_type) {
-    if(value.get_type() == Value::Type::Integer) {
-        return fit_in_type(value.get_as_integer(), target_type);
-    } else if(value.get_type() == Value::Type::Float) {
-        return fit_in_type(value.get_as_float(), target_type);
+bool check_untyped_to_type(Value& val, TypeRef target_type) {
+    if(val.type == easy_type(Type_untyped_int)) {
+        return check_untyped_int_to_type(val.integer_value, target_type);
+    } else if(val.type == easy_type(Type_untyped_float)) {
+        return check_untyped_float_to_type(val.float_value, target_type);
     } else {
         UNREACHABLE();
         return false;
@@ -77,26 +53,25 @@ bool fit_in_type(Value value, TypeRef target_type) {
 
 TypeRef get_compliable_integer_type(i128 value) {
 
-    if(fit_in_type(value, easy_type(Type_i32))) {
+    if(check_untyped_int_to_type(value, easy_type(Type_i32))) {
         return easy_type(Type_i32);
-    } else if(fit_in_type(value, easy_type(Type_i64))) {
+    } else if(check_untyped_int_to_type(value, easy_type(Type_i64))) {
         return easy_type(Type_i64);
-    } else if(fit_in_type(value, easy_type(Type_u64))) {
+    } else if(check_untyped_int_to_type(value, easy_type(Type_u64))) {
         return easy_type(Type_u64);
+    } else {
+        return error_type();
     }
-
-
-    // TODO 超出范围错误处理
-    XP_ASSERT_DEFAULT(0);
-    return undefined_type();
 }
 
 TypeRef get_compliable_float_type(double value) {
 
-    if(fit_in_type(value, easy_type(Type_f32))) {
+    if(check_untyped_float_to_type(value, easy_type(Type_f32))) {
         return easy_type(Type_f32);
-    } else {
+    } else if(check_untyped_float_to_type(value, easy_type(Type_f64))) {
         return easy_type(Type_f64);
+    } else {
+        return error_type();
     }
 
 }
@@ -115,10 +90,26 @@ TypeRef get_compliable_const_type(Ast *constant) {
 }
 
 
-TypeRef get_compliable_const_type(Value value) {
-    if(value.get_type() == Value::Type::Integer) {
+TypeRef get_compliable_const_type(Value& val) {
+    XP_ASSERT_DEFAULT(is_untyped_type(val.type));
+
+
+    if(val.type == easy_type(Type_untyped_int)) {
+        return get_compliable_integer_type(val.integer_value);
+    } else if(val.type == easy_type(Type_untyped_float)) {
+        return get_compliable_float_type(val.float_value);
+    } else {
+        UNREACHABLE();
+        return error_type();
+    }
+}
+   
+
+
+TypeRef get_compliable_const_type(Valuee value) {
+    if(value.get_type() == Valuee::Type::Integer) {
         return get_compliable_integer_type(value.get_as_integer());
-    } else if(value.get_type() == Value::Type::Float) {
+    } else if(value.get_type() == Valuee::Type::Float) {
         return get_compliable_float_type(value.get_as_float());
     } else {
         UNREACHABLE();
@@ -128,7 +119,7 @@ TypeRef get_compliable_const_type(Value value) {
 
 
 
-static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
+static bool check_is_lvalue(Ast *expr, TypeRef v_type, Analyser analyser) {
     switch(expr->type) {
     case AstType_UnaryExpr: {
 
@@ -148,11 +139,23 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
 
 
     case AstType_Ident: {
-        if(v_type == undefined_type()) {
+        xpString ident_name = expr->Ident.name;
+        SymbolInfo *info = find_symbol_until_global(analyser.current_scope, ident_name);
+        if(info == NULL) {
             return false;
-        } else {
+        }
+
+        Value val = info->value;
+        if(val.is_runtime_value) {
+            // 说明只是变量
+
             return true;
-        }    
+        } else {
+            // 说明是常量, 常量不是lvalue
+
+            return false;
+        }
+
     } break;    
 
     case AstType_IndexExpr: {
@@ -179,7 +182,21 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
     }
 
     return false;
-}    
+}
+
+// 如果是untyped类型, 尝试转化为target_type, 转化成功返回true, 转化失败返回false 
+// 如果不是untyped类型, 那么直接返回true, 表示无事发生, 一切正常
+bool if_untyped_try_to_typed_or_do_nothing(Value& val, TypeRef target_type) {
+    if(is_untyped_type(val.type)) {
+        if(check_untyped_to_type(val, target_type)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 
 
@@ -187,7 +204,7 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type) {
 // TODO: 逻辑待检查
 bool check_explicit_type_cast(TypeRef casted_expr_type, TypeRef target_type) {
 
-    if((is_integer_type(casted_expr_type) || is_float_type(casted_expr_type)) && (is_integer_type(target_type) || is_float_type(target_type))) {
+    if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type)) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type))) {
         // 任意数字类型之间都可以转化
 
         return true;
@@ -220,44 +237,7 @@ bool check_explicit_type_cast(TypeRef casted_expr_type, TypeRef target_type) {
         
 }
 
-
-// // 检查某表达式是是否可以被当作target_type
-// static bool check_target_type(Ast *expr, TypeRef target_type) {
-
-
-//     if(expr->is_null) {
-//         // null可以被当作任意指针类型
-
-//         // 如target_type不是指针类型, 那就不行
-//         if(!is_pointer_type(target_type)) {
-//             return false;
-//         }
-//     } else if(is_pointer_type(expr->v_type) && target_type == pointer_type(easy_type(Type_void))) {
-//         // 任意类型指针都可以隐式转化为*void类型
-//         return true;
-//     }  else if(is_array_type(expr->v_type) && is_slice_struct_type(target_type)) {
-//         // 数组可以隐式转化为slice结构体类型
-        
-//         // 前提元素类型相同
-//         if(target_type->struct_info.struct_fields[0].type->pointed_type == expr->v_type->array_info.element_type) {
-
-//             expr->implicit_conversion_tag = ImplicitConversionTag::ArrayToSliceStruct;
-//             return true;
-//         } else {
-
-//             return false;
-//         }
-//     }
-    
-//     else if(expr->v_type != target_type) {
-//         return false;
-//     }
-
-//     return true;
-// }
-
-
-
+// NOTE: 隐式转化目前只代表赋值时的隐式转化
 bool check_implicit_convension(Ast *expr, TypeRef checked_type, TypeRef target_type) {
     bool implicit_spec_ok = false; // 特定类型的隐式转换是否合法
     if(expr->is_null) {
@@ -271,10 +251,17 @@ bool check_implicit_convension(Ast *expr, TypeRef checked_type, TypeRef target_t
             expr->implicit_conversion_tag = ImplicitConversionTag::ArrayToSliceStruct;
             implicit_spec_ok = true;
         }
+    } else if(is_untyped_type(checked_type) && is_certain_type(target_type)) {
+        // 无类型整数或浮点数可以隐式转换为任意确定类型的整数或浮点数, 但不能隐式转换为非数字类型
+        // NOTE: 没有检查数值是否在目标类型的范围内, 这个检查在常量折叠阶段进行
+
+        if((checked_type == easy_type(Type_untyped_int) && is_integer_type(target_type)) ||
+           (checked_type == easy_type(Type_untyped_float) && is_float_type(target_type))) {
+            implicit_spec_ok = true;
+        }
     } else if(checked_type == target_type) {
         implicit_spec_ok = true;
     }
-
 
     return implicit_spec_ok;
 }    
@@ -282,7 +269,7 @@ bool check_implicit_convension(Ast *expr, TypeRef checked_type, TypeRef target_t
 
 
 
-TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser analyser) {
+TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser analyser, bool allow_untyped) {
     static isize depth = 0;
 
     depth += 1;
@@ -295,29 +282,88 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
-
+            
             if(is_certain_type(expr->v_type)) {
                 result_type = expr->v_type;
                 break;
             }
 
-            if(has_target) {
-                if(!fit_in_type(expr, target_type)) {
-
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "constant value does not fit in target type"
-                    );
-                    result_type = error_type();
-
+            // 还没有类型推导
+            if(expr->v_type == undefined_type()) {
+                Token token = expr->token;
+                if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
+                    result_type = easy_type(Type_bool);
+                    expr->Constant.value = (token.type == TokenType::KW_true) ? 1 : 0;
+    
                     break;
-                } else {
-                    result_type = target_type;
+                }
+    
+                if(token.type == TokenType::KW_null) {
+                    result_type = pointer_type(easy_type(Type_void));
+                    expr->Constant.value = 0;
+                    expr->is_null = true;
+    
+                    break;
+                }
+    
+                // 无类型后缀的数字字面量, 先标记为untyped类型, 等待类型推导
+                if(token.type == TokenType::Integer) {
+                    result_type = easy_type(Type_untyped_int);
+                } else if(token.type == TokenType::Float) {
+                    result_type = easy_type(Type_untyped_float);
+                }
+
+                if(token.number_info.type_kind_of_number != Type_Undefined) {
+                    TypeRef postfix_type = easy_type(token.number_info.type_kind_of_number);
+
+                    expr->v_type = result_type;
+                    if(!check_untyped_to_type(expr, postfix_type)) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "constant value can't convert to type specified by suffix"
+                        );
+                        result_type = error_type();
+
+                        break;
+                    } else {
+                        result_type = postfix_type;
+                    }
+
                 }
             } else {
-                result_type = get_compliable_const_type(expr);
+                result_type = expr->v_type;
             }
 
+
+            // TODO: ABSTRACT
+            if(is_untyped_type(result_type)) {
+                if(has_target) {
+                    expr->v_type = result_type;
+                    if(!check_untyped_to_type(expr, target_type)) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "constant value can't convert to target type"
+                        );
+                        result_type = error_type();
+                    } else {
+                        result_type = target_type;
+                    }
+                } else if(!allow_untyped) {
+                    expr->v_type = result_type; 
+                    result_type = get_compliable_const_type(expr);
+                    if(result_type == error_type()) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "constant value is too large to fit in any integer or float type"
+                        );
+                    } else {
+                        result_type = result_type;
+                    }
+                } else {
+                    // 允许无类型常量存在, 先标记为untyped类型, 等待后续使用时推导
+                    result_type = result_type;
+                }
+            }
             
         } break;
 
@@ -326,60 +372,58 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
             bool should_check_equal_type = true;
 
-
-            TypeRef old_left_type = expr->BinaryExpr.left->v_type;
-            TypeRef old_right_type = expr->BinaryExpr.right->v_type;
-
-
-            // 首先确定left, right的类型
             TypeRef infer_left_type = NULL;
             TypeRef infer_right_type = NULL;
 
-            if(!is_untyped_type(old_left_type) && !is_untyped_type(old_right_type)) {
-                // 两个都是确定类型
 
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser);
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser);
-            } else if(is_untyped_type(old_left_type) && is_untyped_type(old_right_type)) {
-                // 两个都是不确定类型
-                // 例如: 1 + 2.0   1 == 2
-
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, target_type, analyser);
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, target_type, analyser);
-
-                TypeRef common_type = get_common_type(infer_left_type, infer_right_type);
-                infer_left_type = common_type;
-                infer_right_type = common_type;
-            } else if((!is_untyped_type(old_left_type) && is_untyped_type(old_right_type)) || 
-                      (is_untyped_type(old_left_type) && !is_untyped_type(old_right_type))) {
-                // 一个是确定类型, 另一个不是
-
-                // 确定哪个是Type_literal, 哪个不是
-                Ast *literal_expr = is_untyped_type(old_left_type) ? expr->BinaryExpr.left : expr->BinaryExpr.right;
-                Ast *not_literal_expr = is_untyped_type(old_left_type) ? expr->BinaryExpr.right : expr->BinaryExpr.left;
-
-                TypeRef certain_type = infer_expr_type(not_literal_expr, has_target, target_type, analyser);
-
-                // 如果确定类型表达式是指针类型, 那不确定类型表达式的类型不需要检查, 避免尝试被当作指针类型转化
-                // 但是还不能确定是整数类型, 因为可能是浮点类型
-                bool should_check_untyped = !is_pointer_type(not_literal_expr->v_type);
-
-                TypeRef uncertain_type = infer_expr_type(literal_expr, should_check_untyped, certain_type, analyser);
-                
-                infer_left_type = is_untyped_type(old_left_type) ? uncertain_type : certain_type;
-                infer_right_type = is_untyped_type(old_right_type) ? uncertain_type : certain_type;
-
+            if(is_return_bool_operator(expr->BinaryExpr.op)) {
+                infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, NULL, analyser, true);
+                infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, true);
+            } else {
+                // 如果该运算的结果类型不是操作数类型, 那么就不传递target type, 让子表达式自己推导
+                infer_left_type = infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser, allow_untyped);
+                infer_right_type = infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser, allow_untyped);
             }
-            XP_ASSERT_DEFAULT(infer_left_type != NULL && infer_right_type != NULL);
 
             expr->BinaryExpr.left->v_type = infer_left_type;
             expr->BinaryExpr.right->v_type = infer_right_type;
-
-
+            
+            
             if(infer_left_type == error_type() || infer_right_type == error_type()) {
-                // result_type = error_type();
                 break;
             }
+            
+            // 处理untyped被兄弟表达式传染成确定类型的情况
+            if(is_untyped_type(infer_left_type) && !is_untyped_type(infer_right_type)) {
+                infer_left_type = infer_expr_type(expr->BinaryExpr.left, true, infer_right_type, analyser, false);
+                expr->BinaryExpr.left->v_type = infer_left_type;
+            } else if(!is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type)) {
+                infer_right_type = infer_expr_type(expr->BinaryExpr.right, true, infer_left_type, analyser, false);
+                expr->BinaryExpr.right->v_type = infer_right_type;
+            }
+            
+            if(is_return_bool_operator(expr->BinaryExpr.op) && (is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type))) {
+                infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, NULL, analyser, false);
+                infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, false);
+
+                TypeRef common_type = get_common_type(infer_left_type, infer_right_type);
+                if(common_type == error_type()) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "两个untyped为操作数的bool二元表达式无法推导出一个共同的类型"
+                    );
+                    break;
+                }
+                
+                infer_left_type = common_type;
+                infer_right_type = common_type;
+
+                expr->BinaryExpr.left->v_type = infer_left_type;
+                expr->BinaryExpr.right->v_type = infer_right_type;
+            }
+
+
+
             
             TypeRef binary_expr_type = NULL;
 
@@ -423,8 +467,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     break;
                 }
 
-                // 确保另一个是整数类型, 而不是浮点类型
-                if(!is_integer_type(non_pointer_type)) {
+                // 确保另一个是整数类型
+                if(!(is_integer_or_untyped_type(non_pointer_type))) {
                     context()->reporter.report_error(
                         non_pointer_expr->span, analyser.curr_ast_file->source_code,
                         "pointer arithmetic requires integer type"
@@ -520,49 +564,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
         case AstType_UnaryExpr: {
 
             TokenType op = expr->UnaryExpr.op;
-            TypeRef old_operand_type = expr->UnaryExpr.operand->v_type;
-            TypeRef operand_type = NULL;
 
-            // 特殊处理如-128(i8)这种情况, 不能简单地把 128 作为常量处理, 不然会被推导为高一级别的类型
-            // TODO: 简化
-            if(op == TokenType::Minus && is_untyped_type(old_operand_type)) {
-                TypeRef inferred_type;
-
-                Value val = {};
-                Value neg_val = {};
-                if(old_operand_type == easy_type(Type_untyped_int)) {
-                    val = Value::make(expr->UnaryExpr.operand->Constant.value);
-                    neg_val = Value::make(-expr->UnaryExpr.operand->Constant.value);
-                } else if(old_operand_type == easy_type(Type_untyped_float)) {
-                    val = Value::make(expr->UnaryExpr.operand->Constant.float_value);
-                    neg_val = Value::make(-expr->UnaryExpr.operand->Constant.float_value);
-                } else {
-                    UNREACHABLE();
-                }
-
-                if(has_target) {
-                    inferred_type = target_type;
-                } else {
-                    inferred_type = get_compliable_const_type(neg_val);
-                }
-                
-                if(fit_in_type(neg_val, inferred_type)) {
-                    operand_type = inferred_type;
-                } else {
-                    context()->reporter.report_error(
-                        expr->UnaryExpr.operand->span, analyser.curr_ast_file->source_code,
-                        "constant value overflowed for inferred type"
-                    );
-
-                    break;
-                }
-                
-            } else {
-                // 普遍推导操作数类型
-                operand_type = infer_expr_type(expr->UnaryExpr.operand, has_target, target_type, analyser);
-            }
-            
-            XP_ASSERT_DEFAULT(operand_type != NULL);
+            TypeRef operand_type = infer_expr_type(expr->UnaryExpr.operand, has_target, target_type, analyser, allow_untyped);
             expr->UnaryExpr.operand->v_type = operand_type;
 
 
@@ -575,7 +578,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             case TokenType::Minus: {
                 // 一元负号操作符只能用于整数或浮点类型, 结果类型为操作数类型
 
-                bool is_integer_or_float_type = is_integer_type(operand_type) || is_float_type(operand_type);
+                bool is_integer_or_float_type = is_integer_or_untyped_type(operand_type) || is_float_or_untyped_type(operand_type);
                 if(is_integer_or_float_type) {
                     result_type = operand_type;
                 } else {
@@ -643,7 +646,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
 
         case AstType_CastExpr: {
-            TypeRef casted_expr_type = infer_expr_type(expr->CastExpr.expr, false, target_type, analyser);
+            TypeRef casted_expr_type = infer_expr_type(expr->CastExpr.expr, false, target_type, analyser, false);
 
 
             TypeRef casted_type = casted_expr_type;
@@ -653,65 +656,6 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 result_type = error_type();
                 break;
             }
-
-            // // struct -> struct 必须是相同类型
-            // if(is_struct_type(casted_type)) {
-            //     if(casted_type != target_type) {
-            //         context()->reporter.report_error(
-            //             expr->span, analyser.curr_ast_file->source_code,
-            //             "struct type can only be casted to the same struct type"
-            //         );
-            //         break;
-            //     }
-            // }
-            
-            // // array -> array 必须是相同类型
-            // if(is_array_type(casted_type)) {
-            //     if(casted_type != target_type) {
-            //         context()->reporter.report_error(
-            //             expr->span, analyser.curr_ast_file->source_code,
-            //             "array type can only be casted to the same array type"
-            //         );
-            //         break;
-            //     }
-            // }
-
-            // // pointer -> 非pointer 错误
-            // if(is_pointer_type(casted_type) && !is_pointer_type(target_type)) {
-            //     context()->reporter.report_error(
-            //         expr->span, analyser.curr_ast_file->source_code,
-            //         "pointer type cannot be casted to non-pointer type"
-            //     );
-
-            //     break;
-            // }
-
-            // // 非pointer -> pointer
-            // if(!is_pointer_type(casted_type) && is_pointer_type(target_type)) {
-            //     context()->reporter.report_error(
-            //         expr->span, analyser.curr_ast_file->source_code,
-            //         "non-pointer type cannot be casted to pointer type"
-            //     );
-            //     break;
-            // }
-
-
-            // // 非bool -> bool 错误
-            // if(casted_type != easy_type(Type_bool) && target_type == easy_type(Type_bool)) {
-            //     context()->reporter.report_error(
-            //         expr->span, analyser.curr_ast_file->source_code,
-            //         "only bool type can be casted to bool type"
-            //     );
-            //     break;
-            // }
-
-            // if(casted_type == easy_type(Type_bool) && target_type != easy_type(Type_bool)) {
-            //     context()->reporter.report_error(
-            //         expr->span, analyser.curr_ast_file->source_code,
-            //         "bool type cannot be casted to non-bool type"
-            //     );
-            //     break;
-            // }
 
             if(!check_explicit_type_cast(casted_type, target_type)) {
                 context()->reporter.report_error(
@@ -727,7 +671,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
         // TODO FIRST 实现
         case AstType_FieldAccess: {
-            expr->FieldAccess.parent->v_type = infer_expr_type(expr->FieldAccess.parent, has_target, target_type, analyser);
+            expr->FieldAccess.parent->v_type = infer_expr_type(expr->FieldAccess.parent, has_target, target_type, analyser, false);
 
             
             Ast *parent_ast = expr->FieldAccess.parent;
@@ -741,7 +685,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             bool is_struct_field_access = false;
             TypeRef parent_struct_type = NULL;
 
-            if(parent_type == undefined_type()) {
+            if(is_package_type(parent_type)) {
                 // 表示parent是个包名
 
                 is_struct_field_access = false;
@@ -795,20 +739,32 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 
                 // TODO: 检查是否有空指针异常风险
 
-                SymbolInfo *package_info = parent_ast->ast_symbol;
-
-                if(package_info == NULL) {
-                    break;
-                }
-
-                SymbolInfo *field_info = find_symbol_in_curr_scope(&package_info->imported_package->package_scope, field_name);
+                SymbolInfo *field_info = find_symbol_curr(&parent_type->package_info->package_scope, field_name);
                 
                 if(field_info == NULL) {
                     break;
                 }
 
-                // 如果不是结构体类型, 从符号表中找到字段类型信息再赋值
-                result_type = field_info->type;
+                if(has_target && is_untyped_type(field_info->value.type)) {
+                    // 如果有目标类型, 且field_info的类型是untyped类型, 那就检查能不能从untyped类型转化为目标类型, 不能的话报错
+                    
+                    if(!check_untyped_to_type(field_info->value, target_type)) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "package member '%s' value can't convert to target type",
+                            field_name.c_str
+                        );
+                        break;
+                    } else {
+                        result_type = target_type;
+                    }
+                } else {
+                    // 否则直接用原始类型
+
+                    result_type = field_info->value.type;
+                }
+
+
             }
 
 
@@ -820,13 +776,16 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             SymbolInfo *struct_type_info = expr->StructInitExpr.struct_type_ident->ast_symbol;
 
             
-            if(struct_type_info == NULL || struct_type_info->type == error_type()) {
+            if(struct_type_info == NULL || !(is_type_type(struct_type_info->value.type) && is_struct_type(get_type_value(struct_type_info->value)))) {
                 result_type = error_type();
                 break;
             }
 
+            Value struct_type_value = struct_type_info->value;
+            TypeRef struct_type = get_type_value(struct_type_value);
+
             // 检查字段数量是否匹配
-            isize field_count = struct_type_info->type->struct_info.struct_fields.count;
+            isize field_count = struct_type->struct_info.struct_fields.count;
             isize init_sub_expr_count = expr->StructInitExpr.field_inits.count;
             if(field_count != init_sub_expr_count) {
                 context()->reporter.report_error(
@@ -839,7 +798,9 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             // 检查字段初始化表达式类型是否和字段类型匹配
             bool has_error = false;
             for(isize i = 0; i < init_sub_expr_count; i++) {
-                expr->StructInitExpr.field_inits[i]->v_type = infer_expr_type(expr->StructInitExpr.field_inits[i], true, struct_type_info->type->struct_info.struct_fields[i].type, analyser);
+                TypeRef target_field_type = struct_type->struct_info.struct_fields[i].type;
+
+                expr->StructInitExpr.field_inits[i]->v_type = infer_expr_type(expr->StructInitExpr.field_inits[i], true, target_field_type, analyser, false);
                 
                 TypeRef field_init_type = expr->StructInitExpr.field_inits[i]->v_type;
 
@@ -848,7 +809,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     has_error = true;
                 }
 
-                if(!check_implicit_convension(expr->StructInitExpr.field_inits[i], field_init_type, struct_type_info->type->struct_info.struct_fields[i].type)) {
+                if(!check_implicit_convension(expr->StructInitExpr.field_inits[i], field_init_type, target_field_type)) {
                     context()->reporter.report_error(
                         expr->StructInitExpr.field_inits[i]->span, analyser.curr_ast_file->source_code,
                         "struct literal field type does not match struct type field type"
@@ -860,7 +821,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
-            result_type = struct_type_info->type;
+            result_type = struct_type;
         } break;
 
         // TODO 数组字面量类型检查+推导
@@ -913,7 +874,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 }
                 if(!found_certain_type) {
                     // 如果没有确定类型的元素, 那就用第一个元素推导类型
-                    expr->ArrayInitExpr.elements[0]->v_type = infer_expr_type(expr->ArrayInitExpr.elements[0], false, target_type, analyser);
+                    expr->ArrayInitExpr.elements[0]->v_type = infer_expr_type(expr->ArrayInitExpr.elements[0], false, target_type, analyser, false);
                     element_type = expr->ArrayInitExpr.elements[0]->v_type;
                     if(element_type == error_type()) {
                         break;
@@ -927,7 +888,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             // 推导其他元素类型
             bool has_error = false;
             for(isize i = 0; i < init_element_count; i++) {
-                expr->ArrayInitExpr.elements[i]->v_type = infer_expr_type(expr->ArrayInitExpr.elements[i], true, target_elem_type, analyser);
+                expr->ArrayInitExpr.elements[i]->v_type = infer_expr_type(expr->ArrayInitExpr.elements[i], true, target_elem_type, analyser, false);
 
                 TypeRef elem_expr_type = expr->ArrayInitExpr.elements[i]->v_type;
                 if(elem_expr_type == error_type()) {
@@ -951,8 +912,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
         } break;
 
         case AstType_IndexExpr: {
-            expr->IndexExpr.array_var_expr->v_type = infer_expr_type(expr->IndexExpr.array_var_expr, false, NULL, analyser);
-            expr->IndexExpr.index_expr->v_type = infer_expr_type(expr->IndexExpr.index_expr, false, NULL, analyser);
+            expr->IndexExpr.array_var_expr->v_type = infer_expr_type(expr->IndexExpr.array_var_expr, false, NULL, analyser, false);
+            expr->IndexExpr.index_expr->v_type = infer_expr_type(expr->IndexExpr.index_expr, false, NULL, analyser, false);
 
 
             // 检查被下标访问表达式是不是: 
@@ -983,28 +944,28 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             // 如果是, 就做常量折叠, 判断是否在范围内
             // 如果不是, 就不管
 
-            if(is_array_type(as_type)) {
+            // if(is_array_type(as_type)) {
 
-                if(expr->IndexExpr.index_expr->is_const_expr) {
-                    if(!try_constant_expr_folding(expr->IndexExpr.index_expr)) {
-                        context()->reporter.report_error(
-                            expr->IndexExpr.index_expr->span, analyser.curr_ast_file->source_code,
-                            "溢出的常量表达式无法作为数组下标"
-                        );
-                        break;
-                    }
+            //     if(expr->IndexExpr.index_expr->is_const_expr) {
+            //         if(!try_constant_expr_folding(expr->IndexExpr.index_expr)) {
+            //             context()->reporter.report_error(
+            //                 expr->IndexExpr.index_expr->span, analyser.curr_ast_file->source_code,
+            //                 "溢出的常量表达式无法作为数组下标"
+            //             );
+            //             break;
+            //         }
     
-                    if(expr->IndexExpr.index_expr->Constant.value < 0 || 
-                       expr->IndexExpr.index_expr->Constant.value >= cast(i128)as_type->array_info.count) {
-                        context()->reporter.report_error(
-                            expr->IndexExpr.index_expr->span, analyser.curr_ast_file->source_code,
-                            "index expression is out of bounds for array type"
-                        );
-                        break;
-                    }
-                }
+            //         if(expr->IndexExpr.index_expr->Constant.value < 0 || 
+            //            expr->IndexExpr.index_expr->Constant.value >= cast(i128)as_type->array_info.count) {
+            //             context()->reporter.report_error(
+            //                 expr->IndexExpr.index_expr->span, analyser.curr_ast_file->source_code,
+            //                 "index expression is out of bounds for array type"
+            //             );
+            //             break;
+            //         }
+            //     }
 
-            }
+            // }
             
             // 设置下标表达式的类型
             if(is_array_type(as_type)) {
@@ -1038,16 +999,43 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
-            if(info->kind == SymbolKind::StructDecl) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "struct type name can't be used as a value"
-                );
-                break;
+            /*
+             * 如果是无类型的标识符, 需要根据上下文推导类型
+             * 如果有目标类型, 就用目标类型推导
+             * 如果没有目标类型, 就用标识符的值推导
+            */
+            if(is_untyped_type(info->value.type)) {
+
+
+                if(has_target) {
+                    if(!check_untyped_to_type(info->value, target_type)) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "identifier '%s' of untyped type cannot be used as target type '%s'",
+                            info->name.c_str, target_type->type_name.c_str
+                        );
+                        result_type = error_type();
+                    } else {
+                        result_type = target_type;
+                    }
+                } else if(!allow_untyped) {
+                    result_type = get_compliable_const_type(info->value);
+                    if(result_type == error_type()) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "unable to infer type of identifier '%s' with untyped value",
+                            info->name.c_str
+                        );
+                    }
+                } else {
+                    result_type = info->value.type;
+                }
+
+            } else {
+                result_type = info->value.type;
             }
 
 
-            result_type = info->type;
         } break;
         case AstType_FunctionCallExpr: {
             SymbolInfo *info = expr->FunctionCallExpr.func_ident->ast_symbol;
@@ -1058,8 +1046,34 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 );
                 break;
             }
+
+            TypeRef val_type = info->value.type;
+
+            if(!is_function_type(val_type)) {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "called symbol '%s' is not a function",
+                    info->name.c_str
+                );
+                break;
+            }
+
+            if(val_type->function_info.param_types.count != expr->FunctionCallExpr.args.count) {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "function '%s' expects %lld arguments but got %lld",
+                    info->name.c_str, val_type->function_info.param_types.count, expr->FunctionCallExpr.args.count
+                );
+                break;
+            }
+
+            for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                infer_expr_type(expr->FunctionCallExpr.args[i], true, val_type->function_info.param_types[i], analyser, false);
+            }
             
-            result_type = info->type->function_info.return_type;
+
+            
+            result_type = info->value.type->function_info.return_type;
         } break;
 
 
@@ -1076,9 +1090,10 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
 
     // 设置是否是左值
-    expr->is_lvalue = check_is_lvalue(expr, result_type);
+    expr->is_lvalue = check_is_lvalue(expr, result_type, analyser);
 
-    
+
+
     if(depth == 1) {
         if(result_type == error_type()) {
             // context()->reporter.report_error(

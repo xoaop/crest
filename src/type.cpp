@@ -88,12 +88,19 @@ Type copy_type(Type *src) {
     case Type_struct: {
         t.struct_info.pkg = src->struct_info.pkg;
         t.struct_info.struct_fields = array_copy(&src->struct_info.struct_fields, type_allocator());
+        t.struct_info.decl_ast = src->struct_info.decl_ast;
     } break;
     case Type_array: {
         t.array_info.element_type = src->array_info.element_type;
         t.array_info.count = src->array_info.count;
     } break;
-    
+    case Type_type: {
+        t.self_type_info = src->self_type_info;
+    } break;
+    case Type_package: {
+        t.package_info = src->package_info;
+    } break;
+
     // TODO: 更多复杂类型
 
     default:
@@ -251,6 +258,11 @@ bool is_integer_type(TypeRef type) {
     }
 }
 
+bool is_integer_or_untyped_type(TypeRef type) {
+    return is_integer_type(type) || type->kind == Type_untyped_int;
+}
+
+
 bool is_integer_or_bool_type(TypeRef type) {
     return is_integer_type(type) || type->kind == Type_bool;
 }
@@ -297,6 +309,10 @@ bool is_float_type(TypeRef type) {
     return type->kind == Type_f32 || type->kind == Type_f64;
 }
 
+bool is_float_or_untyped_type(TypeRef type) {
+    return is_float_type(type) || type->kind == Type_untyped_float;
+}
+
 bool is_certain_type(TypeRef type) {
     switch(type->kind) {
         case Type_void:
@@ -338,6 +354,14 @@ bool is_array_type(TypeRef type) {
     return type->kind == Type_array;
 }
 
+bool is_type_type(TypeRef type) {
+    return type->kind == Type_type;
+}
+
+bool is_package_type(TypeRef type) {
+    return type->kind == Type_package;
+}
+
 bool is_slice_struct_type(TypeRef type) {
     if(!is_struct_type(type)) {
         return false;
@@ -363,6 +387,15 @@ bool is_string_struct_type(TypeRef type) {
 }
 
 
+bool is_value_type(TypeRef type) {
+    return is_integer_or_untyped_type(type) || 
+           is_float_or_untyped_type(type) || 
+           type->kind == Type_bool || 
+           is_pointer_type(type) ||
+           is_struct_type(type) ||
+           is_array_type(type);
+}
+
 //
 //
 //
@@ -376,7 +409,7 @@ int get_type_rank(TypeRef t) {
         case Type_f32: return 32;
         case Type_f64: return 64;
         default: 
-            XP_ASSERT_DEFAULT(0);
+            UNREACHABLE();
             return 0;
     }
 }
@@ -445,8 +478,41 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
     return overflowed;
 }
 
+bool check_integer_overflow(i128 val, TypeRef type) {
+    XP_ASSERT_DEFAULT(is_integer_type(type));
 
+    switch(type->kind) {
+        case Type_i8:
+            return (val < INT8_MIN || val > INT8_MAX);
+        case Type_i32:
+            return (val < INT32_MIN || val > INT32_MAX);
+        case Type_i64:
+            return (val < INT64_MIN || val > INT64_MAX);
+        case Type_u8:
+            return (val < 0 || val > UINT8_MAX);
+        case Type_u32:
+            return (val < 0 || val > UINT32_MAX);
+        case Type_u64:
+            return (val < 0 || val > UINT64_MAX);
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
 
+bool check_float_overflow(double val, TypeRef type) {
+    XP_ASSERT_DEFAULT(is_float_type(type));
+
+    switch(type->kind) {
+        case Type_f32:
+            return (val < -FLT_MAX || val > FLT_MAX);
+        case Type_f64:
+            return (val < -DBL_MAX || val > DBL_MAX);
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
 
 
 
@@ -540,40 +606,6 @@ static TypeTable global_type_table;
 
 void init_type_table(Context *ctx) {
     xp_interning_table_init(&global_type_table.type_interning_table);
-
-
-    //
-    // 预定义类型
-    //
-
-    // 字符串结构体
-
-    // TODO 移到公共位置, 这里属于API, 不处理特殊类型定义
-    // {
-    //     xpString string_struct_name = xp_string_c("string");
-
-    //     Array<StructField> fields = make_array<StructField>(temp_allocator());
-    //     defer(xp_arena_allocator_clear(temp_allocator()));
-
-    //     array_push_back(&fields, StructField { 
-    //         xp_string_c("data"), 
-    //         pointer_type(easy_type(Type_u8)) 
-    //     });
-    //     array_push_back(&fields, StructField { 
-    //         xp_string_c("count"), 
-    //         easy_type(Type_i64) // TODO 考虑改成isize
-    //     });
-
-    //     TypeRef string_struct_typeref = add_struct_type(string_struct_name, fields);
-
-    //     // 符号表
-    //     SymbolInfo string_struct_symbol;
-    //     string_struct_symbol.name = string_struct_name;
-    //     string_struct_symbol.type = string_struct_typeref;
-    //     string_struct_symbol.kind = SymbolKind::StructDecl;
-    //     // add_symbol(symbol_table(), string_struct_symbol.name, string_struct_symbol);
-    //     add_symbol_to_scope(&ctx->global_scope, string_struct_name, string_struct_symbol);
-    // }
 }
 
 
@@ -633,6 +665,22 @@ TypeRef unfinished_struct_type(Package *pkg, xpString ident) {
     TypeRef type_ref = get_or_add_type(t);
 
     return type_ref;
+}
+
+TypeRef type_type(TypeRef self_type_info) {
+    Type t = {};
+    t.kind = Type_type;
+    t.self_type_info = self_type_info;
+
+    return get_or_add_type(t);
+}
+
+TypeRef package_type(Package *package_info) {
+    Type t = {};
+    t.kind = Type_package;
+    t.package_info = package_info;
+
+    return get_or_add_type(t);
 }
 
 
@@ -916,6 +964,22 @@ usize xp_hash_func(Type *type) {
             return cast(usize)(hash_value);
 
         } break;
+
+        case Type_type: {
+            u64 hash_type = Type_type;
+            u64 hash_self_type_info = cast(u64)(xp_hash_func(type->self_type_info));
+            u64 hash_value = xp_hash_combine_u64(hash_type, hash_self_type_info);
+            return cast(usize)(hash_value);
+        } break;
+
+
+        case Type_package: {
+            u64 hash_package = Type_package;
+            u64 hash_package_info = cast(u64)(xp_hash_func(&type->package_info->path));
+            u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
+            return cast(usize)(hash_value);
+        } break;
+
 
         default: {
             XP_ASSERT_DEFAULT(0);

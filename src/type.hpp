@@ -23,6 +23,8 @@
     TYPE_KIND(untyped_int, "untyped_int")               \
     TYPE_KIND(untyped_float, "untyped_float")           \
                                                         \
+    TYPE_KIND(type, "type")                             \
+    TYPE_KIND(package, "package")                       \
                                                         \
     TYPE_KIND(error, "error")                           \
 /**/
@@ -51,12 +53,6 @@ struct Package;
 
 struct Ast;
 
-enum class ResolveState {
-    Unresolved,   // 还未解析
-    Resolving,    // 正在解析中
-    Resolved,     // 已经解析完毕
-};
-
 
 struct Type {
     TypeKind kind;
@@ -77,10 +73,7 @@ struct Type {
         struct {
             Package *pkg;
             Array<StructField> struct_fields;
-
-            ResolveState resolve_state;
             Ast *decl_ast;
-
         } struct_info;
 
         
@@ -90,6 +83,13 @@ struct Type {
             TypeRef element_type;
             usize count;
         } array_info;
+
+
+        // 元类型
+        TypeRef self_type_info;
+
+        // package类型
+        Package *package_info;
     };
 
     // *重要: 用于hash set比较Type, 不然会出问题
@@ -134,18 +134,24 @@ Type make_struct_type(xpString name, Array<StructField> fields);
 
 // bool is_equal_type(Type a, Type b);
 bool is_integer_type(TypeRef type);
+bool is_integer_or_untyped_type(TypeRef type);
 bool is_integer_or_bool_type(TypeRef type);
 bool is_signed_type(TypeRef type);
 bool is_signed_or_bool_type(TypeRef type);
 bool is_unsigned_type(TypeRef type);
 bool is_float_type(TypeRef type);
+bool is_float_or_untyped_type(TypeRef type);
 bool is_certain_type(TypeRef type);
 bool is_untyped_type(TypeRef type);
+bool is_function_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
 bool is_array_type(TypeRef type);
+bool is_type_type(TypeRef type);
+bool is_package_type(TypeRef type);
 bool is_slice_struct_type(TypeRef type);
 bool is_string_struct_type(TypeRef type);
+bool is_value_type(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -158,7 +164,8 @@ TypeRef get_common_type(TypeRef a, TypeRef b);
 
 
 bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult);
-
+bool check_integer_overflow(i128 val, TypeRef type);
+bool check_float_overflow(double val, TypeRef type);
 
 
 
@@ -192,6 +199,8 @@ TypeRef pointer_type(TypeRef pointed_type);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
 TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields);
+TypeRef type_type(TypeRef self_type_info);
+TypeRef package_type(Package *package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 

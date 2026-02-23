@@ -25,7 +25,7 @@ enum class PackageState {
 
 
 
-void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imports);
+void collect_all_imports_in_ast_file(AstFile ast_file, Array<xpPair<xpString, xpString>> *imported_packages);
 AstFile tokenize_and_parse_file(const char *path, Scope *parent);
 Array<Package> resolve_dependencies(xpString main_dir_path);
 Package tokenize_and_parse_package(const char *path_of_package_dir);
@@ -64,12 +64,18 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
 
 
 
-void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imports) {
+void collect_all_imports_in_ast_file(AstFile ast_file, Array<xpPair<xpString, xpString>> *imported_packages) {
     for(isize i = 0; i < ast_file.top_levels.count; i++) {
         Ast *top_level = ast_file.top_levels[i];
-        if(top_level->type == AstType_Import) {
-            array_push_back(imports, top_level);
-        }    
+
+        xpPair<xpString, xpString> import_info;
+        if(top_level->type == AstType_ConstDecl && top_level->ConstDecl.value_ast->type == AstType_Import) {
+            import_info = xp_make_pair(top_level->ConstDecl.name, top_level->ConstDecl.value_ast->Import.path);
+        } else {
+            continue;
+        }
+
+        array_push_back(imported_packages, import_info);
     }    
 }
 
@@ -230,15 +236,12 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
 Array<xpString> resolve_import_paths(AstFile ast_file) {
     xpString file_path = ast_file.source_code.file_path;
 
-    Array<Ast *> imports = make_array<Ast *>(stage_allocator());
+    Array<xpPair<xpString, xpString>> imports = make_array<xpPair<xpString, xpString>>(stage_allocator());
     collect_all_imports_in_ast_file(ast_file, &imports);
 
     Array<xpString> imported_paths = make_array<xpString>(stage_allocator());
     for(isize i = 0; i < imports.count; i++) {
-        Ast *import_ast = imports[i];
-        xpString import_path = import_ast->Import.path;
-    
-        array_push_back(&imported_paths, import_path);
+        array_push_back(&imported_paths, imports[i].second);
     }
 
     return imported_paths;

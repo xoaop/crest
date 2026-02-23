@@ -180,16 +180,6 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
 
-        case AstType_Function: {
-            print_line(depth + 1, false, "name: %s", a->Function.name.c_str);
-            print_line(depth + 1, false, "params:");
-            print_ast(a->Function.params, depth + 2, false);
-            print_line(depth + 1, true, "body:");
-            print_ast(a->Function.block, depth + 2, true);
-            print_ast(a->Function.return_type_ast, depth + 2, true);
-            break;
-        }
-
         case AstType_Block: {
             print_ast(a->Block.statements, depth + 1, true);
             break;
@@ -292,13 +282,6 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
 
-        case AstType_StructDecl: {
-            print_line(depth + 1, false, "name: %s", a->StructDecl.name.c_str);
-            print_line(depth + 1, true, "fields:");
-            print_ast(a->StructDecl.fields, depth + 2, true);
-            break;
-        }
-
         case AstType_StructField: {
             print_line(depth + 1, false, "name: %s", a->StructField.name.c_str);
             print_line(depth + 1, true, "type:");
@@ -353,13 +336,49 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             print_line(depth + 1, true, "name: %s", a->Ident.name.c_str);
             break;
         }
+
+        case AstType_ConstDecl: {
+            print_line(depth + 1, false, "name: %s", a->ConstDecl.name.c_str);
+            print_line(depth + 1, true, "value:");
+            print_ast(a->ConstDecl.value_ast, depth + 2, true);
+            break;
+        }
+
+        case AstType_FunctionDeclValue: {
+            print_line(depth + 1, false, "params:");
+            print_ast(a->FunctionDeclValue.params, depth + 2, true);
+            print_line(depth + 1, true, "body:");
+            print_ast(a->FunctionDeclValue.block, depth + 2, true);
+            break;
+        }
+
+        case AstType_StructDeclValue: {
+            print_line(depth + 1, true, "fields:");
+            print_ast(a->StructDeclValue.fields, depth + 2, true);
+            break;
+        }
+
+        case AstType_Import: {
+            print_line(depth + 1, true, "path: %s", a->Import.path.c_str);
+            break;
+        }
+
+
         case AstType_Break:
         case AstType_Continue:
             break;
         
 
+        case AstType_BadDecl: 
+        case AstType_BadStmt:
+        case AstType_BadExpr:
+        case AstType_BadType:
+            print_line(depth + 1, true, "(bad node)");
+            break;
+
         default:
-            // 可选：打印未知节点
+            // 未实现就报错
+            UNREACHABLE();
             break;
     }
 }

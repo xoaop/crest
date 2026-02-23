@@ -60,6 +60,11 @@ xp_internal b32 is_letter_or_digit(char c) {
     return isalnum(cast(u8)c) || c == '_';
 }
 
+bool is_number(char c) {
+    return c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9';
+}
+
+
 
 xp_internal const char *get_token_str(TokenType type) {
     return token_strings[type];
@@ -181,6 +186,12 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         case '-':
             token.type = TokenType::Minus;
             advance_one_character(t);
+
+            if(is_number(tokenizer_curr_character(t))) {
+                tokenizer_scan_number(t, &token, old_index);
+                break;
+            }
+
 
             if(tokenizer_curr_character(t) == '>') {
                 token.type = TokenType::Arrow;
@@ -489,9 +500,6 @@ isize tokenizer_try_to_fix(Tokenizer *t, const char *str) {
     return i;
 }
 
-bool is_number(char c) {
-    return c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9';
-}
 
 
 void tokenizer_scan_pure_integer_seq(Tokenizer *t) {

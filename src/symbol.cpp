@@ -5,21 +5,13 @@
 // SymbolInfo, etc.
 //
 
-// SymbolInfo make_symbol_info(SymbolType type) {
-//     SymbolInfo info = {};
-//     info.type = type;
-//     return info;
-// }
-
-bool is_equal_symbol_info(SymbolInfo a, SymbolInfo b) {
-    if(xp_string_cmp(a.name, b.name) != 0) {
-        return false;
-    }
-
-    return a.type == b.type;
+SymbolInfo make_symbol(xpString name, Value value, Package *package) {
+    SymbolInfo info = {};
+    info.name = name;
+    info.value = value;
+    info.package = package;
+    return info;
 }
-
-
 
 
 //

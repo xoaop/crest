@@ -1,16 +1,16 @@
 #include "analyser.hpp"
 
 
-struct Value {
+struct Valuee {
     enum class Type {
         Integer,
         Float,
     } type;
 
-    static Value make(i128 val);
-    static Value make(double val);
+    static Valuee make(i128 val);
+    static Valuee make(double val);
 
-    Value() = default;
+    Valuee() = default;
 
     Type get_type() const;
     i128 get_as_integer() const;

@@ -33,6 +33,10 @@ enum class ScopeType {
 };
 
 struct Scope {
+
+    
+
+
     ScopeType scope_type;
 
     SymbolTable symbols;
@@ -46,10 +50,10 @@ void free_scope(Scope *scope);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
-SymbolInfo *find_symbol_in_curr_scope(Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_in_scope_list_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_in_scope_list(Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_in_curr_scope_with_kind(Scope *scope, xpString symbol_ident, SymbolKind symbol_kind);
-SymbolInfo *find_symbol_in_scope_list_until_with_kind(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, SymbolKind symbol_kind);
+SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);
+SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind);
+SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind);
 
 #endif
