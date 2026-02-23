@@ -29,7 +29,7 @@ Value make_value() {
     v.type = undefined_type();
     v.state = ValueState::Unsolved;
     v.is_runtime_value = false;
-    v.error_kind = ValueErrorKind::Other;
+    // v.error_kind = ValueErrorKind::Other;
 
     return v;
 }
@@ -60,9 +60,8 @@ Value make_value(TypeRef type, bool is_runtime) {
     return v;
 }
 
-Value make_error_value(ValueErrorKind error_kind) {
+Value make_error_value() {
     Value v = make_value(ValueState::Error);
-    v.error_kind = error_kind;
     v.type = error_type();
     return v;
 }

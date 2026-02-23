@@ -42,6 +42,23 @@ void bind_ast_with_scope(Ast *ast, Scope *scope) {
 
 
 
+void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser);
+
+SymbolInfo *find_symbol_until_and_solve_unsolved(ScopeType until_scope_type, Scope *scope, xpString symbol_ident, Analyser analyser) {
+    SymbolInfo *symbol_info = find_symbol_until(until_scope_type, scope, symbol_ident);
+    if(symbol_info != NULL && symbol_info->value.state == ValueState::Unsolved) {
+        eval_unsolved_in_symbol_table(symbol_info, analyser);
+    }
+
+    return symbol_info;
+}
+
+SymbolInfo *find_symbol_until_global_and_solve_unsolved(Scope *scope, xpString symbol_ident, Analyser analyser) {
+    return find_symbol_until_and_solve_unsolved(ScopeType::Global, scope, symbol_ident, analyser);
+}
+
+
+
 
 //
 // Analyser
@@ -446,7 +463,7 @@ Value eval_import_value(Ast *import_ast, Analyser analyser) {
             "imported package '%s' not found",
             import_ast->Import.path.c_str
         );    
-        return make_error_value(ValueErrorKind::Other);
+        return make_error_value();
     }    
 
     Value import_value = make_comptime_sovled_val(package_type(imported_package));
@@ -512,6 +529,7 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
 
         if(field_type == error_type()) {
             struct_symbol_info->value.set_type(error_type());
+            struct_symbol_info->value.set_value_state(ValueState::Error);
             break;
         }
 
@@ -534,25 +552,28 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
 // Evaluate constexpr values
 //
 
-Value eval_comptime_expr(Ast *expr, Analyser analyser);
+ValueResult eval_comptime_expr(Ast *expr, Analyser analyser);
  
 Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
     resolve_expr(expr, analyser);
     infer_expr_type(expr, false, NULL, analyser, true);
 
     if(expr->v_type == error_type()) {
-        return make_error_value(ValueErrorKind::TypeError);
+        return make_error_value();
     }
 
-    Value result = eval_comptime_expr(expr, analyser);
+    ValueResult result = eval_comptime_expr(expr, analyser);
+
+    if(result.is_err()) {
+        return make_error_value();
+    }
     
-    return result;
+    return result.as_ok();
 }
 
 
 
-Value eval_comptime_expr(Ast *expr, Analyser analyser) {
-    Value result = make_comptime_sovled_val(undefined_type());
+ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
 
     switch(expr->type) {
         case AstType_Ident: {
@@ -563,8 +584,7 @@ Value eval_comptime_expr(Ast *expr, Analyser analyser) {
                     "undefined symbol '%s'",
                     expr->Ident.name.c_str
                 );    
-                result = make_error_value(ValueErrorKind::Other);
-                break;
+                return ValueResult::err(ValueErrorKind::ErrorValue);
             }
 
             Value value = info->value;
@@ -572,18 +592,22 @@ Value eval_comptime_expr(Ast *expr, Analyser analyser) {
                 eval_unsolved_in_symbol_table(info, analyser);
             }
 
+            if(value.has_error()) {
+                return ValueResult::err(ValueErrorKind::ErrorValue);
+            }
 
             if(value.is_runtime_value) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
                     "cannot use runtime value '%s' in constant expression",
                     expr->Ident.name.c_str
-                );    
-                result = make_error_value(ValueErrorKind::UsingRuntimeValue);
-                break;
+                );
+                return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
             }
 
-            result = value;
+
+
+            return ValueResult::ok(value);
         } break;
 
         case AstType_Constant: {
@@ -603,34 +627,55 @@ Value eval_comptime_expr(Ast *expr, Analyser analyser) {
                 UNREACHABLE();
             }
 
-            result = const_value;
+            return ValueResult::ok(const_value);
         } break;
 
 
         case AstType_BinaryExpr: {
-            Value left = eval_comptime_expr(expr->BinaryExpr.left, analyser);
-            Value right = eval_comptime_expr(expr->BinaryExpr.right, analyser);
-            result = eval_binary_expr(left, right, expr->BinaryExpr.op);
+            ValueResult left_result = eval_comptime_expr(expr->BinaryExpr.left, analyser);
+            ValueResult right_result = eval_comptime_expr(expr->BinaryExpr.right, analyser);
+            if(left_result.is_err()) {
+                return left_result;
+            }
+            if(right_result.is_err()) {
+                return right_result;
+            }
 
-            if(result.state == ValueState::Error) {
+            Value left = left_result.as_ok();
+            Value right = right_result.as_ok();
+
+            ValueResult compute_result = eval_binary_expr(left, right, expr->BinaryExpr.op);
+
+            if(compute_result.is_err()) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
                     "invalid constant expression"
-                );    
+                );
             }
+            
+            return compute_result;
 
         } break;
 
         case AstType_UnaryExpr: {
-            Value operand = eval_comptime_expr(expr->UnaryExpr.operand, analyser);
-            result = eval_unary_expr(operand, expr->UnaryExpr.op);
+            ValueResult operand_result = eval_comptime_expr(expr->UnaryExpr.operand, analyser);
 
-            if(result.state == ValueState::Error) {
+            if(operand_result.is_err()) {
+                return operand_result;
+            }
+            Value operand = operand_result.as_ok();
+
+            ValueResult compute_result = eval_unary_expr(operand, expr->UnaryExpr.op);
+
+            if(compute_result.is_err()) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
                     "invalid constant expression"
                 );    
             }
+
+            return compute_result;
+
         } break;
 
         default: {
@@ -638,12 +683,10 @@ Value eval_comptime_expr(Ast *expr, Analyser analyser) {
                 expr->span, analyser.curr_ast_file->source_code,
                 "unsupported expression in constant expression evaluation"
             );    
-            result = make_error_value(ValueErrorKind::Other);
+            return ValueResult::err(ValueErrorKind::ErrorValue);
         } break;
 
     }
-
-    return result;
 }
 
 
