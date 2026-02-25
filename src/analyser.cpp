@@ -44,6 +44,27 @@ Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg) {
 }
 
 
+Analyser Analyser::set_pkg(Package *pkg) {
+    this->pkg = pkg;
+    return *this;
+}
+
+Analyser Analyser::set_current_scope(Scope *current_scope) {
+    this->current_scope = current_scope;
+    return *this;
+}
+
+Analyser Analyser::set_curr_ast_file(AstFile *curr_ast_file) {
+    this->curr_ast_file = curr_ast_file;
+    return *this;
+}
+
+Analyser Analyser::set_curr_func(Ast *curr_func) {
+    this->curr_func = curr_func;
+    return *this;
+}
+
+
 
 void bind_ast_with_scope(Ast *ast, Scope *scope) {
     xp_hash_map_insert(&context()->ast_scope_map, ast, scope);
@@ -551,7 +572,7 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
 // Evaluate constexpr values
 //
 
-ValueResult eval_comptime_expr(Ast *expr, Analyser analyser);
+ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool for_var_expr = false);
  
 Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
     resolve_expr(expr, analyser);
@@ -572,7 +593,7 @@ Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
 
 
 
-ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
+ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool for_var_expr) {
 
     switch(expr->type) {
         case AstType_Ident: {
@@ -585,16 +606,16 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
                 );    
                 return ValueResult::err(ValueErrorKind::ErrorValue);
             }
-            if(info->value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(info, analyser);
-            }
+            // if(info->value.state == ValueState::Unsolved) {
+            //     eval_unsolved_in_symbol_table(info, analyser);
+            // }
 
 
 
             Value value = info->value;
-            // if(value.state == ValueState::Unsolved) {
-            //     eval_unsolved_in_symbol_table(info, analyser);
-            // }
+            if(value.state == ValueState::Unsolved) {
+                eval_unsolved_in_symbol_table(info, analyser);
+            }
 
             if(value.has_error()) {
                 return ValueResult::err(ValueErrorKind::ErrorValue);
@@ -727,11 +748,31 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
 
         } break;
 
+        case AstType_ArrayInitExpr: {
+            context()->reporter.report(
+                ErrorLevel::Warning,
+                expr->span, analyser.curr_ast_file->source_code,
+                "array initialization is not supported in constant expression"
+            );
+
+            return ValueResult::err(ValueErrorKind::ErrorValue);
+        } break;
+
+        case AstType_StructInitExpr: {
+            context()->reporter.report(
+                ErrorLevel::Warning,
+                expr->span, analyser.curr_ast_file->source_code,
+                "struct initialization is not supported in constant expression"
+            );
+
+            return ValueResult::err(ValueErrorKind::ErrorValue);
+        } break;
+
         default: {
             context()->reporter.report_error(
                 expr->span, analyser.curr_ast_file->source_code,
                 "unsupported expression in constant expression evaluation"
-            );    
+            );
             return ValueResult::err(ValueErrorKind::ErrorValue);
         } break;
 
@@ -905,8 +946,11 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 
     SymbolInfo *exist = find_symbol_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
     if(exist != NULL) {
-        // TODO error msg
-        UNREACHABLE();
+        context()->reporter.report_error(
+            const_decl_ast->span, analyser.curr_ast_file->source_code,
+            "symbol '%s' already declared in the same scope",
+            const_decl_ast->ConstDecl.name.c_str
+        );
     }
 
 
@@ -918,8 +962,11 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
     Value val = resolve_comptime_expr(val_ast, analyser);
 
     if(val.has_error()) {
-        // TODO error msg
-        UNREACHABLE();
+        context()->reporter.report_error(
+            val_ast->span, analyser.curr_ast_file->source_code,
+            "invalid constant expression"
+        );
+        return;
     }
 
 
@@ -989,12 +1036,14 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
                 "variable '%s' has invalid initializer which type is illegal",
                 var_decl_ast->VariableDecl.var_name.c_str
             );
-        } else {
-            // TODO 用现有的eval_comptime_expr代替
-            // try_constant_expr_folding(var_decl_ast->VariableDecl.expr);
-        }
 
-    } else {
+            return;
+        } 
+        
+        // TODO 用现有的eval_comptime_expr代替, 添加针对var_decl的特殊处理, 以支持更多的表达式类型
+        // 目前存在报错重复, 诸如array init, struct init等不支持
+        // ValueResult try_const_val = eval_comptime_expr(var_decl_ast->VariableDecl.expr, analyser);
+        // TODO: 如果值无问题, 尝试记录下来, 以便后续编译优化使用
     }
 
     // 注意这里如果发生重复定义, 不会覆盖掉原来的符号

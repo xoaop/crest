@@ -14,6 +14,13 @@
 
 struct Analyser {    
 
+    Analyser set_pkg(Package *pkg);
+    Analyser set_current_scope(Scope *current_scope);
+    Analyser set_curr_ast_file(AstFile *curr_ast_file);
+    Analyser set_curr_func(Ast *curr_func);
+
+
+
     Array<Package> *all_packages;
 
     Package *pkg;

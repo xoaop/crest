@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
     
     context()->reporter.print_msg();
 
-    if(context()->reporter.error_msgs.count > 0) {
+    if(context()->reporter.error_count > 0) {
         // 如果有错误信息, 就不继续生成IR了
         return -1;
     }
