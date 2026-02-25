@@ -365,10 +365,16 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
 
+        case AstType_StringLiteralExpr: {
+            print_line(depth + 1, true, "value: %s", a->StringLiteralExpr.str.c_str);
+            break;
+        }
+
 
         case AstType_Break:
         case AstType_Continue:
             break;
+
         
 
         case AstType_BadDecl: 
