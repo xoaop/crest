@@ -34,6 +34,15 @@ Analyser make_analyser(Scope *curr_scope, Package *pkg) {
     return analyser;
 }
 
+Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg) {
+    Analyser analyser = {};
+    analyser.current_scope = curr_scope;
+    analyser.curr_ast_file = file;
+    analyser.pkg = pkg;
+
+    return analyser;
+}
+
 
 
 void bind_ast_with_scope(Ast *ast, Scope *scope) {
@@ -43,20 +52,6 @@ void bind_ast_with_scope(Ast *ast, Scope *scope) {
 
 
 void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser);
-
-SymbolInfo *find_symbol_until_and_solve_unsolved(ScopeType until_scope_type, Scope *scope, xpString symbol_ident, Analyser analyser) {
-    SymbolInfo *symbol_info = find_symbol_until(until_scope_type, scope, symbol_ident);
-    if(symbol_info != NULL && symbol_info->value.state == ValueState::Unsolved) {
-        eval_unsolved_in_symbol_table(symbol_info, analyser);
-    }
-
-    return symbol_info;
-}
-
-SymbolInfo *find_symbol_until_global_and_solve_unsolved(Scope *scope, xpString symbol_ident, Analyser analyser) {
-    return find_symbol_until_and_solve_unsolved(ScopeType::Global, scope, symbol_ident, analyser);
-}
-
 
 
 
@@ -143,7 +138,7 @@ SymbolInfo *find_symbol_by_ident_or_fieldaccess(Ast *ident_ast, Analyser analyse
             SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, field_name);
 
             if(field_sym != NULL && field_sym->value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(field_sym, analyser);
+                eval_unsolved_in_symbol_table(field_sym, make_analyser(&field_sym->package->package_scope, field_sym->file, field_sym->package));
             }
 
             return field_sym;
@@ -239,13 +234,15 @@ void collect_symbols_in_all_packages(Array<Package> *all_packages) {
         });    
 
         TypeRef string_struct_typeref = struct_type(&context()->global_blank_package, string_struct_name, fields);
+        TypeRef string_type = type_type(string_struct_typeref);
 
         // 符号表
         SymbolInfo string_struct_symbol = make_symbol(
             string_struct_name, 
-            make_comptime_sovled_val(string_struct_typeref), 
-            &context()->global_blank_package
-        );    
+            make_comptime_sovled_val(string_type),
+            &context()->global_blank_package,
+            NULL
+        );
         add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
     }
 
@@ -335,7 +332,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
     // }
 
 
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, new_value, analyser.pkg);
+    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, new_value, analyser.pkg, analyser.curr_ast_file);
     if(value_ast->type == AstType_Import) {
         add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
     } else {
@@ -363,7 +360,7 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser) {
 
     Value new_value = make_value().set_is_runtime(true).set_value_state(ValueState::Unsolved);
     new_value.val_ast = var_decl_ast;
-    SymbolInfo new_symbol = make_symbol(var_decl_ast->VariableDecl.var_name, new_value, analyser.pkg);
+    SymbolInfo new_symbol = make_symbol(var_decl_ast->VariableDecl.var_name, new_value, analyser.pkg, analyser.curr_ast_file);
     add_symbol_to_scope(&analyser.pkg->package_scope, var_decl_ast->VariableDecl.var_name, new_symbol);
 
     return;
@@ -415,6 +412,7 @@ void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
 
     const_val->set_value_state(ValueState::Solving);
 
+    // TODO: 避免const_val->val_ast被新值覆盖, llvm ir生成要用
     switch(val_ast->type) {
     case AstType_StructDeclValue: 
         eval_struct_decl_value_in_symbol_table(unsolved_symbol, analyser);
@@ -422,6 +420,7 @@ void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
 
     case AstType_FunctionDeclValue: 
         *const_val = eval_function_decl_value(val_ast, analyser);
+        const_val->val_ast = const_decl_ast;
         break;
 
     case AstType_Import: 
@@ -586,11 +585,16 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
                 );    
                 return ValueResult::err(ValueErrorKind::ErrorValue);
             }
-
-            Value value = info->value;
-            if(value.state == ValueState::Unsolved) {
+            if(info->value.state == ValueState::Unsolved) {
                 eval_unsolved_in_symbol_table(info, analyser);
             }
+
+
+
+            Value value = info->value;
+            // if(value.state == ValueState::Unsolved) {
+            //     eval_unsolved_in_symbol_table(info, analyser);
+            // }
 
             if(value.has_error()) {
                 return ValueResult::err(ValueErrorKind::ErrorValue);
@@ -611,23 +615,68 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser) {
         } break;
 
         case AstType_Constant: {
-            // Value const_value = make_value()
-            // .set_is_runtime(false)
-            // .set_type(expr->v_type)
-            // .set_value_state(ValueState::Solved);
-            
-
-            // if(is_integer_or_untyped_type(expr->v_type)) {
-            //     const_value.integer_value = expr->Constant.value;
-            // } else if(is_float_or_untyped_type(expr->v_type)) {
-            //     const_value.float_value = expr->Constant.float_value;
-            // } else if(expr->v_type == easy_type(Type_bool)) {
-            //     const_value.bool_value = cast(bool)expr->Constant.value;
-            // } else {
-            //     UNREACHABLE();
-            // }
-
             return ValueResult::ok(expr->Constant.value);
+        } break;
+
+        case AstType_FieldAccess: {
+            ValueResult parent_result = eval_comptime_expr(expr->FieldAccess.parent, analyser);
+            if(parent_result.is_err()) {
+                return parent_result;
+            }
+            Value parent_value = parent_result.as_ok();
+
+            if(parent_value.has_error()) {
+                return ValueResult::err(ValueErrorKind::ErrorValue);
+            }
+
+            if(parent_value.is_runtime_value) {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "cannot use runtime value in constant expression"
+                );
+                return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
+            }
+
+            if(is_package_type(parent_value.type)) {
+                Package *pkg = get_package_value(parent_value);
+                SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, expr->FieldAccess.field_name);
+                
+                if(field_sym == NULL) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "symbol '%s' not found in package '%s'",
+                        expr->FieldAccess.field_name.c_str,
+                        pkg->path.c_str
+                    );
+                    return ValueResult::err(ValueErrorKind::ErrorValue);
+                }
+
+                if(field_sym->value.state == ValueState::Unsolved) {
+                    eval_unsolved_in_symbol_table(field_sym, make_analyser(&field_sym->package->package_scope, field_sym->file, field_sym->package));
+                }
+
+                if(field_sym->value.has_error()) {
+                    return ValueResult::err(ValueErrorKind::ErrorValue);
+                }
+
+                if(field_sym->value.is_runtime_value) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "cannot use runtime value in constant expression"
+                    );
+                    return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
+                }
+
+                return ValueResult::ok(field_sym->value);
+            } else {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "only package can be accessed with field access in constant expression"
+                );
+                return ValueResult::err(ValueErrorKind::ErrorValue);
+            }
+
+
         } break;
 
 
@@ -765,8 +814,8 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             break;
         }
 
-        // 函数要单独解析block
-        if(is_function_type(const_info->value.type)) {
+        // 函数(原始定义, 不是重命名)要单独解析block
+        if(ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue) {
             ast->v_type = const_info->value.type;
             resolve_function_decl(ast, analyser);
         }
@@ -810,17 +859,17 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
         resolve_var_decl(param_ast, new_sc);
     }
 
-
-    
-    resolve_block(value_ast->FunctionDeclValue.block, new_sc, true);
-    
-    if(may_fall_through(value_ast->FunctionDeclValue.block)) {
-        // TODO
-        context()->reporter.report_error(
-            value_ast->FunctionDeclValue.block->span, analyser.curr_ast_file->source_code,
-            "function body may fall through without returning"
-        );
+    if(value_ast->FunctionDeclValue.block != NULL) {
+        resolve_block(value_ast->FunctionDeclValue.block, new_sc, true);
+        if(may_fall_through(value_ast->FunctionDeclValue.block)) {
+            // TODO
+            context()->reporter.report_error(
+                value_ast->FunctionDeclValue.block->span, analyser.curr_ast_file->source_code,
+                "function body may fall through without returning"
+            );
+        }
     }
+
 }    
 
 
@@ -874,7 +923,7 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
     }
 
 
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, val, analyser.pkg);
+    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, val, analyser.pkg, analyser.curr_ast_file);
     add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
 }
 
@@ -950,7 +999,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
     // 注意这里如果发生重复定义, 不会覆盖掉原来的符号
     Value var_val = make_value_for_var_decl(var_decl_ast->v_type);
-    SymbolInfo info = make_symbol(var_decl_ast->VariableDecl.var_name, var_val, analyser.pkg);
+    SymbolInfo info = make_symbol(var_decl_ast->VariableDecl.var_name, var_val, analyser.pkg, analyser.curr_ast_file);
     add_symbol_to_scope(analyser.current_scope, var_decl_ast->VariableDecl.var_name, info);
 
     return;
@@ -1220,7 +1269,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
                 }
 
                 if(field_symbol != NULL && field_symbol->value.state == ValueState::Unsolved) {
-                    eval_unsolved_in_symbol_table(field_symbol, analyser);
+                    eval_unsolved_in_symbol_table(field_symbol, make_analyser(&field_symbol->package->package_scope, field_symbol->file, field_symbol->package));
                 }
 
                 expr_ast->ast_symbol = field_symbol; // 记录一下符号表信息, 方便后续类型检查阶段使用
@@ -1372,7 +1421,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
 
             if(type_symbol_info->value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(type_symbol_info, make_analyser(analyser.curr_ast_file, imported_package, analyser.all_packages));
+                eval_unsolved_in_symbol_table(type_symbol_info, make_analyser(&type_symbol_info->package->package_scope, type_symbol_info->file, type_symbol_info->package));
             } else if(type_symbol_info->value.state == ValueState::Solving) {
                 // 循环依赖, 报错
                 context()->reporter.report_error(

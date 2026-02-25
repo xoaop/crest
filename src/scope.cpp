@@ -25,7 +25,7 @@ void free_scope(Scope *scope) {
 
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type) {
-    Scope *upper = scope->parent;
+    Scope *upper = scope;
     while (upper != NULL) {
         if(upper->scope_type == type) {
             return upper;

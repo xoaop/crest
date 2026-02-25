@@ -5,11 +5,12 @@
 // SymbolInfo, etc.
 //
 
-SymbolInfo make_symbol(xpString name, Value value, Package *package) {
+SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file) {
     SymbolInfo info = {};
     info.name = name;
     info.value = value;
     info.package = package;
+    info.file = file;
     return info;
 }
 

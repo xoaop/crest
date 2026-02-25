@@ -49,9 +49,6 @@ struct LLVMGenerator {
     
     Package *pkg;
 
-    // TODO: replace bu IRScope *curr_ir_scope
-    Scope *curr_file_scope;
-    xpHashMap<xpString, LLVMValueRef> locals;
     
 
     IRScope *curr_ir_scope;
@@ -117,9 +114,26 @@ LLVMValueRef look_up_local_vals(IRScope *ir_scope, SymbolInfo *symbol_info) {
     return NULL;
 }
 
+IRScope *climb_to_spec_scope(IRScope *ir_scope, ScopeType spec_type) {
+    IRScope *curr_scope = ir_scope;
+    while(curr_scope != NULL) {
+        if(curr_scope->scope->scope_type == spec_type) {
+            return curr_scope;
+        }
+        curr_scope = curr_scope->parent;
+    }
+    return NULL;
+}
+
 LLVMValueRef *add_local_val(IRScope *ir_scope, SymbolInfo *symbol_info, LLVMValueRef val) {
     return xp_hash_map_insert(&ir_scope->local_vals, symbol_info, val);
 }
+
+
+LLVMValueRef *add_local_val_spec_scope(IRScope *ir_scope, ScopeType scope_type, SymbolInfo *symbol_info, LLVMValueRef val) {
+    return xp_hash_map_insert(&climb_to_spec_scope(ir_scope, scope_type)->local_vals, symbol_info, val);
+}
+
 
 
 
@@ -169,7 +183,6 @@ void init_llvm_generator(LLVMGenerator *gen, Package *pkg, xpAllocator allocator
 
 
 
-    gen->locals = xp_hash_map_make<xpString, LLVMValueRef>(allocator);
 
     gen->loop_stack = make_array<LLVMLoopBlocks>(allocator);
 
@@ -190,7 +203,6 @@ void free_llvm_generator(LLVMGenerator *gen) {
     LLVMDisposeTargetData(gen->target_data);
     LLVMDisposeTargetMachine(gen->target_machine);
 
-    xp_hash_map_free(gen->locals);
     array_free(&gen->loop_stack);
     xp_hash_map_free(gen->struct_types);
     return;
@@ -226,14 +238,15 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
 
 
 
-TypeRef get_extern_func_type_by_full_ident_ast(Ast *field_access, LLVMGenerator *gen) {
+SymbolInfo *get_extern_func_sym_by_full_ident_ast(Ast *field_access, LLVMGenerator *gen) {
     XP_ASSERT_DEFAULT(field_access->type == AstType_FieldAccess);
 
     xpString parent_name = field_access->FieldAccess.parent->Ident.name;
     xpString field_name = field_access->FieldAccess.field_name;
 
-    SymbolInfo *import_symbol = find_symbol_curr_spec_v(
-        gen->curr_file_scope,
+    SymbolInfo *import_symbol = find_symbol_until_spec_v(
+        ScopeType::File,
+        gen->curr_ir_scope->scope,
         parent_name,
         Type_package
     );
@@ -246,9 +259,9 @@ TypeRef get_extern_func_type_by_full_ident_ast(Ast *field_access, LLVMGenerator 
         field_name,
         Type_function
     );
+    XP_ASSERT_DEFAULT(func_symbol != NULL);
 
-
-    return func_symbol->value.type;
+    return func_symbol;
 }
 
 
@@ -273,71 +286,18 @@ LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value) {
 }
 
 
-
-xpString get_func_full_name(Ast *func_decl_or_call, LLVMGenerator *gen) {
-
-    Package *pkg_of_func = gen->pkg;
-    xpString func_name;
-
-    bool is_extern_c = false;
-
-    if(func_decl_or_call->type == AstType_ConstDecl && func_decl_or_call->ConstDecl.value_ast->type == AstType_FunctionDeclValue) {
-
-        func_name = func_decl_or_call->ConstDecl.name;
-
-        if(func_decl_or_call->ConstDecl.value_ast->FunctionDeclValue.is_extern_c) {
-            is_extern_c = true;
-        }
-
-    } else if(func_decl_or_call->type == AstType_FunctionCallExpr) {
-
-        Ast *func_ident = func_decl_or_call->FunctionCallExpr.func_ident;
-
-        if(func_ident->type == AstType_Ident) {
-            func_name = func_ident->Ident.name;
-        } else if(func_ident->type == AstType_FieldAccess) {
-            func_name = func_ident->FieldAccess.field_name;
-
-            SymbolInfo *import_symbol = find_symbol_curr_spec_v(
-                gen->curr_file_scope,
-                func_ident->FieldAccess.parent->Ident.name,
-                Type_package
-            );
-
-            pkg_of_func = get_package_value(import_symbol->value);
-
-        } else {
-            XP_ASSERT_DEFAULT(0);
-        }
-
-        SymbolInfo *func_symbol = find_symbol_curr_spec_v(
-            &pkg_of_func->package_scope,
-            func_name,
-            Type_function
-        );
-
-        if(func_symbol->value.function_value.is_extern_c) {
-            is_extern_c = true;
-        }
-
-    } else {
-        XP_ASSERT_DEFAULT(0);
-    }
-
-    // TODO 检查extern C
+xpString gen_func_full_name(Package *package, xpString func_name, bool is_extern_c, xpAllocator allocator) {
     if(xp_string_equal(func_name, xp_string_c("main")) || is_extern_c) {
         return func_name;
     }
 
-    auto dot = xpOption<xpString>(xp_string_c("."));
     return xp_string_concat_mid(
-        pkg_of_func->path,
+        package->path,
         func_name,
-        dot,
-        stage_allocator()
+        xpOption<xpString>(xp_string_c(".")),
+        allocator
     );
 }
-
 
 
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
@@ -437,6 +397,22 @@ void gen_ir_all_packages(Array<Package> all_packages) {
 }
 
 
+LLVMValueRef get_llvm_func_val_in_scope_by_ori_name(LLVMGenerator *gen, xpString ori_func_name) {
+    SymbolInfo *symbol_info = find_symbol_until_spec_v(
+        ScopeType::Package,
+        gen->curr_ir_scope->scope,
+        ori_func_name,
+        Type_function
+    );
+    XP_ASSERT_DEFAULT(symbol_info != NULL);
+
+    LLVMValueRef func_val = look_up_local_vals(gen->curr_ir_scope, symbol_info);
+    XP_ASSERT_DEFAULT(func_val != NULL);
+
+    return func_val;
+}
+
+
 void gen_ir_package(Package *pkg) {
     LLVMGenerator gen;
     init_llvm_generator(&gen, pkg, stage_allocator());
@@ -445,7 +421,6 @@ void gen_ir_package(Package *pkg) {
     for(isize i = 0; i < pkg->ast_files.count; i++) {
         AstFile f = pkg->ast_files[i];
 
-        gen.curr_file_scope = &f.file_scope;
         for(isize j = 0; j < f.top_levels.count; j++) {
             Ast *top_level = f.top_levels[j];
 
@@ -456,16 +431,22 @@ void gen_ir_package(Package *pkg) {
                     top_level->ConstDecl.name
                 );
 
-                if(is_function_type(symbol_info->value.type)) {
-                    // 函数
+                if(top_level->ConstDecl.value_ast->type == AstType_FunctionDeclValue) {
+                    // 有定义的函数, 如
+                    // main :: () -> i32 { 
+                    //     return 0; 
+                    // }
+                    // 
 
-                    xpString full_func_name = get_func_full_name(top_level, &gen);
+                    xpString full_func_name = gen_func_full_name(symbol_info->package, top_level->ConstDecl.name, symbol_info->value.function_value.is_extern_c, stage_allocator());
     
                     LLVMValueRef function = LLVMAddFunction(
                         gen.module, 
                         full_func_name.c_str,
                         get_llvm_type_from_type(&gen, top_level->v_type)
                     );
+
+                    add_local_val_spec_scope(gen.curr_ir_scope, ScopeType::Package, symbol_info, function);
 
                 }
 
@@ -590,6 +571,37 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
 
 }
 
+bool is_func_defined_in_file(Ast *func_ast) {
+    return func_ast->type == AstType_ConstDecl && func_ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue;
+}
+
+bool is_func_nick_name(Ast *ast, SymbolInfo *sym) {
+    if(ast->type != AstType_ConstDecl) {
+        return false;
+    }
+
+    if(ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue) {
+        return false;
+    }
+
+    if(!is_function_type(sym->value.type)) {
+        return false;
+    }
+
+    return true;
+}
+
+SymbolInfo *get_ori_func_symbol_by_func_value(Value& val) {
+    XP_ASSERT_DEFAULT(is_function_type(val.type));
+
+    Ast *ori_func_const_decl = val.val_ast;
+    XP_ASSERT_DEFAULT(ori_func_const_decl != NULL);
+
+    SymbolInfo *ori_func_sym = ori_func_const_decl->ast_symbol;
+    XP_ASSERT_DEFAULT(ori_func_sym != NULL);
+
+    return ori_func_sym;
+}
 
 void gen_ir_const_decl(Ast *const_decl, LLVMGenerator *gen) {
     XP_ASSERT_DEFAULT(const_decl->type == AstType_ConstDecl);
@@ -604,39 +616,27 @@ void gen_ir_const_decl(Ast *const_decl, LLVMGenerator *gen) {
 
 
     if(is_function_type(val_type)) {
-        // 函数常量, 生成函数 IR
-        gen_ir_function(gen, const_decl);
-        return;
+        // TODO: ABSTRACT: 获取原始函数符号, 并生成LLVM函数(如没生成)
+        SymbolInfo *ori_func_sym = get_ori_func_symbol_by_func_value(symbol_info->value);
+
+        LLVMValueRef ori_func_llvm_val = look_up_local_vals(gen->curr_ir_scope, ori_func_sym);
+
+        if(ori_func_llvm_val == NULL) {
+            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.function_value.is_extern_c, stage_allocator());
+            LLVMValueRef func_val = LLVMAddFunction(gen->module, func_full_name.c_str, get_llvm_type_from_type(gen, val_type));
+            add_local_val_spec_scope(gen->curr_ir_scope, ScopeType::Package, ori_func_sym, func_val);
+        }
+
     }
 
-    // if(is_value_type(val_type)) {
-    //     LLVMValueRef const_val = look_up_local_vals(gen->curr_ir_scope, symbol_info);
-
-    //     // 普通常量, 根据作用域类型生成相应可见性的常量
-    //     if(const_val != NULL) {
-    //         // const_val != NULL意味是全局常量, 需要设置初始值
-
-    //         // 包作用域, 补充全局常量的初始值
-    //         LLVMValueRef const_value = gen_llvm_val_by_value(gen, symbol_info->value);
-    //         LLVMSetInitializer(const_val, const_value);
-    //     } else {
-    //         // const_val == NULL意味是局部常量, 直接生成局部常量的值, 并插入local_vals
-
-    //         // 局部作用域, 生成函数内的常量
-    //         LLVMValueRef const_value = gen_llvm_val_by_value(gen, symbol_info->value);
-    //         add_local_val(gen->curr_ir_scope, symbol_info, const_value);
-    //     }
-    // }
-
-
 }
+
 
 
 
 void gen_ir_astfile(AstFile f, LLVMGenerator *gen) {
     
 
-    // TODO
     for(isize i = 0; i < f.top_levels.count; i++) {
         switch(f.top_levels[i]->type) {
 
@@ -650,6 +650,15 @@ void gen_ir_astfile(AstFile f, LLVMGenerator *gen) {
 
             default:
                 UNREACHABLE();
+        }
+    }
+
+
+    for(isize i = 0; i < f.top_levels.count; i++) {
+        // 有block的函数
+
+        if(is_func_defined_in_file(f.top_levels[i])) {
+            gen_ir_function(gen, f.top_levels[i]);
         }
     }
 
@@ -670,7 +679,7 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
 
     gen->curr_ir_scope = new_ir_scope(gen->curr_ir_scope, function);
 
-    LLVMValueRef func = LLVMGetNamedFunction(gen->module, get_func_full_name(function, gen).c_str);
+    LLVMValueRef func = look_up_local_vals(gen->curr_ir_scope, function->ast_symbol);
 
     // 1. 创建入口基本块并设置插入点
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(gen->ctx, func, "entry");
@@ -719,20 +728,6 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     LLVMBuildUnreachable(gen->builder);
     
     
-    // 3. 处理没有返回语句的控制流路径
-
-    // // TODO 临时返回值 实现了返回检查后再删除
-    // if(function->v_type.function_info.return_type->kind == Type_void) {
-    //     LLVMBuildRetVoid(gen->builder);
-    // } else {
-    //     // TODO 临时返回 0
-    //     if(is_float_type(*function->v_type.function_info.return_type)) {
-    //         LLVMBuildRet(gen->builder, LLVMConstReal(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0.0));
-    //     } else {
-    //         LLVMBuildRet(gen->builder, LLVMConstInt(get_llvm_type_from_type(gen, *function->v_type.function_info.return_type), 0, is_signed_or_bool_type(*function->v_type.function_info.return_type)));
-    //     }
-
-    // }
 }
 
 
@@ -988,30 +983,6 @@ LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef arra
 
 
 LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState state) {
-    // LLVMValueRef expr_val = gen_ir_expr(gen, cast_expr->CastExpr.expr, state);
-
-    // if(is_array_type(cast_expr->CastExpr.expr->v_type) && is_slice_struct_type(cast_expr->CastExpr.target_type)) {
-    //     // 数组到切片的隐式转换
-    //     return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, expr_val), cast_expr->CastExpr.expr->v_type);
-    // }
-
-    // if(size_of_type(gen, cast_expr->CastExpr.target_type) > size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
-    //     // 扩展
-    //     if(is_signed_type(cast_expr->CastExpr.expr->v_type)) {
-    //         // 有符号扩展
-    //         return LLVMBuildSExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "sexttmp");
-    //     } else {
-    //         // 无符号扩展
-    //         return LLVMBuildZExt(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "zexttmp");
-    //     }
-        
-    // } else if(size_of_type(gen, cast_expr->CastExpr.target_type) < size_of_type(gen, cast_expr->CastExpr.expr->v_type)) {
-    //     // 截断
-    //     return LLVMBuildTrunc(gen->builder, expr_val, get_llvm_type_from_type(gen, cast_expr->CastExpr.target_type), "trunctmp");
-    // } else {
-    //     // 相等，直接返回
-    //     return expr_val;
-    // }
     return gen_ir_cast(gen, cast_expr->CastExpr.expr->v_type, cast_expr->CastExpr.target_type, gen_ir_expr(gen, cast_expr->CastExpr.expr, state));
 }
 
@@ -1328,33 +1299,35 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     case AstType_FunctionCallExpr: {
 
-        LLVMValueRef func = NULL;
-
-        xpString full_func_name = get_func_full_name(expr, gen);
+        SymbolInfo *func_symbol = NULL;
         if(expr->FunctionCallExpr.func_ident->type == AstType_FieldAccess) {
-            // 包外函数调用，如 pkg.Func()
-
-            Ast *field_access = expr->FunctionCallExpr.func_ident;
-
-            if(xp_hash_set_get(&gen->declared_extern_functions, full_func_name) == NULL) {
-                // 还没有声明过该外部函数，先声明
-                TypeRef f_type = get_extern_func_type_by_full_ident_ast(field_access, gen);
-
-                LLVMTypeRef func_type = get_llvm_type_from_type(gen, f_type);
-                LLVMAddFunction(gen->module, full_func_name.c_str, func_type);
-
-                xp_hash_set_insert(&gen->declared_extern_functions, full_func_name);
-            }
-
-            func = LLVMGetNamedFunction(gen->module, full_func_name.c_str);
+            func_symbol = get_extern_func_sym_by_full_ident_ast(expr->FunctionCallExpr.func_ident, gen);
+        } else if(expr->FunctionCallExpr.func_ident->type == AstType_Ident) {
+            func_symbol = find_symbol_until_global(gen->curr_ir_scope->scope, expr->FunctionCallExpr.func_ident->Ident.name);
         } else {
-            // 包内函数调用
+            UNREACHABLE();
+        }
+        TypeRef val_type = func_symbol->value.type;
 
-            func = LLVMGetNamedFunction(gen->module, full_func_name.c_str);
+
+        // TODO: ABSTRACT: 获取原始函数符号, 并生成LLVM函数(如没生成)
+        SymbolInfo *ori_func_sym = get_ori_func_symbol_by_func_value(func_symbol->value);
+        XP_ASSERT_DEFAULT(ori_func_sym != NULL);
+        LLVMValueRef ori_func_llvm_val = look_up_local_vals(gen->curr_ir_scope, ori_func_sym);
+
+        LLVMValueRef func = NULL;
+        if(ori_func_llvm_val == NULL) {
+            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.function_value.is_extern_c, stage_allocator());
+            LLVMValueRef func_val = LLVMAddFunction(gen->module, func_full_name.c_str, get_llvm_type_from_type(gen, val_type));
+            add_local_val_spec_scope(gen->curr_ir_scope, ScopeType::Package, ori_func_sym, func_val);
+
+            func = func_val;
+        } else {
+            func = ori_func_llvm_val;
         }
 
 
-        // LLVMValueRef func = LLVMGetNamedFunction(gen->module, expr->FunctionCallExpr.name.c_str);
+
 
         Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(stage_allocator(), expr->FunctionCallExpr.args.count);
         for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
@@ -1364,7 +1337,6 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         LLVMTypeRef type = LLVMGlobalGetValueType(func);
 
-        // SymbolInfo *info = find_symbol(symbol_table(), expr->FunctionCallExpr.name);
         TypeRef return_type = expr->v_type;
 
         if(return_type == easy_type(Type_void)) {
