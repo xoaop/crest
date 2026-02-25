@@ -152,7 +152,7 @@ LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState
 LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state, bool need_new_scope = true);
 LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state);
 LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr = false);
-LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state);
+LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_not_equal = false);
 LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, TypeRef array_value_type);
 
 
@@ -234,6 +234,14 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
     LLVMPositionBuilderAtEnd(gen->builder, curr_block);
 
     return alloca;
+}
+
+
+
+void llvm_build_br_when_no_br(LLVMGenerator *gen, LLVMBasicBlockRef from, LLVMBasicBlockRef to) {
+    if(!LLVMGetBasicBlockTerminator(from)) {
+        LLVMBuildBr(gen->builder, to);
+    }
 }
 
 
@@ -416,6 +424,7 @@ LLVMValueRef get_llvm_func_val_in_scope_by_ori_name(LLVMGenerator *gen, xpString
 void gen_ir_package(Package *pkg) {
     LLVMGenerator gen;
     init_llvm_generator(&gen, pkg, stage_allocator());
+    defer(free_llvm_generator(&gen));
 
     // 声明当前包中的所有函数/全局常量
     for(isize i = 0; i < pkg->ast_files.count; i++) {
@@ -459,12 +468,14 @@ void gen_ir_package(Package *pkg) {
         // gen.curr_file_scope = &pkg->ast_files[i].file_scope;
 
         gen.curr_ir_scope = new_ir_scope(gen.curr_ir_scope, &pkg->ast_files[i].file_scope);
+        defer(exit_ir_scope(&gen));
+    
         gen_ir_astfile(pkg->ast_files[i], &gen);
     }
 
 
     // 输出 .ll 文件
-    char *error = nullptr;
+    char *error = NULL;
 
     xpString obj_file_path = xp_make_string(stage_allocator(), "output/");
     xpString obj_file_name = xp_string_replace_char(pkg->path, '/', '_', stage_allocator());
@@ -481,6 +492,12 @@ void gen_ir_package(Package *pkg) {
         LLVMDisposeMessage(error);
     }
     
+    if(LLVMVerifyModule(gen.module, LLVMReturnStatusAction, &error)) {
+        fprintf(stderr, "Module verification failed: %s\n", error);
+        LLVMDisposeMessage(error);
+        XP_ASSERT_DEFAULT(0);
+    }
+
     // 生成.o文件
     if(LLVMTargetMachineEmitToFile(
         gen.target_machine,
@@ -493,7 +510,6 @@ void gen_ir_package(Package *pkg) {
         LLVMDisposeMessage(error);
     }
     
-    free_llvm_generator(&gen);
 
 }
 
@@ -670,6 +686,7 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     }
 
     gen->curr_ir_scope = new_ir_scope(gen->curr_ir_scope, function);
+    defer(exit_ir_scope(gen));
 
     LLVMValueRef func = look_up_local_vals(gen->curr_ir_scope, function->ast_symbol);
 
@@ -708,16 +725,17 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
     TypeRef func_type = function->ast_symbol->value.type;
     
 
-    if(func_type->function_info.return_type == easy_type(Type_void)) {
-        // void 函数自动添加返回
+    // if(func_type->function_info.return_type == easy_type(Type_void)) {
+    //     // void 函数自动添加返回
 
-        LLVMBuildRetVoid(gen->builder);
-    }
+    //     LLVMBuildRetVoid(gen->builder);
+    // }
     
-    // 处理函数末尾没有返回语句的情况
-    LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(func);
-    LLVMPositionBuilderAtEnd(gen->builder, last_block);
-    LLVMBuildUnreachable(gen->builder);
+    if(!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(gen->builder))) {
+        // 如果最后一个基本块没有终止指令, 则添加unreachable
+        LLVMBuildUnreachable(gen->builder);
+    }
+
     
     
 }
@@ -768,6 +786,7 @@ LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState
 
 
 
+
 LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state, bool need_new_scope) {
     XP_ASSERT_DEFAULT(block->type == AstType_Block);
 
@@ -777,6 +796,10 @@ LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state, bool nee
 
     for(isize i = 0; i < block->Block.statements.count; i++) {
         state = gen_ir_stmt(gen, block->Block.statements[i], state);
+    }
+
+    if(need_new_scope) {
+        exit_ir_scope(gen);
     }
 
     return state;
@@ -812,7 +835,9 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         LLVMPositionBuilderAtEnd(gen->builder, then_block);
         state.curr_block = then_block;
         gen_ir_block(gen, stmt->IfStmt.then_block, state);
-        LLVMBuildBr(gen->builder, merge_block);
+        
+        // LLVMBuildBr(gen->builder, merge_block);
+        llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(gen->builder), merge_block);
 
         //  else 分支
         LLVMPositionBuilderAtEnd(gen->builder, else_block);
@@ -820,7 +845,7 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         if (stmt->IfStmt.else_block) {
             gen_ir_block(gen, stmt->IfStmt.else_block, state);
         }
-        LLVMBuildBr(gen->builder, merge_block);
+        llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(gen->builder), merge_block);
 
         //  设置插入点到 merge
         LLVMPositionBuilderAtEnd(gen->builder, merge_block);
@@ -844,6 +869,7 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
     case AstType::AstType_ForStmt: {
 
         gen->curr_ir_scope = new_ir_scope(gen->curr_ir_scope, stmt);
+        defer(exit_ir_scope(gen));
 
         // 1. 创建基本块
         LLVMBasicBlockRef init_block = LLVMAppendBasicBlockInContext(gen->ctx, state.curr_function, "for.init");
@@ -889,7 +915,8 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state) {
         state.curr_block = body_block;
 
         gen_ir_block(gen, stmt->ForStmt.body, state, false);
-        LLVMBuildBr(gen->builder, post_block);
+        // LLVMBuildBr(gen->builder, post_block);
+        llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(gen->builder), post_block);
 
         // 6. 后置表达式
         LLVMPositionBuilderAtEnd(gen->builder, post_block);
@@ -1090,13 +1117,9 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
             return LLVMBuildICmp(gen->builder, LLVMIntULE, left, right, "letmp");
         }
     case TokenType::DoubleEqual: // ==
-        return gen_ir_compare_expr(gen, expr, state);
+        return gen_ir_compare_expr(gen, expr, state, false);
     case TokenType::ExclamationEqual: // !=
-        if(is_float_type(expr->BinaryExpr.left->v_type)) {
-            return LLVMBuildFCmp(gen->builder, LLVMRealONE, left, right, "netmp");
-        }
-
-        return LLVMBuildICmp(gen->builder, LLVMIntNE, left, right, "netmp");
+        return gen_ir_compare_expr(gen, expr, state, true);
     case TokenType::DoubleAnd: // &&
         return LLVMBuildAnd(gen->builder, left, right, "andtmp");
     case TokenType::DoubleOr: // ||
@@ -1456,7 +1479,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 }
 
 
-static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LLVMValueRef right, TypeRef type) {
+static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LLVMValueRef right, TypeRef type, bool is_not_equal) {
     if(is_struct_type(type)) {
         // Type type_detail = get_type_detail_if_have(symbol_table(), type);
         
@@ -1466,7 +1489,7 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
             LLVMValueRef left_field = LLVMBuildExtractValue(gen->builder, left, i, "leftextracttmp");
             LLVMValueRef right_field = LLVMBuildExtractValue(gen->builder, right, i, "rightextracttmp");
             
-            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_info.struct_fields[i].type);
+            LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_info.struct_fields[i].type, false);
             
             if(result == nullptr) {
                 result = field_cmp;
@@ -1475,19 +1498,29 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
             }
         }
 
-        return result;
+        if(is_not_equal) {
+            result = LLVMBuildNot(gen->builder, result, "noteqtmp");
+        }
 
+        return result;
     } else if(is_float_type(type)) {
+
+        if(is_not_equal) {
+            return LLVMBuildFCmp(gen->builder, LLVMRealONE, left, right, "noteqtmp");
+        } 
         return LLVMBuildFCmp(gen->builder, LLVMRealOEQ, left, right, "eqtmp");
     } else {
+        if(is_not_equal) {
+            return LLVMBuildICmp(gen->builder, LLVMIntNE, left, right, "noteqtmp");
+        }
         return LLVMBuildICmp(gen->builder, LLVMIntEQ, left, right, "eqtmp");
     }
 
 }
 
-LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) {
+LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_not_equal) {
     XP_ASSERT_DEFAULT(expr->type == AstType_BinaryExpr);
-    return compare_two_values(gen, gen_ir_expr(gen, expr->BinaryExpr.left, state), gen_ir_expr(gen, expr->BinaryExpr.right, state), expr->BinaryExpr.left->v_type);
+    return compare_two_values(gen, gen_ir_expr(gen, expr->BinaryExpr.left, state), gen_ir_expr(gen, expr->BinaryExpr.right, state), expr->BinaryExpr.left->v_type, is_not_equal);
 }
 
 
