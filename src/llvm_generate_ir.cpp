@@ -556,6 +556,14 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
             llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(gen->ctx), cast(double)get_float_value(value));
             break;
 
+        case Type_array: {
+            XP_TODO;
+        } break;
+
+        case Type_struct: {
+            XP_TODO;
+        } break;
+
         default:
             // TODO 其他类型的常量
             UNREACHABLE();
@@ -573,22 +581,6 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
 
 bool is_func_defined_in_file(Ast *func_ast) {
     return func_ast->type == AstType_ConstDecl && func_ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue;
-}
-
-bool is_func_nick_name(Ast *ast, SymbolInfo *sym) {
-    if(ast->type != AstType_ConstDecl) {
-        return false;
-    }
-
-    if(ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue) {
-        return false;
-    }
-
-    if(!is_function_type(sym->value.type)) {
-        return false;
-    }
-
-    return true;
 }
 
 SymbolInfo *get_ori_func_symbol_by_func_value(Value& val) {

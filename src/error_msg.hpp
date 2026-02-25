@@ -38,7 +38,7 @@ struct ErrorReporter {
 
     Array<ErrorMsg> error_msgs;
 
-private:
+
     isize warning_count;
     isize error_count;
 };
