@@ -307,15 +307,18 @@ Ast *parse_function_value(Parser *p) {
         is_extern_c = true;
         advance_token(p);
     } 
-
+    
     Ast *block_ast = NULL;
+    Span span;
     if(is_extern_c) {
         // extern C函数没有函数体
 
         block_ast = NULL;
+        span = merge(rb.span, return_type_ast->span); // TODO: 这里的span不太准确
     } else {
         block_ast = parse_block(p);
         block_ast->Block.is_function_body = true; // 标记这是一个函数体, 方便后面类型检查时区分普通块和函数体
+        span = merge(rb.span, block_ast->span);
     }
 
 
@@ -328,7 +331,7 @@ Ast *parse_function_value(Parser *p) {
     a->FunctionDeclValue.block = block_ast;
     a->FunctionDeclValue.return_type_ast = return_type_ast;
     a->FunctionDeclValue.is_extern_c = is_extern_c;
-    a->span = merge(rb.span, block_ast->span);
+    a->span = span;
 
     return a;
 }
@@ -1197,7 +1200,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     // 检查溢出(类型)
     if(type_kind != Type_Undefined) {
-        if(!check_float_overflow(val, easy_type(type_kind))) {
+        if(check_float_overflow(val, easy_type(type_kind))) {
             context()->reporter.report(
                 ErrorLevel::Error,
                 a->token.span,

@@ -8,14 +8,16 @@
 
 #include "value.hpp"
 
+struct AstFile;
 
 struct SymbolInfo {
     xpString name;
     Value value;
     Package *package;
+    AstFile *file;
 };
 
-SymbolInfo make_symbol(xpString name, Value value, Package *package);
+SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file);
 
 
 

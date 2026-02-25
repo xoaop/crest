@@ -76,18 +76,6 @@ TypeRef get_compliable_float_type(double value) {
 
 }
 
-// TypeRef get_compliable_const_type(Ast *constant) {
-//     XP_ASSERT_DEFAULT(is_untyped_type(constant->v_type));
-
-//     if(constant->v_type == easy_type(Type_untyped_int)) {
-//         return get_compliable_integer_type(constant->Constant.value);
-//     } else if(constant->v_type == easy_type(Type_untyped_float)) {
-//         return get_compliable_float_type(constant->Constant.float_value);
-//     } else {
-//         UNREACHABLE();
-//         return undefined_type();
-//     }
-// }
 
 
 TypeRef get_compliable_const_type(Value& val) {
@@ -106,16 +94,6 @@ TypeRef get_compliable_const_type(Value& val) {
    
 
 
-// TypeRef get_compliable_const_type(Valuee value) {
-//     if(value.get_type() == Valuee::Type::Integer) {
-//         return get_compliable_integer_type(value.get_as_integer());
-//     } else if(value.get_type() == Valuee::Type::Float) {
-//         return get_compliable_float_type(value.get_as_float());
-//     } else {
-//         UNREACHABLE();
-//         return undefined_type();
-//     }
-// }
 
 
 
@@ -389,6 +367,9 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, true);
             } else {
                 // 如果该运算的结果类型不是操作数类型, 那么就不传递target type, 让子表达式自己推导
+
+                // ! TODO allow_untyped 不确定
+
                 infer_left_type = infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser, allow_untyped);
                 infer_right_type = infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser, allow_untyped);
             }
@@ -430,6 +411,9 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 expr->BinaryExpr.right->v_type = infer_right_type;
             }
 
+            if(infer_left_type == error_type() || infer_right_type == error_type()) {
+                break;
+            }
 
 
             
