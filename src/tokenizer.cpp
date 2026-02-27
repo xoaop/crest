@@ -372,7 +372,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
                     "string literal not closed"
                 );
 
-                return xp_make_pair(xpOption<Token>(), false);
+                return xp_make_pair(xpOption<Token>::none(), false);
             }
 
             advance_one_character(t); //跳过结尾的引号
@@ -526,9 +526,15 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
         if(tokenizer_curr_character(t) == 'x') {
             advance_one_character(t);
             tokenizer_scan_pure_integer_seq(t);
+            token_type = TokenType::Integer;
+        } else if(tokenizer_curr_character(t) == '.') {
+            advance_one_character(t);
+            tokenizer_scan_pure_integer_seq(t);
+            token_type = TokenType::Float;
+        } else {
+            token_type = TokenType::Integer;
         }
 
-        token_type = TokenType::Integer;
     } break;
 
     case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {

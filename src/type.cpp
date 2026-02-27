@@ -74,7 +74,9 @@ Type *alloc_type(xpAllocator allocator, TypeKind kind) {
 Type copy_type(Type *src) {
     Type t;
     t.kind = src->kind;
-    t.type_name = src->type_name;
+    if(src->type_name != xp_make_string_zero()) {
+        t.type_name = xp_string_copy(type_allocator(), src->type_name);
+    }
 
 
     switch(src->kind) {

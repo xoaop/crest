@@ -113,13 +113,6 @@ struct Ast;
     AST_INFO(StringLiteralExpr, "string literal expr", struct {             \
         xpString str;                                                       \
     })                                                                      \
-\
-\
-\
-\
-\
-\
-/* TODO: 支持值类型 */\
     AST_INFO(FunctionDeclValue, "function decl value", struct {             \
         Array<Ast *> params;                                                \
         Ast *block;                                                         \
@@ -203,6 +196,7 @@ extern const char *ast_strs[];
 Ast *ast_alloc(AstType type, xpAllocator allocator);
 Ast *ast_alloc(AstType type);
 Ast *ast_alloc(AstType type, Token token);
+Ast *ast_alloc(AstType type, Token token, Span span);
 Ast ast_make(AstType type);
 
 

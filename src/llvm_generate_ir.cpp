@@ -514,6 +514,7 @@ void gen_ir_package(Package *pkg) {
 }
 
 
+// TODO: 浮点数!!
 LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type, LLVMValueRef value) {
 
     if(is_array_type(from_type) && is_slice_struct_type(to_type)) {
@@ -521,24 +522,82 @@ LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type,
         return gen_array_value_to_slice_cast(gen, get_ptr_of_llvm_value(gen, value), from_type);
     }
 
-    if(size_of_type(gen, to_type) > size_of_type(gen, from_type)) {
-        // 扩展
-        if(is_signed_type(from_type)) {
-            // 有符号扩展
-            return LLVMBuildSExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "sexttmp");
-        } else {
-            // 无符号扩展
-            return LLVMBuildZExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "zexttmp");
-        }
-        
-    } else if(size_of_type(gen, to_type) < size_of_type(gen, from_type)) {
-        // 截断
-        return LLVMBuildTrunc(gen->builder, value, get_llvm_type_from_type(gen, to_type), "trunctmp");
-    } else {
-        // 相等，直接返回
+    // 相等, 直接返回
+    if(from_type == to_type) {
         return value;
     }
 
+
+    if(is_pointer_type(from_type) && is_pointer_type(to_type)) {
+        // 指针类型之间的转换, 不用转化, 直接返回
+        return value;
+    }
+
+    // 下面是整数,浮点数之间的转换
+    bool short_to_long = size_of_type(gen, from_type) < size_of_type(gen, to_type);
+    bool long_to_short = size_of_type(gen, from_type) > size_of_type(gen, to_type);
+    bool same_size = size_of_type(gen, from_type) == size_of_type(gen, to_type);
+    
+
+    if(is_float_or_untyped_type(from_type) && is_float_or_untyped_type(to_type)) {
+        // 浮点数之间的转换
+        if(short_to_long) {
+            // 扩展
+            return LLVMBuildFPExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "fpexttmp");
+        } else if(long_to_short) {
+            // 截断
+            return LLVMBuildFPTrunc(gen->builder, value, get_llvm_type_from_type(gen, to_type), "fptrunctmp");
+        } else if(same_size){
+            // 相等，直接返回
+            return value;
+        }
+    }
+
+    if(is_integer_or_untyped_type(from_type) && is_float_or_untyped_type(to_type)) {
+        // 整数到浮点数的转换
+        if(is_signed_type(from_type)) {
+            // 有符号整数到浮点数
+            return LLVMBuildSIToFP(gen->builder, value, get_llvm_type_from_type(gen, to_type), "sitofptmp");
+        } else {
+            // 无符号整数到浮点数
+            return LLVMBuildUIToFP(gen->builder, value, get_llvm_type_from_type(gen, to_type), "uitofptmp");
+        }
+    }
+
+    if(is_float_or_untyped_type(from_type) && is_integer_or_untyped_type(to_type)) {
+        // 浮点数到整数的转换
+        if(is_signed_type(to_type)) {
+            // 浮点数到有符号整数
+            return LLVMBuildFPToSI(gen->builder, value, get_llvm_type_from_type(gen, to_type), "fptositmp");
+        } else {
+            // 浮点数到无符号整数
+            return LLVMBuildFPToUI(gen->builder, value, get_llvm_type_from_type(gen, to_type), "fptouitmp");
+        }
+    }
+
+
+    // 整数
+    if(is_integer_or_untyped_type(from_type) && is_integer_or_untyped_type(to_type)) {
+        if(short_to_long) {
+            // 扩展
+            if(is_signed_type(from_type)) {
+                // 有符号扩展
+                return LLVMBuildSExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "sexttmp");
+            } else {
+                // 无符号扩展
+                return LLVMBuildZExt(gen->builder, value, get_llvm_type_from_type(gen, to_type), "zexttmp");
+            }
+            
+        } else if(long_to_short) {
+            // 截断
+            return LLVMBuildTrunc(gen->builder, value, get_llvm_type_from_type(gen, to_type), "trunctmp");
+        } else if(same_size){
+            // 相等，直接返回
+            return value;
+        }
+    }
+
+    UNREACHABLE();
 }
 
 
@@ -777,8 +836,6 @@ LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState
         }
     }
 
-    // 3. 存到变量表
-    // xp_hash_map_insert(&gen->locals, variable_decl->VariableDecl.var_name, alloca);
     add_local_val(gen->curr_ir_scope, var_info, alloca);
 
     return state;
@@ -1218,7 +1275,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         if(!is_value_type(info->value.type)) {
             // 包外函数调用中的包名访问, 直接返回NULL, 在gen_ir_function_call_expr中根据这个名字和函数名构造完整的函数名来获取函数地址
             return NULL;
-        } 
+        }
 
         if(info->value.is_runtime_value) {
             // 变量
@@ -1491,7 +1548,7 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
             
             LLVMValueRef field_cmp = compare_two_values(gen, left_field, right_field, type->struct_info.struct_fields[i].type, false);
             
-            if(result == nullptr) {
+            if(result == NULL) {
                 result = field_cmp;
             } else {
                 result = LLVMBuildAnd(gen->builder, result, field_cmp, "andeqtmp");

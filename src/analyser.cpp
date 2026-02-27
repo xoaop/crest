@@ -1510,15 +1510,15 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
                 return error_type();
             }    
 
-            // if(!count_expr->is_const_expr || !is_integer_type(count_expr->v_type)) {
-            //     context()->reporter.report_error(
-            //         count_expr->span, analyser.curr_ast_file->source_code,
-            //         "array size expression must be a constant integer expression"
-            //     );    
-
-            //     return error_type();
-            // }    
-
+            if(!is_integer_type(count_expr->v_type)) {
+                context()->reporter.report_error(
+                    count_expr->span, analyser.curr_ast_file->source_code,
+                    "array size expression must be a constant integer expression"
+                );    
+                
+                return error_type();
+            }
+            
             ValueResult count_val_result = eval_comptime_expr(count_expr, analyser);
             if(count_val_result.is_err()) {
                 context()->reporter.report_error(
@@ -1529,25 +1529,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
                 return error_type();
             }
 
+            
             Value count_val = count_val_result.as_ok();
-            if(!is_integer_type(count_val.type)) {
-                context()->reporter.report_error(
-                    count_expr->span, analyser.curr_ast_file->source_code,
-                    "array size expression must be a constant integer expression"
-                );    
-
-                return error_type();
-            }
-
-            // if(!try_constant_expr_folding(count_expr)) {
-            //     context()->reporter.report_error(
-            //         count_expr->span, analyser.curr_ast_file->source_code,
-            //         "failed to fold array size expression to constant"
-            //     );    
-
-            //     return error_type();
-            // }    
-
             i128 count = get_integer_value(count_val);
             if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
 
