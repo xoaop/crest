@@ -825,6 +825,182 @@ xp_internal Ast *parse_for(Parser *p) {
     return a;
 }
 
+
+
+Ast *parse_string_literal(Parser *p) {
+    XP_ASSERT_DEFAULT(curr_token(p).type == TokenType::StringLiteral);
+
+    Token str_token = expect(p, TokenType::StringLiteral);
+
+    xpString raw_str_with_quotes = str_token.token_str;
+    XP_ASSERT_DEFAULT(raw_str_with_quotes.c_str[0] == '"' && raw_str_with_quotes.c_str[raw_str_with_quotes.length - 1] == '"');
+
+
+    isize raw_str_count = raw_str_with_quotes.length - 2; // 去掉前后的引号
+    char *iter = raw_str_with_quotes.c_str + 1; // 跳过开头的引号
+
+    xpString parsed_str = xp_make_string(ast_allocator(), ""); // 先创建一个空字符串, 后面逐个字符追加
+
+
+    isize curr_index = 0;
+    while(curr_index < raw_str_count) {
+        if(iter[curr_index] == '\\') {
+            // 处理转义字符
+
+            curr_index += 1; // 跳过反斜杠
+
+            if(curr_index >= raw_str_count) {
+                context()->reporter.report(
+                    ErrorLevel::Error,
+                    str_token.span,
+                    p->f.source_code,
+                    "invalid escape sequence in string literal: unexpected end of string after backslash"
+                );
+                break;
+            }
+
+            switch(iter[curr_index]) {
+                case 'n':
+                    xp_string_append_char(&parsed_str, '\n');
+                    curr_index += 1;
+                    break;
+                case 't':
+                    xp_string_append_char(&parsed_str, '\t');
+                    curr_index += 1;
+                    break;
+                case 'r':
+                    xp_string_append_char(&parsed_str, '\r');
+                    curr_index += 1;
+                    break;
+                case '\\':
+                    xp_string_append_char(&parsed_str, '\\');
+                    curr_index += 1;
+                    break;
+                case '"':
+                    xp_string_append_char(&parsed_str, '"');
+                    curr_index += 1;
+                    break;
+                case '\'': 
+                    xp_string_append_char(&parsed_str, '\'');
+                    curr_index += 1;
+                    break;
+                case 'a':
+                    xp_string_append_char(&parsed_str, '\a');
+                    curr_index += 1;
+                    break;
+                case 'b':
+                    xp_string_append_char(&parsed_str, '\b');
+                    curr_index += 1;
+                    break;
+                case 'f':
+                    xp_string_append_char(&parsed_str, '\f');
+                    curr_index += 1;
+                    break;
+                case 'v':
+                    xp_string_append_char(&parsed_str, '\v');
+                    curr_index += 1;
+                    break;
+
+                case '0': case '1': case '2': case '3': 
+                case '4': case '5': case '6': case '7': {
+                    // 八进制转义, 最多三位八进制数
+
+                    u32 value = 0;
+                    isize count = 0;
+
+                    while(curr_index < raw_str_count && count < 3) {
+                        char curr_char = iter[curr_index];
+
+                        if(curr_char >= '0' && curr_char <= '7') {
+                            value = value * 8 + (curr_char - '0');
+                            curr_index += 1;
+                            count += 1;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    xp_string_append_char(&parsed_str, cast(char)value);
+                } break;
+                
+                case 'x': {
+                    // 十进制
+                    u32 value = 0;
+                    bool has_digits = false;
+
+                    curr_index += 1; // 跳过 'x'
+
+                    while(curr_index < raw_str_count) {
+                        char curr_char = iter[curr_index];
+                        int digit = -1;
+
+                        if(curr_char >= '0' && curr_char <= '9') {
+                            digit = curr_char - '0';
+                        } else if(curr_char >= 'a' && curr_char <= 'f') {
+                            digit = curr_char - 'a' + 10;
+                        } else if(curr_char >= 'A' && curr_char <= 'F') {
+                            digit = curr_char - 'A' + 10;
+                        } else {
+                            break;
+                        }
+
+                        if(digit != -1) {
+                            value = (value << 4) | digit;
+                            has_digits = true;
+                            curr_index += 1;
+                        } else {
+                            break;
+                        }
+
+                    }
+
+                    if(!has_digits) {
+                        context()->reporter.report(
+                            ErrorLevel::Error,
+                            {str_token.span.start + 1 + curr_index, 1},
+                            p->f.source_code,
+                            "invalid escape sequence in string literal: \\x must be followed by at least one hexadecimal digit"
+                        );
+                    } else {
+                        xp_string_append_char(&parsed_str, cast(char)value);
+                    }
+                } break;
+
+
+                
+                default:
+                    context()->reporter.report(
+                        ErrorLevel::Error,
+                        {str_token.span.start + 1 + curr_index, 1},
+                        p->f.source_code,
+                        "invalid escape sequence in string literal: unrecognized escape character"
+                    );
+            }
+
+
+        } else {
+            // 非转义字符, 直接追加
+
+            xp_string_append_char(&parsed_str, iter[curr_index]);
+            curr_index += 1;
+        }
+    }
+
+    
+    if(curr_index == raw_str_count) {
+        // 代表解析成功
+
+        Ast *a = ast_alloc(AstType_StringLiteralExpr, str_token, str_token.span);
+        a->StringLiteralExpr.str = parsed_str;
+        return a;
+    } else {
+        // 代表解析失败, 已经报告了错误, 这里返回一个BadExpr占位符就行了
+
+        Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
+        return a;
+    }
+}
+
 xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
     Ast *a = NULL;
     defer(XP_ASSERT_DEFAULT(a != NULL));
@@ -905,19 +1081,23 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
         case TokenType::StringLiteral: {
             
             // 字符串字面量
+            /* DEPRECATED
+            // a = ast_alloc(AstType_StringLiteralExpr);
+            // a->token = expect(p, TokenType::StringLiteral);
 
-            a = ast_alloc(AstType_StringLiteralExpr);
-            a->token = expect(p, TokenType::StringLiteral);
+            // // TODO: xpString的稳定性的试金石
+            // xpString str = a->token.token_str;
+            // str.c_str = str.c_str + 1; //跳过开头的引号
+            // str.length -= 2; //去掉前后的引号
+            // str.capacity -= 2; //去掉前后的引号
 
-            // TODO: xpString的稳定性的试金石
-            xpString str = a->token.token_str;
-            str.c_str = str.c_str + 1; //跳过开头的引号
-            str.length -= 2; //去掉前后的引号
-            str.capacity -= 2; //去掉前后的引号
+            // a->StringLiteralExpr.str = str;
 
-            a->StringLiteralExpr.str = str;
+            // a->span = a->token.span;
+            */
 
-            a->span = a->token.span;
+            a = parse_string_literal(p);
+
         } break;
 
         default:

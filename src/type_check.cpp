@@ -1059,8 +1059,22 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
+            bool has_error = false;
             for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
                 infer_expr_type(expr->FunctionCallExpr.args[i], true, val_type->function_info.param_types[i], analyser, false);
+
+                if(!check_implicit_convension(expr->FunctionCallExpr.args[i], expr->FunctionCallExpr.args[i]->v_type, val_type->function_info.param_types[i])) {
+                    context()->reporter.report_error(
+                        expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
+                        "argument type does not match parameter type for parameter %lld of function '%s'",
+                        i + 1, info->name.c_str
+                    );
+                    has_error = true;
+                    break;
+                }
+            }
+            if(has_error) {
+                break;
             }
             
 

@@ -43,6 +43,14 @@ Ast *ast_alloc(AstType type, Token token) {
     return a;
 }
 
+Ast *ast_alloc(AstType type, Token token, Span span) {
+    Ast *a = ast_alloc(type);
+    a->token = token;
+    a->span = span;
+
+    return a;
+}
+
 
 bool is_binary_op(TokenType type) {
     switch (type)

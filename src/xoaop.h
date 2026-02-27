@@ -332,6 +332,7 @@ xp_define xpString *xp_string_extend(xpString *string, isize extended_size);
 xp_define isize xp_string_find_char(xpString str, char c);
 xp_define xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str);
 xp_define xpString *xp_string_append(xpString *str, xpString appended_str);
+xp_define xpString *xp_string_append_char(xpString *str, char c);
 xp_define xpString xp_isize_to_string(isize value, xpAllocator allocator);
 xp_define xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator);
 
@@ -1776,6 +1777,15 @@ xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str) {
 
 
     return str;
+}
+
+xpString *xp_string_append_char(xpString *str, char c) {
+    xpString char_str = xp_make_string_zero();
+    char_str.c_str = &c;
+    char_str.length = 1;
+    char_str.capacity = 1;
+
+    return xp_string_append(str, char_str);
 }
 
 xpString *xp_string_append(xpString *str, xpString appended_str) {
