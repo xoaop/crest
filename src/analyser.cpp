@@ -1,5 +1,7 @@
 #include "analyser.hpp"
 
+#include "resolve_depend.hpp"
+
 #include "common.hpp"
 
 #include "context.hpp"
@@ -469,14 +471,13 @@ void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
 Value eval_import_value(Ast *import_ast, Analyser analyser) {
 
     // 查找被import的package
-    Package *imported_package = NULL;
-    for(isize i = 0; i < analyser.all_packages->count; i++) {
-        if(xp_string_equal((*analyser.all_packages)[i].path, concat_path(xp_string_c(context()->main_src_dir_path), import_ast->Import.path, permanent_allocator()))) {
-            imported_package = &(*analyser.all_packages)[i];
-            break;
-        }
-    }
-    if(imported_package == NULL) {
+    xpOption<Package *> imported_package_opt = get_package_by_import(
+        import_ast->Import.search_prefix,
+        import_ast->Import.path,
+        analyser.all_packages
+    );
+
+    if(imported_package_opt.is_none()) {
         context()->reporter.report_error(
             import_ast->span,
             analyser.curr_ast_file->source_code,
@@ -486,6 +487,7 @@ Value eval_import_value(Ast *import_ast, Analyser analyser) {
         return make_error_value();
     }    
 
+    Package *imported_package = imported_package_opt.unwrap();
     Value import_value = make_comptime_sovled_val(package_type(imported_package));
 
     return import_value;
@@ -593,17 +595,17 @@ Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
 
 
 
-ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool for_var_expr) {
+ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_expr) {
 
     switch(expr->type) {
         case AstType_Ident: {
             SymbolInfo *info = find_symbol_until_global(analyser.current_scope, expr->Ident.name);
             if(info == NULL) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "undefined symbol '%s'",
-                    expr->Ident.name.c_str
-                );    
+                // context()->reporter.report_error(
+                //     expr->span, analyser.curr_ast_file->source_code,
+                //     "undefined symbol '%s'",
+                //     expr->Ident.name.c_str
+                // );
                 return ValueResult::err(ValueErrorKind::ErrorValue);
             }
             // if(info->value.state == ValueState::Unsolved) {
@@ -955,17 +957,13 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 
 
     Ast *val_ast = const_decl_ast->ConstDecl.value_ast;
-
-    resolve_expr(val_ast, analyser);
-    infer_expr_type(val_ast, false, NULL, analyser, true);
-
     Value val = resolve_comptime_expr(val_ast, analyser);
 
     if(val.has_error()) {
-        context()->reporter.report_error(
-            val_ast->span, analyser.curr_ast_file->source_code,
-            "invalid constant expression"
-        );
+        // context()->reporter.report_error(
+        //     val_ast->span, analyser.curr_ast_file->source_code,
+        //     "invalid constant expression"
+        // );
         return;
     }
 

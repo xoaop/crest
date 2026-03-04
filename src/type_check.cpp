@@ -149,7 +149,7 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type, Analyser analyser) {
             return true;
         } else {
             return false;
-        }    
+        }
 
     } break;    
 
@@ -390,7 +390,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 infer_right_type = infer_expr_type(expr->BinaryExpr.right, true, infer_left_type, analyser, false);
                 expr->BinaryExpr.right->v_type = infer_right_type;
             }
-            
+                
             if(is_return_bool_operator(expr->BinaryExpr.op) && (is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type))) {
                 infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, NULL, analyser, false);
                 infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, false);
@@ -927,6 +927,14 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 context()->reporter.report_error(
                     expr->IndexExpr.index_expr->span, analyser.curr_ast_file->source_code,
                     "index expression must be of integer type"
+                );
+                break;
+            }
+
+            if(!expr->IndexExpr.array_var_expr->is_lvalue) {
+                context()->reporter.report_error(
+                    expr->IndexExpr.array_var_expr->span, analyser.curr_ast_file->source_code,
+                    "cannot index non-lvalue expression"
                 );
                 break;
             }

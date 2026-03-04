@@ -69,7 +69,7 @@ Ast *parse_basic_and_ident_type(Parser *p);
 Ast *parse_ident(Parser *p);
 Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
 
-Ast *parse_stmt2(Parser *p);
+Ast *parse_stmt(Parser *p);
 Ast *parse_named_stmt(Parser *p);
 
 
@@ -87,10 +87,12 @@ AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
         }
         
         // array_push_back<Ast *>(&p.f.top_levels, parse_top_level(&p));
-        array_push_back(&p.f.top_levels, parse_stmt2(&p));
+        array_push_back(&p.f.top_levels, parse_stmt(&p));
     }
 
+    #ifdef DEBUG_PRINT
     print_ast(p.f.top_levels);
+    #endif
 
     return p.f;
 }
@@ -212,10 +214,22 @@ Ast *parse_import(Parser *p) {
     raw_path.length -= 2;                 // 去掉结尾的引号
 
 
-    Ast *a = ast_alloc(AstType_Import, import_token);
-    a->Import.path = normalize_path(raw_path, ast_allocator());
+    isize colon_index = xp_string_find_char(raw_path, ':');
+    xpOption<xpString> search_prefix = xpOption<xpString>::none();
+    xpString path = xp_make_string_zero();
+    if(colon_index != -1) {
+        xpString search_path_str = xp_make_string_count(ast_allocator(), raw_path.c_str, colon_index);
+        search_prefix = xpOption<xpString>::some(search_path_str);
+        path = xp_make_string_count(stage_allocator(), raw_path.c_str + colon_index + 1, raw_path.length - colon_index - 1);
+    } else {
+        path = raw_path;
+    }
+
+
+    Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.span, path_succ.first.span));
+    a->Import.path = normalize_path(path, ast_allocator());
+    a->Import.search_prefix = search_prefix;
     
-    a->span = merge(import_token.span, path_succ.first.span);
 
     return a;
 }
@@ -486,7 +500,7 @@ Ast *parse_var_decl(Parser *p) {
 }
 
 
-Ast *parse_stmt2(Parser *p) {
+Ast *parse_stmt(Parser *p) {
     Token curr = curr_token(p);
     Token next = next_token(p);
 
@@ -574,157 +588,6 @@ Ast *parse_stmt2(Parser *p) {
 }
 
 
-// Ast *parse_top_level(Parser *p) {
-
-//     // TODO: TEMP
-//     if(curr_token(p).type == TokenType::KW_import) {
-//         Ast *a = parse_import(p);
-//         return a;
-//     } 
-
-
-//     Token ident;
-//     auto ident_result = expect2(p, TokenType::Ident);
-//     if(!ident_result.second) {
-//         advance_to_next_top_level(p);
-//         return ast_alloc(AstType_BadDecl);
-//     }
-//     ident = ident_result.first;
-
-//     expect2(p, TokenType::DoubleColon);
-
-
-//     Ast *a = NULL;
-//     switch(curr_token(p).type)
-//     {
-
-//     // 函数声明
-//     case TokenType::LeftBracket: {
-//         a = ast_alloc(
-
-//         a->Function.name = ident.token_str;
-
-//         expect2(p, TokenType::LeftBracket);
-
-        
-//         a->Function.params = make_array<Ast *>(ast_allocator());
-//         for(;;) {
-//             if(reach_end(p) || curr_token(p).type == TokenType::RightBracket) {
-//                 break;
-//             }
-
-//             Token ident = expect(p, TokenType::Ident);
-//             expect2(p, TokenType::Colon);
-
-//             Ast *arg_type = parse_type(p);
-            
-//             Ast *param = ast_alloc(AstType_VariableDecl, ident);
-//             param->VariableDecl.type_ast = arg_type;
-//             param->VariableDecl.var_name = ident.token_str;
-//             //TODO(xoaop): 支持默认参数
-//             param->VariableDecl.expr = NULL;
-//             param->span = merge(ident.span, arg_type->span);
-
-//             array_push_back(&a->Function.params, param);
-
-//             if(curr_token(p).type != TokenType::RightBracket) {
-//                 expect2(p, TokenType::Comma);
-//             }
-
-//         }
-        
-//         expect(p, TokenType::RightBracket);
-
-//         Ast *return_type = NULL;
-//         if(curr_token(p).type == TokenType::Arrow) {
-//             // 有返回值
-//             advance_token(p); // 跳过箭头
-//             return_type = parse_type(p);
-//         } else {
-//             // 无返回值
-//             return_type = ast_alloc(AstType_EasyType, curr_token(p)); // 这个token不会被使用到, 只是为了记录span, 也不存在
-//             return_type->EasyType.kind = Type_void;
-//             return_type->span = return_type->token.span;
-//         }
-//         a->Function.return_type_ast = return_type;
-
-//         // TODO: TEST 临时支持 extern_C 函数
-//         a->Function.is_extern_C = false;
-//         if(curr_token(p).type == TokenType::KW_extern_C) {
-//             Token extern_c_token = expect(p, TokenType::KW_extern_C);
-//             a->Function.block = NULL;
-//             a->Function.is_extern_C = true;
-//             a->span = merge(a->token.span, extern_c_token.span);
-
-//             expect(p, TokenType::Semicolon);
-
-//         } else {
-//             a->span = merge(a->token.span, return_type->span); // 配合return_type的span, 注意无返回值的情况
-
-//             a->Function.block = parse_block(p);
-//             a->Function.block->Block.is_function_body = true;
-//         }
-
-
-//     } break;
-    
-
-//     // 结构体声明
-//     case TokenType::KW_struct: {
-//         a = ast_alloc(AstType_StructDecl, ident);
-
-//         a->StructDecl.name = ident.token_str;
-
-//         expect(p, TokenType::KW_struct);
-//         expect(p, TokenType::LeftCurlyBracket);
-
-//         a->StructDecl.fields = make_array<Ast *>(ast_allocator());
-
-//         Array<StructField> field_types = make_array<StructField>(stage_allocator());
-//         for(;;) {
-//             if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
-//                 break;
-//             }
-
-            
-//             Token field_ident = expect(p, TokenType::Ident);
-//             expect(p, TokenType::Colon);
-//             Ast *field_type_ast = parse_type(p);
-            
-//             Ast *field_ast = ast_alloc(AstType_StructField, field_ident);
-//             field_ast->StructField.name = field_ident.token_str;
-//             field_ast->StructField.type_ast = field_type_ast;
-//             field_ast->span = merge(field_ident.span, field_type_ast->span);
-
-
-//             expect(p, TokenType::Semicolon);
-            
-//             array_push_back(&a->StructDecl.fields, field_ast);
-//         }
-
-//         Token rcb = expect(p, TokenType::RightCurlyBracket);
-//         a->span = merge(a->token.span, rcb.span);
-
-//     } break;
-
-//     default:
-//         report_unexpected(p, "struct (for struct decl) or ( (for function decl)");
-
-//         a = ast_alloc(AstType_BadDecl, ident);
-//         a->span = merge(ident.span, curr_token(p).span);
-
-//         advance_to_next_top_level(p);
-
-//         // XP_ASSERT_DEFAULT(0);
-//         break;
-//     }
-
-//     return a;
-// }
-
-
-
-
 
 
 xp_internal Ast *parse_block(Parser *p) {
@@ -733,7 +596,7 @@ xp_internal Ast *parse_block(Parser *p) {
 
 
     while (curr_token(p).type != TokenType::RightCurlyBracket && !reach_end(p)) {
-        array_push_back(&stmts, parse_stmt2(p));
+        array_push_back(&stmts, parse_stmt(p));
     }
     a->Block.statements = stmts;
     a->Block.is_function_body = false; // NOTE: 默认不是函数体, 函数部分需要单独设置

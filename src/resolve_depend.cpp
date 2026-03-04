@@ -14,8 +14,6 @@
 
 #include "context.hpp"
 
-
-
 enum class PackageState {
     Unresolved,
     Resolving,
@@ -24,15 +22,10 @@ enum class PackageState {
 
 
 
-
-void collect_all_imports_in_ast_file(AstFile ast_file, Array<xpPair<xpString, xpString>> *imported_packages);
+void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages);
 AstFile tokenize_and_parse_file(const char *path, Scope *parent);
 Array<Package> resolve_dependencies(xpString main_dir_path);
 Package tokenize_and_parse_package(const char *path_of_package_dir);
-Array<xpString> resolve_import_paths(AstFile ast_file);
-Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array<xpString> relative_import_paths);
-
-
 bool check_directory_legel(xpString path);
 bool check_file_legal(xpString path);
 
@@ -64,24 +57,59 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
 
 
 
-void collect_all_imports_in_ast_file(AstFile ast_file, Array<xpPair<xpString, xpString>> *imported_packages) {
+void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages) {
     for(isize i = 0; i < ast_file.top_levels.count; i++) {
         Ast *top_level = ast_file.top_levels[i];
 
-        xpPair<xpString, xpString> import_info;
         if(top_level->type == AstType_ConstDecl && top_level->ConstDecl.value_ast->type == AstType_Import) {
-            import_info = xp_make_pair(top_level->ConstDecl.name, top_level->ConstDecl.value_ast->Import.path);
+            array_push_back(imported_packages, top_level->ConstDecl.value_ast);
+        }
+    }
+}
+
+
+xpString import_path_to_package_path(xpOption<xpString> search_prefix, xpString import_path, xpAllocator allocator) {
+    xpString abs_import_path = xp_make_string_zero();
+    
+    if(search_prefix.has_value()) {
+        xpString prefix = search_prefix.unwrap();
+
+        if(xp_string_equal(prefix, xp_string_c("std"))) {
+            std::filesystem::path std_lib_path = context()->compiler_path / "std";
+            xpString std_lib_path_str = xp_make_string(stage_allocator(), std_lib_path.string().c_str());
+            
+            abs_import_path = concat_path(std_lib_path_str, import_path, stage_allocator());
+            
         } else {
-            continue;
+            // TODO ERROR: 不支持的import搜索前缀
+            UNREACHABLE();
         }
 
-        array_push_back(imported_packages, import_info);
-    }    
+    } else {
+        xpString default_base_path = context()->main_src_dir_path;
+        abs_import_path = concat_path(default_base_path, import_path, stage_allocator());
+    }
+
+    return abs_import_path;
+}
+
+xpOption<Package *> get_package_by_import(xpOption<xpString> search_prefix, xpString import_path, Array<Package> *all_packages) {
+    xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
+
+    for(isize i = 0; i < all_packages->count; i++) {
+        if(xp_string_equal((*all_packages)[i].path, abs_import_path)) {
+            return xpOption<Package *>::some(&(*all_packages)[i]);
+        }
+    }
+
+    return xpOption<Package *>::none();
 }
 
 
 
 Array<Package> resolve_dependencies(xpString main_path) {
+    defer(xp_arena_allocator_clear(stage_allocator()));
+
     // 所有package所在
     Array<Package> packages = make_array<Package>(permanent_allocator());
     Array<PackageState> package_states = make_array<PackageState>(stage_allocator());
@@ -100,33 +128,25 @@ Array<Package> resolve_dependencies(xpString main_path) {
         return packages;
     }
 
-    xpString main_dir_path;
-
     Package main_package;
     if(is_existing_directory(main_path)) {
-        context()->main_src_dir_path = main_path.c_str;
+        context()->main_src_dir_path = main_path;
 
         // main_dir_path是一个目录
         main_package = tokenize_and_parse_package(main_path.c_str);
-
-        main_dir_path = main_path;
     } else if(is_existing_file(main_path)) {
         // main_dir_path是一个文件, 它是main package的唯一文件
         std::filesystem::path p{std::string(main_path.c_str, (size_t)main_path.length)};
         xpString parent_dir_path = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
+        context()->main_src_dir_path = parent_dir_path;
 
-        context()->main_src_dir_path = parent_dir_path.c_str;
-        main_dir_path = parent_dir_path;
         
         main_package = make_package(parent_dir_path, permanent_allocator());
-        
         AstFile main_file = tokenize_and_parse_file(main_path.c_str, &main_package.package_scope);
-
         array_push_back(&main_package.ast_files, main_file);
     }
 
     // 解析主package
-    // Package main_package = tokenize_and_parse_package(main_dir_path.c_str);
     add_new_package(main_package);
 
 
@@ -141,18 +161,24 @@ Array<Package> resolve_dependencies(xpString main_path) {
             AstFile ast_file = pkg.ast_files[j];
 
 
+            Array<Ast *> import_asts = make_array<Ast *>(stage_allocator());
+            collect_all_imports_in_ast_file(ast_file, &import_asts);
 
 
+            // 处理搜索路径
+            Array<xpString> abs_paths = make_array<xpString>(stage_allocator());
+            for(Ast *import: import_asts) {
+                xpOption<xpString> search_prefix = import->Import.search_prefix;
+                xpString import_path = import->Import.path;
+                xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
 
-            // 获取该文件import的所有package路径
-            Array<xpString> relative_import_paths = resolve_import_paths(ast_file);
+                array_push_back(&abs_paths, abs_import_path);
+            }
 
-            // 根目录路径 + 相对import路径 -> 绝对import路径
-            Array<xpString> absolute_import_paths = from_relative_to_absolute_import_paths(main_dir_path, relative_import_paths);
-            
+
             // 处理每个imported package paths
-            for(isize k = 0; k < absolute_import_paths.count; k++) {
-                xpString abs_import_path = absolute_import_paths[k];
+            for(isize k = 0; k < abs_paths.count; k++) {
+                xpString abs_import_path = abs_paths[k];
 
                 if(!check_directory_legel(abs_import_path)) {
                     // TODO ERROR: import路径不合法
@@ -228,24 +254,6 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
     return package;
 }
 
-
-
-
-
-// 获取一个文件import的所有依赖的package路径(相对于项目根目录)
-Array<xpString> resolve_import_paths(AstFile ast_file) {
-    xpString file_path = ast_file.source_code.file_path;
-
-    Array<xpPair<xpString, xpString>> imports = make_array<xpPair<xpString, xpString>>(stage_allocator());
-    collect_all_imports_in_ast_file(ast_file, &imports);
-
-    Array<xpString> imported_paths = make_array<xpString>(stage_allocator());
-    for(isize i = 0; i < imports.count; i++) {
-        array_push_back(&imported_paths, imports[i].second);
-    }
-
-    return imported_paths;
-}
 
 
 
