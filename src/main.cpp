@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <print>
 #include <format>
 #include <chrono>
 
@@ -104,7 +105,7 @@ int main(int argc, char** argv) {
 
     end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end_time - start_time;
-    printf("Initialization time: %.5f s\n", duration.count());
+    std::println("Initialization time: {:.5f} s", duration.count());
     last_time = end_time;
 
 

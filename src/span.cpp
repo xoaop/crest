@@ -26,3 +26,15 @@ Span merge(Span a, Span b) {
 
     return merged;
 }
+
+
+void print_span(SourceCode src_code, Span span) {
+    auto start = cal_line_column_index_of_byte_pos(src_code, span.start);
+    auto end = cal_line_column_index_of_byte_pos(src_code, span.end);
+
+    printf("%s:%lld:%lld - %lld:%lld", 
+        src_code.file_path.c_str,
+        start.first, start.second,
+        end.first, end.second
+    );
+}

@@ -336,6 +336,10 @@ bool is_certain_type(TypeRef type) {
     }
 }
 
+bool is_number_type(TypeRef type) {
+    return is_integer_type(type) || is_float_type(type);
+}
+
 bool is_untyped_type(TypeRef type) {
     return type->kind == Type_untyped_int || type->kind == Type_untyped_float;
 }
@@ -876,12 +880,14 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
             return func_str;
         }
 
-    } else {
-        XP_ASSERT_DEFAULT(0);
+    } else if(type->kind == Type_error) {
+        return xp_string_c("error");
+    } else if(type->kind == Type_Undefined) {
+        return xp_string_c("undefined");
     }
     
     // Unreachable
-    XP_ASSERT_DEFAULT(0);
+    UNREACHABLE();
 }
 
 
