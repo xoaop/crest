@@ -22,6 +22,7 @@ struct Ast;
     AST_INFO(BadType, "bad type", struct {})                                \
     AST_INFO(Import, "import", struct {                                     \
         xpString path;                                                      \
+        xpOption<xpString> search_prefix;                                   \
     })                                                                      \
     AST_INFO(EasyType, "easy type", struct {                                \
         TypeKind kind;                                                      \

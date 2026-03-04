@@ -1,11 +1,16 @@
 #ifndef CREST_CONTEXT_HPP
 #define CREST_CONTEXT_HPP
 
+#include <filesystem>
+
 #include "package.hpp"
 #include "error_msg.hpp"
 
+
 struct Context {
-    const char *main_src_dir_path;
+    std::filesystem::path compiler_path;
+
+    xpString main_src_dir_path;
 
     Package global_blank_package;
 

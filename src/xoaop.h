@@ -321,6 +321,7 @@ typedef struct xpSlice {
 xp_define xpString xp_string_c(char const *str);
 xp_define xpString xp_make_string(xpAllocator allocator, char const *str);
 xp_define xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize capacity);
+xp_define xpString xp_make_string_count(xpAllocator allocator, char const *str, isize count);
 xp_define xpString xp_make_string_zero();
 xp_define xpString xp_string_to_c_style(xpString string, xpAllocator allocator);
 xp_define xpString xp_make_string_from_slice(xpAllocator allocator, xpSlice slice);
@@ -1657,7 +1658,39 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
     
     // 末尾补上'\0'
     // string.c_str[length] = '\0';
+    return string;
+}
 
+xpString xp_make_string_count(xpAllocator allocator, char const *str, isize count) {
+    XP_ASSERT_DEFAULT(count >= 0);
+
+    xpString string = xp_make_string_zero();
+    string.allocator = allocator;
+
+    // 计算实际长度
+    isize actual_count = 0;
+    if(str != NULL) {
+        actual_count = xp_strlen_c(cast(char const *)str);
+    }
+
+    isize length = 0;
+    if(actual_count < count) {
+        length = actual_count;
+    } else {
+        length = count;
+    }
+    string.length = length;
+
+    string.c_str = cast(char *) xp_alloc(string.allocator, length + 1); // NOTE: +1是为了末尾的'\0'
+    string.capacity = length;
+
+    // 复制字符串内容
+    memcpy(string.c_str, str, string.length);
+
+    // 末尾补上'\0'
+    string.c_str[string.capacity] = '\0';
+
+   
     return string;
 }
 

@@ -145,7 +145,7 @@ LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, L
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type);
 
 
-void gen_ir_package(Package *pkg);
+void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config);
 void gen_ir_astfile(AstFile f, LLVMGenerator *gen);
 void gen_ir_function(LLVMGenerator *gen, Ast *function);
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
@@ -155,6 +155,13 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_not_equal = false);
 LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, TypeRef array_value_type);
 
+
+void init_llvm() {
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
+    LLVMInitializeNativeAsmParser();
+    LLVMInitializeNativeDisassembler();
+}
 
 void init_llvm_generator(LLVMGenerator *gen, Package *pkg, xpAllocator allocator) {
     gen->ctx = LLVMContextCreate();
@@ -273,7 +280,7 @@ SymbolInfo *get_extern_func_sym_by_full_ident_ast(Ast *field_access, LLVMGenerat
 }
 
 
-LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value) {
+LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value, bool allow_alloc_value_to_get_ptr = true) {
     if(LLVMIsALoadInst(value)) {
         // 如果是load指令, 直接返回被加载的地址
 
@@ -287,10 +294,14 @@ LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value) {
     }
 
     // 否则, 需要先把值存到内存中, 再返回地址
-    LLVMTypeRef value_type = LLVMTypeOf(value);
-    LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(gen, LLVMGetInsertBlock(gen->builder), "temp", value_type);
-    LLVMBuildStore(gen->builder, value, temp_alloca);
-    return temp_alloca;
+    if(allow_alloc_value_to_get_ptr) {
+        LLVMTypeRef value_type = LLVMTypeOf(value);
+        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(gen, LLVMGetInsertBlock(gen->builder), "temp", value_type);
+        LLVMBuildStore(gen->builder, value, temp_alloca);
+        return temp_alloca;
+    } else {
+        XP_ASSERT_DEFAULT(0 && "Compiler Internal Error: Cannot get pointer of value, and not allowed to alloc value to get pointer");
+    }
 }
 
 
@@ -392,14 +403,12 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
 }
 
 
-void gen_ir_all_packages(Array<Package> all_packages) {
+void gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config) {
     defer(xp_arena_allocator_clear(stage_allocator()));
-
-    LLVMInitializeNativeTarget();
 
 
     for(isize i = 0; i < all_packages.count; i++) {
-        gen_ir_package(&all_packages[i]);
+        gen_ir_package(&all_packages[i], config);
     }
 
 }
@@ -421,7 +430,7 @@ LLVMValueRef get_llvm_func_val_in_scope_by_ori_name(LLVMGenerator *gen, xpString
 }
 
 
-void gen_ir_package(Package *pkg) {
+void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     LLVMGenerator gen;
     init_llvm_generator(&gen, pkg, stage_allocator());
     defer(free_llvm_generator(&gen));
@@ -497,6 +506,36 @@ void gen_ir_package(Package *pkg) {
         LLVMDisposeMessage(error);
         XP_ASSERT_DEFAULT(0);
     }
+
+    // 优化
+    LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
+    defer(LLVMDisposePassBuilderOptions(options));
+
+    // 选择优化级别
+    char const *passes = NULL;
+    switch(config.optimization_level) {
+        case LLVMIROptimizationLevel::O0:
+            passes = "default<O0>";
+            break;
+        case LLVMIROptimizationLevel::O1:
+            passes = "default<O1>";
+            break;
+        case LLVMIROptimizationLevel::O2:
+            passes = "default<O2>";
+            break;
+        case LLVMIROptimizationLevel::O3:
+            passes = "default<O3>";
+            break;
+        case LLVMIROptimizationLevel::Os:
+            passes = "default<Os>";
+            break;
+        case LLVMIROptimizationLevel::Oz:
+            passes = "default<Oz>";
+            break;
+    }
+
+    // 运行优化
+    LLVMRunPasses(gen.module, passes, gen.target_machine, options);
 
     // 生成.o文件
     if(LLVMTargetMachineEmitToFile(
