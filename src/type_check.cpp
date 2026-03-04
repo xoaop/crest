@@ -26,19 +26,6 @@ bool check_untyped_float_to_type(double value, TypeRef target_type) {
     return !check_float_overflow(value, target_type);
 }
 
-// bool check_untyped_to_type(Ast *constant, TypeRef target_type) {
-//     XP_ASSERT_DEFAULT(constant->type == AstType_Constant);
-
-//     if(constant->v_type == easy_type(Type_untyped_int)) {
-//         return check_untyped_int_to_type(constant->Constant.value, target_type);
-//     } else if(constant->v_type == easy_type(Type_untyped_float)) {
-//         return check_untyped_float_to_type(constant->Constant.float_value, target_type);
-//     } else {
-//         UNREACHABLE();
-//         return false;
-//     }
-// }
-
 bool check_untyped_to_type(Value& val, TypeRef target_type) {
     if(val.type == easy_type(Type_untyped_int)) {
         return check_untyped_int_to_type(val.integer_value, target_type);
@@ -356,59 +343,53 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
         case AstType_BinaryExpr: {
 
+            TokenType op = expr->BinaryExpr.op;
+            Ast *left = expr->BinaryExpr.left;
+            Ast *right = expr->BinaryExpr.right;
+
             bool should_check_equal_type = true;
 
             TypeRef infer_left_type = NULL;
             TypeRef infer_right_type = NULL;
 
 
-            if(is_return_bool_operator(expr->BinaryExpr.op)) {
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, NULL, analyser, true);
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, true);
+            if(is_return_bool_operator(op)) {
+                // 忽略target_type, 允许untyped_type
+
+                infer_left_type = infer_expr_type(left, false, NULL, analyser, true);
+                infer_right_type = infer_expr_type(right, false, NULL, analyser, true);
             } else {
-                // 如果该运算的结果类型不是操作数类型, 那么就不传递target type, 让子表达式自己推导
+                // 允许untyped_type
 
-                // ! TODO allow_untyped 不确定
-
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, has_target, target_type, analyser, allow_untyped);
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, has_target, target_type, analyser, allow_untyped);
+                infer_left_type = infer_expr_type(left, has_target, target_type, analyser, true);
+                infer_right_type = infer_expr_type(right, has_target, target_type, analyser, true);
             }
 
-            expr->BinaryExpr.left->v_type = infer_left_type;
-            expr->BinaryExpr.right->v_type = infer_right_type;
+            left->v_type = infer_left_type;
+            right->v_type = infer_right_type;
             
             
             if(infer_left_type == error_type() || infer_right_type == error_type()) {
                 break;
             }
             
-            // 处理untyped被兄弟表达式传染成确定类型的情况
-            if(is_untyped_type(infer_left_type) && !is_untyped_type(infer_right_type)) {
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, true, infer_right_type, analyser, false);
-                expr->BinaryExpr.left->v_type = infer_left_type;
-            } else if(!is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type)) {
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, true, infer_left_type, analyser, false);
-                expr->BinaryExpr.right->v_type = infer_right_type;
+            // 处理untyped被兄弟数值类型传染的情况
+            if(is_untyped_type(infer_left_type) && is_number_type(infer_right_type)) {
+                infer_left_type = infer_expr_type(left, true, infer_right_type, analyser, false);
+                left->v_type = infer_left_type;
+            } else if(is_number_type(infer_left_type) && is_untyped_type(infer_right_type)) {
+                infer_right_type = infer_expr_type(right, true, infer_left_type, analyser, false);
+                right->v_type = infer_right_type;
             }
-                
-            if(is_return_bool_operator(expr->BinaryExpr.op) && (is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type))) {
-                infer_left_type = infer_expr_type(expr->BinaryExpr.left, false, NULL, analyser, false);
-                infer_right_type = infer_expr_type(expr->BinaryExpr.right, false, NULL, analyser, false);
+            
+            // ! TODO: CHECK
+            bool no_untyped = !allow_untyped || is_return_bool_operator(op);
+            if(no_untyped && (is_untyped_type(infer_left_type) && is_untyped_type(infer_right_type))){
+                infer_left_type = infer_expr_type(left, false, NULL, analyser, false);
+                infer_right_type = infer_expr_type(right, false, NULL, analyser, false);
 
-                TypeRef common_type = get_common_type(infer_left_type, infer_right_type);
-                if(common_type == error_type()) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "两个untyped为操作数的bool二元表达式无法推导出一个共同的类型"
-                    );
-                    break;
-                }
-                
-                infer_left_type = common_type;
-                infer_right_type = common_type;
-
-                expr->BinaryExpr.left->v_type = infer_left_type;
-                expr->BinaryExpr.right->v_type = infer_right_type;
+                left->v_type = infer_left_type;
+                right->v_type = infer_right_type;
             }
 
             if(infer_left_type == error_type() || infer_right_type == error_type()) {
@@ -433,7 +414,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 }
 
                 // null指针可以和任何指针类型比较
-                if(expr->BinaryExpr.left->is_null || expr->BinaryExpr.right->is_null) {
+                if(left->is_null || right->is_null) {
                     should_check_equal_type = false;
 
                     // should_check_equal_type会绕开把v_type设为左边类型的逻辑
@@ -444,8 +425,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             } else if(is_pointer_type(infer_left_type) || is_pointer_type(infer_right_type)) {
                 
                 // 处理指针和整数的加减法运算
-                Ast *pointer_expr = is_pointer_type(infer_left_type) ? expr->BinaryExpr.left : expr->BinaryExpr.right;
-                Ast *non_pointer_expr = is_pointer_type(infer_left_type) ? expr->BinaryExpr.right : expr->BinaryExpr.left;
+                Ast *pointer_expr = is_pointer_type(infer_left_type) ? left : right;
+                Ast *non_pointer_expr = is_pointer_type(infer_left_type) ? right : left;
                 TypeRef pointer_type = is_pointer_type(infer_left_type) ? infer_left_type : infer_right_type;
                 TypeRef non_pointer_type = is_pointer_type(infer_left_type) ? infer_right_type : infer_left_type;
 
@@ -1138,6 +1119,13 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
     depth -= 1;
     
     expr->v_type = result_type;
+
+    #ifdef DEBUG_PRINT
+    print_span(analyser.curr_ast_file->source_code, expr->span);
+    printf(": inferred type '%s'\n", get_or_make_type_str(result_type, temp_allocator(), false).c_str);
+    xp_arena_allocator_clear(temp_allocator());
+    #endif
+
     return result_type;
 }
 

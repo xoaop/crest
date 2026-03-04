@@ -368,6 +368,13 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 #if defined(__cplusplus)
 
 
+//
+// 头文件
+//
+
+#include <string_view>
+
+
 
 //
 // char32_t 操作
@@ -2068,6 +2075,16 @@ xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle,
 
     return result;
 }
+
+
+template<>
+struct std::formatter<xpString> : std::formatter<std::string_view> {
+    template<typename FormatContext>
+    auto format(const xpString& str, FormatContext& ctx) {
+        return std::formatter<std::string_view>::format(std::string_view(str.c_str, str.length), ctx);
+    }
+};
+
 
 
 

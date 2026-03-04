@@ -142,6 +142,7 @@ bool is_unsigned_type(TypeRef type);
 bool is_float_type(TypeRef type);
 bool is_float_or_untyped_type(TypeRef type);
 bool is_certain_type(TypeRef type);
+bool is_number_type(TypeRef type);
 bool is_untyped_type(TypeRef type);
 bool is_function_type(TypeRef type);
 bool is_pointer_type(TypeRef type);

@@ -237,7 +237,7 @@ Array<Package> resolve_dependencies(xpString main_path) {
 // 2. 创建Package的Scope
 Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
-    xpString package_dir_path = xp_make_string(permanent_allocator(), path_of_package_dir);
+    xpString package_dir_path = normalize_path(xp_string_c(path_of_package_dir), permanent_allocator());
 
     // 扫描该目录下所有.crest文件
     Array<xpString> crest_files = scan_crest_files(path_of_package_dir, permanent_allocator());
