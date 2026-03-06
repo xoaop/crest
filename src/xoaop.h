@@ -94,22 +94,6 @@ bool xp_check_f64_is_inf(f64 value);
 #define xp_global static // 文件内静态生命周期变量
 
 
-//TODO(xoaop): consider
-#ifdef NULL
-#undef NULL
-#endif
-
-#ifndef NULL
-    #if defined(__cplusplus)
-        #if __cplusplus >= 201103L
-            #define NULL nullptr
-        #else
-            #define NULL 0
-        #endif
-    #else
-        #define NULL ((void *)0)
-    #endif
-#endif
 
 
 #define XP_ASSERT(exp) do {                                     \
@@ -372,7 +356,9 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 // 头文件
 //
 
+#include <functional> // TODO(xoaop): REMOVE
 #include <string_view>
+#include <concepts>
 
 
 
@@ -422,7 +408,6 @@ Defer In CPP
 
 #if __cplusplus >= 201703L
 
-#include <functional> // TODO(xoaop): REMOVE
 template<typename F>
 struct xpDeferWrapper {
     
@@ -503,7 +488,6 @@ struct xpOption {
 /*
 Result
 */
-#include <concepts>
 
 
 template<typename F, typename I>

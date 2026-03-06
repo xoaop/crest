@@ -92,9 +92,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 TypeRef resolve_type(Ast *type_ast, Analyser analyser);
+SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser);
+SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
 
-void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser);
 
 
 //
@@ -119,79 +120,6 @@ xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
 
     return xp_string_c("<invalid ident or field access>");
 }
-
-
-SymbolInfo *find_symbol_by_ident_or_fieldaccess(Ast *ident_ast, Analyser analyser) {
-    switch(ident_ast->type)
-    {
-        
-    case AstType_Ident: {
-        // 如果只是个单独的标识符, 那么就在当前作用域链里找, 直到全局作用域
-
-        SymbolInfo *symbol_info = find_symbol_until_global(
-            analyser.current_scope,
-            ident_ast->Ident.name
-        );
-        if(symbol_info != NULL && symbol_info->value.state == ValueState::Unsolved) {
-            eval_unsolved_in_symbol_table(symbol_info, analyser);
-        }
-
-        return symbol_info;
-
-    } break;
-    
-    case AstType_FieldAccess: {
-
-        Ast *parent = ident_ast->FieldAccess.parent;
-        xpString field_name = ident_ast->FieldAccess.field_name;
-
-        switch(parent->type)
-        {
-        case AstType_Ident: {
-            SymbolInfo *parent_sym = find_symbol_by_ident_or_fieldaccess(parent, analyser);
-            if(parent_sym == NULL) {
-                return NULL;
-            }
-
-            if(parent_sym->value.type->kind != Type_package) {
-                return NULL;
-            }
-
-            Package *pkg = get_package_value(parent_sym->value);
-            SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, field_name);
-
-            if(field_sym != NULL && field_sym->value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(field_sym, make_analyser(&field_sym->package->package_scope, field_sym->file, field_sym->package));
-            }
-
-            return field_sym;
-        } break;
-        
-        case AstType_FieldAccess: {
-            // 目前不支持嵌套的field access作为package访问符号
-            return NULL;
-            // UNREACHABLE();
-        } break;
-        
-        default: {
-            // 只能是表达式, 如(*(ptr + 1))
-            return NULL;
-        } break;
-        }
-
-    } break;
-
-    case AstType_BadExpr: {
-        return NULL;
-    } break;
-
-    default:
-        return NULL;
-    }
-}
-
-
-
 
 
 
@@ -542,6 +470,9 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
     
     struct_symbol_info->value.set_value_state(ValueState::Solving);
 
+    TypeRef unfinished_type_type = type_type(unfinished_struct_type(struct_symbol_info->package, name));
+    struct_symbol_info->value.set_type(unfinished_type_type);
+
     Array<StructField> fields = make_array<StructField>(type_allocator());
     for(isize i = 0; i < decl->StructDeclValue.fields.count; i++) {
         Ast *field_ast = decl->StructDeclValue.fields[i];
@@ -562,10 +493,36 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
     if(struct_symbol_info->value.has_error()) {
         return;
     }
+    
+    
+    for(StructField field: fields) {
+        TypeRef field_type = field.type;
 
-    TypeRef struct_type_type = type_type(struct_type(struct_symbol_info->package, name, fields));
-    struct_symbol_info->value.set_type(struct_type_type);
+        if(is_struct_type(field_type)) {
+            // 结构体都应该在符号表有对应符号
+
+            SymbolInfo *field_struct_sym = find_symbol_curr(
+                &struct_symbol_info->package->package_scope, 
+                field_type->type_name
+            );
+            
+            if(field_struct_sym->value.state == ValueState::Solving) {
+                context()->reporter.report_error(
+                    decl->span, analyser.curr_ast_file->source_code,
+                    "circular dependency detected in struct '%s'",
+                    name.c_str
+                );
+                struct_symbol_info->value.set_type(error_type());
+                struct_symbol_info->value.set_value_state(ValueState::Error);
+                return;
+            }
+        }
+        
+    }
+    
+    finish_unfinish_struct_type(unfinished_type_type->self_type_info, fields);
     struct_symbol_info->value.set_value_state(ValueState::Solved);
+    
 }
 
 
@@ -601,23 +558,10 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         case AstType_Ident: {
             SymbolInfo *info = find_symbol_until_global(analyser.current_scope, expr->Ident.name);
             if(info == NULL) {
-                // context()->reporter.report_error(
-                //     expr->span, analyser.curr_ast_file->source_code,
-                //     "undefined symbol '%s'",
-                //     expr->Ident.name.c_str
-                // );
                 return ValueResult::err(ValueErrorKind::ErrorValue);
             }
-            // if(info->value.state == ValueState::Unsolved) {
-            //     eval_unsolved_in_symbol_table(info, analyser);
-            // }
-
-
 
             Value value = info->value;
-            if(value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(info, analyser);
-            }
 
             if(value.has_error()) {
                 return ValueResult::err(ValueErrorKind::ErrorValue);
@@ -647,6 +591,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 return parent_result;
             }
             Value parent_value = parent_result.as_ok();
+            TypeRef parent_type = parent_value.type;
 
             if(parent_value.has_error()) {
                 return ValueResult::err(ValueErrorKind::ErrorValue);
@@ -660,22 +605,12 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
             }
 
-            if(is_package_type(parent_value.type)) {
+            if(is_package_type(parent_type)) {
                 Package *pkg = get_package_value(parent_value);
                 SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, expr->FieldAccess.field_name);
                 
                 if(field_sym == NULL) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "symbol '%s' not found in package '%s'",
-                        expr->FieldAccess.field_name.c_str,
-                        pkg->path.c_str
-                    );
                     return ValueResult::err(ValueErrorKind::ErrorValue);
-                }
-
-                if(field_sym->value.state == ValueState::Unsolved) {
-                    eval_unsolved_in_symbol_table(field_sym, make_analyser(&field_sym->package->package_scope, field_sym->file, field_sym->package));
                 }
 
                 if(field_sym->value.has_error()) {
@@ -691,12 +626,12 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 }
 
                 return ValueResult::ok(field_sym->value);
+
+            } else if(is_struct_type(parent_type)) {
+                // TODO
+                XP_TODO;
             } else {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "only package can be accessed with field access in constant expression"
-                );
-                return ValueResult::err(ValueErrorKind::ErrorValue);
+                UNREACHABLE();
             }
 
 
@@ -815,14 +750,6 @@ Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast) {
 }    
 
 
-
-
-
-
-void resolve_field_access_expr(Ast *field_access, Analyser analyser) {
-    Ast *parent = field_access->FieldAccess.parent;
-    resolve_expr(parent, analyser);
-}    
 
 
 
@@ -1019,8 +946,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
         } else {
             // 有初始化表达式, 无显示指定类型的情况, 类型推导
-            // infer_expr_type(var_decl_ast->VariableDecl.expr, NULL, analyser);
-            infer_expr_type(var_decl_ast->VariableDecl.expr, false, {}, analyser, false);
+            infer_expr_type(var_decl_ast->VariableDecl.expr, false, NULL, analyser, false);
 
             XP_ASSERT_DEFAULT(var_decl_ast->VariableDecl.expr->v_type != undefined_type());
 
@@ -1028,13 +954,6 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         }
 
         if(var_decl_ast->VariableDecl.expr->v_type == error_type()) {
-            // 如果初始化表达式的类型错误了, 就不继续检查了, 避免产生过多的错误信息
-            context()->reporter.report_error(
-                var_decl_ast->VariableDecl.expr->span, analyser.curr_ast_file->source_code,
-                "variable '%s' has invalid initializer which type is illegal",
-                var_decl_ast->VariableDecl.var_name.c_str
-            );
-
             return;
         } 
         
@@ -1199,17 +1118,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
     switch (expr_ast->type)
     {
     case AstType_Ident: {
-        SymbolInfo *entry = find_symbol_by_ident_or_fieldaccess(expr_ast, analyser);
-        expr_ast->ast_symbol = entry; // 记录一下符号表信息, 方便后续类型检查阶段使用
-        if(entry == NULL) {
-            context()->reporter.report_error(
-                expr_ast->span, analyser.curr_ast_file->source_code,
-                "undefined symbol '%s'",
-                expr_ast->Ident.name.c_str
-            );
-
-        }
-
+        resolve_ident(expr_ast, analyser);
     } break;
     case AstType_FunctionCallExpr: {
         
@@ -1280,49 +1189,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
     } break;
 
     case AstType_FieldAccess: {
-        // NOTE: resolve阶段, 对存在于表达式的FieldAccess只检查作为符号访问的合法性
-        // 与类型信息无关, 结构体字段访问的合法性在类型检查阶段检查
-
-
-        // 检查了parent(作为符号)是否存在
-        resolve_expr(expr_ast->FieldAccess.parent, analyser);
-
-        if(expr_ast->FieldAccess.parent->type == AstType_Ident) {
-            // 如果是标识符, 再发现是package, 检查符号存不存在, 
-            // 别的就是结构体字段访问, 不在这里检查合法性, 在类型检查阶段检查
-
-            SymbolInfo *parent_symbol = expr_ast->FieldAccess.parent->ast_symbol;
-            if(parent_symbol == NULL) {
-                break;
-            }
-            
-            if(is_package_type(parent_symbol->value.type)) {
-                // 在被import的package里找field_name符号
-
-                Package *imported_package = get_package_value(parent_symbol->value);
-
-                SymbolInfo *field_symbol = find_symbol_until(
-                    ScopeType::Package,
-                    &imported_package->package_scope,
-                    expr_ast->FieldAccess.field_name
-                );
-
-                if(field_symbol == NULL) {
-                    context()->reporter.report_error(
-                        expr_ast->span, analyser.curr_ast_file->source_code,
-                        "undefined symbol '%s' in package '%s'",
-                        expr_ast->FieldAccess.field_name.c_str, parent_symbol->name.c_str
-                    );
-                }
-
-                if(field_symbol != NULL && field_symbol->value.state == ValueState::Unsolved) {
-                    eval_unsolved_in_symbol_table(field_symbol, make_analyser(&field_symbol->package->package_scope, field_symbol->file, field_symbol->package));
-                }
-
-                expr_ast->ast_symbol = field_symbol; // 记录一下符号表信息, 方便后续类型检查阶段使用
-            }
-        }
-
+        resolve_field_access(expr_ast, analyser);
     } break;
 
     case AstType_ArrayInitExpr: {
@@ -1381,36 +1248,15 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
         
         case AstType_Ident: {
-            SymbolInfo *type_info = find_symbol_by_ident_or_fieldaccess(type_ast, analyser);
-            type_ast->ast_symbol = type_info; // 记录一下符号表信息, 方便后续类型检查阶段使用
+            SymbolInfo *maybe_type_info = resolve_ident(type_ast, analyser);
 
-
-            if(type_info == NULL) {
-                context()->reporter.report_error(
-                    type_ast->span, analyser.curr_ast_file->source_code,
-                    "undefined type '%s'",
-                    type_ast->Ident.name.c_str
-                );    
-
+            if(maybe_type_info == NULL) {
                 return error_type();
             }
+            
 
-
-            Value val = type_info->value;
-            if(val.state == ValueState::Unsolved) {
-                // 递归解析类型, 可能会有循环依赖
-                Ast *top_ast = val.val_ast;
-                eval_unsolved_in_symbol_table(type_info, make_analyser(analyser.curr_ast_file, type_info->package, analyser.all_packages));
-            } else if(val.state == ValueState::Solving) {
-                // 循环依赖, 报错
-                context()->reporter.report_error(
-                    type_ast->span, analyser.curr_ast_file->source_code,
-                    "circular dependency detected in type declarations involving type '%s'",
-                    type_info->name.c_str
-                );
-            }
-
-            if(!is_type_type(type_info->value.type) || !is_struct_type(type_info->value.type->self_type_info)) {
+            TypeRef type = maybe_type_info->value.type;
+            if(!(is_type_type(type) && is_struct_type(type->self_type_info))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '%s' is not a type",
@@ -1421,68 +1267,31 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             }
 
             
-            return type_info->value.type->self_type_info;
+            return type->self_type_info;
         } break;    
 
         // 作为类型, parent只能是package, child只能是类型(目前只有结构体)名
         case AstType_FieldAccess: {
             Ast *parent_ident = type_ast->FieldAccess.parent;
-            xpString field_ident = type_ast->FieldAccess.field_name;
+            xpString filde_ident = type_ast->FieldAccess.field_name;
 
-            
-            SymbolInfo *package_symbol_info = find_symbol_by_ident_or_fieldaccess(parent_ident, analyser);
-            
-            parent_ident->ast_symbol = package_symbol_info; // 记录一下符号表信息, 方便后续类型检查阶段使用
-
-
-            xpString parent_str = get_ident_or_fieldaccess_string(parent_ident, temp_allocator());
-            if(package_symbol_info == NULL || package_symbol_info->value.type->kind != Type_package) {
-                context()->reporter.report_error(
-                    parent_ident->span, analyser.curr_ast_file->source_code,
-                    "undefined package '%s'",
-                    parent_str.c_str
-                );    
+            SymbolInfo *symbol = resolve_field_access(type_ast, analyser); 
+            if(symbol == NULL) {
                 return error_type();
             }
 
-            Package *imported_package = get_package_value(package_symbol_info->value);
-
-            // 在被import的package里找 结构体类型
-            SymbolInfo *type_symbol_info = find_symbol_until(
-                ScopeType::Package,
-                &imported_package->package_scope,
-                field_ident
-            );
-
-
-            type_ast->ast_symbol = type_symbol_info; // 记录一下符号表信息, 方便后续类型检查阶段使用
-            if(type_symbol_info == NULL) {
+            TypeRef type = symbol->value.type;
+            if(!(is_type_type(type) && is_struct_type(type->self_type_info))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
-                    "undefined struct type '%s' in package '%s'",
-                    field_ident.c_str, parent_str.c_str
-                );    
-
-                return error_type();
-            }
-
-
-            if(type_symbol_info->value.state == ValueState::Unsolved) {
-                eval_unsolved_in_symbol_table(type_symbol_info, make_analyser(&type_symbol_info->package->package_scope, type_symbol_info->file, type_symbol_info->package));
-            } else if(type_symbol_info->value.state == ValueState::Solving) {
-                // 循环依赖, 报错
-                context()->reporter.report_error(
-                    type_ast->span, analyser.curr_ast_file->source_code,
-                    "circular dependency detected in type declarations involving struct type '%s' in package '%s'",
-                    field_ident.c_str, parent_str.c_str
+                    "symbol '%s' is not a type",
+                    filde_ident.c_str
                 );
 
                 return error_type();
             }
 
-
-
-            return type_symbol_info->value.type->self_type_info;
+            return type->self_type_info;
         } break;    
             
 
@@ -1574,9 +1383,85 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
     }    
 }    
 
+SymbolInfo *resolve_string_as_ident_and_eval_unsolved(xpString str, Analyser analyser) {
+    SymbolInfo *info = find_symbol_until_global(analyser.current_scope, str);
+    if(info == NULL) {
+        return NULL;
+    }
+
+    if(info->value.state == ValueState::Unsolved) {
+        eval_unsolved_in_symbol_table(info, analyser);
+    }
+
+    return info;
+}
 
 
+SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser) {
+    xpString ident_str = ident_ast->Ident.name;
+    SymbolInfo *info = resolve_string_as_ident_and_eval_unsolved(ident_str, analyser);
 
+    if(info == NULL) {
+        context()->reporter.report_error(
+            ident_ast->span, analyser.curr_ast_file->source_code,
+            "undefined symbol '%s'",
+            ident_str.c_str
+        );
+    }
+
+    ident_ast->ast_symbol = info; // *RECORD SYMBOL IN AST*
+    return info;
+}
+
+
+SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
+    Ast *parent_ast = field_access_ast->FieldAccess.parent;
+    xpString field_name = field_access_ast->FieldAccess.field_name;
+
+    resolve_expr(parent_ast, analyser);
+
+
+    SymbolInfo *parent_symbol_info = parent_ast->ast_symbol;
+    if(parent_symbol_info == NULL) {
+        return NULL;
+    }
+
+
+    Value parent_value = parent_symbol_info->value;
+    TypeRef parent_type = parent_value.type;
+    if(is_package_type(parent_type)) {
+        Package *pkg = get_package_value(parent_value);
+
+        SymbolInfo *field_sym = resolve_string_as_ident_and_eval_unsolved(
+            field_name,
+            analyser
+            .set_current_scope(&pkg->package_scope)
+            .set_curr_ast_file(parent_symbol_info->file)
+            .set_pkg(parent_symbol_info->package)
+        );
+
+        if(field_sym == NULL) {
+            context()->reporter.report_error(
+                field_access_ast->span, analyser.curr_ast_file->source_code,
+                "undefined symbol '%s' in package '%s'",
+                field_name.c_str, parent_symbol_info->name.c_str
+            );
+
+            return NULL;
+        }
+
+
+        field_access_ast->ast_symbol = field_sym; // *RECORD SYMBOL IN AST*
+        return field_sym;
+    } else {
+
+        // 非包字段访问, 目前只有结构体字段访问, 结构体字段访问的合法性在类型检查阶段检查
+        return NULL;
+    }
+
+
+    UNREACHABLE();
+}
 
 
 
