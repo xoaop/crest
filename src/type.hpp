@@ -206,6 +206,7 @@ TypeRef undefined_type();
 TypeRef error_type();
 
 TypeRef unfinished_struct_type(Package *pkg, xpString ident);
+void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
 TypeRef string_type_as_struct();

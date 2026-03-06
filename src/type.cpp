@@ -698,6 +698,14 @@ TypeRef undefined_type() {
     return get_or_add_type(t);
 }
 
+void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
+    XP_ASSERT_DEFAULT(is_struct_type(unfinish));
+    XP_ASSERT_DEFAULT(unfinish->struct_info.struct_fields.count == 0);
+
+    unfinish->struct_info.struct_fields = fields;
+}
+
+
 TypeRef error_type() {
     Type t = {};
     t.kind = Type_error;
@@ -880,11 +888,19 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
             return func_str;
         }
 
+    } else if(is_type_type(type)) {
+        xpString type_str = xp_make_string(allocator, "type(");
+        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator(), need_free_temp_allocator);
+        xp_string_append(&type_str, self_type_str);
+        xp_string_append(&type_str, xp_string_c(")"));
+        return type_str;
+    } else if(is_package_type(type)) {
+        return type->package_info->path;
     } else if(type->kind == Type_error) {
         return xp_string_c("error");
     } else if(type->kind == Type_Undefined) {
         return xp_string_c("undefined");
-    }
+    } 
     
     // Unreachable
     UNREACHABLE();

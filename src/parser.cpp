@@ -1158,7 +1158,8 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     // 检查负数字面量
     if(has_minus) {
-        if(val > cast(i128)INTMAX_MAX) { 
+        val = -val;
+        if(!(val >= INTPTR_MIN && val <= INTPTR_MAX)) {
             context()->reporter.report(
                 ErrorLevel::Error,
                 a->token.span,
@@ -1168,7 +1169,6 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
             );
         }
 
-        val = -val;
     }
 
     

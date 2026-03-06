@@ -181,8 +181,6 @@ Array<Package> resolve_dependencies(xpString main_path) {
                 xpString abs_import_path = abs_paths[k];
 
                 if(!check_directory_legel(abs_import_path)) {
-                    // TODO ERROR: import路径不合法
-                    // error_msg(NULL, "import path is not a valid directory: %s", abs_import_path.c_str);
                     continue;
                 }
 
