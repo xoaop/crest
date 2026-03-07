@@ -373,7 +373,7 @@ bool is_slice_struct_type(TypeRef type) {
         return false;
     }
 
-    if(type->type_name.c_str[0] != '[') {
+    if(type->type_name[0] != '[') {
         return false;
     }
 

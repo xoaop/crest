@@ -136,7 +136,11 @@ Ast *get_function_value(Value& v) {
 Value clone_value(Value& v, xpAllocator allocator) {
     Value new_value = v;
 
-    if(is_struct_type(v.type)) {
+    if(is_string_struct_type(v.type)) {
+        new_value.string_value = v.string_value;
+    } else if(is_struct_type(v.type) && !is_string_struct_type(v.type)) {
+        // NOTE: 注意区分普通结构体和字符串(结构体)
+
         new_value.struct_field_values = array_copy(&v.struct_field_values, allocator);
     } else if(is_array_type(v.type)) {
         new_value.array_element_values = array_copy(&v.array_element_values, allocator);

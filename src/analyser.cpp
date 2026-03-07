@@ -379,7 +379,9 @@ void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
         break;
 
     default:
-        *const_val = resolve_comptime_expr(val_ast, analyser);
+        // clone_value是为了避免有在stage_allocator分配的值被释放, 比如array, struct等复杂类型的值
+        Value resolved_val = resolve_comptime_expr(val_ast, analyser);
+        *const_val = clone_value(resolved_val, permanent_allocator());
     }
 
 }
@@ -391,7 +393,7 @@ void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
 
     Ast *var_decl_ast = unsolved_symbol->value.val_ast;
 
-    XP_TODO;
+    XP_TODO();
 }
 
 
@@ -532,7 +534,7 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
 //
 
 ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool for_var_expr = false);
- 
+
 Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
     resolve_expr(expr, analyser);
     infer_expr_type(expr, false, NULL, analyser, true);
@@ -551,7 +553,7 @@ Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
 }
 
 
-
+// NOTE: 必须在resolve_expr和infer_expr_type之后调用, 因为需要保证符号正确解析和类型推导完成
 ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_expr) {
 
     switch(expr->type) {
@@ -574,6 +576,11 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                     expr->Ident.name.c_str
                 );
                 return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
+            }
+
+            if(expr->v_type != value.type) {
+                // 可能untyped的常量需要根据上下文推导类型
+                value.set_type(expr->v_type);
             }
 
 
@@ -628,13 +635,17 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 return ValueResult::ok(field_sym->value);
 
             } else if(is_struct_type(parent_type)) {
-                // TODO
-                XP_TODO;
-            } else {
-                UNREACHABLE();
+                for(isize i = 0; i < parent_type->struct_info.struct_fields.count; i++) {
+                    StructField field = parent_type->struct_info.struct_fields[i];
+                    if(xp_string_equal(field.name, expr->FieldAccess.field_name)) {
+                        Value field_value = parent_value.struct_field_values[i];
+                        return ValueResult::ok(field_value);
+                    }
+                }
             }
 
-
+            // UNREACHABLE();
+            return ValueResult::err(ValueErrorKind::ErrorValue);
         } break;
 
 
@@ -685,24 +696,111 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
         } break;
 
-        case AstType_ArrayInitExpr: {
-            context()->reporter.report(
-                ErrorLevel::Warning,
-                expr->span, analyser.curr_ast_file->source_code,
-                "array initialization is not supported in constant expression"
-            );
+        case AstType_CastExpr: {
+            ValueResult operand_result = eval_comptime_expr(expr->CastExpr.expr, analyser);
 
-            return ValueResult::err(ValueErrorKind::ErrorValue);
+            if(operand_result.is_err()) {
+                return operand_result;
+            }
+            Value operand = operand_result.as_ok();
+
+            // 直接修改为target type就行, 因为type check检查了
+            TypeRef target_type = expr->CastExpr.target_type;
+            operand.set_type(target_type);
+
+            return ValueResult::ok(operand);
+        } break;
+
+        case AstType_ArrayInitExpr: {
+            Array<Value> element_values = make_array<Value>(stage_allocator());
+            for(Ast *elem_expr_ast: expr->ArrayInitExpr.elements) {
+                ValueResult elem_expr_result = eval_comptime_expr(elem_expr_ast, analyser);
+                if(elem_expr_result.is_err()) {
+                    return elem_expr_result;
+                }
+                array_push_back(&element_values, elem_expr_result.as_ok());
+            }
+
+            Value array_value = make_comptime_sovled_val(expr->v_type);
+            array_value.array_element_values = element_values;
+
+            return ValueResult::ok(array_value);
         } break;
 
         case AstType_StructInitExpr: {
-            context()->reporter.report(
-                ErrorLevel::Warning,
-                expr->span, analyser.curr_ast_file->source_code,
-                "struct initialization is not supported in constant expression"
-            );
+            Array<Value> field_values = make_array<Value>(stage_allocator());
+            for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
+                Ast *field_init_ast = expr->StructInitExpr.field_inits[i];
+                ValueResult field_init_result = eval_comptime_expr(field_init_ast, analyser);
+                if(field_init_result.is_err()) {
+                    return field_init_result;
+                }
+                array_push_back(&field_values, field_init_result.as_ok());
+            }
 
+            Value struct_value = make_comptime_sovled_val(expr->v_type);
+            struct_value.struct_field_values = field_values;
+
+            return ValueResult::ok(struct_value);
+        } break;
+
+        case AstType_IndexExpr: {
+            ValueResult indexed_value_result = eval_comptime_expr(expr->IndexExpr.array_var_expr, analyser);
+            if(indexed_value_result.is_err()) {
+                return indexed_value_result;
+            }
+            ValueResult index_result = eval_comptime_expr(expr->IndexExpr.index_expr, analyser);
+            if(index_result.is_err()) {
+                return index_result;
+            }
+
+            Value indexed_value = indexed_value_result.as_ok();
+            Value index = index_result.as_ok();
+            TypeRef indexed_type = indexed_value.type;
+
+
+            // 检查下标越界
+            i128 index_val = index.integer_value;
+            if(is_array_type(indexed_type)) {
+                if(!(index_val >= 0 && index_val < indexed_type->array_info.count)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "array index out of bounds"
+                    );
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+            } else if(is_string_struct_type(indexed_type)) {
+                if(!(index_val >= 0 && index_val < indexed_value.string_value.length)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "string index out of bounds"
+                    );
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+            }
+
+            // 获取元素值
+            if(is_array_type(indexed_type)) {
+                Value element_value = indexed_value.array_element_values[index_val];
+                return ValueResult::ok(element_value);
+            } else if(is_string_struct_type(indexed_type)) {
+                // string类型的index表达式求值结果是一个u8的integer值
+                char c = indexed_value.string_value[index_val];
+                Value char_value = make_comptime_sovled_val(easy_type(Type_u8));
+                char_value.integer_value = c;
+                return ValueResult::ok(char_value);
+            }
+
+
+            // UNREACHABLE();
             return ValueResult::err(ValueErrorKind::ErrorValue);
+        } break;
+
+        case AstType_StringLiteralExpr: {
+            Value string_value = make_comptime_sovled_val(expr->v_type);
+            string_value.string_value = expr->StringLiteralExpr.str;
+
+            return ValueResult::ok(string_value);
         } break;
 
         default: {
@@ -799,7 +897,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
     } break;
 
     case AstType_BadDecl: {
-        UNREACHABLE();
+
     } break;
 
     default:
@@ -1104,7 +1202,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
 
     default: {
-        UNREACHABLE();
+        context()->reporter.report_error(
+            stmt_ast->span, analyser.curr_ast_file->source_code,
+            "invalid statement"
+        );
     } break;
     
     }
@@ -1300,7 +1401,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
             if(element_type == error_type()) {
                 return error_type();
-            }    
+            }
 
             Ast *count_expr = type_ast->ArrayType.count_expr;
 
@@ -1315,7 +1416,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
                 );    
 
                 return error_type();
-            }    
+            }
 
             if(!is_integer_type(count_expr->v_type)) {
                 context()->reporter.report_error(
@@ -1351,7 +1452,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
             TypeRef type_ref = array_type(element_type, cast(usize)count);
             return type_ref;
-        } break;    
+        } break;
 
 
         case AstType_SliceType: {
@@ -1363,14 +1464,14 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             TypeRef slice_type = slice_type_as_struct(elem_type);
 
             return slice_type;
-        } break;    
+        } break;
 
 
 
         case AstType_BadType: {
             // BadType, 不解析类型, 直接等后续阶段报错
             return error_type();
-        } break;    
+        } break;
 
         case AstType_BadExpr: {
             return error_type();
@@ -1378,7 +1479,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
         default: {
             return error_type();
-        } break;    
+        } break;
 
     }    
 }    
