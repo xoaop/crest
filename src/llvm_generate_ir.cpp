@@ -154,7 +154,7 @@ LLVMState gen_ir_stmt(LLVMGenerator *gen, Ast *stmt, LLVMState state);
 LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_lvalue_expr = false);
 LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_not_equal = false);
 LLVMValueRef gen_array_value_to_slice_cast(LLVMGenerator *gen, LLVMValueRef array_value_ptr, TypeRef array_value_type);
-
+LLVMValueRef gen_ir_string_struct_value(LLVMGenerator *gen, xpString str);
 
 void init_llvm() {
     LLVMInitializeNativeTarget();
@@ -280,7 +280,7 @@ SymbolInfo *get_extern_func_sym_by_full_ident_ast(Ast *field_access, LLVMGenerat
 }
 
 
-LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value, bool allow_alloc_value_to_get_ptr = true) {
+LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value, bool allow_alloc_value_to_get_ptr = false) {
     if(LLVMIsALoadInst(value)) {
         // 如果是load指令, 直接返回被加载的地址
 
@@ -641,6 +641,27 @@ LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type,
 
 
 
+
+LLVMValueRef gen_ir_string_struct_value(LLVMGenerator *gen, xpString str) {
+    LLVMValueRef str_const = LLVMBuildGlobalString(
+        gen->builder, 
+
+        // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
+        // 不把""当成字符串内容
+        xp_string_to_c_style(str, stage_allocator()).c_str,
+        "stringliteraltmp"
+    );
+
+    LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(gen, string_type_as_struct()));
+    
+    str_struct = LLVMBuildInsertValue(gen->builder, str_struct, str_const, 0, "insertstrptrtmp");
+
+    str_struct = LLVMBuildInsertValue(gen->builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), str.length, 0), 1, "insertstrlenntmp");
+
+    return str_struct;
+}
+
+
 LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<TypeRef> expected_type) {
      // TODO 其他类型的常量
 
@@ -671,11 +692,30 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
             break;
 
         case Type_array: {
-            XP_TODO;
+            Array<LLVMValueRef> element_values = make_array<LLVMValueRef>(stage_allocator());
+            for(isize i = 0; i < value.array_element_values.count; i++) {
+                LLVMValueRef element_llvm_val = gen_llvm_val_by_value(gen, value.array_element_values[i], xpOption<TypeRef>(value.type->array_info.element_type));
+                array_push_back(&element_values, element_llvm_val);
+            }
+
+            llvm_val = LLVMConstArray2(get_llvm_type_from_type(gen, value.type), element_values.data, element_values.count);
         } break;
 
         case Type_struct: {
-            XP_TODO;
+            if(is_string_struct_type(value.type)) {
+                llvm_val = gen_ir_string_struct_value(gen, get_string_value(value));
+            } else if(is_struct_type(value.type)) {
+                Array<LLVMValueRef> field_values = make_array<LLVMValueRef>(stage_allocator());
+                for(isize i = 0; i < value.struct_field_values.count; i++) {
+                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(gen, value.struct_field_values[i], xpOption<TypeRef>(value.type->struct_info.struct_fields[i].type));
+                    array_push_back(&field_values, field_llvm_val);
+                }
+
+                llvm_val = LLVMConstNamedStruct(get_llvm_type_from_type(gen, value.type), field_values.data, cast(unsigned)field_values.count);
+            } else {
+                UNREACHABLE();
+            }
+
         } break;
 
         default:
@@ -751,7 +791,7 @@ void gen_ir_astfile(AstFile f, LLVMGenerator *gen) {
                 break;
             
             case AstType_VariableDecl:
-                XP_TODO;
+                XP_TODO();
                 break;
 
             default:
@@ -1546,22 +1586,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
     case AstType_StringLiteralExpr: {
 
-        LLVMValueRef str_const = LLVMBuildGlobalString(
-            gen->builder, 
-
-            // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
-            // 不把""当成字符串内容
-            xp_make_string_capacity(stage_allocator(), expr->StringLiteralExpr.str.c_str, expr->StringLiteralExpr.str.length).c_str, 
-            "stringliteraltmp"
-        );
-
-        LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(gen, expr->v_type));
-        
-        str_struct = LLVMBuildInsertValue(gen->builder, str_struct, str_const, 0, "insertstrptrtmp");
-
-        str_struct = LLVMBuildInsertValue(gen->builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(gen->ctx), expr->StringLiteralExpr.str.length, 0), 1, "insertstrlenntmp");
-
-        return str_struct;
+        return gen_ir_string_struct_value(gen, expr->StringLiteralExpr.str);
     } break;
 
 

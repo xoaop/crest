@@ -858,9 +858,9 @@ Ast *parse_string_literal(Parser *p) {
         return a;
     } else {
         // 代表解析失败, 已经报告了错误, 这里返回一个BadExpr占位符就行了
-
-        Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
-        return a;
+        UNREACHABLE();
+        // Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
+        // return a;
     }
 }
 

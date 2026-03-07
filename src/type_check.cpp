@@ -167,7 +167,7 @@ bool if_untyped_try_to_typed_or_do_nothing(Value& val, TypeRef target_type) {
 
 
 // TODO: 逻辑待检查
-bool check_explicit_type_cast(TypeRef casted_expr_type, TypeRef target_type) {
+bool check_explicit_type_cast(Ast *casted_expr_ast, TypeRef casted_expr_type, TypeRef target_type) {
 
     if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type)) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type))) {
         // 任意数字类型之间都可以转化
@@ -184,8 +184,8 @@ bool check_explicit_type_cast(TypeRef casted_expr_type, TypeRef target_type) {
         // 数组可以转化为slice结构体类型
         //
 
-        if(target_type->struct_info.struct_fields[0].type->pointed_type == casted_expr_type->array_info.element_type) {
-            // 前提元素类型相同
+        if(casted_expr_ast->is_lvalue && target_type->struct_info.struct_fields[0].type->pointed_type == casted_expr_type->array_info.element_type) {
+            // 前提元素类型相同 而且casted_expr是左值(数组字面量不行), 因为涉及到取地址操作
             return true;
         } else {
             return false;
@@ -212,7 +212,7 @@ bool check_implicit_convension(Ast *expr, TypeRef checked_type, TypeRef target_t
     } else if(is_pointer_type(checked_type) && target_type == pointer_type(easy_type(Type_void))) {
         implicit_spec_ok = true;
     } else if(is_array_type(checked_type) && is_slice_struct_type(target_type)) {
-        if(target_type->struct_info.struct_fields[0].type->pointed_type == checked_type->array_info.element_type) {
+        if(expr->is_lvalue && target_type->struct_info.struct_fields[0].type->pointed_type == checked_type->array_info.element_type) {
             expr->implicit_conversion_tag = ImplicitConversionTag::ArrayToSliceStruct;
             implicit_spec_ok = true;
         }
@@ -630,7 +630,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
-            if(!check_explicit_type_cast(casted_type, target_type)) {
+            if(!check_explicit_type_cast(expr, casted_type, target_type)) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
                     "invalid explicit type cast"
@@ -817,6 +817,10 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
                 // target_type必须是数组类型
                 if(!is_array_type(target_type)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "target type of array literal must be an array type"
+                    );
                     break;
                 }
                 

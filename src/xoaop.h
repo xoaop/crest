@@ -112,7 +112,7 @@ bool xp_check_f64_is_inf(f64 value);
 #define XP_ASSERT_DEFAULT(exp) XP_ASSERT_MSG(exp, "")
 
 
-#define XP_TODO XP_ASSERT_DEFAULT(0)
+#define XP_TODO() XP_ASSERT_DEFAULT(0)
 #define UNREACHABLE() XP_ASSERT_MSG(0, "unreachable\n")
 
 
@@ -289,6 +289,7 @@ typedef struct xpString {
 
 #if defined(__cplusplus)
     bool operator== (xpString other) const;
+    char operator[] (isize index) const;
 #endif // __cplusplus
 
 
@@ -1695,7 +1696,7 @@ xpString xp_make_string_zero() {
 }
 
 xpString xp_string_to_c_style(xpString string, xpAllocator allocator) {
-    xpString c_style_string = xp_string_copy(allocator, string);
+    xpString c_style_string = xp_make_string_count(allocator, string.c_str, string.length);
     return c_style_string;
 }
 
@@ -2044,6 +2045,11 @@ bool xp_check_f64_is_inf(f64 value) {
 bool xpString::operator== (xpString other) const {
     b32 xp_string_cmp(xpString a, xpString b);
     return !xp_string_cmp(*this, other);
+}
+
+char xpString::operator[] (isize index) const {
+    XP_ASSERT_DEFAULT(index >= 0 && index < length);
+    return c_str[index];
 }
 
 
