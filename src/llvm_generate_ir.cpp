@@ -144,8 +144,7 @@ LLVMState save_state(LLVMValueRef curr_function, LLVMBasicBlockRef curr_block, L
 
 LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type);
 
-
-void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config);
+xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config);
 void gen_ir_astfile(AstFile f, LLVMGenerator *gen);
 void gen_ir_function(LLVMGenerator *gen, Ast *function);
 LLVMState gen_ir_variable_decl(LLVMGenerator *gen, Ast *variable_decl, LLVMState state);
@@ -243,7 +242,10 @@ static LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMGenerator *ge
     return alloca;
 }
 
-
+bool is_curr_basic_block_has_terminator(LLVMGenerator *gen) {
+    LLVMBasicBlockRef curr_block = LLVMGetInsertBlock(gen->builder);
+    return LLVMGetBasicBlockTerminator(curr_block) != NULL;
+}
 
 void llvm_build_br_when_no_br(LLVMGenerator *gen, LLVMBasicBlockRef from, LLVMBasicBlockRef to) {
     if(!LLVMGetBasicBlockTerminator(from)) {
@@ -403,14 +405,15 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
 }
 
 
-void gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config) {
+Array<xpString> gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
-
+    Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
     for(isize i = 0; i < all_packages.count; i++) {
-        gen_ir_package(&all_packages[i], config);
+        array_push_back(&obj_paths, gen_ir_package(&all_packages[i], config));
     }
 
+    return obj_paths;
 }
 
 
@@ -430,7 +433,7 @@ LLVMValueRef get_llvm_func_val_in_scope_by_ori_name(LLVMGenerator *gen, xpString
 }
 
 
-void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
+xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     LLVMGenerator gen;
     init_llvm_generator(&gen, pkg, stage_allocator());
     defer(free_llvm_generator(&gen));
@@ -486,7 +489,7 @@ void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     // 输出 .ll 文件
     char *error = NULL;
 
-    xpString obj_file_path = xp_make_string(stage_allocator(), "output/");
+    xpString obj_file_path = xp_make_string(permanent_allocator(), "output/");
     xpString obj_file_name = xp_string_replace_char(pkg->path, '/', '_', stage_allocator());
     xpString ll_file_path = xp_string_copy(stage_allocator(), obj_file_path);
     xp_string_append(&obj_file_path, obj_file_name);
@@ -549,7 +552,7 @@ void gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
         LLVMDisposeMessage(error);
     }
     
-
+    return obj_file_name;
 }
 
 
@@ -931,6 +934,13 @@ LLVMState gen_ir_block(LLVMGenerator *gen, Ast *block, LLVMState state, bool nee
     } 
 
     for(isize i = 0; i < block->Block.statements.count; i++) {
+
+        // TODO: 想一个更妥当的办法来处理这个问题, 如建模BasicBlock
+        if(is_curr_basic_block_has_terminator(gen)) {
+            // 如果当前基本块已经有终止指令了, 就不继续生成了
+            break;
+        }
+
         state = gen_ir_stmt(gen, block->Block.statements[i], state);
     }
 
@@ -1599,7 +1609,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
 }
 
-
+// 处理 == 和 != 操作符的比较逻辑
 static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LLVMValueRef right, TypeRef type, bool is_not_equal) {
     if(is_struct_type(type)) {
         // Type type_detail = get_type_detail_if_have(symbol_table(), type);
