@@ -10,6 +10,7 @@
 #include "llvm-c/Analysis.h"
 #include "llvm-c/BitWriter.h"
 #include "llvm-c/Transforms/PassBuilder.h"
+#include "llvm-c/Linker.h"
 
 
 enum class LLVMIROptimizationLevel {
@@ -29,7 +30,7 @@ struct LLVMIRGenerateConfig {
 
 
 void init_llvm();
-void gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config);
+Array<xpString> gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config);
 
 
 

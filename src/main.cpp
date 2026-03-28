@@ -135,12 +135,15 @@ int main(int argc, char** argv) {
 
     
     init_llvm();
-    gen_ir_all_packages(all_packages, LLVMIRGenerateConfig{.optimization_level = LLVMIROptimizationLevel::O0});
-
+    Array<xpString> obj_paths = gen_ir_all_packages(all_packages, LLVMIRGenerateConfig{.optimization_level = LLVMIROptimizationLevel::O0});
     
     end_time = std::chrono::high_resolution_clock::now();
     duration = end_time - last_time;
     printf("LLVM IR generation time: %.5f s\n", duration.count());
+
+
+    // 链接
+    
 
 
     duration = end_time - start_time;
