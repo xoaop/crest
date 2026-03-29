@@ -236,7 +236,6 @@ Ast *parse_import(Parser *p) {
 
 
 
-// TODO FINISH
 Ast *parse_struct_value(Parser *p) {
     auto name_succ = expect2(p, TokenType::KW_struct);
     
@@ -259,10 +258,7 @@ Ast *parse_struct_value(Parser *p) {
         field_ast->span = merge(field_name_token.span, type_ast->span);
         array_push_back(&field_types, field_ast);
         
-
-        if(curr_token(p).type != TokenType::RightCurlyBracket) {
-            expect(p, TokenType::Comma);
-        }
+        expect(p, TokenType::Semicolon);
     }
 
     Token rcb = expect(p, TokenType::RightCurlyBracket);
