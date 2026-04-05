@@ -27,10 +27,10 @@ void report_unexpected(Parser *p, TokenType expected);
 void report_unexpected(Parser *p, Token token, TokenType expected);
 
 bool reach_end(Parser *p);
-xp_internal Token curr_token(Parser *p);
-xp_internal Token next_token(Parser *p);
-xp_internal void advance_token(Parser *p);
-xp_internal Token expect(Parser *p, TokenType type);
+Token curr_token(Parser *p);
+Token next_token(Parser *p);
+void advance_token(Parser *p);
+Token expect(Parser *p, TokenType type);
 xpPair<Token, bool> expect2(Parser *p, TokenType type);
 Token expect_assert(Parser *p, TokenType type);
 
@@ -40,17 +40,17 @@ void advance_to_next_top_level(Parser *p);
 
 
 
-xp_internal Ast *parse_function(Parser *p);
-xp_internal Ast *parse_block(Parser *p);
+Ast *parse_function(Parser *p);
+Ast *parse_block(Parser *p);
 
 
 Ast *parse_top_level(Parser *p);
-xp_internal Ast *parse_if(Parser *p);
-xp_internal Ast *parse_for(Parser *p);
+Ast *parse_if(Parser *p);
+Ast *parse_for(Parser *p);
 
 
-xp_internal Ast *parse_factor(Parser *p, bool has_struct_init);
-xp_internal Ast *parse_expr(Parser *p, isize min_prec = 0, bool has_struct_init = false);
+Ast *parse_factor(Parser *p);
+Ast *parse_expr(Parser *p, isize min_prec = 0);
 
 
 Ast *parse_constant(Parser *p);
@@ -58,7 +58,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 
 Ast *parse_struct_init_expr(Parser *p);
-Ast *parse_array_init_expr(Parser *p, bool has_struct_init);
+Ast *parse_array_init_expr(Parser *p);
 
 
 Ast *parse_type(Parser *p);
@@ -70,7 +70,6 @@ Ast *parse_ident(Parser *p);
 Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
 
 Ast *parse_stmt(Parser *p);
-Ast *parse_named_stmt(Parser *p);
 
 
 
@@ -115,7 +114,7 @@ Ast *parse_array_type(Parser *p) {
     Ast *a = ast_alloc(AstType_ArrayType, expect(p, TokenType::LeftSquareBracket));
 
     Ast *count_expr = NULL;
-    count_expr = parse_expr(p, 0, true);
+    count_expr = parse_expr(p, 0);
     a->ArrayType.count_expr = count_expr;
 
     expect(p, TokenType::RightSquareBracket);
@@ -346,12 +345,12 @@ Ast *parse_function_value(Parser *p) {
     return a;
 }
 
-Ast *parse_assignment_or_expr(Parser *p, bool has_struct_init = true) {
-    Ast *left = parse_expr(p, 0, true);
+Ast *parse_assignment_or_expr(Parser *p) {
+    Ast *left = parse_expr(p, 0);
 
     if(curr_token(p).type == TokenType::Equal) {
         Token equal_token = expect(p, TokenType::Equal);
-        Ast *right = parse_expr(p, 0, has_struct_init);
+        Ast *right = parse_expr(p, 0);
 
         Ast *a = ast_alloc(AstType_Assignment, left->token);
         a->Assignment.left_var_expr = left;
@@ -386,7 +385,7 @@ Ast *parse_const_decl(Parser *p) {
         value_ast = parse_import(p);
         break;
     default:
-        value_ast = parse_expr(p, 0, true);
+        value_ast = parse_expr(p, 0);
         break;
     }
 
@@ -433,7 +432,7 @@ Ast *parse_var_decl(Parser *p) {
             // 有初始化表达式
 
             a->VariableDecl.no_zero_init = false;
-            a->VariableDecl.expr = parse_expr(p, 0, true);
+            a->VariableDecl.expr = parse_expr(p, 0);
 
             a->span = merge(a->token.span, a->VariableDecl.expr->span);
         }
@@ -470,7 +469,7 @@ Ast *parse_var_decl(Parser *p) {
                 // 有初始化表达式
 
                 a->VariableDecl.no_zero_init = false;
-                a->VariableDecl.expr = parse_expr(p, 0, true);
+                a->VariableDecl.expr = parse_expr(p, 0);
 
                 a->span = merge(a->token.span, a->VariableDecl.expr->span);
             }
@@ -520,7 +519,7 @@ Ast *parse_stmt(Parser *p) {
         advance_token(p);
 
         if(curr_token(p).type != TokenType::Semicolon) {
-            a->ReturnStmt.expr = parse_expr(p, 0, true);
+            a->ReturnStmt.expr = parse_expr(p, 0);
             a->span = merge(a->token.span, a->ReturnStmt.expr->span);
         } else {
             a->ReturnStmt.expr = NULL;
@@ -586,7 +585,7 @@ Ast *parse_stmt(Parser *p) {
 
 
 
-xp_internal Ast *parse_block(Parser *p) {
+Ast *parse_block(Parser *p) {
     Ast *a = ast_alloc(AstType_Block, expect(p, TokenType::LeftCurlyBracket));
     auto stmts = make_array<Ast *>(ast_allocator());
 
@@ -606,12 +605,12 @@ xp_internal Ast *parse_block(Parser *p) {
 
 
 
-xp_internal Ast *parse_if(Parser *p) {
+Ast *parse_if(Parser *p) {
     Ast *a = ast_alloc(AstType_IfStmt);
     a->token = expect(p, TokenType::KW_if);
 
     
-    a->IfStmt.condition = parse_expr(p, 0, false);
+    a->IfStmt.condition = parse_expr(p, 0);
     a->IfStmt.then_block = parse_block(p);
     
     a->IfStmt.else_block = NULL;
@@ -637,7 +636,7 @@ xp_internal Ast *parse_if(Parser *p) {
     return a;
 }
 
-xp_internal Ast *parse_for(Parser *p) {
+Ast *parse_for(Parser *p) {
     Ast *a = ast_alloc(AstType_ForStmt);
     a->token = expect(p, TokenType::KW_for);
 
@@ -653,7 +652,7 @@ xp_internal Ast *parse_for(Parser *p) {
 
     // condition
     if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.condition = parse_expr(p, 0, true);
+        a->ForStmt.condition = parse_expr(p, 0);
     } else {
         a->ForStmt.condition = NULL;
     }
@@ -661,7 +660,7 @@ xp_internal Ast *parse_for(Parser *p) {
 
     // post
     if(curr_token(p).type != TokenType::LeftCurlyBracket) {
-        a->ForStmt.post = parse_assignment_or_expr(p, false); // for循环的post部分不允许出现结构体初始化表达式, 因为语法上不好区分, 例如 a = {1, 2} 是赋值表达式还是结构体初始化表达式, 只能当作赋值表达式来解析, 这样就要求for循环的post部分不能出现结构体初始化表达式了
+        a->ForStmt.post = parse_assignment_or_expr(p);
 
         if(a->ForStmt.post->type != AstType_Assignment) {
             context()->reporter.report(
@@ -860,7 +859,7 @@ Ast *parse_string_literal(Parser *p) {
     }
 }
 
-xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
+Ast *parse_factor(Parser *p) {
     Ast *a = NULL;
     defer(XP_ASSERT_DEFAULT(a != NULL));
 
@@ -877,7 +876,7 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
         
         // NOTE: 比 所有二元运算符 优先级都高 就行
         #define UNARY_OP_PRECEDENCE 114514
-        a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE, has_struct_init);
+        a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE);
 
         a->span = merge(curr.span, a->UnaryExpr.operand->span);
 
@@ -903,7 +902,7 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
         // (expr)
         case TokenType::LeftBracket:
             expect(p, TokenType::LeftBracket);
-            a = parse_expr(p, 0, has_struct_init);
+            a = parse_expr(p, 0);
             expect(p, TokenType::RightBracket);
             
             break;
@@ -926,7 +925,7 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
             a->CastExpr.target_type_ast = parse_type(p);
 
             expect(p, TokenType::RightBracket);
-            a->CastExpr.expr = parse_expr(p, UNARY_OP_PRECEDENCE, has_struct_init);
+            a->CastExpr.expr = parse_expr(p, UNARY_OP_PRECEDENCE);
 
             a->span = merge(a->token.span, a->CastExpr.expr->span);
             break;
@@ -934,27 +933,12 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
         case TokenType::LeftSquareBracket:
             // 数组字面量
 
-            a = parse_array_init_expr(p, has_struct_init);
+            a = parse_array_init_expr(p);
             break;
 
         case TokenType::StringLiteral: {
             
             // 字符串字面量
-            /* DEPRECATED
-            // a = ast_alloc(AstType_StringLiteralExpr);
-            // a->token = expect(p, TokenType::StringLiteral);
-
-            // // TODO: xpString的稳定性的试金石
-            // xpString str = a->token.token_str;
-            // str.c_str = str.c_str + 1; //跳过开头的引号
-            // str.length -= 2; //去掉前后的引号
-            // str.capacity -= 2; //去掉前后的引号
-
-            // a->StringLiteralExpr.str = str;
-
-            // a->span = a->token.span;
-            */
-
             a = parse_string_literal(p);
 
         } break;
@@ -975,8 +959,8 @@ xp_internal Ast *parse_factor(Parser *p, bool has_struct_init) {
     return a;
 }
 
-xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
-    Ast *left = parse_factor(p, has_struct_init);
+Ast *parse_expr(Parser *p, isize min_prec) {
+    Ast *left = parse_factor(p);
 
     Token curr;
     
@@ -988,7 +972,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
             // 下标访问表达式
 
             expect(p, TokenType::LeftSquareBracket);
-            Ast *index_expr = parse_expr(p, 0, true);
+            Ast *index_expr = parse_expr(p, 0);
             Token rsb = expect(p, TokenType::RightSquareBracket);
             
             Ast *new_left = ast_alloc(AstType_IndexExpr, curr);
@@ -1011,7 +995,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
                     break;
                 }
 
-                Ast *arg = parse_expr(p, 0, true);
+                Ast *arg = parse_expr(p, 0);
                 array_push_back(&a->FunctionCallExpr.args, arg);
 
                 if(curr_token(p).type != TokenType::RightBracket) {
@@ -1024,47 +1008,51 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
 
             left = a;
         } else if(curr.type == TokenType::Dot) {
-            // 成员访问表达式
+            // 成员访问表达式 or  结构体初始化表达式
 
-            Ast *new_left = ast_alloc(AstType_FieldAccess, expect(p, TokenType::Dot));
-            new_left->FieldAccess.parent = left;
-            Token field_name_token = expect(p, TokenType::Ident);
-            new_left->FieldAccess.field_name = field_name_token.token_str;
-            
-            new_left->span = merge(left->span, field_name_token.span);
+            Token next = next_token(p);
 
-            left = new_left;
-        } else if(curr.type == TokenType::LeftCurlyBracket && has_struct_init) {
-            // 结构体初始化表达式, 
-            // NOTE: 目前不能出现在如if, for 的条件表达式中, 因为无法区分代码块和结构体初始化表达式
-
-            Ast *a = ast_alloc(AstType_StructInitExpr, curr);
-            a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
-
-            a->StructInitExpr.struct_type_ident = left;
-
-            // TODO 目前只支持全部字段按顺序初始化(不能缺失)
-            expect(p, TokenType::LeftCurlyBracket);
-
-            for(;;) {
-                if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
-                    break;
-                }
-
-                Ast *field_init_expr = parse_expr(p, 0, true);
+            if(next.type == TokenType::LeftCurlyBracket) {
                 
-                array_push_back(&a->StructInitExpr.field_inits, field_init_expr);
+                Ast *a = ast_alloc(AstType_StructInitExpr, curr);
+                a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
+                a->StructInitExpr.struct_type_ident = left;
+                
 
-                if(curr_token(p).type != TokenType::RightCurlyBracket) {
-                    expect(p, TokenType::Comma);
+                expect(p, TokenType::Dot);
+                expect(p, TokenType::LeftCurlyBracket);
+                
+                // TODO 目前只支持全部字段按顺序初始化(不能缺失)
+                for(;;) {
+                    if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
+                        break;
+                    }
+
+                    Ast *field_init_expr = parse_expr(p, 0);
+                    
+                    array_push_back(&a->StructInitExpr.field_inits, field_init_expr);
+
+                    if(curr_token(p).type != TokenType::RightCurlyBracket) {
+                        expect(p, TokenType::Comma);
+                    }
                 }
+
+                Token rcb = expect(p, TokenType::RightCurlyBracket);
+
+                a->span = merge(left->span, rcb.span);
+
+                left = a;
+            } else {
+                Ast *new_left = ast_alloc(AstType_FieldAccess, expect(p, TokenType::Dot));
+                new_left->FieldAccess.parent = left;
+                Token field_name_token = expect(p, TokenType::Ident);
+                new_left->FieldAccess.field_name = field_name_token.token_str;
+                
+                new_left->span = merge(left->span, field_name_token.span);
+    
+                left = new_left;
             }
 
-            Token rcb = expect(p, TokenType::RightCurlyBracket);
-
-            a->span = merge(left->span, rcb.span);
-
-            left = a;
         } else {
             break;
         }
@@ -1076,7 +1064,7 @@ xp_internal Ast *parse_expr(Parser *p, isize min_prec, bool has_struct_init) {
         
         if(is_binary_op(curr.type) && precedence(curr.type) > min_prec) {
             advance_token(p);
-            Ast *right = parse_expr(p, precedence(curr.type), has_struct_init);
+            Ast *right = parse_expr(p, precedence(curr.type));
             Ast *new_left = ast_alloc(AstType_BinaryExpr, curr);
 
             new_left->BinaryExpr.op = curr.type;
@@ -1262,7 +1250,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
 
 
-Ast *parse_array_init_expr(Parser *p, bool has_struct_init) {
+Ast *parse_array_init_expr(Parser *p) {
     Ast *a = ast_alloc(AstType_ArrayInitExpr);
     a->ArrayInitExpr.elements = make_array<Ast *>(ast_allocator());
 
@@ -1272,7 +1260,7 @@ Ast *parse_array_init_expr(Parser *p, bool has_struct_init) {
             break;
         }
 
-        Ast *element_expr = parse_expr(p, 0, has_struct_init);
+        Ast *element_expr = parse_expr(p, 0);
 
         array_push_back(&a->ArrayInitExpr.elements, element_expr);
 
@@ -1328,11 +1316,11 @@ bool reach_end(Parser *p) {
 }
 
 
-xp_internal Token curr_token(Parser *p) {
+Token curr_token(Parser *p) {
     return p->tokens[p->curr_token_index];
 }
 
-xp_internal Token next_token(Parser *p) {
+Token next_token(Parser *p) {
     XP_ASSERT_MSG(p->curr_token_index < p->tokens.count - 1, "No next token, reached end of tokens\n");
 
     return p->tokens[p->curr_token_index + 1];
@@ -1346,7 +1334,7 @@ Token peek_token(Parser *p, isize offset) {
     return p->tokens[p->curr_token_index + offset];
 }
 
-xp_internal void advance_token(Parser *p) {
+void advance_token(Parser *p) {
     if(!reach_end(p)) {
         p->curr_token_index += 1;
     }
@@ -1392,7 +1380,7 @@ void report_unexpected(Parser *p, Token token, TokenType expected) {
 } 
 
 
-xp_internal Token expect(Parser *p, TokenType type) {
+Token expect(Parser *p, TokenType type) {
     Token curr = curr_token(p);
 
     if(curr.type != type) {
