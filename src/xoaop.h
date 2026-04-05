@@ -209,7 +209,7 @@ typedef struct xpAllocator {
 
 xp_define void* xp_alloc(xpAllocator allocator, isize size);
 xp_define void xp_free(xpAllocator allocator, void* ptr);
-xp_define void* xp_realloc(xpAllocator allocator, void* ptr, isize old_size, isize new_size);
+xp_define void* xp_realloc(xpAllocator allocator, void* ptr, isize new_size, isize old_size);
 xp_define void xp_free_all(xpAllocator allocator);
 
 xp_define void xp_zero(void *ptr, isize size);
@@ -1293,8 +1293,8 @@ void* xp_alloc(xpAllocator allocator, isize size) {
 void xp_free(xpAllocator allocator, void* ptr) {
     allocator.proc(allocator.data, xpFree, ptr, (isize)0, 0);
 }
-void* xp_realloc(xpAllocator allocator, void* ptr, isize old_size, isize new_size) {
-    return allocator.proc(allocator.data, xpRealloc, ptr, old_size, new_size);
+void* xp_realloc(xpAllocator allocator, void* ptr, isize new_size, isize old_size) {
+    return allocator.proc(allocator.data, xpRealloc, ptr, new_size, old_size);
 }
 void xp_free_all(xpAllocator allocator) {
     allocator.proc(allocator.data, xpFreeAll, NULL, (isize)0, 0);
@@ -1442,34 +1442,29 @@ xp_internal void *xp_arena_alloc_item(xpArena* arena, isize size) {
     
     b8 found = false;
     
-    xpMemoryBlock start_block;
-    start_block.next = arena->curr_block;
-    do {
-        if(start_block.next == NULL) {
-            break;
-        }
-
-        xpMemoryBlock* curr_block = start_block.next;
+    xpMemoryBlock *prev_block = NULL;
+    while(arena->curr_block != NULL) {
+        xpMemoryBlock* curr_block = arena->curr_block;
 
         // NOTE(xoaop): 对齐
         isize available_size = curr_block->size - (xp_align_up(curr_block->base + curr_block->used, ALIGNMENT_DEFAULT) - curr_block->base);
         if(available_size >= size) {
             found = true;
-            arena->curr_block = curr_block;
             break;
         }
 
-        start_block.next = curr_block->next;
+        arena->curr_block = curr_block->next;
+        prev_block = curr_block;
+    }
 
-    } while(start_block.next != NULL);
 
-
-    
     // 如果没有合适的内存块, 新建
     if(!found) {
+        arena->curr_block = prev_block;
+
         isize alloc_size = size + xp_align_up_isize(sizeof(xpMemoryBlock), ALIGNMENT_DEFAULT);
 
-        isize alloc_block_count = alloc_size / arena->block_size + 1;
+        isize alloc_block_count = (alloc_size + arena->block_size - 1) / arena->block_size;
         
         // TODO(xoaop): 换成虚拟内存页分配, 不用heap_allocator
         // NOTE(xoaop): 我想这个指针该是对齐的, 不然会有问题
@@ -1498,20 +1493,24 @@ xp_internal void *xp_arena_alloc_item(xpArena* arena, isize size) {
 
 
 xp_internal void xp_arena_free_all(xpArena* arena) {
-
-    // 先到最后面
-    while(arena->curr_block != NULL) {
-        arena->curr_block = arena->curr_block->next;
+    
+    // 先到最前面
+    while(arena->curr_block != NULL && arena->curr_block->prev != NULL) {
+        arena->curr_block = arena->curr_block->prev;
     }
-    // 再从后到前
-    while(arena->curr_block != NULL) {
-        xpMemoryBlock* curr = arena->curr_block;
-        arena->curr_block = curr->prev;
+
+    // 再从前往后释放
+    xpMemoryBlock *curr = arena->curr_block;
+    xpMemoryBlock *next = NULL;
+    while(curr != NULL) {
+        next = curr->next;
         //TODO(xoaop): 换成虚拟内存页分配, 不用heap_allocator
         xp_free(xp_heap_allocator(), curr->base);
+
+        curr = next;
     }
 
-    // *NOTE(xoaop): 这是用malloc分配的, 别忘了释放
+    // *NOTE(xoaop): 若这是用malloc分配的, 别忘了释放
     if(arena->malloc) {
         free(arena);
     }

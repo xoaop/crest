@@ -22,6 +22,8 @@ bool is_existing_file(xpString path);
 
 bool is_existing_directory(xpString path);
 
+std::filesystem::path to_path(xpString path);
+
 
 struct Path {
 
