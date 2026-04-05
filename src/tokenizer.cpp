@@ -37,6 +37,13 @@ const char* token_strings[] = {
 
 xp_global StringHashMap<TokenType> keyword_map;
 
+
+
+char tokenizer_next_character(Tokenizer *t);
+isize advance_characters(Tokenizer *t, isize count);
+
+
+
 void test_keyword_map() {
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
         StringMapEntry<TokenType> *entry = string_map_get_entry(keyword_map, xp_string_c(token_strings[i]));
@@ -352,6 +359,11 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         case '.':
             token.type = TokenType::Dot;
             advance_one_character(t);
+
+            if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
+                token.type = TokenType::ThreeDots;
+                advance_characters(t, 2);
+            }
             break;
 
         case '"': {

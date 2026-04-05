@@ -53,6 +53,7 @@
     TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \
     TOKEN_INFO(StringLiteral, "string literal"),                \
+    TOKEN_INFO(ThreeDots, "..."),                               \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
     TOKEN_INFO(KW_struct, "struct"),                            \
     TOKEN_INFO(KW_void, "void"),                                \
@@ -124,7 +125,6 @@ struct Tokenizer {
     SourceCode source_code;
 };
 
-void tokenizer_init(Tokenizer* t, xpString code);
 xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code);
 xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t);
 char tokenizer_curr_character(Tokenizer *t);
