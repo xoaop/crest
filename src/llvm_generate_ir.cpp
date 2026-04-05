@@ -10,8 +10,9 @@
 
 #include "context.hpp"
 
+#include "path.hpp"
 
-
+#include <print>
 
 struct IRScope {
     IRScope *parent;
@@ -488,17 +489,18 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
 
     // 输出 .ll 文件
     char *error = NULL;
+    std::string file_name = to_path(pkg->path).generic_string();
+    std::ranges::replace(file_name, '/', '_');
 
     xpString obj_file_path = xp_make_string(permanent_allocator(), "output/");
-    xpString obj_file_name = xp_string_replace_char(pkg->path, '/', '_', stage_allocator());
     xpString ll_file_path = xp_string_copy(stage_allocator(), obj_file_path);
-    xp_string_append(&obj_file_path, obj_file_name);
+    
+    xp_string_append(&obj_file_path, xp_string_c(file_name.c_str()));
     xp_string_append(&obj_file_path, xp_string_c(".o"));
     
-    xp_string_append(&ll_file_path, obj_file_name);
+    xp_string_append(&ll_file_path, xp_string_c(file_name.c_str()));
     xp_string_append(&ll_file_path, xp_string_c(".ll"));
 
-    
     if(LLVMPrintModuleToFile(gen.module, ll_file_path.c_str, &error)) {
         fprintf(stderr, "Error writing .ll file: %s\n", error);
         LLVMDisposeMessage(error);
@@ -552,7 +554,7 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
         LLVMDisposeMessage(error);
     }
     
-    return obj_file_name;
+    return obj_file_path;
 }
 
 

@@ -80,6 +80,9 @@ bool is_existing_directory(xpString path) {
     return is_path_exists(path) && is_directory(path);
 }
 
+std::filesystem::path to_path(xpString path) {
+    return std::filesystem::path(std::string(path.c_str, (size_t)path.length));
+}
 
 
 
