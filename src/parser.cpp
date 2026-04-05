@@ -39,12 +39,10 @@ void advance_to_next_top_level(Parser *p);
 
 
 
-
-Ast *parse_function(Parser *p);
+Ast *parse_function_value(Parser *p);
 Ast *parse_block(Parser *p);
 
 
-Ast *parse_top_level(Parser *p);
 Ast *parse_if(Parser *p);
 Ast *parse_for(Parser *p);
 
@@ -57,7 +55,6 @@ Ast *parse_constant(Parser *p);
 void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 
-Ast *parse_struct_init_expr(Parser *p);
 Ast *parse_array_init_expr(Parser *p);
 
 
@@ -280,10 +277,30 @@ Ast *parse_function_value(Parser *p) {
             break;
         }
 
+
+        // @CleanUp: 代码略重复
+        // 特殊处理 ... (可变参数)
+        if(curr_token(p).type == TokenType::ThreeDots) {
+            Token dots_token = expect(p, TokenType::ThreeDots);
+            Ast *param_ast = ast_alloc(AstType_VariableDecl, dots_token);
+            param_ast->VariableDecl.var_name = dots_token.token_str; // 虽然可变参数没有名字, 但这里先把它的名字设置成 "..." 以方便调试和错误提示
+            param_ast->VariableDecl.type_ast = nullptr;
+            param_ast->span = dots_token.span;
+            param_ast->VariableDecl.is_var_arg = true; // 标记这是一个可变参数
+
+            array_push_back(&params, param_ast);
+
+            // 可变参数必须是最后一个参数, 所以直接跳出循环
+            break;
+        }
+
+
+
         Token param_name_token = expect(p, TokenType::Ident);
         expect(p, TokenType::Colon);
         Ast *param_type_ast = parse_type(p);
 
+        // TODO: VariableDecl换成ParameterDecl更合适
         Ast *param_ast = ast_alloc(AstType_VariableDecl, param_name_token);
         param_ast->VariableDecl.var_name = param_name_token.token_str;
         param_ast->VariableDecl.type_ast = param_type_ast;

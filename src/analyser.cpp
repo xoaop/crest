@@ -924,6 +924,19 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
     // 函数参数作为变量声明解析
     for(isize i = 0; i < value_ast->FunctionDeclValue.params.count; i++) {
         Ast *param_ast = value_ast->FunctionDeclValue.params[i];
+
+        //@CleanUp
+        if(param_ast->VariableDecl.is_var_arg == true) {
+            if(i != value_ast->FunctionDeclValue.params.count - 1) {
+                context()->reporter.report_error(
+                    param_ast->span, analyser.curr_ast_file->source_code,
+                    "variadic parameter must be the last parameter"
+                );
+            }
+
+            break;
+        }
+
         resolve_var_decl(param_ast, new_sc);
     }
 

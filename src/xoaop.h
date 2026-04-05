@@ -1,4 +1,4 @@
-/* 
+/*
     Everything about my library code in C/CPP
 */
 
@@ -10,53 +10,53 @@
 extern "C" { // for decl
 #endif
 
-/*
-    链接选项
-*/
+    /*
+        链接选项
+    */
 
 #ifdef XP_EXPORT_SYMBOL
-    #define XP_EXPORT __declspec(dllexport)
+#define XP_EXPORT __declspec(dllexport)
 #else 
-    #define XP_EXPORT
+#define XP_EXPORT
 #endif
 
 #define xp_define XP_EXPORT
 
 
 
-/*
-    头文件
-*/
+    /*
+        头文件
+    */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
-/* 
-Type Definitions 
-*/
+    /*
+    Type Definitions
+    */
 
 #include <stddef.h> // NOTE: only for ptrdiff_t now
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef unsigned long long u64;
-typedef size_t usize;
-typedef char i8;
-typedef short i16;
-typedef int i32;
-typedef long long i64;
-typedef ptrdiff_t isize;
-typedef float f32;
-typedef double f64;
+    typedef unsigned char u8;
+    typedef unsigned short u16;
+    typedef unsigned int u32;
+    typedef unsigned long long u64;
+    typedef size_t usize;
+    typedef char i8;
+    typedef short i16;
+    typedef int i32;
+    typedef long long i64;
+    typedef ptrdiff_t isize;
+    typedef float f32;
+    typedef double f64;
 
 
-typedef i8 b8;
-typedef i16 b16;
-typedef i32 b32;
+    typedef i8 b8;
+    typedef i16 b16;
+    typedef i32 b32;
 
-typedef usize uintptr;
+    typedef usize uintptr;
 
 
 
@@ -71,21 +71,21 @@ typedef usize uintptr;
 #define I128_MAX ((((~(i128)0) >> 1)))
 
 
-void print_i128(i128 n);
+    void print_i128(i128 n);
 
-bool xp_check_i128_add_overflow(i128 a, i128 b, i128* result);
-bool xp_check_i128_sub_overflow(i128 a, i128 b, i128* result);
-bool xp_check_i128_mul_overflow(i128 a, i128 b, i128* result);
-bool xp_check_i128_div_overflow(i128 a, i128 b, i128* result);
-bool xp_check_i128_mod_overflow(i128 a, i128 b, i128* result);
-bool xp_check_i128_neg_overflow(i128 a, i128* result);
+    bool xp_check_i128_add_overflow(i128 a, i128 b, i128 *result);
+    bool xp_check_i128_sub_overflow(i128 a, i128 b, i128 *result);
+    bool xp_check_i128_mul_overflow(i128 a, i128 b, i128 *result);
+    bool xp_check_i128_div_overflow(i128 a, i128 b, i128 *result);
+    bool xp_check_i128_mod_overflow(i128 a, i128 b, i128 *result);
+    bool xp_check_i128_neg_overflow(i128 a, i128 *result);
 
-bool xp_check_f64_is_inf(f64 value);
+    bool xp_check_f64_is_inf(f64 value);
 
 
-/*
-    常用宏 MACROS
-*/
+    /*
+        常用宏 MACROS
+    */
 
 
 
@@ -130,7 +130,7 @@ bool xp_check_f64_is_inf(f64 value);
 
 
 
-// 常用常量
+    // 常用常量
 #define I32_MAX (cast(i32)(2147483647))
 #define I32_MIN (cast(i32)(-2147483647 - 1))
 #define I64_MAX (cast(i64)(9223372036854775807ll))
@@ -152,27 +152,27 @@ bool xp_check_f64_is_inf(f64 value);
     常见函数
 */
 
-xp_define u8 *xp_align_up(u8 *value, isize alignment);
-xp_define u8 *xp_align_down(u8 *value, isize alignment);
-xp_define isize xp_align_up_isize(isize value, isize alignment);
-xp_define b32 xp_is_power_of_two(isize x);
+    xp_define u8 *xp_align_up(u8 *value, isize alignment);
+    xp_define u8 *xp_align_down(u8 *value, isize alignment);
+    xp_define isize xp_align_up_isize(isize value, isize alignment);
+    xp_define b32 xp_is_power_of_two(isize x);
 
-xp_define b32 xp_is_space(char c);
-xp_define b32 xp_is_digit_base_all(char c);
+    xp_define b32 xp_is_space(char c);
+    xp_define b32 xp_is_digit_base_all(char c);
 
-xp_define b32 xp_str_to_num_base(char const *str, u32 base, u64* result);
-xp_define b32 xp_str_to_integer(char const *str, i128* result);
+    xp_define b32 xp_str_to_num_base(char const *str, u32 base, u64 *result);
+    xp_define b32 xp_str_to_integer(char const *str, i128 *result);
 
 
 #define xp_array_len(array) (sizeof(array) / sizeof(array[0]))
 
 
-/*
-    内存操作
-*/
+    /*
+        内存操作
+    */
 
 
-xp_define void xp_memcpy_dst_loop(void *dst, isize dst_capacity, const void *src, isize src_count);
+xp_define void xp_memcpy_dst_loop(void *dst, isize dst_capacity, isize dst_offset, const void *src, isize src_count);
 
 
 
@@ -204,12 +204,12 @@ typedef struct xpAllocator {
     xp_allocator_proc *proc;
 
     // NOTE(xoaop): 为了实现泛型, 只能使用void* 指针, 这块内存的分配只能用堆内存分配
-    void* data;
+    void *data;
 } xpAllocator;
 
-xp_define void* xp_alloc(xpAllocator allocator, isize size);
-xp_define void xp_free(xpAllocator allocator, void* ptr);
-xp_define void* xp_realloc(xpAllocator allocator, void* ptr, isize new_size, isize old_size);
+xp_define void *xp_alloc(xpAllocator allocator, isize size);
+xp_define void xp_free(xpAllocator allocator, void *ptr);
+xp_define void *xp_realloc(xpAllocator allocator, void *ptr, isize new_size, isize old_size);
 xp_define void xp_free_all(xpAllocator allocator);
 
 xp_define void xp_zero(void *ptr, isize size);
@@ -230,17 +230,17 @@ xp_define xpAllocator xp_heap_allocator();
 #define ALIGNMENT_DEFAULT (8ll)
 
 typedef struct xpMemoryBlock {
-	struct xpMemoryBlock* prev;
-    struct xpMemoryBlock* next;
+    struct xpMemoryBlock *prev;
+    struct xpMemoryBlock *next;
 
-	u8* base; 
-	isize size;
-	isize used;
+    u8 *base;
+    isize size;
+    isize used;
 } xpMemoryBlock;
 
 typedef struct xpArena {
-    xpMemoryBlock* curr_block;
-	isize block_size;
+    xpMemoryBlock *curr_block;
+    isize block_size;
 
 
     b8 malloc;
@@ -253,7 +253,7 @@ xp_define xpArena xp_arena_default();
 xp_define xpArena xp_arena_make(isize block_size);
 
 XP_ALLOCATOR_PROC(xp_arena_allocator_proc);
-xp_define xpAllocator xp_arena_allocator(xpArena* arena);
+xp_define xpAllocator xp_arena_allocator(xpArena *arena);
 
 xp_define xpAllocator xp_arena_allocator_default();
 
@@ -272,7 +272,7 @@ xp_define void xp_arena_allocator_debug_print(xpAllocator allocator);
 */
 
 xp_define isize xp_strlen_c(char const *str);
-xp_define char *xp_find_first_non_space(const char* str);
+xp_define char *xp_find_first_non_space(const char *str);
 
 
 
@@ -288,8 +288,8 @@ typedef struct xpString {
     char *c_str;
 
 #if defined(__cplusplus)
-    bool operator== (xpString other) const;
-    char operator[] (isize index) const;
+        bool operator== (xpString other) const;
+        char operator[] (isize index) const;
 #endif // __cplusplus
 
 
@@ -332,7 +332,7 @@ xp_define xpSlice xp_slice_make_from_string(xpString string, isize begin, isize 
 /*
     哈希映射函数
 */
-xp_define u32 xp_murmur_hash3_32(const void* data, usize length, usize seed);
+xp_define u32 xp_murmur_hash3_32(const void *data, usize length, usize seed);
 xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 
 
@@ -358,6 +358,7 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 //
 
 #include <functional> // TODO(xoaop): REMOVE
+#include <string>
 #include <string_view>
 #include <concepts>
 
@@ -366,7 +367,7 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 //
 // char32_t 操作
 //
-size_t xp_strlen_char32(const char32_t* s);
+size_t xp_strlen_char32(const char32_t *s);
 
 
 
@@ -383,7 +384,7 @@ Macros
 
 
 template<typename T>
-void xp_zero(T* ptr) {
+void xp_zero(T *ptr) {
     memset(ptr, 0, sizeof(T));
 }
 
@@ -411,9 +412,9 @@ Defer In CPP
 
 template<typename F>
 struct xpDeferWrapper {
-    
-    xpDeferWrapper(F defer_func): defer_func(defer_func) {
-        
+
+    xpDeferWrapper(F defer_func) : defer_func(defer_func) {
+
     }
     ~xpDeferWrapper() {
         defer_func();
@@ -435,13 +436,13 @@ Option
 */
 enum class xpOptionEnum {
     None,
-    Some 
+    Some
 };
 
 template<typename T>
 struct xpOption {
-    public:
-    
+public:
+
     static xpOption<T> none() {
         return xpOption();
     }
@@ -452,22 +453,22 @@ struct xpOption {
 
     xpOption() : kind(xpOptionEnum::None) {}
     xpOption(T val) : kind(xpOptionEnum::Some), value(val) {}
-    
+
     bool has_value() {
         return kind == xpOptionEnum::Some;
     }
-    
+
     bool is_none() {
         return kind == xpOptionEnum::None;
     }
-    
+
     T unwrap() {
         XP_ASSERT_DEFAULT(kind == xpOptionEnum::Some);
         return value;
     }
 
 
-    bool operator==(const xpOption<T>& other) const {
+    bool operator==(const xpOption<T> &other) const {
         if (kind != other.kind) {
             return false;
         }
@@ -476,9 +477,9 @@ struct xpOption {
         }
         return value == other.value; // 比较Some的值
     }
-    
-    
-    private:
+
+
+private:
     xpOptionEnum kind;
     T value;
 };
@@ -492,7 +493,7 @@ Result
 
 
 template<typename F, typename I>
-concept MatchHandler = requires(F handler, I&& input) {
+concept MatchHandler = requires(F handler, I && input) {
     { handler(input) } -> std::same_as<void>;
 };
 
@@ -548,10 +549,10 @@ private:
 };
 
 template<typename OkType, typename ErrType>
-void match(xpResult<OkType, ErrType>& result, MatchHandler<OkType> auto&& ok_handler, MatchHandler<ErrType> auto&& err_handler) {
+void match(xpResult<OkType, ErrType> &result, MatchHandler<OkType> auto &&ok_handler, MatchHandler<ErrType> auto &&err_handler) {
     if (result.type == xpResultType::Ok) {
         ok_handler(result.ok);
-    } else if(result.type == xpResultType::Err) {
+    } else if (result.type == xpResultType::Err) {
         err_handler(result.err);
     } else {
         UNREACHABLE();
@@ -569,7 +570,7 @@ template<typename K>
 usize xp_hash_func(K *key);
 
 template<typename T>
-usize xp_hash_func(T* *key) {
+usize xp_hash_func(T **key) {
     return reinterpret_cast<usize>(*key);
 }
 
@@ -583,10 +584,10 @@ struct xpHashMapEntry {
 
 template<typename K, typename V>
 struct xpHashMap {
-    
+
     xpAllocator allocator;
     xpHashMapEntry<K, V> *entries;
-    
+
     isize count;
     isize capacity;
 };
@@ -597,10 +598,10 @@ xpHashMap<K, V> xp_hash_map_make(xpAllocator allocator) {
     xpHashMap<K, V> hash_map = {};
     hash_map.allocator = allocator;
     hash_map.entries = NULL;
-    
+
     hash_map.count = 0;
     hash_map.capacity = 0;
-    
+
     return hash_map;
 }
 
@@ -614,7 +615,7 @@ xpHashMap<K, V> xp_hash_map_copy(xpHashMap<K, V> *o, xpAllocator allocator) {
     xpHashMap<K, V> copy = *o;
     copy.entries = xp_alloc_array<xpHashMapEntry<K, V>>(allocator, copy.capacity);
     memcpy(copy.entries, o->entries, sizeof(xpHashMapEntry<K, V>) * copy.capacity);
-    
+
     return copy;
 }
 
@@ -623,34 +624,34 @@ xpHashMap<K, V> xp_hash_map_copy(xpHashMap<K, V> *o, xpAllocator allocator) {
 template<typename K, typename V>
 void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
     XP_ASSERT(new_capacity > map->capacity);
-    
-    if(map->entries == NULL) {
+
+    if (map->entries == NULL) {
         map->entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
         xp_zero(map->entries, sizeof(xpHashMapEntry<K, V>) * new_capacity);
     } else {
         // Rehash
         xpHashMapEntry<K, V> *new_entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
-        for(isize i = 0; i < new_capacity; ++i) {
+        for (isize i = 0; i < new_capacity; ++i) {
             new_entries[i].used = false;
         }
-        
-        for(isize i = 0; i < map->capacity; ++i) {
+
+        for (isize i = 0; i < map->capacity; ++i) {
             xpHashMapEntry<K, V> *old_entry = &map->entries[i];
-            if(old_entry->used) {
+            if (old_entry->used) {
                 usize hash_value = xp_hash_func(&old_entry->key);
                 usize index = hash_value % new_capacity;
                 // 线性探测
-                while(new_entries[index].used) {
+                while (new_entries[index].used) {
                     index = (index + 1) % new_capacity;
                 }
                 new_entries[index] = *old_entry;
             }
         }
         xp_free(map->allocator, map->entries);
-        
+
         map->entries = new_entries;
     }
-    
+
     map->capacity = new_capacity;
     return;
 }
@@ -658,30 +659,30 @@ void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
 
 template<typename K, typename V>
 V *xp_hash_map_insert(xpHashMap<K, V> *map, K key, V value) {
-    if(map->count >= map->capacity) {
+    if (map->count >= map->capacity) {
         xp_hash_map_extend(map, map->capacity + map->capacity / 2 + 1);
     }
     usize hash_value = xp_hash_func(&key);
-    
+
     usize index = hash_value % map->capacity;
     usize original_index = index;
     do {
         xpHashMapEntry<K, V> *entry = &map->entries[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             entry->key = key;
             entry->value = value;
             entry->used = true;
-            
+
             map->count += 1;
             return &entry->value;
-        } else if(entry->key == key) {
+        } else if (entry->key == key) {
             entry->value = value;
             return NULL;
         }
-        
+
         index = (index + 1) % map->capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     //NOTE: FULL MAP
     XP_ASSERT(0);
     return NULL;
@@ -690,38 +691,38 @@ V *xp_hash_map_insert(xpHashMap<K, V> *map, K key, V value) {
 
 template<typename K, typename V>
 xpHashMapEntry<K, V> *xp_hash_map_get_entry(xpHashMap<K, V> map, K key) {
-    if(map.count == 0) {
+    if (map.count == 0) {
         return NULL;
     }
-    
+
     usize hash_value = xp_hash_func(&key);
     usize index = hash_value % map.capacity;
     usize original_index = index;
     do {
         xpHashMapEntry<K, V> *entry = &map.entries[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             return NULL;
-        } else if(entry->key == key) {
+        } else if (entry->key == key) {
             return entry;
         }
-        
+
         index = (index + 1) % map.capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     return NULL;
 }
 
 
 template<typename K, typename V>
 V *xp_hash_map_get(xpHashMap<K, V> map, K key) {
-    xpHashMapEntry<K, V>* entry = xp_hash_map_get_entry(map, key);
+    xpHashMapEntry<K, V> *entry = xp_hash_map_get_entry(map, key);
     return entry ? &entry->value : nullptr;
 }
 
 template<typename K, typename V>
 V *xp_hash_map_set(xpHashMap<K, V> *map, K key, V value) {
     xpHashMapEntry<K, V> *entry;
-    if((entry = xp_hash_map_get_entry(map, key)) != NULL) {
+    if ((entry = xp_hash_map_get_entry(map, key)) != NULL) {
         entry->value = value;
         return entry->value;
     }
@@ -731,7 +732,7 @@ V *xp_hash_map_set(xpHashMap<K, V> *map, K key, V value) {
 template<typename K, typename V>
 b32 xp_hash_map_remove(xpHashMap<K, V> *map, K key) {
     xpHashMapEntry<K, V> *entry;
-    if((entry = xp_hash_map_get_entry(*map, key)) != NULL) {
+    if ((entry = xp_hash_map_get_entry(*map, key)) != NULL) {
         entry->used = false;
         map->count -= 1;
         return true;
@@ -741,26 +742,26 @@ b32 xp_hash_map_remove(xpHashMap<K, V> *map, K key) {
 
 template<typename K, typename V>
 isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first_entry) {
-    for(isize i = 0; i < map->capacity; i++) {
-        if(map->entries[i].used == true) {
+    for (isize i = 0; i < map->capacity; i++) {
+        if (map->entries[i].used == true) {
             *first_entry = &map->entries[i];
             return i;
         }
     }
-    
+
     *first_entry = NULL;
     return -1;
 }
 
 template<typename K, typename V>
 isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntry<K, V> **next_entry) {
-    for(isize i = curr_pos + 1; i < map->capacity; i++) {
-        if(map->entries[i].used == true) {
+    for (isize i = curr_pos + 1; i < map->capacity; i++) {
+        if (map->entries[i].used == true) {
             *next_entry = &map->entries[i];
             return i;
         }
     }
-    
+
     *next_entry = NULL;
     return -1;
 }
@@ -782,7 +783,7 @@ template<typename K>
 struct xpHashSet {
     xpAllocator allocator;
     xpHashSetEntry<K> *entries;
-    
+
     isize count;
     isize capacity;
 };
@@ -792,10 +793,10 @@ xpHashSet<K> xp_hash_set_make(xpAllocator allocator) {
     xpHashSet<K> hash_set = {};
     hash_set.allocator = allocator;
     hash_set.entries = NULL;
-    
+
     hash_set.count = 0;
     hash_set.capacity = 0;
-    
+
     return hash_set;
 }
 
@@ -814,7 +815,7 @@ xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
     xpHashSet<K> copy = *set;
     copy.entries = xp_alloc_array<xpHashSetEntry<K>>(allocator, copy.capacity);
     memcpy(copy.entries, set->entries, sizeof(xpHashSetEntry<K>) * copy.capacity);
-    
+
     return copy;
 }
 
@@ -822,34 +823,34 @@ xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
 template<typename K>
 void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
     XP_ASSERT_DEFAULT(new_capacity > set->capacity);
-    
-    if(set->entries == NULL) {
+
+    if (set->entries == NULL) {
         set->entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
         xp_zero(set->entries, sizeof(xpHashSetEntry<K>) * new_capacity);
     } else {
         // Rehash
         xpHashSetEntry<K> *new_entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
-        for(isize i = 0; i < new_capacity; ++i) {
+        for (isize i = 0; i < new_capacity; ++i) {
             new_entries[i].used = false;
         }
-        
-        for(isize i = 0; i < set->capacity; ++i) {
+
+        for (isize i = 0; i < set->capacity; ++i) {
             xpHashSetEntry<K> *old_entry = &set->entries[i];
-            if(old_entry->used) {
+            if (old_entry->used) {
                 usize hash_value = xp_hash_func(&old_entry->key);
                 usize index = hash_value % new_capacity;
                 // 线性探测
-                while(new_entries[index].used) {
+                while (new_entries[index].used) {
                     index = (index + 1) % new_capacity;
                 }
                 new_entries[index] = *old_entry;
             }
         }
         xp_free(set->allocator, set->entries);
-        
+
         set->entries = new_entries;
     }
-    
+
     set->capacity = new_capacity;
     return;
 }
@@ -857,29 +858,29 @@ void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
 
 template<typename K>
 K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
-    if(set->count == set->capacity) {
+    if (set->count == set->capacity) {
         xp_hash_set_extend(set, set->capacity + set->capacity / 2 + 1);
     }
     usize hash_value = xp_hash_func(&key);
-    
+
     usize index = hash_value % set->capacity;
     usize original_index = index;
-    
-    
+
+
     do {
         xpHashSetEntry<K> *entry = &set->entries[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             entry->key = key;
             entry->used = true;
-            
+
             set->count += 1;
             return &entry->key;
-        } else if(entry->key == key) {
+        } else if (entry->key == key) {
             return NULL;
         }
         index = (index + 1) % set->capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     //NOTE: FULL SET
     XP_ASSERT_DEFAULT(0);
     return NULL;
@@ -887,25 +888,25 @@ K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
 
 template<typename K>
 xpHashSetEntry<K> *xp_hash_set_get_entry(xpHashSet<K> *set, K key) {
-    if(set->count == 0) {
+    if (set->count == 0) {
         return NULL;
     }
-    
+
     usize hash_value = xp_hash_func(&key);
-    
+
     usize index = hash_value % set->capacity;
     usize original_index = index;
     do {
         xpHashSetEntry<K> *entry = &set->entries[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             return NULL;
-        } else if(entry->key == key) {
+        } else if (entry->key == key) {
             return entry;
         }
-        
+
         index = (index + 1) % set->capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     return NULL;
 }
 
@@ -919,10 +920,10 @@ K *xp_hash_set_get(xpHashSet<K> *set, K key) {
 template<typename K>
 b32 xp_hash_set_find(xpHashSet<K> *set, K key) {
     xpHashSetEntry<K> *entry = NULL;
-    if((entry = xp_hash_set_get_entry(set, key)) != NULL) {
+    if ((entry = xp_hash_set_get_entry(set, key)) != NULL) {
         return true;
     }
-    
+
     return false;
 }
 
@@ -930,11 +931,11 @@ b32 xp_hash_set_find(xpHashSet<K> *set, K key) {
 template<typename K>
 b32 xp_hash_set_remove(xpHashSet<K> *set, K key) {
     xpHashSetEntry<K> *entry = NULL;
-    if((entry = xp_hash_set_get_entry(set, key)) != NULL) {
+    if ((entry = xp_hash_set_get_entry(set, key)) != NULL) {
         entry->used = false;
         return true;
     }
-    
+
     return false;
 }
 
@@ -955,15 +956,15 @@ struct xpInterningEntry {
 
 template<typename T, size_t CAPACITY>
 struct xpInterningTable {
-    
+
     xpArena arena; // 只能是独立的ArenaAllocator
     xpAllocator allocator; // 只能是独立的ArenaAllocator
-    
+
     xpInterningEntry<T> buckets[CAPACITY];
-    
+
     isize count;
-    
-    
+
+
     static constexpr size_t capacity = CAPACITY;
 };
 
@@ -971,7 +972,7 @@ template<typename T, size_t CAPACITY>
 void xp_interning_table_init(xpInterningTable<T, CAPACITY> *table) {
     xp_arena_init_default(&table->arena);
     table->allocator = xp_arena_allocator(&table->arena);
-    
+
     table->count = 0;
 }
 
@@ -982,25 +983,25 @@ void xp_interning_table_free(xpInterningTable<T, CAPACITY> *table) {
 
 template<typename T, size_t CAPACITY>
 xpInterningEntry<T> *xp_interning_table_get_entry(xpInterningTable<T, CAPACITY> *table, T key) {
-    if(table->count == 0) {
+    if (table->count == 0) {
         return NULL;
     }
-    
+
     usize hash_value = xp_hash_func(&key);
-    
+
     usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
     usize original_index = index;
     do {
         xpInterningEntry<T> *entry = &table->buckets[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             return NULL;
-        } else if(*(entry->key_ptr) == (key)) {
+        } else if (*(entry->key_ptr) == (key)) {
             return entry;
         }
-        
+
         index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     return NULL;
 }
 
@@ -1012,32 +1013,32 @@ T *xp_interning_table_get(xpInterningTable<T, CAPACITY> *table, T key) {
 
 template<typename T, size_t CAPACITY>
 T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
-    if(table->count >= table->capacity) {
+    if (table->count >= table->capacity) {
         return NULL; // 满了
     }
-    
+
     usize hash_value = xp_hash_func(&key);
     usize index = hash_value % xpInterningTable<T, CAPACITY>::capacity;
     usize original_index = index;
-    
+
     do {
         xpInterningEntry<T> *entry = &table->buckets[index];
-        if(entry->used == false) {
+        if (entry->used == false) {
             T *stored_key_ptr = xp_alloc<T>(table->allocator);
             *stored_key_ptr = key;
-            
+
             entry->key_ptr = stored_key_ptr;
             entry->used = true;
-            
+
             table->count += 1;
             return stored_key_ptr;
-        } else if(*(entry->key_ptr) == (key)) {
+        } else if (*(entry->key_ptr) == (key)) {
             return NULL; // 重复插入当作失败处理
         }
-        
+
         index = (index + 1) % xpInterningTable<T, CAPACITY>::capacity;
-    } while(index != original_index);
-    
+    } while (index != original_index);
+
     //NOTE: FULL MAP
     XP_ASSERT_DEFAULT(0);
     return NULL;
@@ -1145,10 +1146,10 @@ extern "C" {
 u8 *xp_align_up(u8 *ptr, isize alignment) {
     uintptr p;
 
-	XP_ASSERT(xp_is_power_of_two(alignment));
+    XP_ASSERT(xp_is_power_of_two(alignment));
 
-	p = cast(uintptr)ptr;
-	return cast(u8 *)((p + (alignment-1)) &~ (alignment-1));
+    p = cast(uintptr)ptr;
+    return cast(u8 *)((p + (alignment - 1)) & ~(alignment - 1));
 }
 
 u8 *xp_align_down(u8 *value, isize alignment) {
@@ -1157,31 +1158,31 @@ u8 *xp_align_down(u8 *value, isize alignment) {
     XP_ASSERT(xp_is_power_of_two(alignment));
 
     p = cast(uintptr)value;
-    return cast(u8 *)((p) &~ (alignment-1));
+    return cast(u8 *)((p) & ~(alignment - 1));
 }
 
 isize xp_align_up_isize(isize value, isize alignment) {
     XP_ASSERT_DEFAULT(xp_is_power_of_two(alignment));
-    return (value + (alignment - 1)) &~ (alignment - 1);
+    return (value + (alignment - 1)) & ~(alignment - 1);
 }
 
 
 
 b32 xp_is_power_of_two(isize x) {
-    if(x <= 0) {
+    if (x <= 0) {
         return false;
     }
-    return !(x & (x-1));
+    return !(x & (x - 1));
 }
 
 b32 xp_is_space(char c) {
-    if( c == ' ' ||
+    if (c == ' ' ||
         c == '\n' ||
         c == '\r' ||
         c == '\t' ||
         c == '\v' ||
         c == '\f'
-    ) {
+        ) {
         return true;
     } else {
         return false;
@@ -1189,10 +1190,10 @@ b32 xp_is_space(char c) {
 }
 
 b32 xp_is_digit_base_all(char c) {
-    if( c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9' ||
+    if (c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9' ||
         c == 'a' || c == 'b' || c == 'c' || c == 'd' || c == 'e' || c == 'f' ||
         c == 'A' || c == 'B' || c == 'C' || c == 'D' || c == 'E' || c == 'F'
-    ) {
+        ) {
         return true;
     } else {
         return false;
@@ -1200,19 +1201,19 @@ b32 xp_is_digit_base_all(char c) {
 }
 
 //NOTE(xoaop): 没有检查合法
-b32 xp_str_to_num_base(char const *str, u32 base, u64* result) {
+b32 xp_str_to_num_base(char const *str, u32 base, u64 *result) {
     u64 num = 0;
     isize i = 0;
     while (str[i] != '\0') {
         u64 n = 0;
         switch (str[i]) {
-        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
             n = str[i] - '0';
             break;
-        case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': 
+        case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
             n = str[i] - 'a' + 10;
             break;
-        case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': 
+        case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
             n = str[i] - 'A' + 10;
             break;
         default:
@@ -1223,7 +1224,7 @@ b32 xp_str_to_num_base(char const *str, u32 base, u64* result) {
         num = (num * base) + n;
         i += 1;
     }
-    
+
     *result = num;
     return true;
 }
@@ -1237,18 +1238,18 @@ b32 xp_str_to_integer(char const *str, i128 *result) {
 
     b32 success = false;
     u64 r = 0;
-    if(str[0] == '0') {
-        if(len <= 1) {
+    if (str[0] == '0') {
+        if (len <= 1) {
             success = true;
             r = str[0] - '0';
         }
         switch (str[1]) {
         case 'x':
-            if(!(len > 2)) break;
+            if (!(len > 2)) break;
             success = xp_str_to_num_base(&str[2], 16, &r);
             break;
         case 'b':
-            if(!(len > 2)) break;
+            if (!(len > 2)) break;
             success = xp_str_to_num_base(&str[2], 2, &r);
             break;
         default:
@@ -1269,14 +1270,15 @@ b32 xp_str_to_integer(char const *str, i128 *result) {
 // 内存操作
 //
 
-void xp_memcpy_dst_loop(void *dst, isize dst_capacity, const void *src, isize src_count) {
+void xp_memcpy_dst_loop(void *dst, isize dst_capacity, isize dst_offset, const void *src, isize src_count) {
     XP_ASSERT_DEFAULT(dst != NULL && src != NULL && dst_capacity > 0);
+    XP_ASSERT_DEFAULT(dst_offset >= 0 && dst_offset < dst_capacity);
 
 
     u8 *dst_u8 = cast(u8 *)dst;
     u8 *src_u8 = cast(u8 *)src;
-    for(isize i = 0; i < src_count; i++) {
-        dst_u8[i % dst_capacity] = src_u8[i];
+    for (isize i = 0; i < src_count; i++) {
+        dst_u8[(dst_offset + i) % dst_capacity] = src_u8[i];
     }
 }
 
@@ -1287,23 +1289,24 @@ void xp_memcpy_dst_loop(void *dst, isize dst_capacity, const void *src, isize sr
 //
 
 
-void* xp_alloc(xpAllocator allocator, isize size) {
+void *xp_alloc(xpAllocator allocator, isize size) {
     return allocator.proc(allocator.data, xpAlloc, NULL, size, 0);
 }
-void xp_free(xpAllocator allocator, void* ptr) {
+void xp_free(xpAllocator allocator, void *ptr) {
     allocator.proc(allocator.data, xpFree, ptr, (isize)0, 0);
 }
-void* xp_realloc(xpAllocator allocator, void* ptr, isize new_size, isize old_size) {
+void *xp_realloc(xpAllocator allocator, void *ptr, isize new_size, isize old_size) {
     return allocator.proc(allocator.data, xpRealloc, ptr, new_size, old_size);
 }
 void xp_free_all(xpAllocator allocator) {
     allocator.proc(allocator.data, xpFreeAll, NULL, (isize)0, 0);
+    allocator.data = NULL;
 }
 
 void xp_zero(void *ptr, isize size) {
-    if(ptr != NULL) {
+    if (ptr != NULL) {
         u8 *p = cast(u8 *)ptr;
-        for(isize i = 0; i < size; i++) {
+        for (isize i = 0; i < size; i++) {
             p[i] = 0;
         }
     }
@@ -1311,9 +1314,8 @@ void xp_zero(void *ptr, isize size) {
 
 // NOTE(xoaop): 包装堆内存分配
 XP_ALLOCATOR_PROC(xp_heap_allocator_proc) {
-    void* alloc_result = NULL;
-    switch (type)
-    {
+    void *alloc_result = NULL;
+    switch (type) {
     case xpAlloc:
         alloc_result = malloc(size);
         break;
@@ -1366,18 +1368,18 @@ xpArena xp_arena_make(isize block_size) {
 }
 
 
-xpAllocator xp_arena_allocator(xpArena* arena) {
+xpAllocator xp_arena_allocator(xpArena *arena) {
     xpAllocator allocator;
     allocator.proc = xp_arena_allocator_proc;
     allocator.data = arena;
-    
+
     return allocator;
 };
 
 xp_define xpAllocator xp_arena_allocator_default() {
     xpAllocator allocator;
     allocator.proc = xp_arena_allocator_proc;
-    
+
     // *NOTE(xoaop): malloc
     xpArena *arena = cast(xpArena *)malloc(sizeof(xpArena));
     *arena = xp_arena_default();
@@ -1386,21 +1388,20 @@ xp_define xpAllocator xp_arena_allocator_default() {
     arena->malloc = true;
 
     allocator.data = arena;
-    
-    
+
+
     return allocator;
 }
 
-xp_internal void* xp_arena_alloc_item(xpArena* arena, isize size);
-xp_internal void xp_arena_free_all(xpArena* arena);
+xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size);
+xp_internal void xp_arena_free_all(xpArena *arena);
 
 
 XP_ALLOCATOR_PROC(xp_arena_allocator_proc) {
-    xpArena* arena = cast(xpArena*)allocator_data;
-    
-	void* alloc_result = NULL;
-    switch (type)
-    {
+    xpArena *arena = cast(xpArena *)allocator_data;
+
+    void *alloc_result = NULL;
+    switch (type) {
     case xpAlloc:
         alloc_result = xp_arena_alloc_item(arena, size);
         break;
@@ -1408,13 +1409,13 @@ XP_ALLOCATOR_PROC(xp_arena_allocator_proc) {
         // NOTE(xoaop): No Free in Arena Allocator 
         break;
     case xpRealloc:
-        if(ptr == NULL) {
+        if (ptr == NULL) {
             XP_ASSERT_DEFAULT(0);
         }
 
-        if(size == 0) {
+        if (size == 0) {
             alloc_result = NULL;
-        } else if (size <= old_size){
+        } else if (size <= old_size) {
             alloc_result = ptr;
         } else {
             alloc_result = xp_arena_alloc_item(arena, size);
@@ -1428,27 +1429,27 @@ XP_ALLOCATOR_PROC(xp_arena_allocator_proc) {
         XP_ASSERT(0);
         break;
     }
-    
+
     return alloc_result;
 }
 
-xp_internal void *xp_arena_alloc_item(xpArena* arena, isize size) {
+xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size) {
     XP_ASSERT(size >= 0);
-    if(size == 0) {
+    if (size == 0) {
         return NULL;
     }
-    
-    void* alloc_result = NULL;
-    
+
+    void *alloc_result = NULL;
+
     b8 found = false;
-    
+
     xpMemoryBlock *prev_block = NULL;
-    while(arena->curr_block != NULL) {
-        xpMemoryBlock* curr_block = arena->curr_block;
+    while (arena->curr_block != NULL) {
+        xpMemoryBlock *curr_block = arena->curr_block;
 
         // NOTE(xoaop): 对齐
         isize available_size = curr_block->size - (xp_align_up(curr_block->base + curr_block->used, ALIGNMENT_DEFAULT) - curr_block->base);
-        if(available_size >= size) {
+        if (available_size >= size) {
             found = true;
             break;
         }
@@ -1459,26 +1460,26 @@ xp_internal void *xp_arena_alloc_item(xpArena* arena, isize size) {
 
 
     // 如果没有合适的内存块, 新建
-    if(!found) {
+    if (!found) {
         arena->curr_block = prev_block;
 
         isize alloc_size = size + xp_align_up_isize(sizeof(xpMemoryBlock), ALIGNMENT_DEFAULT);
 
         isize alloc_block_count = (alloc_size + arena->block_size - 1) / arena->block_size;
-        
+
         // TODO(xoaop): 换成虚拟内存页分配, 不用heap_allocator
         // NOTE(xoaop): 我想这个指针该是对齐的, 不然会有问题
-        xpMemoryBlock* new_block = cast(xpMemoryBlock *)xp_alloc(xp_heap_allocator(), alloc_block_count * arena->block_size);
-    
+        xpMemoryBlock *new_block = cast(xpMemoryBlock *)xp_alloc(xp_heap_allocator(), alloc_block_count * arena->block_size);
+
         new_block->base = cast(u8 *)new_block;
-        
+
         new_block->prev = arena->curr_block;
         new_block->next = NULL;
 
         new_block->size = alloc_block_count * arena->block_size;
         new_block->used = sizeof(xpMemoryBlock);
-        
-        if(arena->curr_block != NULL) {
+
+        if (arena->curr_block != NULL) {
             arena->curr_block->next = new_block;
         }
 
@@ -1492,17 +1493,17 @@ xp_internal void *xp_arena_alloc_item(xpArena* arena, isize size) {
 }
 
 
-xp_internal void xp_arena_free_all(xpArena* arena) {
-    
+xp_internal void xp_arena_free_all(xpArena *arena) {
+
     // 先到最前面
-    while(arena->curr_block != NULL && arena->curr_block->prev != NULL) {
+    while (arena->curr_block != NULL && arena->curr_block->prev != NULL) {
         arena->curr_block = arena->curr_block->prev;
     }
 
     // 再从前往后释放
     xpMemoryBlock *curr = arena->curr_block;
     xpMemoryBlock *next = NULL;
-    while(curr != NULL) {
+    while (curr != NULL) {
         next = curr->next;
         //TODO(xoaop): 换成虚拟内存页分配, 不用heap_allocator
         xp_free(xp_heap_allocator(), curr->base);
@@ -1511,7 +1512,7 @@ xp_internal void xp_arena_free_all(xpArena* arena) {
     }
 
     // *NOTE(xoaop): 若这是用malloc分配的, 别忘了释放
-    if(arena->malloc) {
+    if (arena->malloc) {
         free(arena);
     }
 
@@ -1522,15 +1523,15 @@ void xp_arena_allocator_clear(xpAllocator allocator) {
 
     xpArena *arena = cast(xpArena *)allocator.data;
 
-    if(arena->curr_block == NULL) {
+    if (arena->curr_block == NULL) {
         return;
     }
 
-    for(;;) {
+    for (;;) {
         xpMemoryBlock *curr = arena->curr_block;
         curr->used = sizeof(xpMemoryBlock);
 
-        if(curr->prev == NULL) {
+        if (curr->prev == NULL) {
             break;
         }
 
@@ -1544,16 +1545,16 @@ void xp_arena_allocator_debug_print(xpAllocator allocator) {
     xpArena *arena = cast(xpArena *)allocator.data;
 
     xpMemoryBlock *block = arena->curr_block;
-    
+
     printf("Arena Allocator Debug Print:\n");
-    
-    if(block == NULL) {
+
+    if (block == NULL) {
         printf("Empty Arena\n");
         return;
     }
 
     isize curr_block_index = 0;
-    while(block->prev != NULL) {
+    while (block->prev != NULL) {
         block = block->prev;
         curr_block_index += 1;
     }
@@ -1561,7 +1562,7 @@ void xp_arena_allocator_debug_print(xpAllocator allocator) {
     printf("Current Block Index: %lld\n", curr_block_index);
 
     curr_block_index = 0;
-    while(block != NULL) {
+    while (block != NULL) {
         printf("Block %lld: size = %lld, used = %lld\n", curr_block_index, block->size, block->used);
         block = block->next;
         curr_block_index += 1;
@@ -1576,7 +1577,7 @@ void xp_arena_allocator_debug_print(xpAllocator allocator) {
 //
 isize xp_strlen_c(char const *str) {
     isize len = 0;
-    for(; str[len] != '\0'; len += 1);
+    for (; str[len] != '\0'; len += 1);
 
     //NOTE: for unknown wrong, maybe unnessery
     XP_ASSERT(len >= 0);
@@ -1585,7 +1586,7 @@ isize xp_strlen_c(char const *str) {
 
 void xp_strncpy_c(char *dst, char *src, isize len) {
     isize index = 0;
-    for(; index < len && src[index] != '\0'; index += 1) {
+    for (; index < len && src[index] != '\0'; index += 1) {
         dst[index] = src[index];
     }
 
@@ -1596,7 +1597,7 @@ void xp_strncpy_c(char *dst, char *src, isize len) {
 
 char *xp_find_first_non_space(const char *str) {
     XP_ASSERT_DEFAULT(str != NULL);
-    while (*str && isspace(cast(unsigned char)*str)) {
+    while (*str && isspace(cast(unsigned char) * str)) {
         str++;
     }
     return cast(char *)str;
@@ -1630,13 +1631,13 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
     string.allocator = allocator;
     string.c_str = cast(char *) xp_alloc(string.allocator, capacity + 1); // NOTE: +1是为了末尾的'\0'
     string.capacity = capacity;
-    
+
     // 计算实际长度
     isize length = 0;
-    if(str != NULL) {
+    if (str != NULL) {
         length = xp_strlen_c(cast(char const *)str);
     }
-    if(length > capacity) {
+    if (length > capacity) {
         length = capacity;
     }
     string.length = length;
@@ -1646,7 +1647,7 @@ xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize c
     memset(string.c_str, '\0', string.capacity + 1); // NOTE: +1是为了末尾的'\0'
     // 复制字符串内容
     memcpy(string.c_str, str, string.length);
-    
+
     // 末尾补上'\0'
     // string.c_str[length] = '\0';
     return string;
@@ -1660,12 +1661,12 @@ xpString xp_make_string_count(xpAllocator allocator, char const *str, isize coun
 
     // 计算实际长度
     isize actual_count = 0;
-    if(str != NULL) {
+    if (str != NULL) {
         actual_count = xp_strlen_c(cast(char const *)str);
     }
 
     isize length = 0;
-    if(actual_count < count) {
+    if (actual_count < count) {
         length = actual_count;
     } else {
         length = count;
@@ -1681,13 +1682,13 @@ xpString xp_make_string_count(xpAllocator allocator, char const *str, isize coun
     // 末尾补上'\0'
     string.c_str[string.capacity] = '\0';
 
-   
+
     return string;
 }
 
 xpString xp_make_string_zero() {
     xpString string;
-    string.allocator = {NULL, NULL};
+    string.allocator = { NULL, NULL };
     string.c_str = NULL;
     string.length = 0;
     string.capacity = 0;
@@ -1701,20 +1702,20 @@ xpString xp_string_to_c_style(xpString string, xpAllocator allocator) {
 
 
 void xp_string_free(xpString string) {
-    if(string.allocator.proc != NULL) {
+    if (string.allocator.proc != NULL) {
         xp_free(string.allocator, string.c_str);
     }
 }
 
 b32 xp_string_cmp(xpString a, xpString b) {
-    if(a.length > b.length) {
+    if (a.length > b.length) {
         return 1;
-    } else if(a.length < b.length) {
+    } else if (a.length < b.length) {
         return -1;
     }
 
-    for(isize i = 0; i < a.length; i++) {
-        if(a.c_str[i] != b.c_str[i]) {
+    for (isize i = 0; i < a.length; i++) {
+        if (a.c_str[i] != b.c_str[i]) {
             return (a.c_str[i] > b.c_str[i]) ? 1 : -1;
         }
     }
@@ -1732,7 +1733,7 @@ xpString xp_string_copy(xpAllocator allocator, xpString string) {
     string_copy.allocator = allocator;
     string_copy.length = string.length;
     string_copy.capacity = string.length;
-    
+
     string_copy.c_str = cast(char *) xp_alloc(string_copy.allocator, string_copy.capacity + 1);
     memcpy(string_copy.c_str, string.c_str, string.length);
 
@@ -1742,21 +1743,21 @@ xpString xp_string_copy(xpAllocator allocator, xpString string) {
 
 
 xpString *xp_string_extend(xpString *string, isize extended_size) {
-    if(extended_size <= 0) {
+    if (extended_size <= 0) {
         return string;
     }
 
     char *new_c_str = cast(char *)xp_alloc(
-        string->allocator, 
+        string->allocator,
         string->capacity + extended_size + 1 // +1是为了末尾的'\0'
     );
     memcpy(new_c_str, string->c_str, string->length);
     xp_free(string->allocator, string->c_str);
 
     string->c_str = new_c_str;
-    
+
     string->capacity = string->capacity + extended_size;
-    
+
     string->c_str[string->length] = '\0'; // 末尾补上'\0'
 
 
@@ -1764,8 +1765,8 @@ xpString *xp_string_extend(xpString *string, isize extended_size) {
 }
 
 isize xp_string_find_char(xpString str, char c) {
-    for(isize i = 0; i < str.length; i++) {
-        if(str.c_str[i] == c) {
+    for (isize i = 0; i < str.length; i++) {
+        if (str.c_str[i] == c) {
             return i;
         }
     }
@@ -1777,14 +1778,14 @@ xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str) {
     XP_ASSERT_DEFAULT(pos <= str->length);
 
     // 1. 扩容，确保插入后长度不会超过 capacity
-    if(str->length + inserted_str.length > str->capacity) {
+    if (str->length + inserted_str.length > str->capacity) {
         xp_string_extend(str, inserted_str.length + (str->length + inserted_str.length - str->capacity));
     }
 
     XP_ASSERT_DEFAULT(str->length + inserted_str.length <= str->capacity);
 
     // 2. 后移原有数据
-    if(pos < str->length) {
+    if (pos < str->length) {
         isize moved_size = str->length - pos;
         memmove(str->c_str + pos + inserted_str.length, str->c_str + pos, moved_size);
     }
@@ -1823,7 +1824,7 @@ xpString xp_isize_to_string(isize value, xpAllocator allocator) {
 
     xpString string = xp_make_string_capacity(allocator, NULL, len);
     snprintf(string.c_str, string.capacity + 1, "%lld", value);
-    
+
     string.length = len;
 
     return string;
@@ -1832,8 +1833,8 @@ xpString xp_isize_to_string(isize value, xpAllocator allocator) {
 xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator) {
     xpString new_string = xp_string_copy(allocator, string);
 
-    for(isize i = 0; i < new_string.length; i++) {
-        if(new_string.c_str[i] == old_char) {
+    for (isize i = 0; i < new_string.length; i++) {
+        if (new_string.c_str[i] == old_char) {
             new_string.c_str[i] = new_char;
         }
     }
@@ -1856,10 +1857,10 @@ xpSlice xp_slice_make(void *data, isize len) {
 }
 
 xpSlice xp_slice_make_from_string(xpString string, isize begin, isize len) {
-    if((len < 0 || begin < 0) || ((begin + len) > string.length)) {
+    if ((len < 0 || begin < 0) || ((begin + len) > string.length)) {
         XP_ASSERT(0);
     }
-    
+
     xpSlice slice = {};
     slice.data = string.c_str + begin;
     slice.len = len;
@@ -1880,8 +1881,8 @@ xp_internal u32 rotate_left(u32 value, i32 shift) {
     return (value << shift) | (value >> (bits - shift));
 }
 
-u32 xp_murmur_hash3_32(const void* data, usize length, usize seed) {
-    const u8* key = cast(const u8*)(data);
+u32 xp_murmur_hash3_32(const void *data, usize length, usize seed) {
+    const u8 *key = cast(const u8 *)(data);
     const usize nblocks = length / 4;
 
     u32 h1 = seed;
@@ -1890,7 +1891,7 @@ u32 xp_murmur_hash3_32(const void* data, usize length, usize seed) {
     const u32 c2 = 0x1b873593;
 
     // 处理 4 字节块
-    const u32* blocks = cast(u32*)key;
+    const u32 *blocks = cast(u32 *)key;
     for (usize i = 0; i < nblocks; ++i) {
         u32 k1 = blocks[i];
 
@@ -1904,17 +1905,17 @@ u32 xp_murmur_hash3_32(const void* data, usize length, usize seed) {
     }
 
     // 处理剩余字节
-    const u8* tail = key + nblocks * 4;
+    const u8 *tail = key + nblocks * 4;
     u32 k1 = 0;
 
     switch (length & 3) {
-        case 3: k1 ^= tail[2] << 16;
-        case 2: k1 ^= tail[1] << 8;
-        case 1: k1 ^= tail[0];
-                k1 *= c1;
-                k1 = rotate_left(k1, 15);
-                k1 *= c2;
-                h1 ^= k1;
+    case 3: k1 ^= tail[2] << 16;
+    case 2: k1 ^= tail[1] << 8;
+    case 1: k1 ^= tail[0];
+        k1 *= c1;
+        k1 = rotate_left(k1, 15);
+        k1 *= c2;
+        h1 ^= k1;
     }
 
     // 最终混合
@@ -1944,6 +1945,7 @@ u64 xp_hash_combine_u64(u64 old_hash, u64 new_value) {
 
 
 
+#if defined(XOAOP_I128_SUPPORT)
 
 //!NOTE(xoaop): GENERATED BY AI
 void print_i128(i128 n) {
@@ -1951,7 +1953,7 @@ void print_i128(i128 n) {
         printf("0");
         return;
     }
-    char buf[50] = {0};
+    char buf[50] = { 0 };
     int i = 49;
     bool neg = false;
     if (n < 0) {
@@ -2016,11 +2018,11 @@ bool xp_check_i128_neg_overflow(i128 a, i128 *result) {
 
     return false;
 }
+#endif // XOAOP_I128_SUPPORT
 
 bool xp_check_f64_is_inf(f64 value) {
     return isinf(value);
 }
-
 
 
 
@@ -2056,7 +2058,7 @@ char xpString::operator[] (isize index) const {
 xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator) {
     xpString result = xp_string_copy(allocator, a);
 
-    if(middle.has_value()) {
+    if (middle.has_value()) {
         xp_string_append(&result, middle.unwrap());
     }
 
@@ -2069,7 +2071,7 @@ xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle,
 template<>
 struct std::formatter<xpString> : std::formatter<std::string_view> {
     template<typename FormatContext>
-    auto format(const xpString& str, FormatContext& ctx) {
+    auto format(const xpString &str, FormatContext &ctx) {
         return std::formatter<std::string_view>::format(std::string_view(str.c_str, str.length), ctx);
     }
 };
@@ -2125,9 +2127,21 @@ usize xp_hash_func<xpString>(xpString *key) {
     return xp_murmur_hash3_32(key->c_str, cast(usize) key->length, 0);
 }
 
+template<>
+usize xp_hash_func<const std::string>(const std::string *key) {
+    std::hash<std::string> hasher;
+    return hasher(*key);
+}
+
+template<>
+usize xp_hash_func<std::string>(std::string *key) {
+    std::hash<std::string> hasher;
+    return hasher(*key);
+}
 
 
-size_t xp_strlen_char32(const char32_t* s) {
+
+size_t xp_strlen_char32(const char32_t *s) {
     if (!s) return 0;
     size_t len = 0;
     while (s[len] != U'\0') {

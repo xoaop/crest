@@ -69,6 +69,8 @@ struct Ast;
         Ast *expr;                                                          \
         Ast *type_ast;                                                      \
         bool no_zero_init;                                                  \
+        /* @TEMP */                                                         \
+        bool is_var_arg;                                                    \
     })                                                                      \
     AST_INFO(Assignment, "assignment", struct {                             \
         Ast *left_var_expr;                                                 \
