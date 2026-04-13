@@ -722,9 +722,9 @@ V *xp_hash_map_get(xpHashMap<K, V> map, K key) {
 template<typename K, typename V>
 V *xp_hash_map_set(xpHashMap<K, V> *map, K key, V value) {
     xpHashMapEntry<K, V> *entry;
-    if ((entry = xp_hash_map_get_entry(map, key)) != NULL) {
+    if ((entry = xp_hash_map_get_entry(*map, key)) != NULL) {
         entry->value = value;
-        return entry->value;
+        return &entry->value;
     }
     return NULL;
 }

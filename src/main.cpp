@@ -91,7 +91,13 @@ int main(int argc, char** argv) {
 
     
     // 初始化context
-    context()->compiler_path = std::filesystem::path(argv[0]).parent_path();
+    context()->compiler_path = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
+    context()->current_working_directory = std::filesystem::current_path();
+
+    std::println("Compiler path: {}", context()->compiler_path.string());
+    std::println("Current working directory: {}", context()->current_working_directory.string());
+
+
 
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
@@ -113,11 +119,17 @@ int main(int argc, char** argv) {
     Array<Package> all_packages = resolve_dependencies(xp_string_c(main_path));
     context()->all_packages = all_packages;
 
+    
     end_time = std::chrono::high_resolution_clock::now();
     duration = end_time - last_time;
     printf("Dependency resolution time: %.5f s\n", duration.count());
     last_time = end_time;
-
+    
+    if(context()->reporter.error_count > 0) {
+        // 如果有错误信息, 就不继续进行语义分析了
+        context()->reporter.print_msg();
+        return -1;
+    }
 
     sema_analysis_all_packages(&context()->all_packages);
 

@@ -1,6 +1,11 @@
+// TODO: 禁止package循环依赖
+
+
+
 #include "resolve_depend.hpp"
 
 #include <filesystem>
+#include <print>
 
 #include "ast.hpp"
 #include "tokenizer.hpp"
@@ -106,21 +111,77 @@ xpOption<Package *> get_package_by_import(xpOption<xpString> search_prefix, xpSt
 }
 
 
+void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, PackageState> &package_states, Array<Package> &all_packages) {
+
+    // 更改当前package状态为正在解析中
+    xp_hash_map_set(&package_states, curr_pkg.path, PackageState::Resolving);
+
+
+    for(isize j = 0; j < curr_pkg.ast_files.count; j++) {
+        AstFile ast_file = curr_pkg.ast_files[j];
+        Array<Ast *> import_asts = make_array<Ast *>(stage_allocator());
+        collect_all_imports_in_ast_file(ast_file, &import_asts);
+
+
+        // 处理搜索路径
+        Array<xpString> abs_paths = make_array<xpString>(stage_allocator());
+        for(Ast *import: import_asts) {
+            xpOption<xpString> search_prefix = import->Import.search_prefix;
+            xpString import_path = import->Import.path;
+            xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
+
+            array_push_back(&abs_paths, abs_import_path);
+        }
+
+
+        // 递归处理每个imported package paths
+        for(isize k = 0; k < abs_paths.count; k++) {
+            xpString abs_import_path = abs_paths[k];
+            if(!check_directory_legel(abs_import_path)) {
+                continue;
+            }
+
+            // 检查该package是否 已经解析过 或 正在解析中
+            PackageState *state_of_imported_package = xp_hash_map_get(package_states, abs_import_path);
+            if(state_of_imported_package == nullptr) {
+                Package imported_package = tokenize_and_parse_package(abs_import_path.c_str);
+
+                array_push_back(&all_packages, imported_package);
+                xp_hash_map_insert(&package_states, imported_package.path, PackageState::Unresolved);
+
+                resolve_packages_from_imports(imported_package, package_states, all_packages);
+            } else {
+                PackageState state = *state_of_imported_package;
+                
+                if(state == PackageState::Resolving) {
+                    // TODO ERROR: 循环依赖
+                    context()->reporter.report_error(
+                        import_asts[k]->span, 
+                        curr_pkg.ast_files[j].source_code,
+                        "circular dependency detected for package: %s", 
+                        abs_import_path.c_str
+                    );
+
+                }
+            }
+        }
+        
+    }
+
+    xp_hash_map_set(&package_states, curr_pkg.path, PackageState::Resolved);
+}
+
+
+
+
 
 Array<Package> resolve_dependencies(xpString main_path) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
     // 所有package所在
     Array<Package> packages = make_array<Package>(permanent_allocator());
-    Array<PackageState> package_states = make_array<PackageState>(stage_allocator());
+    xpHashMap<xpString, PackageState> package_state_map = xp_hash_map_make<xpString, PackageState>(stage_allocator());
 
-    auto add_new_package = [&](Package pkg) {
-        array_push_back(&packages, pkg);
-            array_push_back(&package_states, PackageState::Unresolved);
-    };
-    auto update_package_state = [&](isize package_index, PackageState new_state) {
-        package_states[package_index] = new_state;
-    };
 
     if(!check_directory_legel(main_path) && !check_file_legal(main_path)) {
         // TODO ERROR: main package路径不合法
@@ -128,6 +189,8 @@ Array<Package> resolve_dependencies(xpString main_path) {
         return packages;
     }
 
+
+    // 解析main package
     Package main_package;
     if(is_existing_directory(main_path)) {
         context()->main_src_dir_path = main_path;
@@ -139,90 +202,19 @@ Array<Package> resolve_dependencies(xpString main_path) {
         std::filesystem::path p{std::string(main_path.c_str, (size_t)main_path.length)};
         xpString parent_dir_path = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
         context()->main_src_dir_path = parent_dir_path;
-
         
         main_package = make_package(parent_dir_path, permanent_allocator());
         AstFile main_file = tokenize_and_parse_file(main_path.c_str, &main_package.package_scope);
         array_push_back(&main_package.ast_files, main_file);
     }
 
-    // 解析主package
-    add_new_package(main_package);
+
+    array_push_back(&packages, main_package);
+    xp_hash_map_insert(&package_state_map, main_package.path, PackageState::Unresolved);
 
 
-    // 检查每个package的import, 添加新的package
-    for(isize i = 0; i < packages.count; i++) {
+    resolve_packages_from_imports(main_package, package_state_map, packages);
 
-
-        Package pkg = packages[i];
-        update_package_state(i, PackageState::Resolving);
-
-        for(isize j = 0; j < pkg.ast_files.count; j++) {
-            AstFile ast_file = pkg.ast_files[j];
-
-
-            Array<Ast *> import_asts = make_array<Ast *>(stage_allocator());
-            collect_all_imports_in_ast_file(ast_file, &import_asts);
-
-
-            // 处理搜索路径
-            Array<xpString> abs_paths = make_array<xpString>(stage_allocator());
-            for(Ast *import: import_asts) {
-                xpOption<xpString> search_prefix = import->Import.search_prefix;
-                xpString import_path = import->Import.path;
-                xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
-
-                array_push_back(&abs_paths, abs_import_path);
-            }
-
-
-            // 处理每个imported package paths
-            for(isize k = 0; k < abs_paths.count; k++) {
-                xpString abs_import_path = abs_paths[k];
-
-                if(!check_directory_legel(abs_import_path)) {
-                    continue;
-                }
-
-                // 检查该package是否已经解析过 或 正在解析中
-
-                // TODO: 目前似乎永远不会出现正在解析中的情况
-                bool already_resolved = false;
-                for(isize m = 0; m < packages.count; m++) {
-                    if(xp_string_cmp(packages[m].path, abs_import_path) == 0) {
-
-                        if(package_states[m] == PackageState::Resolving) {
-                            // TODO ERROR: 循环依赖
-
-                            UNREACHABLE();
-                            error_msg(NULL, "circular dependency detected for package: %s", abs_import_path.c_str);
-                        }
-
-                        already_resolved = true;
-                        break;
-                    }
-
-                }
-                
-                if(!already_resolved) {
-
-                    // 解析该package
-                    Package imported_package = tokenize_and_parse_package(abs_import_path.c_str);
-
-                    // 添加到packages列表
-                    add_new_package(imported_package);
-                }
-            }
-
-            
-        }
-
-        update_package_state(i, PackageState::Resolved);
-
-
-    }
-
-        
 
     return packages;
 }

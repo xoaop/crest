@@ -7,7 +7,6 @@
 #include "context.hpp"
 
 #include "type_check.hpp"
-#include "const_fold.hpp"
 
 #include "error_msg.hpp"
 
@@ -197,12 +196,34 @@ void collect_symbols_in_all_packages(Array<Package> *all_packages) {
         add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
     }
 
+    // built in functions
+    
+    // // size_of
+    // {
+    //     xpString size_of_name = xp_string_c("size_of");
+    //     Array<TypeRef> param_types = make_array<TypeRef>(temp_allocator());
+    //     // TODO 这里的NULL有点hack, 主要是为了让size_of的参数可以接受任意类型, 因为size_of是编译时函数, 参数类型在编译时就确定了, 不需要在符号表里区分不同参数类型的size_of函数了
+    //     param_types.push_back(type_type(nullptr)); 
+    //     TypeRef size_of_fn_type = function_type(
+    //         param_types, 
+    //         easy_type(Type_untyped_int)
+    //     );
+
+    //     SymbolInfo size_of_symbol = make_symbol(
+    //         size_of_name,
+    //         make_comptime_sovled_val(size_of_fn_type),
+    //         &context()->global_blank_package,
+    //         NULL
+    //     );
+    //     add_symbol_to_scope(&context()->global_blank_package.package_scope, size_of_name, size_of_symbol);
+    // }
+
 
 
     for(isize i = 0; i < all_packages->count; i++) {
         collect_top_level_symbols_in_package(&(*all_packages)[i], all_packages);
     }    
-}    
+}
 
 
 
