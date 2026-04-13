@@ -1,7 +1,5 @@
 #include "type_check.hpp"
 
-#include "const_fold.hpp"
-
 #include "error_msg.hpp"
 
 #include "context.hpp"

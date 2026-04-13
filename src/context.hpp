@@ -9,6 +9,8 @@
 
 struct Context {
     std::filesystem::path compiler_path;
+    std::filesystem::path current_working_directory;
+
 
     xpString main_src_dir_path;
 

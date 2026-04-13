@@ -492,7 +492,14 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     std::string file_name = to_path(pkg->path).generic_string();
     std::ranges::replace(file_name, '/', '_');
 
-    xpString obj_file_path = xp_make_string(permanent_allocator(), "output/");
+    // 如果不存在output目录, 就创建一个
+    const char *output_dir_str = "output/";
+    std::filesystem::path output_dir = std::filesystem::path(output_dir_str);
+    if(!std::filesystem::exists(output_dir)) {
+        std::filesystem::create_directory(output_dir);
+    }
+
+    xpString obj_file_path = xp_make_string(permanent_allocator(), output_dir_str);
     xpString ll_file_path = xp_string_copy(stage_allocator(), obj_file_path);
     
     xp_string_append(&obj_file_path, xp_string_c(file_name.c_str()));

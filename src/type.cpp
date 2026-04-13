@@ -162,7 +162,7 @@ TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
 
 
 
-
+// @Depressed: 这个函数不完整, 不过这个函数的功能已经被TypeRef(Type *)的直接比较代替了 
 bool is_equal_type(Type a, Type b) {
     if(a.kind != b.kind) {
         return false;
@@ -923,6 +923,12 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
 
 template<>
 usize xp_hash_func(Type *type) {
+    if(type == NULL) {
+        XP_ASSERT_MSG(0, "hashing null type");
+        return 0;
+    }
+
+
     switch(type->kind) {
 
         // 基本类型

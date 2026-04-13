@@ -127,6 +127,7 @@ struct Ast;
     })                                                                      \
     AST_INFO(ConstDecl, "const decl", struct {                              \
         xpString name;                                                      \
+        Ast *type_ast;                                                      \
         Ast *value_ast;                                                     \
     })                                                                      \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})             \

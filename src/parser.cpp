@@ -386,6 +386,14 @@ Ast *parse_const_decl(Parser *p) {
     auto name_succ = expect2(p, TokenType::Ident);
     name_token = name_succ.first;
 
+    // 有类型注解的常量声明
+    Ast *type_ast = nullptr;
+    if(curr_token(p).type == TokenType::Colon) {
+        expect(p, TokenType::Colon);
+        type_ast = parse_type(p);
+    }
+
+
     expect(p, TokenType::DoubleColon);
 
 
@@ -409,6 +417,7 @@ Ast *parse_const_decl(Parser *p) {
 
     Ast *const_decl = ast_alloc(AstType_ConstDecl, name_token);
     const_decl->ConstDecl.name = name_token.token_str;
+    const_decl->ConstDecl.type_ast = type_ast;
     const_decl->ConstDecl.value_ast = value_ast;
     const_decl->span = merge(name_token.span, value_ast->span);
 
