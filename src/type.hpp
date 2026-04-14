@@ -199,13 +199,13 @@ TypeRef easy_type(TypeKind kind);
 TypeRef pointer_type(TypeRef pointed_type);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
-TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields);
+TypeRef struct_type(Package *pkg, Ast *decl, xpString ident, Array<StructField> fields);
 TypeRef type_type(TypeRef self_type_info);
 TypeRef package_type(Package *package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 
-TypeRef unfinished_struct_type(Package *pkg, xpString ident);
+TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
 TypeRef slice_type_as_struct(TypeRef elem_type);

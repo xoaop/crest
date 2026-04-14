@@ -42,6 +42,10 @@ bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info) {
     return add_symbol(&scope->symbols, symbol_ident, info);
 }
 
+bool add_symbol_to_scope(Scope *scope, SymbolInfo info) {
+    return add_symbol(&scope->symbols, info.name, info);
+}
+
 SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident) {
     XP_ASSERT_DEFAULT(scope != NULL);
     

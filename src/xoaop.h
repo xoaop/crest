@@ -740,6 +740,9 @@ b32 xp_hash_map_remove(xpHashMap<K, V> *map, K key) {
     return false;
 }
 
+#define END_OF_HASH_MAP_INDEX -1
+
+
 template<typename K, typename V>
 isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first_entry) {
     for (isize i = 0; i < map->capacity; i++) {
@@ -750,7 +753,7 @@ isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first
     }
 
     *first_entry = NULL;
-    return -1;
+    return END_OF_HASH_MAP_INDEX;
 }
 
 template<typename K, typename V>
@@ -763,7 +766,7 @@ isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntr
     }
 
     *next_entry = NULL;
-    return -1;
+    return END_OF_HASH_MAP_INDEX;
 }
 
 

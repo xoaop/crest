@@ -1,7 +1,3 @@
-// TODO: 禁止package循环依赖
-
-
-
 #include "resolve_depend.hpp"
 
 #include <filesystem>
@@ -52,8 +48,6 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
 
     AstFile f = parse_file(tokens, src_code);
 
-    // f.file_path = xp_make_string(permanent_allocator(), path);
-
     return f;
 }
 
@@ -63,9 +57,7 @@ AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
 
 
 void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages) {
-    for(isize i = 0; i < ast_file.top_levels.count; i++) {
-        Ast *top_level = ast_file.top_levels[i];
-
+    for(Ast *top_level: ast_file.top_levels) {
         if(top_level->type == AstType_ConstDecl && top_level->ConstDecl.value_ast->type == AstType_Import) {
             array_push_back(imported_packages, top_level->ConstDecl.value_ast);
         }

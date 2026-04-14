@@ -117,6 +117,8 @@ int main(int argc, char** argv) {
 
 
     Array<Package> all_packages = resolve_dependencies(xp_string_c(main_path));
+    std::reverse(all_packages.begin(), all_packages.end()); // 反转包的顺序, 让被依赖的包在前面, 这样后续分析的时候就不需要担心包的依赖顺序了
+
     context()->all_packages = all_packages;
 
     
