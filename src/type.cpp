@@ -188,7 +188,9 @@ bool is_equal_type(Type a, Type b) {
         return is_equal_type(*a.pointed_type, *b.pointed_type);
     
     case Type_struct: 
-        return xp_string_equal(a.type_name, b.type_name) && xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path);
+        return xp_string_equal(a.type_name, b.type_name) && 
+               xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path) && 
+               a.struct_info.decl_ast == b.struct_info.decl_ast;
 
     // TODO 更多复杂类型比较
     default:
@@ -650,11 +652,12 @@ TypeRef array_type(TypeRef element_type, usize count) {
     return get_or_add_type(t);
 }
 
-TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields) {
+TypeRef struct_type(Package *pkg, Ast *decl, xpString ident, Array<StructField> fields) {
     Type t = {};
     t.kind = Type_struct;
     t.type_name = ident;
     t.struct_info.pkg = pkg;
+    t.struct_info.decl_ast = decl;
     t.struct_info.struct_fields = fields;
 
     TypeRef type_ref = get_or_add_type(t);
@@ -662,10 +665,11 @@ TypeRef struct_type(Package *pkg, xpString ident, Array<StructField> fields) {
     return type_ref;
 }
 
-TypeRef unfinished_struct_type(Package *pkg, xpString ident) {
+TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident) {
     Type t = {};
     t.kind = Type_struct;
     t.type_name = ident;
+    t.struct_info.decl_ast = decl;
     t.struct_info.pkg = pkg;
 
     TypeRef type_ref = get_or_add_type(t);
@@ -740,7 +744,8 @@ TypeRef add_type(Type type) {
 
 // NOTE: 实际上就是结构体
 TypeRef slice_type_as_struct(TypeRef elem_type) {
-    
+    defer (xp_arena_allocator_clear(temp_allocator()));
+
     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
     xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
 
@@ -766,10 +771,12 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     });
 
 
-
-    return struct_type(&context()->global_blank_package, slice_struct_name, fields);
-
-    xp_arena_allocator_clear(temp_allocator());
+    /*
+     * 假如不给结构体加上decl, 那要是不同作用域有同名struct的slice
+     * 那它们的slice类型就会被认为是同一个类型, 这显然不对, 因此必须加上decl来区分
+    */
+    Ast *decl = is_struct_type(elem_type) ? elem_type->struct_info.decl_ast : nullptr;
+    return struct_type(&context()->global_blank_package, decl, slice_struct_name, fields);
 }
 
 // NOTE: 实际上就是结构体
@@ -981,6 +988,10 @@ usize xp_hash_func(Type *type) {
             u64 hash_value = xp_hash_combine_u64(hash_struct, hash_type_name);
             hash_value = xp_hash_combine_u64(hash_value, hash_package);
 
+
+            // decl_ast要参与hash, 为了区分不同作用域的同名结构体
+            u64 hash_decl_ast = cast(u64)(xp_hash_func(&type->struct_info.decl_ast));
+            hash_value = xp_hash_combine_u64(hash_value, hash_decl_ast);
 
             return cast(usize)(hash_value);
         } break;

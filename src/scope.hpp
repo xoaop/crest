@@ -49,7 +49,10 @@ Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator);
 void free_scope(Scope *scope);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
+
 bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
+bool add_symbol_to_scope(Scope *scope, SymbolInfo info);
+
 SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);

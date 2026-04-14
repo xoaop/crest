@@ -127,18 +127,64 @@ xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
 // 0. 总流程
 //
 
-void collect_symbols_in_all_packages(Array<Package> *all_packages);
 void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages);
-void eval_top_level_types(AstFile *ast_file, Analyser analyser);
 void sema_analysis_package(Package *pkg, Array<Package> *all_packages);
 
+
+// 语义分析的入口函数
 void sema_analysis_all_packages(Array<Package> *all_packages) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
-    collect_symbols_in_all_packages(all_packages);
+    // TODO 添加全局符号, 如string类型
+    {
+        xpString string_struct_name = xp_string_c("string");
 
+        Array<StructField> fields = make_array<StructField>(temp_allocator());
+        defer(xp_arena_allocator_clear(temp_allocator()));
+
+        array_push_back(&fields, StructField { 
+            xp_string_c("data"), 
+            pointer_type(easy_type(Type_u8)) 
+        });    
+        array_push_back(&fields, StructField { 
+            xp_string_c("count"), 
+            easy_type(Type_i64) // TODO 考虑改成isize
+        });    
+
+        TypeRef string_struct_typeref = struct_type(&context()->global_blank_package, nullptr, string_struct_name, fields);
+        TypeRef string_type = type_type(string_struct_typeref);
+
+        // 符号表
+        SymbolInfo string_struct_symbol = make_symbol(
+            string_struct_name, 
+            make_comptime_sovled_val(string_type),
+            &context()->global_blank_package,
+            NULL
+        );
+        add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
+    }
+
+    // TODO: 多线程解析package, 但需要更详细的依赖分析
+    // 逐个包进行分析
     for(isize i = 0; i < all_packages->count; i++) {
         Package *pkg = &(*all_packages)[i];
+
+        collect_top_level_symbols_in_package(pkg, all_packages);
+
+        // top levels
+        // TODO: 改的更清晰, 目前还在复用之前的代码
+        xpHashMapEntry<xpString, SymbolInfo> *symbol_entry;
+        for(isize j = xp_hash_map_first_entry(&pkg->package_scope.symbols.symbols, &symbol_entry); j != END_OF_HASH_MAP_INDEX; j = xp_hash_map_next_entry(&pkg->package_scope.symbols.symbols, j, &symbol_entry)) {
+            if(symbol_entry->value.value.state != ValueState::Unsolved) {
+                continue;
+            }
+
+            SymbolInfo *symbol_info = &symbol_entry->value;
+
+            eval_unsolved_in_symbol_table(symbol_info, make_analyser(symbol_info->file, pkg, all_packages));
+        }
+
+
         sema_analysis_package(pkg, all_packages);
     }
 }
@@ -162,68 +208,6 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
 void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser);
 
 
-
-
-void collect_symbols_in_all_packages(Array<Package> *all_packages) {
-
-    
-    // TODO 添加全局符号, 如string类型
-    {
-        xpString string_struct_name = xp_string_c("string");
-
-        Array<StructField> fields = make_array<StructField>(temp_allocator());
-        defer(xp_arena_allocator_clear(temp_allocator()));
-
-        array_push_back(&fields, StructField { 
-            xp_string_c("data"), 
-            pointer_type(easy_type(Type_u8)) 
-        });    
-        array_push_back(&fields, StructField { 
-            xp_string_c("count"), 
-            easy_type(Type_i64) // TODO 考虑改成isize
-        });    
-
-        TypeRef string_struct_typeref = struct_type(&context()->global_blank_package, string_struct_name, fields);
-        TypeRef string_type = type_type(string_struct_typeref);
-
-        // 符号表
-        SymbolInfo string_struct_symbol = make_symbol(
-            string_struct_name, 
-            make_comptime_sovled_val(string_type),
-            &context()->global_blank_package,
-            NULL
-        );
-        add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
-    }
-
-    // built in functions
-    
-    // // size_of
-    // {
-    //     xpString size_of_name = xp_string_c("size_of");
-    //     Array<TypeRef> param_types = make_array<TypeRef>(temp_allocator());
-    //     // TODO 这里的NULL有点hack, 主要是为了让size_of的参数可以接受任意类型, 因为size_of是编译时函数, 参数类型在编译时就确定了, 不需要在符号表里区分不同参数类型的size_of函数了
-    //     param_types.push_back(type_type(nullptr)); 
-    //     TypeRef size_of_fn_type = function_type(
-    //         param_types, 
-    //         easy_type(Type_untyped_int)
-    //     );
-
-    //     SymbolInfo size_of_symbol = make_symbol(
-    //         size_of_name,
-    //         make_comptime_sovled_val(size_of_fn_type),
-    //         &context()->global_blank_package,
-    //         NULL
-    //     );
-    //     add_symbol_to_scope(&context()->global_blank_package.package_scope, size_of_name, size_of_symbol);
-    // }
-
-
-
-    for(isize i = 0; i < all_packages->count; i++) {
-        collect_top_level_symbols_in_package(&(*all_packages)[i], all_packages);
-    }    
-}
 
 
 
@@ -346,7 +330,7 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser) {
 //
 
 Value eval_import_value(Ast *import_ast, Analyser analyser);
-Value eval_function_decl_value(Ast *fn_val_ast, Analyser analyser);
+Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser);
 void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
 Value resolve_comptime_expr(Ast *expr_ast, Analyser analyser);
 void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
@@ -391,7 +375,7 @@ void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
         break;
 
     case AstType_FunctionDeclValue: 
-        *const_val = eval_function_decl_value(val_ast, analyser);
+        *const_val = eval_function_decl_value_only_type(val_ast, analyser);
         const_val->val_ast = const_decl_ast;
         break;
 
@@ -467,8 +451,8 @@ TypeRef resolve_function_value_type(Ast *value, Analyser analyser) {
 }    
 
 
-
-Value eval_function_decl_value(Ast *fn_val_ast, Analyser analyser) {
+// NOTE: 只解析了类型, 没有解析函数体, 为了避免解析到未解析的顶层符号
+Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser) {
     Value func_value = make_comptime_sovled_val(
         resolve_function_value_type(fn_val_ast, analyser)
     );
@@ -493,7 +477,7 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
     
     struct_symbol_info->value.set_value_state(ValueState::Solving);
 
-    TypeRef unfinished_type_type = type_type(unfinished_struct_type(struct_symbol_info->package, name));
+    TypeRef unfinished_type_type = type_type(unfinished_struct_type(struct_symbol_info->package, decl, name));
     struct_symbol_info->value.set_type(unfinished_type_type);
 
     Array<StructField> fields = make_array<StructField>(type_allocator());
@@ -838,8 +822,23 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
 
 
+Value eval_struct_decl_value(Ast *struct_decl_ast, xpString ident, Analyser analyser) {
+    Array<StructField> fields = make_array<StructField>(stage_allocator());
+    for(Ast *field_ast: struct_decl_ast->StructDeclValue.fields) {
+        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
 
+        if(field_type == error_type()) {
+            return make_error_value();
+        }
 
+        array_push_back(&fields, StructField{field_ast->StructField.name, field_type});
+    }
+
+    TypeRef struct_typeref = struct_type(analyser.pkg, struct_decl_ast, ident, fields);
+
+    Value struct_value = make_comptime_sovled_val(type_type(struct_typeref));
+    return struct_value;
+}
 
 
 
@@ -895,9 +894,6 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             break;
         }
 
-        if(const_info->value.state == ValueState::Unsolved) {
-            eval_unsolved_in_symbol_table(const_info, analyser);
-        }
 
         if(const_info->value.has_error()) {
             break;
@@ -1005,7 +1001,10 @@ void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
 
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 
-    SymbolInfo *exist = find_symbol_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
+
+    xpString const_ident = const_decl_ast->ConstDecl.name;
+
+    SymbolInfo *exist = find_symbol_curr(analyser.current_scope, const_ident);
     if(exist != NULL) {
         context()->reporter.report_error(
             const_decl_ast->span, analyser.curr_ast_file->source_code,
@@ -1016,7 +1015,37 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 
 
     Ast *val_ast = const_decl_ast->ConstDecl.value_ast;
-    Value val = resolve_comptime_expr(val_ast, analyser);
+    
+    // TODO: 支持函数, 结构体定义等先前不支持在函数内部定义的常量, 目前只支持常量表达式
+    Value val = {};
+    switch(val_ast->type) {
+      case AstType_Import: {
+        // NOTE: 不允许import在局部定义
+        context()->reporter.report_error(
+            val_ast->span, analyser.curr_ast_file->source_code,
+            "import declaration is not allowed in local scope"
+        );
+
+        val = make_error_value();
+      } break;
+
+      case AstType_FunctionDeclValue: {
+        XP_TODO();
+
+        // val = eval_function_decl_value(val_ast, analyser);
+      } break;
+
+      case AstType_StructDeclValue: {
+        val = eval_struct_decl_value(val_ast, const_ident, analyser);
+      } break;
+
+
+
+      default: {
+        val = resolve_comptime_expr(val_ast, analyser);
+      } break;  
+    }
+
 
     if(val.has_error()) {
         // context()->reporter.report_error(
@@ -1036,8 +1065,6 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
     // 目前变量可以遮蔽外层作用域的变量, 函数定义, 结构体定义
-    // TODO: 是否允许遮蔽, 或者警告
-
     SymbolInfo *existing = find_symbol_curr(analyser.current_scope, var_decl_ast->VariableDecl.var_name);
     if(existing != NULL) {
         context()->reporter.report_error(
@@ -1524,6 +1551,9 @@ SymbolInfo *resolve_string_as_ident_and_eval_unsolved(xpString str, Analyser ana
         return NULL;
     }
 
+
+    // 目前这个懒解析只存在于在解析top level时遇到未解析的**当前**package的符号, 不会涉及到跨package的符号, 因为:
+    // 由于禁止package的循环依赖, 且解析按依赖顺序进行, 不可能出现解析一个package时遇到另一个未解析的package的符号的情况
     if(info->value.state == ValueState::Unsolved) {
         eval_unsolved_in_symbol_table(info, analyser);
     }
@@ -1643,9 +1673,3 @@ bool may_fall_through(Ast *ast) {
 
     return true;
 }
-
-
-
-
-
-
