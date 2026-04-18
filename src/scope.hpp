@@ -6,6 +6,12 @@
 #include "symbol.hpp"
 
 
+
+enum TypeKind: int;
+
+
+
+
 enum class ScopeType {
 
     // 全局作用域, 包括:

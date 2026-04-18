@@ -4,11 +4,13 @@
 #include "xoaop.h"
 #include "common.hpp"
 
-#include "type.hpp"
-
 #include "value.hpp"
 
+
 struct AstFile;
+struct Package;
+struct Ast;
+
 
 struct SymbolInfo {
     xpString name;

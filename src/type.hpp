@@ -3,6 +3,7 @@
 #include "xoaop.h"
 #include "array.hpp"
 #include "common.hpp"
+#include "scope.hpp"
 
 #define TYPE_KINDS                                      \
     TYPE_KIND(Undefined, "undefined")                   \
@@ -20,17 +21,22 @@
     TYPE_KIND(pointer, "pointer")                       \
     TYPE_KIND(struct, "struct")                         \
     TYPE_KIND(array, "array")                           \
+    TYPE_KIND(enum, "enum")                             \
+    TYPE_KIND(union, "union")                           \
     TYPE_KIND(untyped_int, "untyped_int")               \
     TYPE_KIND(untyped_float, "untyped_float")           \
                                                         \
     TYPE_KIND(type, "type")                             \
     TYPE_KIND(package, "package")                       \
                                                         \
+    TYPE_KIND(var_arg_c, "var_arg_c")                   \
+                                                        \
+                                                        \
     TYPE_KIND(error, "error")                           \
 /**/
 
 
-enum TypeKind {
+enum TypeKind: int {
 
 #define TYPE_KIND(name, str) Type_##name,
     TYPE_KINDS
@@ -83,6 +89,23 @@ struct Type {
             TypeRef element_type;
             usize count;
         } array_info;
+
+
+        // 枚举
+        struct {
+            TypeRef element_type; // 枚举成员的类型
+            Scope enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
+            Package *pkg;
+            Ast *decl_ast;
+        } enum_info;
+
+
+        // 联合体
+        struct {
+            Array<StructField> union_fields;
+            Package *pkg;
+            Ast *decl_ast;
+        } union_info;
 
 
         // 元类型
@@ -153,6 +176,7 @@ bool is_package_type(TypeRef type);
 bool is_slice_struct_type(TypeRef type);
 bool is_string_struct_type(TypeRef type);
 bool is_value_type(TypeRef type);
+bool is_var_arg_function(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -161,7 +185,9 @@ bool is_hard_type_kind(TypeKind kind);
 
 
 
+
 TypeRef get_common_type(TypeRef a, TypeRef b);
+u32 get_fixed_param_count(TypeRef func_type);
 
 
 bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult);

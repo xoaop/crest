@@ -366,6 +366,11 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             }
             break;
 
+        case '^':
+            token.type = TokenType::Caret;
+            advance_one_character(t);
+            break;
+
         case '"': {
             token.type = TokenType::StringLiteral;
             advance_one_character(t); //跳过开头的引号

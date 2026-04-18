@@ -192,6 +192,11 @@ bool is_equal_type(Type a, Type b) {
                xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path) && 
                a.struct_info.decl_ast == b.struct_info.decl_ast;
 
+
+    case Type_enum:
+        return xp_string_equal(a.type_name, b.type_name) && 
+               a.enum_info.decl_ast == b.enum_info.decl_ast;
+    
     // TODO 更多复杂类型比较
     default:
         return true;
@@ -237,7 +242,7 @@ bool is_complex_type_kind(TypeKind kind) {
 
 // 包括基本类型和字面量类型
 bool is_easy_type_kind(TypeKind kind) {
-    return is_basic_type_kind(kind) || kind == Type_untyped_int || kind == Type_untyped_float;
+    return is_basic_type_kind(kind) || kind == Type_untyped_int || kind == Type_untyped_float || kind == Type_var_arg_c;
 }
 
 // 包括复杂类型和不确定类型
@@ -402,6 +407,24 @@ bool is_value_type(TypeRef type) {
            is_pointer_type(type) ||
            is_struct_type(type) ||
            is_array_type(type);
+}
+
+bool is_var_arg_function(TypeRef type) {
+    if(!is_function_type(type)) {
+        return false;
+    }
+
+    if(type->function_info.param_types.count == 0) {
+        return false;
+    }
+
+    TypeRef last_param_type = type->function_info.param_types[type->function_info.param_types.count - 1];
+    return last_param_type->kind == Type_var_arg_c;
+}
+
+u32 get_fixed_param_count(TypeRef func_type) {
+    XP_ASSERT_DEFAULT(is_var_arg_function(func_type));
+    return func_type->function_info.param_types.count - 1;
 }
 
 //
@@ -954,7 +977,8 @@ usize xp_hash_func(Type *type) {
         case Type_bool:
         case Type_void:
         case Type_untyped_int:
-        case Type_untyped_float: {
+        case Type_untyped_float: 
+        case Type_var_arg_c: {
             return cast(usize)(type->kind);
         } break;
 
