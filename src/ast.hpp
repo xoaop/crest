@@ -69,8 +69,6 @@ struct Ast;
         Ast *expr;                                                          \
         Ast *type_ast;                                                      \
         bool no_zero_init;                                                  \
-        /* @TEMP */                                                         \
-        bool is_var_arg;                                                    \
     })                                                                      \
     AST_INFO(Assignment, "assignment", struct {                             \
         Ast *left_var_expr;                                                 \
@@ -79,6 +77,11 @@ struct Ast;
     AST_INFO(FieldAccess, "field access", struct {                          \
         Ast *parent;                                                        \
         xpString field_name;                                                \
+    })                                                                      \
+    AST_INFO(ParamDecl, "function parameter", struct {                      \
+        xpString name;                                                      \
+        Ast *type_ast;                                                      \
+        bool is_var_arg;                                                    \
     })                                                                      \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \

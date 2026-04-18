@@ -86,7 +86,7 @@ static bool check_is_lvalue(Ast *expr, TypeRef v_type, Analyser analyser) {
     switch(expr->type) {
     case AstType_UnaryExpr: {
 
-        if(expr->UnaryExpr.op == TokenType::Star) {
+        if(expr->UnaryExpr.op == TokenType::Caret) {
 
             if(expr->UnaryExpr.operand->is_lvalue) {
                 return true;
@@ -584,7 +584,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     );
                 }
             } break;
-            case TokenType::Star: {
+            case TokenType::Caret: {
                 // 解引用操作符只能用于非void*指针类型, 结果类型为操作数指向的类型
 
                 if(is_pointer_type(operand_type) == false) {
@@ -1041,7 +1041,11 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 break;
             }
 
-            if(val_type->function_info.param_types.count != expr->FunctionCallExpr.args.count) {
+            
+            // 如果是可变参数函数, 那就检查前n-1个参数, n是固定参数数量加1(...本身), 只有前n-1个参数需要检查类型, 可变参数部分不检查
+            isize fix_param_count = val_type->function_info.param_types.count - (is_var_arg_function(val_type) ? 1 : 0);
+            
+            if(!is_var_arg_function(val_type) && val_type->function_info.param_types.count != expr->FunctionCallExpr.args.count) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
                     "function '%s' expects %lld arguments but got %lld",
@@ -1049,9 +1053,18 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 );
                 break;
             }
-
+            if(is_var_arg_function(val_type) && expr->FunctionCallExpr.args.count < fix_param_count) {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "function '%s' expects at least %lld arguments but got %lld",
+                    info->name.c_str, fix_param_count, expr->FunctionCallExpr.args.count
+                );
+                break;
+            }
+            
+            
             bool has_error = false;
-            for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+            for(isize i = 0; i < fix_param_count; i++) {
                 infer_expr_type(expr->FunctionCallExpr.args[i], true, val_type->function_info.param_types[i], analyser, false);
 
                 if(!check_implicit_convension(expr->FunctionCallExpr.args[i], expr->FunctionCallExpr.args[i]->v_type, val_type->function_info.param_types[i])) {
@@ -1064,6 +1077,22 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     break;
                 }
             }
+
+            for(isize i = fix_param_count; i < expr->FunctionCallExpr.args.count; i++) {
+                infer_expr_type(expr->FunctionCallExpr.args[i], false, nullptr, analyser, false);
+
+                if(expr->FunctionCallExpr.args[i]->v_type == error_type()) {
+                    context()->reporter.report_error(
+                        expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
+                        "unable to infer type of argument %lld for variadic parameter of function '%s'",
+                        i + 1, info->name.c_str
+                    );
+                    has_error = true;
+                    break;
+                }
+            }
+
+
             if(has_error) {
                 break;
             }

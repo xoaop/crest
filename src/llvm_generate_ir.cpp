@@ -384,12 +384,14 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
 
         case Type_function: {
             Array<LLVMTypeRef> params = make_array_len<LLVMTypeRef>(stage_allocator(), type->function_info.param_types.count);
-            for(isize i = 0; i < type->function_info.param_types.count; i++) {
+
+
+            isize fix_param_count = type->function_info.param_types.count - (is_var_arg_function(type) ? 1 : 0);
+            for(isize i = 0; i < fix_param_count; i++) {
                 array_push_back(&params, get_llvm_type_from_type(gen, type->function_info.param_types[i]));
             }
             
-            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(gen, type->function_info.return_type), params.data, params.count, 0);
-            
+            LLVMTypeRef func_type = LLVMFunctionType(get_llvm_type_from_type(gen, type->function_info.return_type), params.data, fix_param_count, is_var_arg_function(type) ? 1 : 0);
             return func_type;
         } break;
 
@@ -491,6 +493,7 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     char *error = NULL;
     std::string file_name = to_path(pkg->path).generic_string();
     std::ranges::replace(file_name, '/', '_');
+    std::ranges::replace(file_name, ':', '_');
 
     // 如果不存在output目录, 就创建一个
     const char *output_dir_str = "output/";
@@ -852,11 +855,11 @@ void gen_ir_function(LLVMGenerator *gen, Ast *function) {
         Ast *param = val_ast->FunctionDeclValue.params[i];
         SymbolInfo *param_symbol = find_symbol_until_global(
             gen->curr_ir_scope->scope,
-            param->VariableDecl.var_name
+            param->ParamDecl.name
         );
 
 
-        LLVMValueRef param_alloca = LLVMBuildAlloca(gen->builder, get_llvm_type_from_type(gen, param->v_type), param->VariableDecl.var_name.c_str);
+        LLVMValueRef param_alloca = LLVMBuildAlloca(gen->builder, get_llvm_type_from_type(gen, param->v_type), param->ParamDecl.name.c_str);
         LLVMBuildStore(gen->builder, LLVMGetParam(func, i), param_alloca);
 
 
@@ -1329,7 +1332,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             
             // 如果是指向结构体的指针，则需要先解引用
             parent_expr = ast_alloc(AstType_UnaryExpr, stage_allocator());
-            parent_expr->UnaryExpr.op = TokenType::Star;
+            parent_expr->UnaryExpr.op = TokenType::Caret;
             parent_expr->UnaryExpr.operand = expr->FieldAccess.parent;
             parent_expr->v_type = get_pointed_type(expr->FieldAccess.parent->v_type);
         } else {
@@ -1450,7 +1453,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
             LLVMValueRef ptr = gen_ir_expr(gen, expr->UnaryExpr.operand, state, true);
             return ptr;
 
-        } else if(expr->UnaryExpr.op == TokenType::Star) {
+        } else if(expr->UnaryExpr.op == TokenType::Caret) {
             // 解引用运算符
             LLVMValueRef ptr = gen_ir_expr(gen, expr->UnaryExpr.operand, state);
             if(is_lvalue_expr) {
@@ -1479,7 +1482,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         }
         TypeRef val_type = func_symbol->value.type;
 
-
+        // NOTE: 这里应该只会处理别的package的函数
         // TODO: ABSTRACT: 获取原始函数符号, 并生成LLVM函数(如没生成)
         SymbolInfo *ori_func_sym = get_ori_func_symbol_by_func_value(func_symbol->value);
         XP_ASSERT_DEFAULT(ori_func_sym != NULL);
@@ -1502,6 +1505,26 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(stage_allocator(), expr->FunctionCallExpr.args.count);
         for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
             LLVMValueRef arg_val = gen_ir_expr(gen,  expr->FunctionCallExpr.args[i], state);
+
+
+            // TODO: 临时兼容c可变参数函数调用
+            if(is_var_arg_function(val_type) && i >= get_fixed_param_count(val_type)) {
+                // 可变参数, 需要进行类型提升
+                TypeRef param_type = expr->FunctionCallExpr.args[i]->v_type;
+
+                if(param_type == easy_type(Type_f32)) {
+                    // float提升到double
+                    arg_val = gen_ir_cast(gen, param_type, easy_type(Type_f64), arg_val);
+                } else if(param_type == easy_type(Type_i8) || 
+                          param_type == easy_type(Type_u8) || 
+                          param_type == easy_type(Type_bool)
+                        ) {
+                            
+                    // i8/u8/i16/u16/bool提升到i32
+                    arg_val = gen_ir_cast(gen, param_type, easy_type(Type_i32), arg_val);
+                }
+            }
+
             array_push_back(&args, arg_val);
         }
 

@@ -3,11 +3,14 @@
 
 
 #include "xoaop.h"
-#include "type.hpp"
 #include "array.hpp"
 
-struct Value;
 
+struct Value;
+struct Ast;
+struct Package;
+struct Type;
+using TypeRef = Type *;
 
 
 

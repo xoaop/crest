@@ -131,9 +131,33 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Arr
 void sema_analysis_package(Package *pkg, Array<Package> *all_packages);
 
 
-// 语义分析的入口函数
-void sema_analysis_all_packages(Array<Package> *all_packages) {
-    defer(xp_arena_allocator_clear(stage_allocator()));
+static void init_global_symbols() {
+
+    // basic types
+    {
+        auto insert_basic_type = [](TypeKind kind) {
+            TypeRef type_ref = type_type(easy_type(kind));
+            SymbolInfo symbol_info = make_symbol(
+                get_type_kind_str(kind), 
+                make_comptime_sovled_val(type_ref), 
+                &context()->global_blank_package, 
+                nullptr
+            );
+            add_symbol_to_scope(&context()->global_blank_package.package_scope, symbol_info);
+        };
+
+        insert_basic_type(Type_void);
+        insert_basic_type(Type_bool);
+        insert_basic_type(Type_i8);
+        insert_basic_type(Type_i32);
+        insert_basic_type(Type_i64);
+        insert_basic_type(Type_u8);
+        insert_basic_type(Type_u32);
+        insert_basic_type(Type_u64);
+        insert_basic_type(Type_f32);
+        insert_basic_type(Type_f64);
+    }
+
 
     // TODO 添加全局符号, 如string类型
     {
@@ -163,6 +187,14 @@ void sema_analysis_all_packages(Array<Package> *all_packages) {
         );
         add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
     }
+}
+
+
+// 语义分析的入口函数
+void sema_analysis_all_packages(Array<Package> *all_packages) {
+    defer(xp_arena_allocator_clear(stage_allocator()));
+
+    init_global_symbols();
 
     // TODO: 多线程解析package, 但需要更详细的依赖分析
     // 逐个包进行分析
@@ -433,7 +465,14 @@ TypeRef resolve_function_value_type(Ast *value, Analyser analyser) {
     Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
     for(isize i = 0; i < value->FunctionDeclValue.params.count; i++) {
         Ast *param_ast = value->FunctionDeclValue.params[i];
-        TypeRef param_type = resolve_type(param_ast->VariableDecl.type_ast, analyser);
+
+        TypeRef param_type = nullptr;
+        if(param_ast->ParamDecl.is_var_arg) {
+            param_type = easy_type(Type_var_arg_c);
+        } else {
+            param_type = resolve_type(param_ast->ParamDecl.type_ast, analyser);
+        }
+
 
         if(param_type == error_type()) {
             return error_type();
@@ -928,6 +967,57 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 }
 
 
+void resolve_fn_param(Ast *param_ast, Analyser analyser) {
+    XP_ASSERT_DEFAULT(param_ast->type == AstType_ParamDecl);
+
+    SymbolInfo *existing = find_symbol_curr(analyser.current_scope, param_ast->ParamDecl.name);
+    if(existing != nullptr) {
+        context()->reporter.report_error(
+            param_ast->span, analyser.curr_ast_file->source_code,
+            "duplicate parameter name '%s'",
+            param_ast->ParamDecl.name.c_str
+        );
+    }
+
+
+    if(param_ast->ParamDecl.is_var_arg) {
+        param_ast->v_type = easy_type(Type_var_arg_c);
+    } else {
+        param_ast->v_type = resolve_type(param_ast->ParamDecl.type_ast, analyser);
+    }
+
+    if(param_ast->v_type == easy_type(Type_void)) {
+        context()->reporter.report_error(
+            param_ast->span, analyser.curr_ast_file->source_code,
+            "parameter cannot have void type"
+        );
+    }
+
+    Value param_value = make_value().set_is_runtime(true).set_type(param_ast->v_type).set_value_state(ValueState::Solved);
+    SymbolInfo param_symbol = make_symbol(param_ast->ParamDecl.name, param_value, analyser.pkg, analyser.curr_ast_file);
+    add_symbol_to_scope(analyser.current_scope, param_ast->ParamDecl.name, param_symbol);
+
+    return;
+}
+
+void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
+    for(isize i = 0; i < params.count; i++) {
+        Ast *param = params[i];
+
+        resolve_fn_param(param, analyser);
+        
+        if(param->ParamDecl.is_var_arg && i != params.count - 1) {
+            context()->reporter.report_error(
+                param->span, analyser.curr_ast_file->source_code,
+                "variadic parameter must be the last parameter"
+            );
+        }
+
+    }
+}
+
+
+
 
 void resolve_function_decl(Ast *decl, Analyser analyser) {
 
@@ -938,24 +1028,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
     Analyser new_sc = new_scope(analyser, ScopeType::Function, decl);
     new_sc.curr_func = decl;
 
-    // 函数参数作为变量声明解析
-    for(isize i = 0; i < value_ast->FunctionDeclValue.params.count; i++) {
-        Ast *param_ast = value_ast->FunctionDeclValue.params[i];
-
-        //@CleanUp
-        if(param_ast->VariableDecl.is_var_arg == true) {
-            if(i != value_ast->FunctionDeclValue.params.count - 1) {
-                context()->reporter.report_error(
-                    param_ast->span, analyser.curr_ast_file->source_code,
-                    "variadic parameter must be the last parameter"
-                );
-            }
-
-            break;
-        }
-
-        resolve_var_decl(param_ast, new_sc);
-    }
+    resolve_fn_param_list(value_ast->FunctionDeclValue.params, new_sc);
 
     if(value_ast->FunctionDeclValue.block != NULL) {
         resolve_block(value_ast->FunctionDeclValue.block, new_sc, true);
@@ -1418,7 +1491,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             
 
             TypeRef type = maybe_type_info->value.type;
-            if(!(is_type_type(type) && is_struct_type(type->self_type_info))) {
+            // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
+            if(!(is_type_type(type) && (is_struct_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '%s' is not a type",
@@ -1443,7 +1517,9 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             }
 
             TypeRef type = symbol->value.type;
-            if(!(is_type_type(type) && is_struct_type(type->self_type_info))) {
+
+            // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
+            if(!(is_type_type(type) && (is_struct_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '%s' is not a type",

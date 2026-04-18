@@ -47,7 +47,7 @@ Ast *parse_if(Parser *p);
 Ast *parse_for(Parser *p);
 
 
-Ast *parse_factor(Parser *p);
+Ast *parse_expr_factor(Parser *p);
 Ast *parse_expr(Parser *p, isize min_prec = 0);
 
 
@@ -130,24 +130,6 @@ Ast *parse_basic_and_ident_type(Parser *p) {
     Token curr = curr_token(p);
     
     switch(curr.type) {
-        case TokenType::KW_void:
-        case TokenType::KW_bool:
-        case TokenType::KW_i8:
-        case TokenType::KW_i32:
-        case TokenType::KW_i64:
-        case TokenType::KW_u8:
-        case TokenType::KW_u32:
-        case TokenType::KW_u64:
-        case TokenType::KW_f32:
-        case TokenType::KW_f64: {
-            a = ast_alloc(AstType_EasyType, curr);
-            a->EasyType.kind = string_to_type_kind(curr.token_str);
-
-            a->span = curr.span;
-
-            advance_token(p);
-        } break;
-        
         case TokenType::Ident: {
             // 对于类型, 只能是要么单标识符, 如  a: my_type
             // 要么是 package.type_name 形式, 如 a: foo.my_type
@@ -272,23 +254,31 @@ Ast *parse_function_value(Parser *p) {
     expect(p, TokenType::LeftBracket);
 
     Array<Ast *> params = make_array<Ast *>(ast_allocator());
+    
+    
+    bool must_be_c_fn = false;
     while(!reach_end(p)) {
         if(curr_token(p).type == TokenType::RightBracket) {
             break;
         }
 
+        // 表示必须是extern C函数, 因为目前只有extern C函数支持可变参数, 其他函数如果出现...就报错
 
         // @CleanUp: 代码略重复
         // 特殊处理 ... (可变参数)
         if(curr_token(p).type == TokenType::ThreeDots) {
             Token dots_token = expect(p, TokenType::ThreeDots);
-            Ast *param_ast = ast_alloc(AstType_VariableDecl, dots_token);
-            param_ast->VariableDecl.var_name = dots_token.token_str; // 虽然可变参数没有名字, 但这里先把它的名字设置成 "..." 以方便调试和错误提示
-            param_ast->VariableDecl.type_ast = nullptr;
-            param_ast->span = dots_token.span;
-            param_ast->VariableDecl.is_var_arg = true; // 标记这是一个可变参数
+            Ast *param_ast = ast_alloc(AstType_ParamDecl, dots_token);
+            param_ast->ParamDecl.name = dots_token.token_str;
+            param_ast->ParamDecl.type_ast = nullptr;
+            param_ast->ParamDecl.is_var_arg = true;
 
+
+            
             array_push_back(&params, param_ast);
+
+            // 目前可变参数限制在extern_c函数中
+            must_be_c_fn = true;
 
             // 可变参数必须是最后一个参数, 所以直接跳出循环
             break;
@@ -301,10 +291,16 @@ Ast *parse_function_value(Parser *p) {
         Ast *param_type_ast = parse_type(p);
 
         // TODO: VariableDecl换成ParameterDecl更合适
-        Ast *param_ast = ast_alloc(AstType_VariableDecl, param_name_token);
-        param_ast->VariableDecl.var_name = param_name_token.token_str;
-        param_ast->VariableDecl.type_ast = param_type_ast;
+        // Ast *param_ast = ast_alloc(AstType_VariableDecl, param_name_token);
+        // param_ast->VariableDecl.var_name = param_name_token.token_str;
+        // param_ast->VariableDecl.type_ast = param_type_ast;
+        // param_ast->span = merge(param_name_token.span, param_type_ast->span);
+        Ast *param_ast = ast_alloc(AstType_ParamDecl, param_name_token);
+        param_ast->ParamDecl.name = param_name_token.token_str;
+        param_ast->ParamDecl.type_ast = param_type_ast;
+        param_ast->ParamDecl.is_var_arg = false;
         param_ast->span = merge(param_name_token.span, param_type_ast->span);
+
 
         array_push_back(&params, param_ast);
 
@@ -347,8 +343,13 @@ Ast *parse_function_value(Parser *p) {
         span = merge(rb.span, block_ast->span);
     }
 
-
-
+    if(must_be_c_fn && !is_extern_c) {
+        context()->reporter.report_error(
+            span, p->f.source_code,
+            "functions with variable arguments must be declared as extern C"
+        );
+    }
+    
 
 
 
@@ -885,7 +886,7 @@ Ast *parse_string_literal(Parser *p) {
     }
 }
 
-Ast *parse_factor(Parser *p) {
+Ast *parse_expr_factor(Parser *p) {
     Ast *a = NULL;
     defer(XP_ASSERT_DEFAULT(a != NULL));
 
@@ -956,7 +957,7 @@ Ast *parse_factor(Parser *p) {
             a->span = merge(a->token.span, a->CastExpr.expr->span);
             break;
 
-        case TokenType::LeftSquareBracket:
+        case TokenType::LeftCurlyBracket:
             // 数组字面量
 
             a = parse_array_init_expr(p);
@@ -986,7 +987,7 @@ Ast *parse_factor(Parser *p) {
 }
 
 Ast *parse_expr(Parser *p, isize min_prec) {
-    Ast *left = parse_factor(p);
+    Ast *left = parse_expr_factor(p);
 
     Token curr;
     
@@ -1039,7 +1040,8 @@ Ast *parse_expr(Parser *p, isize min_prec) {
             Token next = next_token(p);
 
             if(next.type == TokenType::LeftCurlyBracket) {
-                
+                // 结构体初始化表达式, 形如 Point.{1, 2}
+
                 Ast *a = ast_alloc(AstType_StructInitExpr, curr);
                 a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
                 a->StructInitExpr.struct_type_ident = left;
@@ -1069,6 +1071,8 @@ Ast *parse_expr(Parser *p, isize min_prec) {
 
                 left = a;
             } else {
+                // 成员访问表达式, 形如 a.b
+
                 Ast *new_left = ast_alloc(AstType_FieldAccess, expect(p, TokenType::Dot));
                 new_left->FieldAccess.parent = left;
                 Token field_name_token = expect(p, TokenType::Ident);
@@ -1280,9 +1284,9 @@ Ast *parse_array_init_expr(Parser *p) {
     Ast *a = ast_alloc(AstType_ArrayInitExpr);
     a->ArrayInitExpr.elements = make_array<Ast *>(ast_allocator());
 
-    a->token = expect(p, TokenType::LeftSquareBracket);
+    a->token = expect(p, TokenType::LeftCurlyBracket);
     for(;;) {
-        if(reach_end(p) || curr_token(p).type == TokenType::RightSquareBracket) {
+        if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
             break;
         }
 
@@ -1290,12 +1294,12 @@ Ast *parse_array_init_expr(Parser *p) {
 
         array_push_back(&a->ArrayInitExpr.elements, element_expr);
 
-        if(curr_token(p).type != TokenType::RightSquareBracket) {
+        if(curr_token(p).type != TokenType::RightCurlyBracket) {
             expect(p, TokenType::Comma);
         }
     }
 
-    Token rsb = expect(p, TokenType::RightSquareBracket);
+    Token rsb = expect(p, TokenType::RightCurlyBracket);
 
     a->span = merge(a->token.span, rsb.span);
 

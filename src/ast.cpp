@@ -84,7 +84,7 @@ bool is_unary_op(TokenType type) {
     
     // 指针运算
     case TokenType::And: // &
-    case TokenType::Star: // *
+    case TokenType::Caret: // ^
         return true;
     default:
         return false;
@@ -351,6 +351,14 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             print_line(depth + 1, false, "name: %s", a->ConstDecl.name.c_str);
             print_line(depth + 1, true, "value:");
             print_ast(a->ConstDecl.value_ast, depth + 2, true);
+            break;
+        }
+
+        case AstType_ParamDecl: {
+            print_line(depth + 1, false, "name: %s", a->ParamDecl.name.c_str);
+            print_line(depth + 1, false, "is_var_arg: %s", a->ParamDecl.is_var_arg ? "true" : "false");
+            print_line(depth + 1, true, "type:");
+            print_ast(a->ParamDecl.type_ast, depth + 2, true);
             break;
         }
 

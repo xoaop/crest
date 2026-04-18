@@ -1,5 +1,5 @@
 #include "value.hpp"
-
+#include "type.hpp"
 
 Value Value::set_is_runtime(bool is_or_not) {
     is_runtime_value = is_or_not;

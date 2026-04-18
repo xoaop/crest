@@ -48,6 +48,7 @@
     TOKEN_INFO(Comma, ","),                                     \
     TOKEN_INFO(Arrow, "->"),                                    \
     TOKEN_INFO(Dot, "."),                                       \
+    TOKEN_INFO(Caret, "^"),                                     \
     TOKEN_INFO(TripleMinus, "---"),                             \
     TOKEN_INFO(Integer, "interger"),                            \
     TOKEN_INFO(Float, "float"),                                 \
@@ -56,16 +57,17 @@
     TOKEN_INFO(ThreeDots, "..."),                               \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
     TOKEN_INFO(KW_struct, "struct"),                            \
-    TOKEN_INFO(KW_void, "void"),                                \
-    TOKEN_INFO(KW_bool, "bool"),                                \
-    TOKEN_INFO(KW_i8, "i8"),                                    \
-    TOKEN_INFO(KW_i32, "i32"),                                  \
-    TOKEN_INFO(KW_i64, "i64"),                                  \
-    TOKEN_INFO(KW_u8, "u8"),                                    \
-    TOKEN_INFO(KW_u32, "u32"),                                  \
-    TOKEN_INFO(KW_u64, "u64"),                                  \
-    TOKEN_INFO(KW_f32, "f32"),                                  \
-    TOKEN_INFO(KW_f64, "f64"),                                  \
+    /* TOKEN_INFO(KW_void, "void"),                                \
+    // TOKEN_INFO(KW_bool, "bool"),                                \
+    // TOKEN_INFO(KW_i8, "i8"),                                    \
+    // TOKEN_INFO(KW_i32, "i32"),                                  \
+    // TOKEN_INFO(KW_i64, "i64"),                                  \
+    // TOKEN_INFO(KW_u8, "u8"),                                    \
+    // TOKEN_INFO(KW_u32, "u32"),                                  \
+    // TOKEN_INFO(KW_u64, "u64"),                                  \
+    // TOKEN_INFO(KW_f32, "f32"),                                  \
+    // TOKEN_INFO(KW_f64, "f64"),                                  \
+    */                                                             \
     TOKEN_INFO(KW_if, "if"),                                    \
     TOKEN_INFO(KW_else, "else"),                                \
     TOKEN_INFO(KW_for, "for"),                                  \
