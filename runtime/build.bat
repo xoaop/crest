@@ -1,0 +1,1 @@
+clang -c runtime.c -o runtime.o -O2
