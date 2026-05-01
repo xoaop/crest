@@ -269,7 +269,7 @@ SymbolInfo *get_extern_func_sym_by_full_ident_ast(Ast *field_access, LLVMGenerat
         Type_package
     );
 
-    Package *imported_package = get_package_value(import_symbol->value);
+    Package *imported_package = import_symbol->value.get_package_value();
 
     SymbolInfo *func_symbol = find_symbol_until_spec_v(
         ScopeType::Package,
@@ -473,7 +473,7 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
                     // }
                     // 
 
-                    xpString full_func_name = gen_func_full_name(symbol_info->package, top_level->ConstDecl.name, symbol_info->value.function_value.is_extern_c, stage_allocator());
+                    xpString full_func_name = gen_func_full_name(symbol_info->package, top_level->ConstDecl.name, symbol_info->value.get_function_is_extern_c(), stage_allocator());
     
                     LLVMValueRef function = LLVMAddFunction(
                         gen.module, 
@@ -597,7 +597,7 @@ LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type,
         return value;
     }
 
-    if(is_enum_type(from_type) && is_integer_or_untyped_type(to_type)) {
+    if(is_enum_type(from_type) && is_integer_type(to_type)) {
         // 枚举到整数的转换, 直接返回, 因为枚举在LLVM IR中就是整数
         return value;
     }
@@ -705,28 +705,29 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
         case Type_u32:
         case Type_i64:
         case Type_u64:
-            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)get_integer_value(value), is_signed_or_bool_type(value.type));
+            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)value.get_integer(), is_signed_or_bool_type(value.type));
             break;
         case Type_bool:
-            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)get_bool_value(value), is_signed_or_bool_type(value.type));
+            llvm_val = LLVMConstInt(get_llvm_type_from_type(gen, value.type), cast(unsigned long long)value.get_bool(), is_signed_or_bool_type(value.type));
             break;
         case Type_f32:
         case Type_f64:
-            llvm_val = LLVMConstReal(get_llvm_type_from_type(gen, value.type), cast(double)get_float_value(value));
+            llvm_val = LLVMConstReal(get_llvm_type_from_type(gen, value.type), cast(double)value.get_float());
             break;
 
         case Type_untyped_int: 
-            llvm_val = LLVMConstInt(LLVMInt128TypeInContext(gen->ctx), cast(unsigned long long)get_integer_value(value), false);
+            llvm_val = LLVMConstInt(LLVMInt128TypeInContext(gen->ctx), cast(unsigned long long)value.get_integer(), false);
             break;
 
         case Type_untyped_float:
-            llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(gen->ctx), cast(double)get_float_value(value));
+            llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(gen->ctx), cast(double)value.get_float());
             break;
 
         case Type_array: {
             Array<LLVMValueRef> element_values = make_array<LLVMValueRef>(stage_allocator());
-            for(isize i = 0; i < value.array_element_values.count; i++) {
-                LLVMValueRef element_llvm_val = gen_llvm_val_by_value(gen, value.array_element_values[i], xpOption<TypeRef>(value.type->array_info.element_type));
+            Array<Value> array_values = value.get_array_elements();
+            for(isize i = 0; i < array_values.count; i++) {
+                LLVMValueRef element_llvm_val = gen_llvm_val_by_value(gen, array_values[i], xpOption<TypeRef>(value.type->array_info.element_type));
                 array_push_back(&element_values, element_llvm_val);
             }
 
@@ -735,11 +736,12 @@ LLVMValueRef gen_llvm_val_by_value(LLVMGenerator *gen, Value& value, xpOption<Ty
 
         case Type_struct: {
             if(is_string_struct_type(value.type)) {
-                llvm_val = gen_ir_string_struct_value(gen, get_string_value(value));
+                llvm_val = gen_ir_string_struct_value(gen, value.get_string());
             } else if(is_struct_type(value.type)) {
                 Array<LLVMValueRef> field_values = make_array<LLVMValueRef>(stage_allocator());
-                for(isize i = 0; i < value.struct_field_values.count; i++) {
-                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(gen, value.struct_field_values[i], xpOption<TypeRef>(value.type->struct_info.struct_fields[i].type));
+                Array<Value> struct_fields = value.get_struct_fields();
+                for(isize i = 0; i < struct_fields.count; i++) {
+                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(gen, struct_fields[i], xpOption<TypeRef>(value.type->struct_info.struct_fields[i].type));
                     array_push_back(&field_values, field_llvm_val);
                 }
 
@@ -800,7 +802,7 @@ void gen_ir_const_decl(Ast *const_decl, LLVMGenerator *gen) {
         LLVMValueRef ori_func_llvm_val = look_up_local_vals(gen->curr_ir_scope, ori_func_sym);
 
         if(ori_func_llvm_val == NULL) {
-            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.function_value.is_extern_c, stage_allocator());
+            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.get_function_is_extern_c(), stage_allocator());
             LLVMValueRef func_val = LLVMAddFunction(gen->module, func_full_name.c_str, get_llvm_type_from_type(gen, val_type));
             add_local_val_spec_scope(gen->curr_ir_scope, ScopeType::Package, ori_func_sym, func_val);
         }
@@ -1329,7 +1331,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
                 gen->curr_ir_scope->scope,
                 package_name
             );
-            Package *pkg = get_package_value(symbol_info->value);
+            Package *pkg = symbol_info->value.get_package_value();
             SymbolInfo *outer_val_info = find_symbol_until(
                 ScopeType::Package,
                 &pkg->package_scope,
@@ -1528,7 +1530,7 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
         LLVMValueRef func = NULL;
         if(ori_func_llvm_val == NULL) {
-            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.function_value.is_extern_c, stage_allocator());
+            xpString func_full_name = gen_func_full_name(ori_func_sym->package, ori_func_sym->name, ori_func_sym->value.get_function_is_extern_c(), stage_allocator());
             LLVMValueRef func_val = LLVMAddFunction(gen->module, func_full_name.c_str, get_llvm_type_from_type(gen, val_type));
             add_local_val_spec_scope(gen->curr_ir_scope, ScopeType::Package, ori_func_sym, func_val);
 

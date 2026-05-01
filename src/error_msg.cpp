@@ -1,18 +1,14 @@
-#include <cstdarg>
+#include <print>
 
 #include "error_msg.hpp"
 
 
-void ErrorReporter::report_args(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, va_list args) {
+void ErrorReporter::add_error_msg(ErrorLevel level, Span highlight_span, SourceCode src_code, xpString formatted_msg) {
     ErrorMsg msg;
     msg.level = level;
     msg.highlight_span = highlight_span;
     msg.src_code = src_code;
-
-    // 格式化错误信息
-    char buffer[1024];
-    isize count = vsnprintf(buffer, sizeof(buffer), fmt, args);
-    msg.msg = xp_make_string_capacity(permanent_allocator(), buffer, count);
+    msg.msg = std::move(formatted_msg); // 直接转移，零拷贝
 
     array_push_back(&error_msgs, msg);
 
@@ -21,24 +17,6 @@ void ErrorReporter::report_args(ErrorLevel level, Span highlight_span, SourceCod
     } else if(level == ErrorLevel::Warning) {
         warning_count += 1;
     }
-
-    return;
-}
-
-void ErrorReporter::report(ErrorLevel level, Span highlight_span, SourceCode src_code, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    defer(va_end(args));
-
-    report_args(level, highlight_span, src_code, fmt, args);
-}
-
-void ErrorReporter::report_error(Span highlight_span, SourceCode src_code, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    defer(va_end(args));
-
-    report_args(ErrorLevel::Error, highlight_span, src_code, fmt, args);
 }
 
 void ErrorReporter::print_msg() {
@@ -51,12 +29,12 @@ void ErrorReporter::print_msg() {
         return;
     }
 
-    printf("\n%td error(s), %td warning(s) found:\n\n", error_count, warning_count);
-    
+    std::println("\n{} error(s), {} warning(s) found:\n", error_count, warning_count);
+
     for (size_t i = 0; i < error_msgs.count; ++i) {
         ErrorMsg *msg = &error_msgs[i];
-        const char *level_str = "";
-        const char *color_code = "";
+        std::string_view level_str = "";
+        std::string_view color_code = "";
         switch (msg->level) {
             case ErrorLevel::Error:
                 level_str = "Error";
@@ -72,32 +50,30 @@ void ErrorReporter::print_msg() {
         auto start = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.start);
         auto end = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.end);
 
-        printf("%s:%lld:%lld: %s%s%s: %s\n",
-            msg->src_code.file_path.c_str,
+        std::println("{}:{}:{}: {}{}{}: {}",
+            msg->src_code.file_path,
             start.first, start.second,
             color_code,
             level_str,
             COLOR_RESET,
-            msg->msg.c_str
+            msg->msg
         );
 
 
         xpString line_str = get_line_str_of_pos(msg->src_code, msg->highlight_span.start, xp_heap_allocator());
         defer(xp_string_free(line_str));
 
-        printf("%s", line_str.c_str);
+        std::print("{}", line_str); // 不需要换行，原行字符串已经带换行
 
-        printf("\n");
+        std::println("");
 
         for(isize i = 0; i < start.second - 1; i++) {
-            printf(" ");
+            std::print(" ");
         }
         for(isize i = 0; i < end.second - start.second; i++) {
-            printf("%s^%s", COLOR_GREEN, COLOR_RESET);
+            std::print("{}^{}", COLOR_GREEN, COLOR_RESET);
         }
-        printf("\n");
-
-
+        std::println("");
     }
 }
 

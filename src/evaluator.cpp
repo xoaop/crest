@@ -64,8 +64,8 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
     if(info != NULL) {
         context()->reporter.report_error(
             const_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' repeated definition",
-            const_decl_ast->ConstDecl.name.c_str
+            "symbol '{}' repeated definition",
+            const_decl_ast->ConstDecl.name
         );    
         return;
     }    
@@ -102,8 +102,8 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser) {
     if(info != NULL) {
         context()->reporter.report_error(
             var_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' repeated definition",
-            var_decl_ast->VariableDecl.var_name.c_str
+            "symbol '{}' repeated definition",
+            var_decl_ast->VariableDecl.var_name
         );        
         return;
     }
@@ -211,8 +211,8 @@ Value eval_import_value(Ast *import_ast, Analyser analyser) {
         context()->reporter.report_error(
             import_ast->span,
             analyser.curr_ast_file->source_code,
-            "imported package '%s' not found",
-            import_ast->Import.path.c_str
+            "imported package '{}' not found",
+            import_ast->Import.path
         );    
         return make_error_value();
     }    
@@ -317,8 +317,8 @@ void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Anal
             if(field_struct_sym->value.state == ValueState::Solving) {
                 context()->reporter.report_error(
                     decl->span, analyser.curr_ast_file->source_code,
-                    "circular dependency detected in struct '%s'",
-                    name.c_str
+                    "circular dependency detected in struct '{}'",
+                    name
                 );
                 struct_symbol_info->value.set_type(error_type());
                 struct_symbol_info->value.set_value_state(ValueState::Error);
@@ -355,8 +355,8 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             if(value.is_runtime_value) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
-                    "cannot use runtime value '%s' in constant expression",
-                    expr->Ident.name.c_str
+                    "cannot use runtime value '{}' in constant expression",
+                    expr->Ident.name
                 );
                 return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
             }
@@ -396,7 +396,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             }
 
             if(is_package_type(parent_type)) {
-                Package *pkg = get_package_value(parent_value);
+                Package *pkg = parent_value.get_package_value();
                 SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, expr->FieldAccess.field_name);
                 
                 if(field_sym == NULL) {
@@ -421,7 +421,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 for(isize i = 0; i < parent_type->struct_info.struct_fields.count; i++) {
                     StructField field = parent_type->struct_info.struct_fields[i];
                     if(xp_string_equal(field.name, expr->FieldAccess.field_name)) {
-                        Value field_value = parent_value.struct_field_values[i];
+                        Value field_value = parent_value.get_struct_fields()[i];
                         return ValueResult::ok(field_value);
                     }
                 }
@@ -543,7 +543,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
 
             // 检查下标越界
-            i128 index_val = index.integer_value;
+            i128 index_val = index.get_integer();
             if(is_array_type(indexed_type)) {
                 if(!(index_val >= 0 && index_val < indexed_type->array_info.count)) {
                     context()->reporter.report_error(
@@ -553,7 +553,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                     return ValueResult::err(ValueErrorKind::Overflow);
                 }
             } else if(is_string_struct_type(indexed_type)) {
-                if(!(index_val >= 0 && index_val < indexed_value.string_value.length)) {
+                if(!(index_val >= 0 && index_val < indexed_value.get_string().length)) {
                     context()->reporter.report_error(
                         expr->span, analyser.curr_ast_file->source_code,
                         "string index out of bounds"
@@ -564,11 +564,11 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
             // 获取元素值
             if(is_array_type(indexed_type)) {
-                Value element_value = indexed_value.array_element_values[index_val];
+                Value element_value = indexed_value.get_array_elements()[index_val];
                 return ValueResult::ok(element_value);
             } else if(is_string_struct_type(indexed_type)) {
                 // string类型的index表达式求值结果是一个u8的integer值
-                char c = indexed_value.string_value[index_val];
+                char c = indexed_value.get_string()[index_val];
                 Value char_value = make_comptime_sovled_val(easy_type(Type_u8));
                 char_value.set_integer_value((u8)c);
                 return ValueResult::ok(char_value);
@@ -624,9 +624,17 @@ Value eval_struct_decl_value(Ast *struct_decl_ast, xpString ident, Analyser anal
 Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
     XP_ASSERT_DEFAULT(enum_decl_ast->type == AstType_EnumDecl);
 
-    TypeRef elem_type = resolve_type(enum_decl_ast->EnumDecl.type_ast, analyser);
-    if(elem_type == error_type()) {
-        return make_error_value();
+
+
+    TypeRef elem_type = nullptr;
+    if(enum_decl_ast->EnumDecl.type_ast != nullptr) {
+        elem_type = resolve_type(enum_decl_ast->EnumDecl.type_ast, analyser);
+        if(elem_type == error_type()) {
+            return make_error_value();
+        }
+    } else {
+        // 如果没有指定枚举元素类型, 默认是i32
+        elem_type = easy_type(Type_i32);
     }
 
     // elem_type must be ** Integer ** type
@@ -639,9 +647,16 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
     }
 
 
+
+
+
     TypeRef enum_type = unifinished_enum_type(enum_decl_ast, analyser.current_scope, ident, elem_type);
 
-    for(Ast *const_decl_or_ident: enum_decl_ast->EnumDecl.fields) {
+
+    SymbolInfo *prev_enum_sym = nullptr;
+    SymbolInfo *curr_enum_sym = nullptr;
+    for(isize i = 0; i < enum_decl_ast->EnumDecl.fields.count; i++) {
+        Ast *const_decl_or_ident = enum_decl_ast->EnumDecl.fields[i];
 
         if(const_decl_or_ident->type == AstType_ConstDecl) {
             // 有初始化的枚举字段, 作为ConstDecl解析, 限制值只能是对应整型值
@@ -649,12 +664,12 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
 
             resolve_const_decl_local(const_decl_or_ident, analyser.set_current_scope(&enum_type->enum_info.enum_scope));
 
-            SymbolInfo *info = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->ConstDecl.name);
+            curr_enum_sym = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->ConstDecl.name);
             
             // 检查枚举字段的值类型是否正确
-            if(info != nullptr) {
+            if(curr_enum_sym != nullptr) {
                 // 只要是整数类型或无类型常量就行
-                if(!is_integer_type(info->value.type) && !is_untyped_type(info->value.type)) {
+                if(!is_integer_type(curr_enum_sym->value.type) && !is_untyped_type(curr_enum_sym->value.type)) {
                     context()->reporter.report_error(
                         const_decl_or_ident->span, analyser.curr_ast_file->source_code,
                         "enum field initializer must be an integer constant"
@@ -663,20 +678,48 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
                 }
 
                 // 将枚举成员的类型从整数类型改为枚举类型本身
-                info->value.set_type(enum_type);
-                // actual_kind已经是Integer，不需要修改
+                curr_enum_sym->value.set_type(enum_type);
             }
 
         } else if(const_decl_or_ident->type == AstType_Ident) {
+            if(i == 0) {
+                // 第一个枚举成员如果没有初始化, 默认值是0
 
-            // TODO: 目前还不支持没有指定值的枚举字段, 后续可以考虑自动赋值, 目前先报错
-            context()->reporter.report_error(
-                const_decl_or_ident->span, analyser.curr_ast_file->source_code,
-                "enum field without initializer is not supported yet, please provide an initializer for each enum field"
-            );
+                Value first_enum_value = make_comptime_sovled_val(enum_type);
+                first_enum_value.set_integer_value(0);
+                first_enum_value.set_type(enum_type);
 
-            return make_error_value();
+                SymbolInfo first_enum_field_sym = make_symbol(const_decl_or_ident->Ident.name, first_enum_value, analyser.pkg, analyser.curr_ast_file);
+                add_symbol_to_scope(&enum_type->enum_info.enum_scope, const_decl_or_ident->Ident.name, first_enum_field_sym);
 
+
+                curr_enum_sym = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->Ident.name);
+            } else {
+                // 没有初始化的枚举字段, 默认值是前一个枚举成员的值加1
+
+                // @Defence
+                if(prev_enum_sym == nullptr) {
+                    context()->reporter.report_error(
+                        const_decl_or_ident->span, analyser.curr_ast_file->source_code,
+                        "invalid enum field declaration"
+                    );
+                    return make_error_value();
+                }
+
+
+
+                // TODO: 溢出检查
+                i128 new_enum_value_int = prev_enum_sym->value.get_enum_value() + 1;
+                Value new_enum_value = make_comptime_sovled_val(enum_type);
+                new_enum_value.set_integer_value(new_enum_value_int);
+                new_enum_value.set_type(enum_type);
+                
+
+                SymbolInfo new_enum_field_sym = make_symbol(const_decl_or_ident->Ident.name, new_enum_value, analyser.pkg, analyser.curr_ast_file);
+                add_symbol_to_scope(&enum_type->enum_info.enum_scope, const_decl_or_ident->Ident.name, new_enum_field_sym);
+
+                curr_enum_sym = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->Ident.name);
+            }
 
         } else {
 
@@ -686,6 +729,9 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
             );
             return make_error_value();
         }
+
+
+        prev_enum_sym = curr_enum_sym;
     }
 
     Value enum_value = make_comptime_sovled_val(type_type(enum_type));

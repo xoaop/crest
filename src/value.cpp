@@ -112,80 +112,67 @@ void Value::set_function_value(Ast* function_ast, bool is_extern_c) {
 
 
 
-i128 get_integer_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_integer_or_untyped_type(v.type) || is_enum_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_integer_stored());
 
-    return v.integer_value;
+
+i128 Value::get_integer() const {
+    XP_ASSERT_DEFAULT(is_integer_stored());
+    return integer_value;
 }
 
-double get_float_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_float_or_untyped_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_float_stored());
-
-    return v.float_value;
+double Value::get_float() const {
+    XP_ASSERT_DEFAULT(is_float_stored());
+    return float_value;
 }
 
-bool get_bool_value(Value& v) {
-    XP_ASSERT_DEFAULT(v.type->kind == Type_bool);
-    XP_ASSERT_DEFAULT(v.is_bool_stored());
-
-    return v.bool_value;
+bool Value::get_bool() const {
+    XP_ASSERT_DEFAULT(is_bool_stored());
+    return bool_value;
 }
 
-Value* get_pointer_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_pointer_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_pointer_stored());
-
-    return v.pointed_value;
+Value* Value::get_pointer() const {
+    XP_ASSERT_DEFAULT(is_pointer_stored());
+    return pointed_value;
 }
 
-xpString get_string_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_string_struct_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_string_stored());
-
-    return v.string_value;
+xpString Value::get_string() const {
+    XP_ASSERT_DEFAULT(is_string_stored());
+    return string_value;
 }
 
-TypeRef get_type_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_type_type(v.type));
-
-    return v.type->self_type_info;
+Array<Value> Value::get_struct_fields() const {
+    XP_ASSERT_DEFAULT(is_struct_stored());
+    return struct_field_values;
 }
 
-Package* get_package_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_package_type(v.type));
-
-    return v.type->package_info;
+Array<Value> Value::get_array_elements() const {
+    XP_ASSERT_DEFAULT(is_array_stored());
+    return array_element_values;
 }
 
-Array<Value> get_struct_field_values(Value& v) {
-    XP_ASSERT_DEFAULT(is_struct_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_struct_stored());
-
-    return v.struct_field_values;
+Ast* Value::get_function_ast() const {
+    XP_ASSERT_DEFAULT(is_function_stored());
+    return function_value.function_ast;
 }
 
-Array<Value> get_array_element_values(Value& v) {
-    XP_ASSERT_DEFAULT(is_array_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_array_stored());
-
-    return v.array_element_values;
+bool Value::get_function_is_extern_c() const {
+    XP_ASSERT_DEFAULT(is_function_stored());
+    return function_value.is_extern_c;
 }
 
-Ast *get_function_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_function_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_function_stored());
-
-    return v.function_value.function_ast;
+i128 Value::get_enum_value() const {
+    XP_ASSERT_DEFAULT(is_enum_type(type));
+    XP_ASSERT_DEFAULT(is_integer_stored());
+    return integer_value;
 }
 
+TypeRef Value::get_type_value() const {
+    XP_ASSERT_DEFAULT(is_type_type(type));
+    return type->self_type_info;
+}
 
-i128 get_enum_val_as_integer(Value& v) {
-    XP_ASSERT_DEFAULT(is_enum_type(v.type));
-    XP_ASSERT_DEFAULT(v.is_integer_stored());
-
-    return v.integer_value;
+Package* Value::get_package_value() const {
+    XP_ASSERT_DEFAULT(is_package_type(type));
+    return type->package_info;
 }
 
 

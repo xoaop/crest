@@ -413,7 +413,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
                 ErrorLevel::Error, 
                 make_span(old_index, t->curr_character_index),
                 t->source_code,
-                "unknown character '%c'",
+                "unknown character '{}'",
                 tokenizer_curr_character(t)
             );
             advance_one_character(t);

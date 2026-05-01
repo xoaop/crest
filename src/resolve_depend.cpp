@@ -150,8 +150,8 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
                     context()->reporter.report_error(
                         import_asts[k]->span, 
                         curr_pkg.ast_files[j].source_code,
-                        "circular dependency detected for package: %s", 
-                        abs_import_path.c_str
+                        "circular dependency detected for package: {}", 
+                        abs_import_path
                     );
 
                 }

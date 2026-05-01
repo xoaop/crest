@@ -121,7 +121,9 @@ Type copy_type(Type *src) {
 }
 
 
-
+xpString Type::name() {
+    return get_type_name(this);
+}
 
 
 

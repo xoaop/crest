@@ -26,9 +26,9 @@ bool check_untyped_float_to_type(double value, TypeRef target_type) {
 
 bool check_untyped_to_type(Value& val, TypeRef target_type) {
     if(val.type == easy_type(Type_untyped_int)) {
-        return check_untyped_int_to_type(val.integer_value, target_type);
+        return check_untyped_int_to_type(val.get_integer(), target_type);
     } else if(val.type == easy_type(Type_untyped_float)) {
-        return check_untyped_float_to_type(val.float_value, target_type);
+        return check_untyped_float_to_type(val.get_float(), target_type);
     } else {
         UNREACHABLE();
         return false;
@@ -68,9 +68,9 @@ TypeRef get_compliable_const_type(Value& val) {
 
 
     if(val.type == easy_type(Type_untyped_int)) {
-        return get_compliable_integer_type(val.integer_value);
+        return get_compliable_integer_type(val.get_integer());
     } else if(val.type == easy_type(Type_untyped_float)) {
-        return get_compliable_float_type(val.float_value);
+        return get_compliable_float_type(val.get_float());
     } else {
         UNREACHABLE();
         return error_type();
@@ -479,7 +479,9 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             if(should_check_equal_type && infer_left_type != infer_right_type) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
-                    "type mismatch between left and right operands of binary expression"
+                    "type mismatch between left and right operands of binary expression, left operand has type '{}' but right operand has type '{}'",
+                    get_type_name(infer_left_type),
+                    get_type_name(infer_right_type)
                 );
 
                 break;
@@ -735,8 +737,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 if(!found) {
                     context()->reporter.report_error(
                         expr->span, analyser.curr_ast_file->source_code,
-                        "struct type '%s' does not have field '%s'",
-                        parent_struct_type->type_name.c_str, field_name.c_str
+                        "struct type '{}' does not have field '{}'",
+                        parent_struct_type->type_name, field_name
                     );
                     break;
                 }
@@ -753,8 +755,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 if(field_info == nullptr) {
                     context()->reporter.report_error(
                         expr->span, analyser.curr_ast_file->source_code,
-                        "enum type '%s' does not have member '%s'",
-                        parent_type->type_name.c_str, field_name.c_str
+                        "enum type '{}' does not have member '{}'",
+                        parent_type->self_type_info->type_name, field_name
                     );
                     break;
                 }
@@ -777,7 +779,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     if(!check_untyped_to_type(field_info->value, target_type)) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
-                            "package member '%s' value can't convert to target type",
+                            "package member '{}' value can't convert to target type",
                             field_name.c_str
                         );
                         break;
@@ -802,13 +804,13 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             SymbolInfo *struct_type_info = expr->StructInitExpr.struct_type_ident->ast_symbol;
 
             
-            if(struct_type_info == NULL || !(is_type_type(struct_type_info->value.type) && is_struct_type(get_type_value(struct_type_info->value)))) {
+            if(struct_type_info == NULL || !(is_type_type(struct_type_info->value.type) && is_struct_type(struct_type_info->value.get_type_value()))) {
                 result_type = error_type();
                 break;
             }
 
             Value struct_type_value = struct_type_info->value;
-            TypeRef struct_type = get_type_value(struct_type_value);
+            TypeRef struct_type = struct_type_value.get_type_value();
 
             // 检查字段数量是否匹配
             isize field_count = struct_type->struct_info.struct_fields.count;
@@ -1049,7 +1051,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     if(!check_untyped_to_type(info->value, target_type)) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
-                            "identifier '%s' of untyped type cannot be used as target type '%s'",
+                            "identifier '{}' of untyped type cannot be used as target type '{}'",
                             info->name.c_str, target_type->type_name.c_str
                         );
                         result_type = error_type();
@@ -1061,7 +1063,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                     if(result_type == error_type()) {
                         context()->reporter.report_error(
                             expr->span, analyser.curr_ast_file->source_code,
-                            "unable to infer type of identifier '%s' with untyped value",
+                            "unable to infer type of identifier '{}' with untyped value",
                             info->name.c_str
                         );
                     }
@@ -1090,7 +1092,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             if(!is_function_type(val_type)) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
-                    "called symbol '%s' is not a function",
+                    "called symbol '{}' is not a function",
                     info->name.c_str
                 );
                 break;
@@ -1103,7 +1105,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             if(!is_var_arg_function(val_type) && val_type->function_info.param_types.count != expr->FunctionCallExpr.args.count) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
-                    "function '%s' expects %lld arguments but got %lld",
+                    "function '{}' expects {} arguments but got {}",
                     info->name.c_str, val_type->function_info.param_types.count, expr->FunctionCallExpr.args.count
                 );
                 break;
@@ -1111,7 +1113,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             if(is_var_arg_function(val_type) && expr->FunctionCallExpr.args.count < fix_param_count) {
                 context()->reporter.report_error(
                     expr->span, analyser.curr_ast_file->source_code,
-                    "function '%s' expects at least %lld arguments but got %lld",
+                    "function '{}' expects at least {} arguments but got {}",
                     info->name.c_str, fix_param_count, expr->FunctionCallExpr.args.count
                 );
                 break;
@@ -1125,8 +1127,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 if(!check_implicit_convension(expr->FunctionCallExpr.args[i], expr->FunctionCallExpr.args[i]->v_type, val_type->function_info.param_types[i])) {
                     context()->reporter.report_error(
                         expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
-                        "argument type does not match parameter type for parameter %lld of function '%s'",
-                        i + 1, info->name.c_str
+                        "argument type does not match parameter type for parameter {} of function '{}'",
+                        i + 1, info->name
                     );
                     has_error = true;
                     break;
@@ -1139,8 +1141,8 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 if(expr->FunctionCallExpr.args[i]->v_type == error_type()) {
                     context()->reporter.report_error(
                         expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
-                        "unable to infer type of argument %lld for variadic parameter of function '%s'",
-                        i + 1, info->name.c_str
+                        "unable to infer type of argument {} for variadic parameter of function '{}'",
+                        i + 1, info->name
                     );
                     has_error = true;
                     break;
@@ -1209,7 +1211,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
     #ifdef DEBUG_PRINT
     xpAutoArenaRestore temp_arena_restore{ temp_allocator() };
     print_span(analyser.curr_ast_file->source_code, expr->span);
-    printf(": inferred type '%s'\n", get_or_make_type_str(result_type, temp_allocator()).c_str);
+    std::println(": inferred type '{}'\n", get_or_make_type_str(result_type, temp_allocator()));
     #endif
 
     return result_type;

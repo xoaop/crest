@@ -128,9 +128,11 @@ bool is_return_bool_operator(TokenType t) {
 
 
 
+#include <print>
+
 xp_internal void print_indent(i32 depth) {
     for (i32 i = 0; i < depth; i++) {
-        fputs("│   ", stdout);
+        std::print("│   ");
     }
 }
 
@@ -138,20 +140,17 @@ xp_internal void print_branch(i32 depth, bool is_last) {
     if (depth == 0) return;
     print_indent(depth - 1);
     if (is_last) {
-        fputs("└── ", stdout);
+        std::print("└── ");
     } else {
-        fputs("├── ", stdout);
+        std::print("├── ");
     }
 }
 
 // 新增：打印带分支前缀的一行
-xp_internal void print_line(i32 depth, bool is_last, const char* format, ...) {
+template <typename... Args>
+xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...> fmt, Args&&... args) {
     print_branch(depth, is_last);
-    va_list args;
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
-    putchar('\n');
+    std::println(fmt, std::forward<Args>(args)...);
 }
 
 
@@ -182,11 +181,15 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             // TODO: 更正确地打印常量值, 目前只处理了整数和浮点数, 其他类型的常量还没有处理
 
             print_branch(depth + 1, false);
-            printf("value: ");
-            print_i128(a->Constant.value.integer_value);
-            putchar('\n');
-
-            print_line(depth + 1, true, "float_value: %f", a->Constant.value.float_value);
+            std::print("value: ");
+            if(a->Constant.value.is_integer_stored()) {
+                print_i128(a->Constant.value.get_integer());
+            } else if(a->Constant.value.is_float_stored()) {
+                std::print("{}", a->Constant.value.get_float());
+            } else if(a->Constant.value.is_bool_stored()) {
+                std::print("{}", a->Constant.value.get_bool() ? "true" : "false");
+            }
+            std::println("");
             break;
         }
 
@@ -270,9 +273,9 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         case AstType_CastExpr: {
             print_line(depth + 1, false, "target_type:");
             print_indent(depth + 2);
-            fputs("    ", stdout); // 对齐 type 打印
+            std::print("    "); // 对齐 type 打印
             print_type(a->CastExpr.target_type);
-            putchar('\n');
+            std::println("");
 
             print_line(depth + 1, true, "expr:");
             print_ast(a->CastExpr.expr, depth + 2, true);
