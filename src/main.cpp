@@ -46,6 +46,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+
+    context()->output_path = std::filesystem::current_path(); // 默认输出路径为当前工作目录
+
     // TODO(xoaop): 参数解析
     for(isize i = 1; i < argc; i++) {
         if(strcmp(argv[i], "build") == 0) {
@@ -59,12 +62,23 @@ int main(int argc, char** argv) {
             }
 
             main_path = argv[i];
-            break;
-
+            
         } else if(strcmp(argv[i], "help") == 0) {
             crest_helper();
             return 0;
-        } else {
+        } else if(strcmp(argv[i], "-o") == 0) {
+            // TODO(xoaop): 输出文件路径参数解析
+            i += 1; // 跳过 "-o" 参数
+
+            if(i >= argc) {
+                printf("Error: Missing path argument for -o option\n");
+                return -1;
+            }
+
+            context()->output_path = std::filesystem::path(argv[i]);
+        }
+        
+        else {
             crest_helper();
             return 0;
         }
@@ -87,7 +101,7 @@ int main(int argc, char** argv) {
 
     // 关键字表初始化和测试
     init_keyword_map();
-    test_keyword_map();
+    // test_keyword_map();
 
 
 

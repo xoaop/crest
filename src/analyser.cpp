@@ -815,12 +815,26 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         
     } break;
 
-    case AstType_Undefined: {
-        UNREACHABLE();
+
+    // TODO: 统一类型和表达式的解析, 类型也是表达式
+    case AstType_ArrayType: {
+
     } break;
 
+    case AstType_SliceType: {
+
+    } break;
+
+    case AstType_PointerType: {
+
+    } break;
+    
     case AstType_BadExpr: {
         // BadExpr, 不解析表达式, 直接等后续阶段报错
+    } break;
+    
+    case AstType_Undefined: {
+        UNREACHABLE();
     } break;
 
     default: {
@@ -862,8 +876,10 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             
 
             TypeRef type = maybe_type_info->value.type;
+
+            // TODO: 修复 5.1-2026
             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-            if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
+            if(!(is_type_type(type) && (is_value_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '{}' is not a type",
@@ -888,8 +904,9 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
             TypeRef type = symbol->value.type;
 
+            // TODO: 修复 5.1-2026
             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-            if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
+            if(!(is_type_type(type) && (is_value_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '{}' is not a type",

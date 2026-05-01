@@ -506,23 +506,13 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     std::ranges::replace(file_name, '/', '_');
     std::ranges::replace(file_name, ':', '_');
 
-    // 如果不存在output目录, 就创建一个
-    std::string output_dir_str = context()->current_working_directory.generic_string();
-    std::filesystem::path output_dir = std::filesystem::path(output_dir_str);
-    if(!std::filesystem::exists(output_dir)) {
-        std::filesystem::create_directory(output_dir);
-    }
+    std::filesystem::path &output_path = context()->output_path;
 
-    xpString obj_file_path = xp_make_string(permanent_allocator(), output_dir_str.c_str());
-    xpString ll_file_path = xp_string_copy(stage_allocator(), obj_file_path);
+    std::filesystem::path obj_file_path = output_path / (file_name + ".o");
+    std::filesystem::path ll_file_path = output_path / (file_name + ".ll");
     
-    xp_string_append(&obj_file_path, xp_string_c(file_name.c_str()));
-    xp_string_append(&obj_file_path, xp_string_c(".o"));
-    
-    xp_string_append(&ll_file_path, xp_string_c(file_name.c_str()));
-    xp_string_append(&ll_file_path, xp_string_c(".ll"));
 
-    if(LLVMPrintModuleToFile(gen.module, ll_file_path.c_str, &error)) {
+    if(LLVMPrintModuleToFile(gen.module, ll_file_path.generic_string().c_str(), &error)) {
         fprintf(stderr, "Error writing .ll file: %s\n", error);
         LLVMDisposeMessage(error);
     }
@@ -567,7 +557,7 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
     if(LLVMTargetMachineEmitToFile(
         gen.target_machine,
         gen.module,
-        obj_file_path.c_str,
+        obj_file_path.generic_string().c_str(),
         LLVMObjectFile,
         &error
     )) {
@@ -575,7 +565,10 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
         LLVMDisposeMessage(error);
     }
     
-    return obj_file_path;
+    std::string obj_file_path_str = obj_file_path.generic_string();
+    xpString obj_file_path_str_permanent = xp_make_string_count(permanent_allocator(), obj_file_path_str.c_str(), obj_file_path_str.size());
+
+    return obj_file_path_str_permanent;
 }
 
 

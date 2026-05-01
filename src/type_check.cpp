@@ -1160,6 +1160,13 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
         } break;
 
 
+        // TODO: 处理数组切片和指针
+        case AstType_ArrayType:
+        case AstType_SliceType:
+        case AstType_PointerType: {
+            result_type = resolve_type(expr, analyser);
+        } break;
+
 
         // 错误表达式类型, 直接把类型设为error_type
         case AstType_BadExpr: {
