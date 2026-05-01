@@ -216,7 +216,11 @@ Ast *parse_import(Parser *p) {
 Ast *parse_enum_decl(Parser *p) {
     auto name_succ = expect2(p, TokenType::KW_enum);
 
-    Ast *type = parse_type(p);
+    Ast *type = nullptr;
+    if(curr_token(p).type != TokenType::LeftCurlyBracket) {
+        type = parse_type(p);
+    }
+
 
     expect(p, TokenType::LeftCurlyBracket);
 
@@ -1248,7 +1252,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
             ErrorLevel::Error,
             a->token.span,
             p->f.source_code,
-            "integer literal '%s' is too large",
+            "integer literal '{}' is too large",
             str
         );
     }
@@ -1261,7 +1265,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 ErrorLevel::Error,
                 a->token.span,
                 p->f.source_code,
-                "integer literal '-%s' is too small",
+                "integer literal '-{}' is too small",
                 str
             );
         }
@@ -1276,7 +1280,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 ErrorLevel::Error,
                 a->token.span,
                 p->f.source_code,
-                "integer literal '%s' can't fit in type '%s'",
+                "integer literal '{}' can't fit in type '{}'",
                 str,
                 get_type_kind_str(type_kind)
             );
@@ -1315,7 +1319,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 ErrorLevel::Error,
                 a->token.span,
                 p->f.source_code,
-                "float literal '%s' is too large",
+                "float literal '{}' is too large",
                 str
             );
         } else if(val == -HUGE_VAL) {
@@ -1323,7 +1327,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 ErrorLevel::Error,
                 a->token.span,
                 p->f.source_code,
-                "float literal '%s' is too small",
+                "float literal '{}' is too small",
                 str
             );
         }
@@ -1338,7 +1342,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
             ErrorLevel::Error,
             a->token.span,
             p->f.source_code,
-            "float literal '%s' is not a finite number",
+            "float literal '{}' is not a finite number",
             str
         );
     }
@@ -1350,7 +1354,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 ErrorLevel::Error,
                 a->token.span,
                 p->f.source_code,
-                "float literal '%s' can't fit in type '%s'",
+                "float literal '{}' can't fit in type '{}'",
                 str,
                 get_type_kind_str(type_kind)
             );
@@ -1358,14 +1362,10 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-
+    
     Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
     value.set_float_value(val);
-    if(type_kind != Type_Undefined) {
-        value.set_type(easy_type(type_kind));
-    } else {
-        value.set_type(easy_type(Type_untyped_float));
-    }
+
     a->Constant.value = value;
     
     return;
@@ -1479,17 +1479,17 @@ void report_unexpected(Parser *p, Token token, xpString expected_string) {
             ErrorLevel::Error, 
             token.span,
             p->f.source_code,
-            "unexpected end of tokens, expected %s",
-            expected_string.c_str
+            "unexpected end of tokens, expected {}",
+            expected_string
         );
     } else {
         context()->reporter.report(
             ErrorLevel::Error, 
             token.span,
             p->f.source_code,
-            "unexpected token '%s', expected %s",
-            token.token_str.c_str,
-            expected_string.c_str
+            "unexpected token '{}', expected {}",
+            token.token_str,
+            expected_string
         );
     }
 }

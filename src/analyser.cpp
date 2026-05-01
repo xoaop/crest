@@ -350,8 +350,8 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     if(existing != nullptr) {
         context()->reporter.report_error(
             param_ast->span, analyser.curr_ast_file->source_code,
-            "duplicate parameter name '%s'",
-            param_ast->ParamDecl.name.c_str
+            "duplicate parameter name '{}'",
+            param_ast->ParamDecl.name
         );
     }
 
@@ -457,8 +457,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
     if(exist != NULL) {
         context()->reporter.report_error(
             const_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' already declared in the same scope",
-            const_decl_ast->ConstDecl.name.c_str
+            "symbol '{}' already declared in the same scope",
+            const_decl_ast->ConstDecl.name
         );
     }
 
@@ -514,8 +514,8 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     if(existing != NULL) {
         context()->reporter.report_error(
             var_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' already declared in the same scope",
-            var_decl_ast->VariableDecl.var_name.c_str
+            "symbol '{}' already declared in the same scope",
+            var_decl_ast->VariableDecl.var_name
         );
 
         return;
@@ -782,8 +782,8 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         if(symbol == NULL || !is_struct_type(maybe_struct_type)) {
             context()->reporter.report_error(
                 expr_ast->span, analyser.curr_ast_file->source_code,
-                "try to initialize undefined struct type '%s'",
-                get_ident_or_fieldaccess_string(expr_ast->StructInitExpr.struct_type_ident, temp_allocator()).c_str
+                "try to initialize undefined struct type '{}'",
+                get_ident_or_fieldaccess_string(expr_ast->StructInitExpr.struct_type_ident, temp_allocator())
             );
 
             break;
@@ -866,8 +866,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
-                    "symbol '%s' is not a type",
-                    type_ast->Ident.name.c_str
+                    "symbol '{}' is not a type",
+                    type_ast->Ident.name
                 );
 
                 return error_type();
@@ -892,8 +892,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
-                    "symbol '%s' is not a type",
-                    filde_ident.c_str
+                    "symbol '{}' is not a type",
+                    filde_ident
                 );
 
                 return error_type();
@@ -946,7 +946,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
             
             Value count_val = count_val_result.as_ok();
-            i128 count = get_integer_value(count_val);
+            i128 count = count_val.get_integer();
             if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
 
                 context()->reporter.report_error(
@@ -1015,8 +1015,8 @@ SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser) {
     if(info == NULL) {
         context()->reporter.report_error(
             ident_ast->span, analyser.curr_ast_file->source_code,
-            "undefined symbol '%s'",
-            ident_str.c_str
+            "undefined symbol '{}'",
+            ident_str
         );
     }
 
@@ -1041,7 +1041,7 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Value parent_value = parent_symbol_info->value;
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
-        Package *pkg = get_package_value(parent_value);
+        Package *pkg = parent_value.get_package_value();
 
         SymbolInfo *field_sym = resolve_string_as_ident_and_eval_unsolved(
             field_name,
@@ -1054,8 +1054,8 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
         if(field_sym == NULL) {
             context()->reporter.report_error(
                 field_access_ast->span, analyser.curr_ast_file->source_code,
-                "undefined symbol '%s' in package '%s'",
-                field_name.c_str, parent_symbol_info->name.c_str
+                "undefined symbol '{}' in package '{}'",
+                field_name, parent_symbol_info->name
             );
 
             return NULL;

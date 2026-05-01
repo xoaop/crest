@@ -119,6 +119,8 @@ struct Type {
     bool operator== (const Type &other) const {
         return is_equal_type(*this, other);
     }
+
+    xpString name();
 };
 
 
@@ -145,15 +147,11 @@ Type *alloc_type(xpAllocator allocator, TypeKind kind);
 
 Type copy_type(Type *src);
 
-Type make_pointer_type(TypeKind base_type_kind, isize level_of_pointer);
-Type make_pointer_type(Type base_type, isize level_of_pointer);
-Type make_pointer_type(Type pointed_type);
+
 TypeRef get_pointed_type(TypeRef pointer_type);
 TypeRef get_innermost_type_of_pointer(TypeRef pointer_type);
 
-Type make_struct_type();
-Type make_struct_type(xpString name);
-Type make_struct_type(xpString name, Array<StructField> fields);
+
 
 // bool is_equal_type(Type a, Type b);
 bool is_integer_type(TypeRef type);
@@ -198,6 +196,7 @@ bool check_float_overflow(double val, TypeRef type);
 
 
 
+xpString get_type_name(TypeRef type);
 xpString get_type_kind_str(TypeKind kind);
 xpString get_or_make_type_str(TypeRef type, xpAllocator allocator);
 

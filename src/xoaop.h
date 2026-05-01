@@ -33,6 +33,7 @@ extern "C" { // for decl
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <cassert>
 
 /*
 Type Definitions
@@ -394,6 +395,13 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 #include <string>
 #include <string_view>
 #include <concepts>
+
+
+#if __cplusplus >= 202300L
+
+#include <print>
+
+#endif // __cplusplus >= 202300L
 
 
 
@@ -1432,6 +1440,34 @@ xpPair<A, B> xp_make_pair(A first, B second) {
 //
 
 xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator);
+
+
+
+
+
+
+#if __cplusplus >= 202300L
+
+template<>
+struct std::formatter<xpString> : std::formatter<std::string_view> {
+    using std::formatter<std::string_view>::parse;
+
+
+    auto format(const xpString& s, std::format_context& ctx) const {
+        return std::formatter<std::string_view>::format(
+            std::string_view(s.c_str, static_cast<size_t>(s.length)),
+            ctx
+        );
+    }
+};
+
+
+
+
+
+#endif // C++23
+
+
 
 
 
@@ -2519,16 +2555,6 @@ xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle,
 
     return result;
 }
-
-
-template<>
-struct std::formatter<xpString> : std::formatter<std::string_view> {
-    template<typename FormatContext>
-    auto format(const xpString &str, FormatContext &ctx) {
-        return std::formatter<std::string_view>::format(std::string_view(str.c_str, str.length), ctx);
-    }
-};
-
 
 
 
