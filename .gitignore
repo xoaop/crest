@@ -1,0 +1,35 @@
+# 编译产物
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.o
+*.obj
+*.ll
+*.bc
+*.out
+
+# 临时测试文件
+*.cst
+*.tmp
+temp*
+1.txt
+laji.cpp
+
+# 构建输出目录
+bin/
+output/
+build/
+
+# IDE配置
+.vscode/
+.VSCodeCounter/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# 测试目录
+test/
+test_proj/
