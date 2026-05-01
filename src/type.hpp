@@ -95,7 +95,7 @@ struct Type {
         struct {
             TypeRef element_type; // 枚举成员的类型
             Scope enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
-            Package *pkg;
+            Package *pkg; // NOTE: 目前没用
             Ast *decl_ast;
         } enum_info;
 
@@ -170,6 +170,7 @@ bool is_untyped_type(TypeRef type);
 bool is_function_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
+bool is_enum_type(TypeRef type);
 bool is_array_type(TypeRef type);
 bool is_type_type(TypeRef type);
 bool is_package_type(TypeRef type);
@@ -177,6 +178,7 @@ bool is_slice_struct_type(TypeRef type);
 bool is_string_struct_type(TypeRef type);
 bool is_value_type(TypeRef type);
 bool is_var_arg_function(TypeRef type);
+bool is_named_type(TypeRef type);
 
 bool is_basic_type_kind(TypeKind kind);
 bool is_complex_type_kind(TypeKind kind);
@@ -197,7 +199,7 @@ bool check_float_overflow(double val, TypeRef type);
 
 
 xpString get_type_kind_str(TypeKind kind);
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_free_temp_allocator);
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator);
 
 
 void print_type(TypeRef type);
@@ -233,6 +235,8 @@ TypeRef error_type();
 
 TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
+
+TypeRef unifinished_enum_type(Ast *decl_ast, Scope *parent, xpString ident, TypeRef elem_type);
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
 TypeRef string_type_as_struct();

@@ -128,6 +128,13 @@ struct Ast;
     AST_INFO(StructDeclValue, "struct decl value", struct {                 \
         Array<Ast *> fields;                                                \
     })                                                                      \
+    AST_INFO(EnumDecl, "enum decl", struct {                                \
+        Ast *type_ast;                                                      \
+        Array<Ast *> fields;                                                \
+    })                                                                      \
+    AST_INFO(UnionDecl, "union decl", struct {                              \
+        Array<Ast *> fields;                                                \
+    })                                                                      \
     AST_INFO(ConstDecl, "const decl", struct {                              \
         xpString name;                                                      \
         Ast *type_ast;                                                      \

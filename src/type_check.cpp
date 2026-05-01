@@ -172,7 +172,7 @@ bool check_explicit_type_cast(Ast *casted_expr_ast, TypeRef casted_expr_type, Ty
 
         return true;
     } else if(is_pointer_type(casted_expr_type) && is_pointer_type(target_type)) {
-        // 
+        //
         //  pointer -> pointer 允许任何指针类型之间的转化
         //
         return true;
@@ -188,7 +188,17 @@ bool check_explicit_type_cast(Ast *casted_expr_ast, TypeRef casted_expr_type, Ty
         } else {
             return false;
         }
-    } else {
+    } else if(is_enum_type(casted_expr_type)) {
+        // 枚举类型可以转化为其底层整数类型
+
+        if(casted_expr_type->enum_info.element_type == target_type) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    else {
         // 其他类型之间只能转化为完全相同的类型
 
         if(casted_expr_type == target_type) {
@@ -196,8 +206,8 @@ bool check_explicit_type_cast(Ast *casted_expr_ast, TypeRef casted_expr_type, Ty
         } else {
             return false;
         }
-    } 
-        
+    }
+
 }
 
 // NOTE: 隐式转化目前只代表赋值时的隐式转化
@@ -256,7 +266,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 Token token = expr->token;
                 if(token.type == TokenType::KW_true || token.type == TokenType::KW_false) {
                     result_type = easy_type(Type_bool);
-                    expr->Constant.value.bool_value = (token.type == TokenType::KW_true) ? 1 : 0;
+                    expr->Constant.value.set_bool_value(token.type == TokenType::KW_true);
                     expr->Constant.value.set_type(result_type);
                     break;
                 }
@@ -484,7 +494,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             // 检查结构体, 数组类型的运算符
             if((is_struct_type(infer_left_type) && is_struct_type(infer_right_type)) ||
                 (is_array_type(infer_left_type) && is_array_type(infer_right_type))) {
-                    
+
                 // 结构体、数组类型之间只能比较是否相同
                 if(!is_equal_compare_operator(expr->BinaryExpr.op)) {
 
@@ -493,6 +503,27 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                         "only equality comparison is allowed between struct/array types"
                     );
 
+                    break;
+                }
+            }
+
+            // 检查枚举类型的运算符
+            if(is_enum_type(infer_left_type) || is_enum_type(infer_right_type)) {
+                // 枚举类型只能和同类型的枚举类型运算
+                if(!is_enum_type(infer_left_type) || !is_enum_type(infer_right_type)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "enum type can only operate with the same enum type"
+                    );
+                    break;
+                }
+
+                // 枚举类型之间只能使用比较运算符
+                if(!is_compare_operator(expr->BinaryExpr.op)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "only comparison operators are allowed between enum types"
+                    );
                     break;
                 }
             }
@@ -654,8 +685,11 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
             }
 
             bool is_struct_field_access = false;
+            bool is_enum_field_access = false;
             TypeRef parent_struct_type = NULL;
 
+
+            // @Robostness: 太乱了, 要合并
             if(is_package_type(parent_type)) {
                 // 表示parent是个包名
 
@@ -672,10 +706,15 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
                 // 获取指针指向的结构体类型, 方便后面检查字段
                 parent_struct_type = get_pointed_type(parent_type);
+            } else if(is_type_type(parent_type) && is_enum_type(parent_type->self_type_info)) {
+                // 枚举类型访问成员
+
+                is_enum_field_access = true;
+                parent_struct_type = parent_type;
             } else {
                 context()->reporter.report_error(
                     parent_ast->span, analyser.curr_ast_file->source_code,
-                    "only struct types and package names can be accessed with field access operator"
+                    "only struct types and package names and enum types can be accessed with field access operator"
                 );
 
                 break;
@@ -705,6 +744,22 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
     
                 // 如果是结构体类型, 直接从字段类型赋值
                 result_type = field.type;
+            } else if(is_enum_field_access) {
+
+                // 枚举类型访问成员, 检查枚举类型有没有这个成员
+                Scope *enum_scope = &parent_type->self_type_info->enum_info.enum_scope;
+                SymbolInfo *field_info = find_symbol_curr(enum_scope, field_name);
+
+                if(field_info == nullptr) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "enum type '%s' does not have member '%s'",
+                        parent_type->type_name.c_str, field_name.c_str
+                    );
+                    break;
+                }
+
+                result_type = field_info->value.type;
             } else {
                 // 包名.符号名
                 
@@ -1043,7 +1098,7 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
 
             
             // 如果是可变参数函数, 那就检查前n-1个参数, n是固定参数数量加1(...本身), 只有前n-1个参数需要检查类型, 可变参数部分不检查
-            isize fix_param_count = val_type->function_info.param_types.count - (is_var_arg_function(val_type) ? 1 : 0);
+            isize fix_param_count = get_fixed_param_count(val_type);
             
             if(!is_var_arg_function(val_type) && val_type->function_info.param_types.count != expr->FunctionCallExpr.args.count) {
                 context()->reporter.report_error(
@@ -1152,9 +1207,9 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
     expr->v_type = result_type;
 
     #ifdef DEBUG_PRINT
+    xpAutoArenaRestore temp_arena_restore{ temp_allocator() };
     print_span(analyser.curr_ast_file->source_code, expr->span);
-    printf(": inferred type '%s'\n", get_or_make_type_str(result_type, temp_allocator(), false).c_str);
-    xp_arena_allocator_clear(temp_allocator());
+    printf(": inferred type '%s'\n", get_or_make_type_str(result_type, temp_allocator()).c_str);
     #endif
 
     return result_type;
