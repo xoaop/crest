@@ -653,7 +653,9 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
     TypeRef enum_type = unifinished_enum_type(enum_decl_ast, analyser.current_scope, ident, elem_type);
 
 
-    SymbolInfo *prev_enum_sym = nullptr;
+
+    // @Learn: 不能记录prev_enum_sym, 符号表扩容导致prev_enum_sym指针失效, 只能记录prev_enum_member_name, 每次都通过名字查找prev_enum_sym
+    xpString prev_enum_member_name = xp_make_string_zero();
     SymbolInfo *curr_enum_sym = nullptr;
     for(isize i = 0; i < enum_decl_ast->EnumDecl.fields.count; i++) {
         Ast *const_decl_or_ident = enum_decl_ast->EnumDecl.fields[i];
@@ -697,14 +699,8 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
             } else {
                 // 没有初始化的枚举字段, 默认值是前一个枚举成员的值加1
 
-                // @Defence
-                if(prev_enum_sym == nullptr) {
-                    context()->reporter.report_error(
-                        const_decl_or_ident->span, analyser.curr_ast_file->source_code,
-                        "invalid enum field declaration"
-                    );
-                    return make_error_value();
-                }
+                SymbolInfo *prev_enum_sym = find_symbol_curr(&enum_type->enum_info.enum_scope, prev_enum_member_name);
+                XP_ASSERT_DEFAULT(prev_enum_sym != nullptr);
 
 
 
@@ -731,7 +727,7 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
         }
 
 
-        prev_enum_sym = curr_enum_sym;
+        prev_enum_member_name = curr_enum_sym->name;
     }
 
     Value enum_value = make_comptime_sovled_val(type_type(enum_type));

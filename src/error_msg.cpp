@@ -70,10 +70,12 @@ void ErrorReporter::print_msg() {
         for(isize i = 0; i < start.second - 1; i++) {
             std::print(" ");
         }
+        // 统一开启绿色，输出所有^后再重置，避免冗余控制码
+        std::print("{}", COLOR_GREEN);
         for(isize i = 0; i < end.second - start.second; i++) {
-            std::print("{}^{}", COLOR_GREEN, COLOR_RESET);
+            std::print("^");
         }
-        std::println("");
+        std::println("{}", COLOR_RESET);
     }
 }
 
