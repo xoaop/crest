@@ -586,6 +586,14 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             return ValueResult::ok(string_value);
         } break;
 
+        case AstType_ArrayType:
+        case AstType_SliceType:
+        case AstType_PointerType: {
+            // 类型表达式, 直接返回类型值
+            Value type_value = make_comptime_sovled_val(type_type(expr->v_type));
+            return ValueResult::ok(type_value);
+        } break;
+
         default: {
             context()->reporter.report_error(
                 expr->span, analyser.curr_ast_file->source_code,

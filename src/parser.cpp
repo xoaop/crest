@@ -1020,7 +1020,14 @@ Ast *parse_expr_factor(Parser *p) {
             expect(p, TokenType::RightBracket);
             
             break;
+        
+        
 
+        // 这里只会遇到数组/切片类型和指针类型, 其他类型的标识符会在parse_ident里处理
+        case TokenType::Star:
+        case TokenType::LeftSquareBracket: {
+            a = parse_type(p);
+        } break;
 
         case TokenType::Ident: {
 

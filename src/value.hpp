@@ -37,6 +37,7 @@ using ValueResult = xpResult<Value, ValueErrorKind>;
 
 
 enum class ActualValueKind {
+    None,
     Integer,
     Float,
     Bool,
@@ -115,7 +116,7 @@ public:
     // ValueErrorKind error_kind; // 当state == Error时, 该字段表示错误的具体类型
     bool is_runtime_value = false; // 是否是运行时值, 主要用于区分常量和非常量, 以及在求值过程中区分是否需要求值
     Ast *val_ast; // 该值对应的AST节点
-    ActualValueKind actual_kind; // 该值的实际类型, 主要用于区分不同类型的值, 比如enum类型的值虽然底层是整数, 但实际类型是enum
+    ActualValueKind actual_kind = ActualValueKind::None;
 
 private:
     
