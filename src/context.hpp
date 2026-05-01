@@ -6,6 +6,7 @@
 #include "package.hpp"
 #include "error_msg.hpp"
 
+struct ThreadPool;
 
 struct Context {
     std::filesystem::path compiler_path;
@@ -23,6 +24,9 @@ struct Context {
     ErrorReporter reporter;
 
     Array<Package> all_packages;
+
+
+    ThreadPool *thread_pool;
 };
 
 Context *context();

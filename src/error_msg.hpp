@@ -9,8 +9,6 @@
 #include "source_code.hpp"
 #include "tokenizer.hpp"
 
-void error_msg(Token *token, const char *fmt, ...);
-
 
 enum class ErrorLevel {
     Warning,

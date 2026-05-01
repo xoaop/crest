@@ -376,6 +376,20 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
 
+        case AstType_EnumDecl: {
+            print_line(depth + 1, false, "type:");
+            print_ast(a->EnumDecl.type_ast, depth + 2, false);
+            print_line(depth + 1, true, "fields:");
+            print_ast(a->EnumDecl.fields, depth + 2, true);
+            break;
+        }
+
+        case AstType_UnionDecl: {
+            print_line(depth + 1, true, "fields:");
+            print_ast(a->UnionDecl.fields, depth + 2, true);
+            break;
+        }
+
         case AstType_Import: {
             print_line(depth + 1, true, "path: %s", a->Import.path.c_str);
             break;

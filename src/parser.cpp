@@ -68,7 +68,7 @@ Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
 
 Ast *parse_stmt(Parser *p);
 
-
+Ast *parse_const_decl(Parser *p);
 
 
 AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
@@ -212,6 +212,81 @@ Ast *parse_import(Parser *p) {
     return a;
 }
 
+
+Ast *parse_enum_decl(Parser *p) {
+    auto name_succ = expect2(p, TokenType::KW_enum);
+
+    Ast *type = parse_type(p);
+
+    expect(p, TokenType::LeftCurlyBracket);
+
+    Array<Ast *> fields = make_array<Ast *>(ast_allocator());
+    while(!reach_end(p)) {
+        if(curr_token(p).type == TokenType::RightCurlyBracket) {
+            break;
+        }
+
+        Token curr = curr_token(p);
+        Token next = next_token(p);
+
+
+        Ast *field = nullptr;
+        if(curr.type == TokenType::Ident && next.type == TokenType::DoubleColon) {
+            field = parse_const_decl(p);
+        } else {
+            // TODO: 错误恢复
+
+            field = parse_ident(p);
+        }
+        
+        array_push_back(&fields, field);
+        expect(p, TokenType::Semicolon);
+    }
+
+    expect(p, TokenType::RightCurlyBracket);
+
+    Ast *a = ast_alloc(AstType_EnumDecl, name_succ.first);
+    a->EnumDecl.type_ast = type;
+    a->EnumDecl.fields = fields;
+    a->span = merge(name_succ.first.span, curr_token(p).span);
+
+    return a;
+}
+
+
+Ast *parse_union_decl(Parser *p) {
+    auto name_succ = expect2(p, TokenType::KW_union);
+
+    expect(p, TokenType::LeftCurlyBracket);
+
+    Array<Ast *> field_types = make_array<Ast *>(ast_allocator());
+    while(!reach_end(p)) {
+        if(curr_token(p).type == TokenType::RightCurlyBracket) {
+            break;
+        }
+
+        Token field_name_token = expect(p, TokenType::Ident);
+        expect(p, TokenType::Colon);
+        Ast *type_ast = parse_type(p);
+
+        
+        Ast *field_ast = ast_alloc(AstType_StructField, field_name_token);
+        field_ast->StructField.name = field_name_token.token_str;
+        field_ast->StructField.type_ast = type_ast;
+        field_ast->span = merge(field_name_token.span, type_ast->span);
+        array_push_back(&field_types, field_ast);
+        
+        expect(p, TokenType::Semicolon);
+    }
+
+    Token rcb = expect(p, TokenType::RightCurlyBracket);
+
+    Ast *a = ast_alloc(AstType_UnionDecl, name_succ.first);
+    a->UnionDecl.fields = field_types;
+    a->span = merge(name_succ.first.span, rcb.span);
+
+    return a;
+}
 
 
 Ast *parse_struct_value(Parser *p) {
@@ -409,6 +484,12 @@ Ast *parse_const_decl(Parser *p) {
         break;
     case TokenType::KW_import:
         value_ast = parse_import(p);
+        break;
+    case TokenType::KW_enum:
+        value_ast = parse_enum_decl(p);
+        break;
+    case TokenType::KW_union:
+        value_ast = parse_union_decl(p);
         break;
     default:
         value_ast = parse_expr(p, 0);
@@ -884,6 +965,8 @@ Ast *parse_string_literal(Parser *p) {
         // Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
         // return a;
     }
+
+    return nullptr;
 }
 
 Ast *parse_expr_factor(Parser *p) {
@@ -1201,9 +1284,14 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-    
+
     Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
-    value.integer_value = val;
+    value.set_integer_value(val);
+    if(type_kind != Type_Undefined) {
+        value.set_type(easy_type(type_kind));
+    } else {
+        value.set_type(easy_type(Type_untyped_int));
+    }
     a->Constant.value = value;
 }
 
@@ -1270,9 +1358,14 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     a->type = AstType_Constant;
-    
+
     Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
-    value.float_value = val;
+    value.set_float_value(val);
+    if(type_kind != Type_Undefined) {
+        value.set_type(easy_type(type_kind));
+    } else {
+        value.set_type(easy_type(Type_untyped_float));
+    }
     a->Constant.value = value;
     
     return;

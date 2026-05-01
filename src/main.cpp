@@ -6,6 +6,8 @@
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 
+#include "thread_pool/thread_pool.hpp"
+
 #include "xoaop.h"
 #include "common.hpp"
 #include "context.hpp"
@@ -26,11 +28,9 @@ static void crest_helper() {
 
 
 
-
-
-
 int main(int argc, char** argv) {
     defer(printf("\n\nEXIT!"));
+
 
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
@@ -97,6 +97,9 @@ int main(int argc, char** argv) {
     std::println("Compiler path: {}", context()->compiler_path.string());
     std::println("Current working directory: {}", context()->current_working_directory.string());
 
+
+    context()->thread_pool = new ThreadPool(std::thread::hardware_concurrency());
+    defer(delete context()->thread_pool);
 
 
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());

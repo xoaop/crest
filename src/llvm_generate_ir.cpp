@@ -305,6 +305,8 @@ LLVMValueRef get_ptr_of_llvm_value(LLVMGenerator *gen, LLVMValueRef value, bool 
     } else {
         XP_ASSERT_DEFAULT(0 && "Compiler Internal Error: Cannot get pointer of value, and not allowed to alloc value to get pointer");
     }
+
+    return nullptr;
 }
 
 
@@ -377,6 +379,13 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
             return *struct_type;
         }
 
+        case Type_enum: {
+            // 直接获取原始类型的LLVM类型, 因为枚举类型在LLVM IR中就是一个整数类型
+
+            TypeRef actual_elem_type = type->enum_info.element_type;
+            return get_llvm_type_from_type(gen, actual_elem_type);
+        }
+
         case Type_array: {
             LLVMTypeRef element_type = get_llvm_type_from_type(gen, type->array_info.element_type);
             return LLVMArrayType(element_type, (unsigned)type->array_info.count);
@@ -405,6 +414,8 @@ LLVMTypeRef get_llvm_type_from_type(LLVMGenerator *gen, TypeRef type) {
         default:
             XP_ASSERT_DEFAULT(0);
     }
+
+    return nullptr;
 }
 
 
@@ -568,7 +579,6 @@ xpString gen_ir_package(Package *pkg, LLVMIRGenerateConfig config) {
 }
 
 
-// TODO: 浮点数!!
 LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type, LLVMValueRef value) {
 
     if(is_array_type(from_type) && is_slice_struct_type(to_type)) {
@@ -584,6 +594,11 @@ LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type,
 
     if(is_pointer_type(from_type) && is_pointer_type(to_type)) {
         // 指针类型之间的转换, 不用转化, 直接返回
+        return value;
+    }
+
+    if(is_enum_type(from_type) && is_integer_or_untyped_type(to_type)) {
+        // 枚举到整数的转换, 直接返回, 因为枚举在LLVM IR中就是整数
         return value;
     }
 
@@ -652,6 +667,8 @@ LLVMValueRef gen_ir_cast(LLVMGenerator *gen, TypeRef from_type, TypeRef to_type,
     }
 
     UNREACHABLE();
+
+    return nullptr;
 }
 
 
@@ -1287,6 +1304,8 @@ LLVMValueRef gen_ir_binary_expr(LLVMGenerator *gen, Ast *expr, LLVMState state) 
     default:
         XP_ASSERT_DEFAULT(0);
     }
+
+    return nullptr;
 }
 
 
@@ -1321,10 +1340,30 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         }
 
 
+        // 枚举类型访问
+        if(is_type_type(parent->v_type) && is_enum_type(parent->v_type->self_type_info)) {
+            // 枚举访问
+            TypeRef enum_type = parent->v_type->self_type_info;
+
+            Scope &enum_scope = enum_type->enum_info.enum_scope;
+            SymbolInfo *enumerator_info = find_symbol_curr(
+                &enum_scope,
+                expr->FieldAccess.field_name
+            );
+
+            Value enum_value = enumerator_info->value;
+
+
+            // TODO: 可以把这个逻辑放到gen_llvm_val_by_value里, 只要传入枚举类型的expected_type就行了, 让gen_llvm_val_by_value来处理这个把枚举值转换成对应整数值的逻辑, 这样就不需要在这里特判枚举类型了, 只要在gen_llvm_val_by_value里处理好枚举类型就行了
+            // NOTE: 把类型改回为原始枚举类型, 以便gen_llvm_val_by_value能正确处理
+            enum_value.set_type(enum_type->enum_info.element_type);
+            return gen_llvm_val_by_value(gen, enum_value, xpOption<TypeRef>::none());
+        }
+
         //
         // 目前这里一定是结构体字段访问, 不用分支
         //
-
+        
         Ast *parent_expr = NULL;
         if(is_struct_type(expr->FieldAccess.parent->v_type)) {
             parent_expr = expr->FieldAccess.parent;
@@ -1340,7 +1379,6 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
         }
 
         TypeRef struct_type = parent_expr->v_type;
-        // Type struct_type_detail = get_type_detail_if_have(symbol_table(), struct_type);
         
         
         isize field_index = -1;
@@ -1633,12 +1671,10 @@ LLVMValueRef gen_ir_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is
 
 
     default:
-        printf("\n-------------------------------------------\n");
-        // print_ast(expr);
         UNREACHABLE();
     }
 
-
+    return nullptr;
 }
 
 // 处理 == 和 != 操作符的比较逻辑
@@ -1673,6 +1709,8 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
         } 
         return LLVMBuildFCmp(gen->builder, LLVMRealOEQ, left, right, "eqtmp");
     } else {
+        // 整数、指针、枚举等类型的比较
+
         if(is_not_equal) {
             return LLVMBuildICmp(gen->builder, LLVMIntNE, left, right, "noteqtmp");
         }
@@ -1683,7 +1721,11 @@ static LLVMValueRef compare_two_values(LLVMGenerator *gen, LLVMValueRef left, LL
 
 LLVMValueRef gen_ir_compare_expr(LLVMGenerator *gen, Ast *expr, LLVMState state, bool is_not_equal) {
     XP_ASSERT_DEFAULT(expr->type == AstType_BinaryExpr);
-    return compare_two_values(gen, gen_ir_expr(gen, expr->BinaryExpr.left, state), gen_ir_expr(gen, expr->BinaryExpr.right, state), expr->BinaryExpr.left->v_type, is_not_equal);
+
+    LLVMValueRef left_val = gen_ir_expr(gen, expr->BinaryExpr.left, state);
+    LLVMValueRef right_val = gen_ir_expr(gen, expr->BinaryExpr.right, state);
+
+    return compare_two_values(gen, left_val, right_val, expr->BinaryExpr.left->v_type, is_not_equal);
 }
 
 

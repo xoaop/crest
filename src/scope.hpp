@@ -36,13 +36,13 @@ enum class ScopeType {
 
     // 循环块
     LoopBlock,
+
+
+    // enum块
+    EnumBlock,
 };
 
 struct Scope {
-
-    
-
-
     ScopeType scope_type;
 
     SymbolTable symbols;

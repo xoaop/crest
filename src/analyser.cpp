@@ -1,4 +1,19 @@
+
+
+
+
+/* 
+ * 一些约定:  AstType_Ident 和 AstType_FieldAccess(只限于包名.符号名) 的ast_symbol会在resolve阶段被绑定到对应的SymbolInfo, 其他类型的ast的ast_symbol保持为NULL
+*/
+
+
+
+
 #include "analyser.hpp"
+
+
+#include "evaluator.hpp"
+
 
 #include "resolve_depend.hpp"
 
@@ -88,6 +103,7 @@ TypeRef resolve_function_value_type(Ast *value, Analyser analyser);
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
+void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 TypeRef resolve_type(Ast *type_ast, Analyser analyser);
@@ -96,14 +112,6 @@ SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
 
 
-
-//
-// Symbol Binding
-//
-
-
-
-void collect_top_level_symbols_in_package(Package *pkg, Array<Package>* all_packages);
 
 
 xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
@@ -124,12 +132,10 @@ xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
 
 
 //
-// 0. 总流程
+// 总流程
 //
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages);
 void sema_analysis_package(Package *pkg, Array<Package> *all_packages);
-
 
 static void init_global_symbols() {
 
@@ -229,663 +235,13 @@ void sema_analysis_package(Package *pkg, Array<Package> *all_packages) {
     }
 }
 
-// 
-// 1. Symbol Collect
-//
 
-
-void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_packages);
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages);
-void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
-void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser);
-
-
-
-
-
-void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_packages) {
-    
-    // NOTE: 别忘了创建package scope
-    pkg->package_scope = make_scope(&context()->global_blank_package.package_scope, ScopeType::Package, permanent_allocator());
-
-
-    for(isize i = 0; i < pkg->ast_files.count; i++) {
-        AstFile *ast_file = &pkg->ast_files[i];
-        collect_top_level_symbols_in_file(ast_file, pkg, all_packages);
-    }    
-}    
-
-
-
-
-
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages) {
-
-    ast_file->file_scope = make_scope(&curr_pkg->package_scope, ScopeType::File, permanent_allocator());
-    for(isize i = 0; i < ast_file->top_levels.count; i++) {
-        Ast *top_level = ast_file->top_levels[i];
-
-        Analyser analyser = make_analyser(ast_file, curr_pkg, all_packages);
-        switch(top_level->type) {
-        case AstType_ConstDecl: {
-            collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg, all_packages));
-        } break;    
-        
-        case AstType_VariableDecl: {
-            collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg, all_packages));
-        } break;    
-
-        default:
-            continue;
-        }
-    }    
-}    
-
-
-void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
-    XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
-
-    Ast *value_ast = const_decl_ast->ConstDecl.value_ast;
-    
-    // 先检查有没有重复符号
-    SymbolInfo *info = NULL;
-    if(value_ast->type == AstType_Import) {
-        // Import符号在文件作用域
-
-        info = find_symbol_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
-    } else {
-        // 其他符号在包作用域
-
-        info = find_symbol_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
-    }    
-
-    if(info != NULL) {
-        context()->reporter.report_error(
-            const_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' repeated definition",
-            const_decl_ast->ConstDecl.name.c_str
-        );    
-        return;
-    }    
-
-    Value new_value = make_value()
-    .set_is_runtime(false)
-    .set_value_state(ValueState::Unsolved);
-    new_value.val_ast = const_decl_ast;
-
-    // if(value_ast->type == AstType_StructDeclValue) {
-    //     TypeRef unfinished = type_type(unfinished_struct_type(analyser.pkg, const_decl_ast->ConstDecl.name));
-    //     unfinished->self_type_info->struct_info.decl_ast = const_decl_ast;
-    //     new_value.set_type(unfinished);
-    // }
-
-
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, new_value, analyser.pkg, analyser.curr_ast_file);
-    if(value_ast->type == AstType_Import) {
-        add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
-    } else {
-        add_symbol_to_scope(&analyser.pkg->package_scope, const_decl_ast->ConstDecl.name, new_symbol);
-    }
-
-    return;
-}
-
-
-
-
-void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser) {
-    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
-
-    SymbolInfo *info = find_symbol_until(ScopeType::Package, analyser.current_scope, var_decl_ast->VariableDecl.var_name);
-    if(info != NULL) {
-        context()->reporter.report_error(
-            var_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '%s' repeated definition",
-            var_decl_ast->VariableDecl.var_name.c_str
-        );        
-        return;
-    }
-
-    Value new_value = make_value().set_is_runtime(true).set_value_state(ValueState::Unsolved);
-    new_value.val_ast = var_decl_ast;
-    SymbolInfo new_symbol = make_symbol(var_decl_ast->VariableDecl.var_name, new_value, analyser.pkg, analyser.curr_ast_file);
-    add_symbol_to_scope(&analyser.pkg->package_scope, var_decl_ast->VariableDecl.var_name, new_symbol);
-
-    return;
-}    
-
-
-
-
-//
-// Evaluate top level types and constants
-//
-
-Value eval_import_value(Ast *import_ast, Analyser analyser);
-Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser);
-void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
-Value resolve_comptime_expr(Ast *expr_ast, Analyser analyser);
-void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
-void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Analyser analyser);
-
-
-
-void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser) {
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.state == ValueState::Unsolved);
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.val_ast != NULL);
-
-    Ast *ast = unsolved_symbol->value.val_ast;
-    ast->ast_symbol = unsolved_symbol;
-
-
-    if(ast->type == AstType_VariableDecl) {
-        eval_unsolved_var_decl(unsolved_symbol, analyser);
-    } else if(ast->type == AstType_ConstDecl) {
-        eval_unsolved_const_decl(unsolved_symbol, analyser);
-    } else {
-        UNREACHABLE();
-    }
-    
-}
-
-
-void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.state == ValueState::Unsolved);
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.val_ast != NULL);
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.val_ast->type == AstType_ConstDecl);
-
-    Ast *const_decl_ast = unsolved_symbol->value.val_ast;
-    Ast *val_ast = const_decl_ast->ConstDecl.value_ast;
-    Value *const_val = &unsolved_symbol->value; 
-
-    const_val->set_value_state(ValueState::Solving);
-
-    // TODO: 避免const_val->val_ast被新值覆盖, llvm ir生成要用
-    switch(val_ast->type) {
-    case AstType_StructDeclValue: 
-        eval_struct_decl_value_in_symbol_table(unsolved_symbol, analyser);
-        break;
-
-    case AstType_FunctionDeclValue: 
-        *const_val = eval_function_decl_value_only_type(val_ast, analyser);
-        const_val->val_ast = const_decl_ast;
-        break;
-
-    case AstType_Import: 
-        *const_val = eval_import_value(val_ast, analyser);
-        break;
-
-    default:
-        // clone_value是为了避免有在stage_allocator分配的值被释放, 比如array, struct等复杂类型的值
-        Value resolved_val = resolve_comptime_expr(val_ast, analyser);
-        *const_val = clone_value(resolved_val, permanent_allocator());
-    }
-
-}
-
-void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.state == ValueState::Unsolved);
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.val_ast != NULL);
-    XP_ASSERT_DEFAULT(unsolved_symbol->value.val_ast->type == AstType_VariableDecl);
-
-    Ast *var_decl_ast = unsolved_symbol->value.val_ast;
-
-    XP_TODO();
-}
-
-
-
-Value eval_import_value(Ast *import_ast, Analyser analyser) {
-
-    // 查找被import的package
-    xpOption<Package *> imported_package_opt = get_package_by_import(
-        import_ast->Import.search_prefix,
-        import_ast->Import.path,
-        analyser.all_packages
-    );
-
-    if(imported_package_opt.is_none()) {
-        context()->reporter.report_error(
-            import_ast->span,
-            analyser.curr_ast_file->source_code,
-            "imported package '%s' not found",
-            import_ast->Import.path.c_str
-        );    
-        return make_error_value();
-    }    
-
-    Package *imported_package = imported_package_opt.unwrap();
-    Value import_value = make_comptime_sovled_val(package_type(imported_package));
-
-    return import_value;
-}    
-
-
-TypeRef resolve_function_value_type(Ast *value, Analyser analyser) {
-    Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
-    for(isize i = 0; i < value->FunctionDeclValue.params.count; i++) {
-        Ast *param_ast = value->FunctionDeclValue.params[i];
-
-        TypeRef param_type = nullptr;
-        if(param_ast->ParamDecl.is_var_arg) {
-            param_type = easy_type(Type_var_arg_c);
-        } else {
-            param_type = resolve_type(param_ast->ParamDecl.type_ast, analyser);
-        }
-
-
-        if(param_type == error_type()) {
-            return error_type();
-        }
-
-        array_push_back(&param_types, param_type);
-    }    
-    // 解析返回值类型
-    TypeRef return_type = resolve_type(value->FunctionDeclValue.return_type_ast, analyser);
-    if(return_type == error_type()) {
-        return error_type();
-    }
-
-    return function_type(param_types, return_type);
-}    
-
-
-// NOTE: 只解析了类型, 没有解析函数体, 为了避免解析到未解析的顶层符号
-Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser) {
-    Value func_value = make_comptime_sovled_val(
-        resolve_function_value_type(fn_val_ast, analyser)
-    );
-    func_value.function_value.is_extern_c = fn_val_ast->FunctionDeclValue.is_extern_c;
-    func_value.function_value.function_ast = fn_val_ast;
-
-    return func_value;
-}
-
-
-
-void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Analyser analyser) {
-    XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast != NULL);
-    XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast->type == AstType_ConstDecl);
-    XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast->ConstDecl.value_ast->type == AstType_StructDeclValue);
-
-
-    xpString name = struct_symbol_info->name;
-    Ast *decl = struct_symbol_info->value.val_ast->ConstDecl.value_ast;
-
-    
-    
-    struct_symbol_info->value.set_value_state(ValueState::Solving);
-
-    TypeRef unfinished_type_type = type_type(unfinished_struct_type(struct_symbol_info->package, decl, name));
-    struct_symbol_info->value.set_type(unfinished_type_type);
-
-    Array<StructField> fields = make_array<StructField>(type_allocator());
-    for(isize i = 0; i < decl->StructDeclValue.fields.count; i++) {
-        Ast *field_ast = decl->StructDeclValue.fields[i];
-
-        // 解析字段类型, 
-        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
-
-        if(field_type == error_type()) {
-            struct_symbol_info->value.set_type(error_type());
-            struct_symbol_info->value.set_value_state(ValueState::Error);
-            break;
-        }
-
-
-        array_push_back(&fields, StructField{field_ast->StructField.name, field_type});
-    }
-
-    if(struct_symbol_info->value.has_error()) {
-        return;
-    }
-    
-    
-    for(StructField field: fields) {
-        TypeRef field_type = field.type;
-
-        if(is_struct_type(field_type)) {
-            // 结构体都应该在符号表有对应符号
-
-            SymbolInfo *field_struct_sym = find_symbol_curr(
-                &struct_symbol_info->package->package_scope, 
-                field_type->type_name
-            );
-            
-            if(field_struct_sym->value.state == ValueState::Solving) {
-                context()->reporter.report_error(
-                    decl->span, analyser.curr_ast_file->source_code,
-                    "circular dependency detected in struct '%s'",
-                    name.c_str
-                );
-                struct_symbol_info->value.set_type(error_type());
-                struct_symbol_info->value.set_value_state(ValueState::Error);
-                return;
-            }
-        }
-        
-    }
-    
-    finish_unfinish_struct_type(unfinished_type_type->self_type_info, fields);
-    struct_symbol_info->value.set_value_state(ValueState::Solved);
-    
-}
-
-
-
-//
-// Evaluate constexpr values
-//
-
-ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool for_var_expr = false);
-
-Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
-    resolve_expr(expr, analyser);
-    infer_expr_type(expr, false, NULL, analyser, true);
-
-    if(expr->v_type == error_type()) {
-        return make_error_value();
-    }
-
-    ValueResult result = eval_comptime_expr(expr, analyser);
-
-    if(result.is_err()) {
-        return make_error_value();
-    }
-    
-    return result.as_ok();
-}
-
-
-// NOTE: 必须在resolve_expr和infer_expr_type之后调用, 因为需要保证符号正确解析和类型推导完成
-ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_expr) {
-
-    switch(expr->type) {
-        case AstType_Ident: {
-            SymbolInfo *info = find_symbol_until_global(analyser.current_scope, expr->Ident.name);
-            if(info == NULL) {
-                return ValueResult::err(ValueErrorKind::ErrorValue);
-            }
-
-            Value value = info->value;
-
-            if(value.has_error()) {
-                return ValueResult::err(ValueErrorKind::ErrorValue);
-            }
-
-            if(value.is_runtime_value) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "cannot use runtime value '%s' in constant expression",
-                    expr->Ident.name.c_str
-                );
-                return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
-            }
-
-            if(expr->v_type != value.type) {
-                // 可能untyped的常量需要根据上下文推导类型
-                value.set_type(expr->v_type);
-            }
-
-
-
-            return ValueResult::ok(value);
-        } break;
-
-        case AstType_Constant: {
-            return ValueResult::ok(expr->Constant.value);
-        } break;
-
-        case AstType_FieldAccess: {
-            ValueResult parent_result = eval_comptime_expr(expr->FieldAccess.parent, analyser);
-            if(parent_result.is_err()) {
-                return parent_result;
-            }
-            Value parent_value = parent_result.as_ok();
-            TypeRef parent_type = parent_value.type;
-
-            if(parent_value.has_error()) {
-                return ValueResult::err(ValueErrorKind::ErrorValue);
-            }
-
-            if(parent_value.is_runtime_value) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "cannot use runtime value in constant expression"
-                );
-                return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
-            }
-
-            if(is_package_type(parent_type)) {
-                Package *pkg = get_package_value(parent_value);
-                SymbolInfo *field_sym = find_symbol_curr(&pkg->package_scope, expr->FieldAccess.field_name);
-                
-                if(field_sym == NULL) {
-                    return ValueResult::err(ValueErrorKind::ErrorValue);
-                }
-
-                if(field_sym->value.has_error()) {
-                    return ValueResult::err(ValueErrorKind::ErrorValue);
-                }
-
-                if(field_sym->value.is_runtime_value) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "cannot use runtime value in constant expression"
-                    );
-                    return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
-                }
-
-                return ValueResult::ok(field_sym->value);
-
-            } else if(is_struct_type(parent_type)) {
-                for(isize i = 0; i < parent_type->struct_info.struct_fields.count; i++) {
-                    StructField field = parent_type->struct_info.struct_fields[i];
-                    if(xp_string_equal(field.name, expr->FieldAccess.field_name)) {
-                        Value field_value = parent_value.struct_field_values[i];
-                        return ValueResult::ok(field_value);
-                    }
-                }
-            }
-
-            // UNREACHABLE();
-            return ValueResult::err(ValueErrorKind::ErrorValue);
-        } break;
-
-
-        case AstType_BinaryExpr: {
-            ValueResult left_result = eval_comptime_expr(expr->BinaryExpr.left, analyser);
-            ValueResult right_result = eval_comptime_expr(expr->BinaryExpr.right, analyser);
-            if(left_result.is_err()) {
-                return left_result;
-            }
-            if(right_result.is_err()) {
-                return right_result;
-            }
-
-            Value left = left_result.as_ok();
-            Value right = right_result.as_ok();
-
-            ValueResult compute_result = eval_binary_expr(left, right, expr->BinaryExpr.op);
-
-            if(compute_result.is_err()) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "invalid constant expression"
-                );
-            }
-            
-            return compute_result;
-
-        } break;
-
-        case AstType_UnaryExpr: {
-            ValueResult operand_result = eval_comptime_expr(expr->UnaryExpr.operand, analyser);
-
-            if(operand_result.is_err()) {
-                return operand_result;
-            }
-            Value operand = operand_result.as_ok();
-
-            ValueResult compute_result = eval_unary_expr(operand, expr->UnaryExpr.op);
-
-            if(compute_result.is_err()) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "invalid constant expression"
-                );    
-            }
-
-            return compute_result;
-
-        } break;
-
-        case AstType_CastExpr: {
-            ValueResult operand_result = eval_comptime_expr(expr->CastExpr.expr, analyser);
-
-            if(operand_result.is_err()) {
-                return operand_result;
-            }
-            Value operand = operand_result.as_ok();
-
-            // 直接修改为target type就行, 因为type check检查了
-            TypeRef target_type = expr->CastExpr.target_type;
-            operand.set_type(target_type);
-
-            return ValueResult::ok(operand);
-        } break;
-
-        case AstType_ArrayInitExpr: {
-            Array<Value> element_values = make_array<Value>(stage_allocator());
-            for(Ast *elem_expr_ast: expr->ArrayInitExpr.elements) {
-                ValueResult elem_expr_result = eval_comptime_expr(elem_expr_ast, analyser);
-                if(elem_expr_result.is_err()) {
-                    return elem_expr_result;
-                }
-                array_push_back(&element_values, elem_expr_result.as_ok());
-            }
-
-            Value array_value = make_comptime_sovled_val(expr->v_type);
-            array_value.array_element_values = element_values;
-
-            return ValueResult::ok(array_value);
-        } break;
-
-        case AstType_StructInitExpr: {
-            Array<Value> field_values = make_array<Value>(stage_allocator());
-            for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
-                Ast *field_init_ast = expr->StructInitExpr.field_inits[i];
-                ValueResult field_init_result = eval_comptime_expr(field_init_ast, analyser);
-                if(field_init_result.is_err()) {
-                    return field_init_result;
-                }
-                array_push_back(&field_values, field_init_result.as_ok());
-            }
-
-            Value struct_value = make_comptime_sovled_val(expr->v_type);
-            struct_value.struct_field_values = field_values;
-
-            return ValueResult::ok(struct_value);
-        } break;
-
-        case AstType_IndexExpr: {
-            ValueResult indexed_value_result = eval_comptime_expr(expr->IndexExpr.array_var_expr, analyser);
-            if(indexed_value_result.is_err()) {
-                return indexed_value_result;
-            }
-            ValueResult index_result = eval_comptime_expr(expr->IndexExpr.index_expr, analyser);
-            if(index_result.is_err()) {
-                return index_result;
-            }
-
-            Value indexed_value = indexed_value_result.as_ok();
-            Value index = index_result.as_ok();
-            TypeRef indexed_type = indexed_value.type;
-
-
-            // 检查下标越界
-            i128 index_val = index.integer_value;
-            if(is_array_type(indexed_type)) {
-                if(!(index_val >= 0 && index_val < indexed_type->array_info.count)) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "array index out of bounds"
-                    );
-                    return ValueResult::err(ValueErrorKind::Overflow);
-                }
-            } else if(is_string_struct_type(indexed_type)) {
-                if(!(index_val >= 0 && index_val < indexed_value.string_value.length)) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "string index out of bounds"
-                    );
-                    return ValueResult::err(ValueErrorKind::Overflow);
-                }
-            }
-
-            // 获取元素值
-            if(is_array_type(indexed_type)) {
-                Value element_value = indexed_value.array_element_values[index_val];
-                return ValueResult::ok(element_value);
-            } else if(is_string_struct_type(indexed_type)) {
-                // string类型的index表达式求值结果是一个u8的integer值
-                char c = indexed_value.string_value[index_val];
-                Value char_value = make_comptime_sovled_val(easy_type(Type_u8));
-                char_value.integer_value = c;
-                return ValueResult::ok(char_value);
-            }
-
-
-            // UNREACHABLE();
-            return ValueResult::err(ValueErrorKind::ErrorValue);
-        } break;
-
-        case AstType_StringLiteralExpr: {
-            Value string_value = make_comptime_sovled_val(expr->v_type);
-            string_value.string_value = expr->StringLiteralExpr.str;
-
-            return ValueResult::ok(string_value);
-        } break;
-
-        default: {
-            context()->reporter.report_error(
-                expr->span, analyser.curr_ast_file->source_code,
-                "unsupported expression in constant expression evaluation"
-            );
-            return ValueResult::err(ValueErrorKind::ErrorValue);
-        } break;
-
-    }
-}
-
-
-
-
-Value eval_struct_decl_value(Ast *struct_decl_ast, xpString ident, Analyser analyser) {
-    Array<StructField> fields = make_array<StructField>(stage_allocator());
-    for(Ast *field_ast: struct_decl_ast->StructDeclValue.fields) {
-        TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
-
-        if(field_type == error_type()) {
-            return make_error_value();
-        }
-
-        array_push_back(&fields, StructField{field_ast->StructField.name, field_type});
-    }
-
-    TypeRef struct_typeref = struct_type(analyser.pkg, struct_decl_ast, ident, fields);
-
-    Value struct_value = make_comptime_sovled_val(type_type(struct_typeref));
-    return struct_value;
-}
 
 
 
 //
 // Analyser
 //
-
-
 
 
 
@@ -921,6 +277,26 @@ void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
 
     return;
 }
+
+
+
+Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
+    resolve_expr(expr, analyser);
+    infer_expr_type(expr, false, NULL, analyser, true);
+
+    if(expr->v_type == error_type()) {
+        return make_error_value();
+    }
+
+    ValueResult result = eval_comptime_expr(expr, analyser);
+
+    if(result.is_err()) {
+        return make_error_value();
+    }
+    
+    return result.as_ok();
+}
+
 
 
 void resolve_top_stmt(Ast *ast, Analyser analyser) {
@@ -1121,10 +497,6 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
 
 
     if(val.has_error()) {
-        // context()->reporter.report_error(
-        //     val_ast->span, analyser.curr_ast_file->source_code,
-        //     "invalid constant expression"
-        // );
         return;
     }
 
@@ -1150,7 +522,6 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     }
 
 
-    // TODO CHECK
     if(var_decl_ast->VariableDecl.type_ast != NULL) {
         var_decl_ast->v_type = resolve_type(var_decl_ast->VariableDecl.type_ast, analyser);
     } else {
@@ -1492,7 +863,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
             TypeRef type = maybe_type_info->value.type;
             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-            if(!(is_type_type(type) && (is_struct_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
+            if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '%s' is not a type",
@@ -1508,7 +879,6 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
 
         // 作为类型, parent只能是package, child只能是类型(目前只有结构体)名
         case AstType_FieldAccess: {
-            Ast *parent_ident = type_ast->FieldAccess.parent;
             xpString filde_ident = type_ast->FieldAccess.field_name;
 
             SymbolInfo *symbol = resolve_field_access(type_ast, analyser); 
@@ -1519,7 +889,7 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
             TypeRef type = symbol->value.type;
 
             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-            if(!(is_type_type(type) && (is_struct_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
+            if(!(is_type_type(type) && (is_named_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
                 context()->reporter.report_error(
                     type_ast->span, analyser.curr_ast_file->source_code,
                     "symbol '%s' is not a type",
@@ -1695,6 +1065,8 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
         field_access_ast->ast_symbol = field_sym; // *RECORD SYMBOL IN AST*
         return field_sym;
     } else {
+        // TODO: 结构体字段访问, 枚举字段访问, 放到type_check阶段检查
+        // 因为目前还没有类型信息, 没法检查
 
         // 非包字段访问, 目前只有结构体字段访问, 结构体字段访问的合法性在类型检查阶段检查
         return NULL;

@@ -29,6 +29,7 @@ Value make_value() {
     v.type = undefined_type();
     v.state = ValueState::Unsolved;
     v.is_runtime_value = false;
+    v.actual_kind = ActualValueKind::Integer; // 初始化默认值，避免未定义行为
     // v.error_kind = ValueErrorKind::Other;
 
     return v;
@@ -66,35 +67,82 @@ Value make_error_value() {
     return v;
 }
 
+// ========== set_actual_value 函数族实现 ==========
+void Value::set_integer_value(i128 value) {
+    integer_value = value;
+    actual_kind = ActualValueKind::Integer;
+}
+
+void Value::set_float_value(double value) {
+    float_value = value;
+    actual_kind = ActualValueKind::Float;
+}
+
+void Value::set_bool_value(bool value) {
+    bool_value = value;
+    actual_kind = ActualValueKind::Bool;
+}
+
+void Value::set_pointer_value(Value* pointed_value) {
+    this->pointed_value = pointed_value;
+    actual_kind = ActualValueKind::Pointer;
+}
+
+void Value::set_string_value(xpString value) {
+    string_value = value;
+    actual_kind = ActualValueKind::String;
+}
+
+void Value::set_struct_value(Array<Value> field_values) {
+    struct_field_values = field_values;
+    actual_kind = ActualValueKind::Struct;
+}
+
+void Value::set_array_value(Array<Value> element_values) {
+    array_element_values = element_values;
+    actual_kind = ActualValueKind::Array;
+}
+
+void Value::set_function_value(Ast* function_ast, bool is_extern_c) {
+    function_value.function_ast = function_ast;
+    function_value.is_extern_c = is_extern_c;
+    actual_kind = ActualValueKind::Function;
+}
+
 
 
 
 i128 get_integer_value(Value& v) {
-    XP_ASSERT_DEFAULT(is_integer_or_untyped_type(v.type));
+    XP_ASSERT_DEFAULT(is_integer_or_untyped_type(v.type) || is_enum_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_integer_stored());
 
     return v.integer_value;
 }
 
 double get_float_value(Value& v) {
     XP_ASSERT_DEFAULT(is_float_or_untyped_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_float_stored());
 
     return v.float_value;
 }
 
 bool get_bool_value(Value& v) {
     XP_ASSERT_DEFAULT(v.type->kind == Type_bool);
+    XP_ASSERT_DEFAULT(v.is_bool_stored());
 
     return v.bool_value;
 }
 
 Value* get_pointer_value(Value& v) {
     XP_ASSERT_DEFAULT(is_pointer_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_pointer_stored());
 
     return v.pointed_value;
 }
 
 xpString get_string_value(Value& v) {
     XP_ASSERT_DEFAULT(is_string_struct_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_string_stored());
 
     return v.string_value;
 }
@@ -113,22 +161,32 @@ Package* get_package_value(Value& v) {
 
 Array<Value> get_struct_field_values(Value& v) {
     XP_ASSERT_DEFAULT(is_struct_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_struct_stored());
 
     return v.struct_field_values;
 }
 
 Array<Value> get_array_element_values(Value& v) {
     XP_ASSERT_DEFAULT(is_array_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_array_stored());
 
     return v.array_element_values;
 }
 
 Ast *get_function_value(Value& v) {
     XP_ASSERT_DEFAULT(is_function_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_function_stored());
 
     return v.function_value.function_ast;
 }
 
+
+i128 get_enum_val_as_integer(Value& v) {
+    XP_ASSERT_DEFAULT(is_enum_type(v.type));
+    XP_ASSERT_DEFAULT(v.is_integer_stored());
+
+    return v.integer_value;
+}
 
 
 

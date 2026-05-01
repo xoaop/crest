@@ -9,7 +9,7 @@
 #include "package.hpp"
 
 
-
+#include "scope.hpp"
 
 
 
@@ -51,6 +51,8 @@ TypeKind string_to_type_kind(xpString str) {
     } else {
         XP_ASSERT_DEFAULT(0);
     }
+
+    return Type_Undefined;
 }
 
 
@@ -92,6 +94,12 @@ Type copy_type(Type *src) {
         t.struct_info.struct_fields = array_copy(&src->struct_info.struct_fields, type_allocator());
         t.struct_info.decl_ast = src->struct_info.decl_ast;
     } break;
+
+    case Type_enum: {
+        t.enum_info = src->enum_info;
+        t.enum_info.enum_scope = src->enum_info.enum_scope;
+    } break;
+
     case Type_array: {
         t.array_info.element_type = src->array_info.element_type;
         t.array_info.count = src->array_info.count;
@@ -162,7 +170,7 @@ TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
 
 
 
-// @Depressed: 这个函数不完整, 不过这个函数的功能已经被TypeRef(Type *)的直接比较代替了 
+// 这个函数很重要, 用于比较类型是否相等, 包括复杂类型, 需要递归比较
 bool is_equal_type(Type a, Type b) {
     if(a.kind != b.kind) {
         return false;
@@ -192,7 +200,8 @@ bool is_equal_type(Type a, Type b) {
                xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path) && 
                a.struct_info.decl_ast == b.struct_info.decl_ast;
 
-
+    // 1. type_name
+    // 2. decl_ast
     case Type_enum:
         return xp_string_equal(a.type_name, b.type_name) && 
                a.enum_info.decl_ast == b.enum_info.decl_ast;
@@ -363,6 +372,10 @@ bool is_struct_type(TypeRef type) {
     return type->kind == Type_struct;
 }
 
+bool is_enum_type(TypeRef type) {
+    return type->kind == Type_enum;
+}
+
 bool is_array_type(TypeRef type) {
     return type->kind == Type_array;
 }
@@ -406,7 +419,8 @@ bool is_value_type(TypeRef type) {
            type->kind == Type_bool || 
            is_pointer_type(type) ||
            is_struct_type(type) ||
-           is_array_type(type);
+           is_array_type(type) || 
+           is_enum_type(type);
 }
 
 bool is_var_arg_function(TypeRef type) {
@@ -423,8 +437,17 @@ bool is_var_arg_function(TypeRef type) {
 }
 
 u32 get_fixed_param_count(TypeRef func_type) {
-    XP_ASSERT_DEFAULT(is_var_arg_function(func_type));
-    return func_type->function_info.param_types.count - 1;
+    if(is_var_arg_function(func_type)) {
+        return func_type->function_info.param_types.count - 1;
+    } else {
+        return func_type->function_info.param_types.count;
+    }
+}
+
+
+bool is_named_type(TypeRef type) {
+    return is_struct_type(type) || 
+           is_enum_type(type);
 }
 
 //
@@ -700,6 +723,22 @@ TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident) {
     return type_ref;
 }
 
+TypeRef unifinished_enum_type(Ast *decl_ast, Scope *parent, xpString ident, TypeRef elem_type) {
+    XP_ASSERT_DEFAULT(is_integer_type(elem_type));
+
+    Type t = {};
+    t.kind = Type_enum;
+    t.type_name = ident;
+    t.enum_info.decl_ast = decl_ast;
+    t.enum_info.element_type = elem_type;
+    t.enum_info.enum_scope = make_scope(parent, ScopeType::EnumBlock, type_allocator());
+    t.enum_info.pkg = nullptr; // NOTE: 目前没用
+
+    TypeRef type_ref = get_or_add_type(t);
+
+    return type_ref;
+}
+
 TypeRef type_type(TypeRef self_type_info) {
     Type t = {};
     t.kind = Type_type;
@@ -767,10 +806,13 @@ TypeRef add_type(Type type) {
 
 // NOTE: 实际上就是结构体
 TypeRef slice_type_as_struct(TypeRef elem_type) {
-    defer (xp_arena_allocator_clear(temp_allocator()));
+    
+    xpAutoArenaRestore temp_arena_restore{ temp_allocator() };
+
+    
 
     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
-    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator(), false);
+    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator());
 
     xp_string_append(&slice_struct_name, elem_str);
 
@@ -819,6 +861,7 @@ TypeRef string_type_as_struct() {
         XP_ASSERT_MSG(0, "string type should be pre-defined");
     }
     
+    return nullptr;
 }
 
 
@@ -829,40 +872,26 @@ xpString get_type_kind_str(TypeKind kind) {
     return xp_string_c(type_strings[kind]);
 }
 
-xpString get_type_name(TypeRef type, bool need_free_temp_allocator) {
+xpString get_type_name(TypeRef type) {
 
     // 如果已经有名字就直接返回
     if(type->type_name.capacity != 0) {
         return type->type_name;
     }
 
-    type->type_name = get_or_make_type_str(type, permanent_allocator(), need_free_temp_allocator);
+    xpAutoArenaRestore temp_arena_restore{
+        temp_allocator(),
+        xpAutoArenaRestore::Mode::RestoreOnly
+    };
+
+    type->type_name = get_or_make_type_str(type, permanent_allocator());
 
     return type->type_name;
 }
 
 
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_free_temp_allocator) {
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
 
-    static i32 depth = 0;
-    depth++;
-    defer(depth--);
-
-    // 如果用temp_allocator作为结果的allocator, 那结果就没法返回了, 因为释放了
-    XP_ASSERT_DEFAULT(!(depth == 1 && allocator.data == temp_allocator().data && need_free_temp_allocator == true)); // TODO 这里比较太tricky了
-        
-
-    // 使用temp_allocator避免内存泄漏
-    defer({
-        if(depth == 1) {
-            xp_arena_allocator_clear(temp_allocator());
-        }
-    });
-
-
-    
-
-    
     if(is_easy_type_kind(type->kind)) {
 
         return get_type_kind_str(type->kind);
@@ -870,13 +899,13 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
         xpString base_str = xp_make_string(allocator, "*");
 
         // 因为可能有多级指针，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator(), need_free_temp_allocator);
+        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator());
 
         xp_string_append(&base_str, pointed_type_str);
 
         return base_str;
 
-    } else if(is_struct_type(type)) {
+    } else if(is_struct_type(type) || type->kind == Type_enum) {
         // 直接用类型名
 
         return type->type_name;
@@ -890,7 +919,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
         xp_string_append(&base_str, xp_string_c("]"));
 
         // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator(), need_free_temp_allocator);
+        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator());
 
         xp_string_append(&base_str, elem_type_str);
 
@@ -901,7 +930,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
 
         for(isize i = 0; i < type->function_info.param_types.count; i++) {
 
-            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), need_free_temp_allocator);
+            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator());
             xp_string_append(&func_str, param_type_str);
 
             if(i != type->function_info.param_types.count - 1) {
@@ -912,28 +941,32 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool need_fre
             xpString rb_arrow_str = xp_string_c(") -> ");
             xp_string_append(&func_str, rb_arrow_str);
 
-            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), need_free_temp_allocator);
+            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator());
             xp_string_append(&func_str, return_type_str);
 
             return func_str;
         }
 
     } else if(is_type_type(type)) {
+
         xpString type_str = xp_make_string(allocator, "type(");
-        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator(), need_free_temp_allocator);
+        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator());
         xp_string_append(&type_str, self_type_str);
         xp_string_append(&type_str, xp_string_c(")"));
         return type_str;
+
     } else if(is_package_type(type)) {
         return type->package_info->path;
     } else if(type->kind == Type_error) {
         return xp_string_c("error");
     } else if(type->kind == Type_Undefined) {
         return xp_string_c("undefined");
-    } 
+    }
     
     // Unreachable
     UNREACHABLE();
+
+    return {};
 }
 
 
@@ -1045,12 +1078,27 @@ usize xp_hash_func(Type *type) {
             return cast(usize)(hash_value);
         } break;
 
+        case Type_enum: {
+            u64 hash_enum = Type_enum;
+            u64 hash_type_name = cast(u64)(xp_hash_func(&type->type_name));
+
+            // decl_ast要参与hash, 为了区分不同作用域的同名枚举
+            u64 hash_decl_ast = cast(u64)(xp_hash_func(&type->enum_info.decl_ast));
+
+            u64 hash_value = xp_hash_combine_u64(hash_enum, hash_type_name);
+            hash_value = xp_hash_combine_u64(hash_value, hash_decl_ast);
+
+            return cast(usize)(hash_value);
+        } break;
+
 
         default: {
-            XP_ASSERT_DEFAULT(0);
+            XP_ASSERT_MSG(0, "hashing unhandled type kind");
         } break;
     
     }
+
+    return 0;
 }
 
 

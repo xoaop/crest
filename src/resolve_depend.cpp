@@ -177,7 +177,9 @@ Array<Package> resolve_dependencies(xpString main_path) {
 
     if(!check_directory_legel(main_path) && !check_file_legal(main_path)) {
         // TODO ERROR: main package路径不合法
-        error_msg(NULL, "input path is not invalid directory or file: %s", main_path.c_str);
+        std::println("Error: main package path '{}' is not a valid directory or file", main_path.c_str);
+        exit(1);
+
         return packages;
     }
 
