@@ -7,6 +7,8 @@
 #include <llvm-c/Analysis.h>
 
 #include "thread_pool/thread_pool.hpp"
+#include "file.hpp"
+
 
 #include "xoaop.h"
 #include "common.hpp"
@@ -91,7 +93,8 @@ int main(int argc, char** argv) {
 
     
     // 初始化context
-    context()->compiler_path = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
+    std::string exe_path = get_program_path();
+    context()->compiler_path = std::filesystem::absolute(std::filesystem::path(exe_path)).parent_path();
     context()->current_working_directory = std::filesystem::current_path();
 
     std::println("Compiler path: {}", context()->compiler_path.string());
