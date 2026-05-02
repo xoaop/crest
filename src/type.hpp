@@ -102,7 +102,7 @@ struct Type {
 
         // 联合体
         struct {
-            Array<StructField> union_fields;
+            Scope union_fields; // 联合体的字段列表
             Package *pkg;
             Ast *decl_ast;
         } union_info;
@@ -218,7 +218,7 @@ struct TypeTable {
 // TODO 移除
 struct Context;
 void init_type_table(Context *ctx);
-
+void free_type_table(Context *ctx);
 
 
 

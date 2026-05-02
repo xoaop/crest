@@ -31,8 +31,8 @@ static void crest_helper() {
 
 
 int main(int argc, char** argv) {
+    
     defer(printf("\n\nEXIT!"));
-
 
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
@@ -64,8 +64,10 @@ int main(int argc, char** argv) {
             main_path = argv[i];
             
         } else if(strcmp(argv[i], "help") == 0) {
+            
             crest_helper();
             return 0;
+
         } else if(strcmp(argv[i], "-o") == 0) {
             // TODO(xoaop): 输出文件路径参数解析
             i += 1; // 跳过 "-o" 参数
@@ -127,6 +129,7 @@ int main(int argc, char** argv) {
 
     // 类型系统初始化
     init_type_table(context());
+    defer(free_type_table(context()));
 
 
     end_time = std::chrono::high_resolution_clock::now();

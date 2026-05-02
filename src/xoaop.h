@@ -1,6 +1,14 @@
 /*
     Everything about my library code in C/CPP
+
+
+    Config:
+    - XOAOP_IMPLEMENTATION: 定义后会包含实现部分，建议在一个源文件中定义
+    - XOAOP_I128_SUPPORT: 定义后会启用对i128类型的支持，提供相关函数和常量
+    - XP_HEAP_RECORD_ENABLE: 定义后会启用带监控的堆分配器功能，提供相关API和统计功能
+    
 */
+
 
 #ifndef XOAOP_H
 #define XOAOP_H
@@ -229,7 +237,13 @@ xp_define void xp_zero(void *ptr, isize size);
 
 // Heap Allocator包装
 XP_ALLOCATOR_PROC(xp_heap_allocator_proc);
+xp_define xpAllocator xp_pure_heap_allocator();
 xp_define xpAllocator xp_heap_allocator();
+
+// 默认分配器别名
+#define xp_default_allocator() xp_heap_allocator()
+
+
 
 
 
@@ -386,7 +400,6 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 */
 #if defined(__cplusplus)
 
-
 //
 // 头文件
 //
@@ -403,7 +416,49 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 
 #endif // __cplusplus >= 202300L
 
+//
+// Heap Record Allocator 带监控的堆内存分配器
+//
 
+struct xpHeapRecordEntry {
+    void* ptr;             // 内存块指针
+    isize size;            // 分配大小
+    const char* file;      // 分配所在文件（可选）
+    isize line;            // 分配所在行号（可选）
+    u64 timestamp;         // 分配时间戳（可选）
+};
+
+struct xpHeapRecordStats {
+    isize total_allocs;    // 总分配次数
+    isize total_frees;     // 总释放次数
+    isize current_allocs;  // 当前未释放的分配次数
+    isize total_bytes;     // 总分配字节数
+    isize freed_bytes;     // 总释放字节数
+    isize current_bytes;   // 当前未释放的字节数
+    isize peak_bytes;      // 峰值内存使用
+};
+
+struct xpHeapRecordAllocator;
+
+// 函数声明
+xp_define xpAllocator xp_heap_record_allocator();                  // 获取全局单例监控分配器
+xp_define xpAllocator xp_heap_record_allocator_create_new();      // 创建新的独立监控分配器
+xp_define xpAllocator xp_heap_record_allocator_with_location_tracking(); // 获取全局单例（带位置跟踪）
+xp_define xpAllocator xp_heap_record_allocator_create_new_with_location_tracking(); // 创建新的独立监控分配器（带位置跟踪）
+
+// 针对全局单例的便利函数（不需要传分配器参数）
+xp_define xpHeapRecordStats xp_heap_record_get_stats();
+xp_define void xp_heap_record_print_stats();
+xp_define void xp_heap_record_print_leaks();
+xp_define isize xp_heap_record_check_leaks();
+xp_define void xp_heap_record_destroy_global(b8 report_leaks);    // 销毁全局单例
+
+// 针对独立分配器的函数
+xp_define xpHeapRecordStats xp_heap_record_get_stats(xpAllocator allocator);
+xp_define void xp_heap_record_print_stats(xpAllocator allocator);
+xp_define void xp_heap_record_print_leaks(xpAllocator allocator);
+xp_define isize xp_heap_record_check_leaks(xpAllocator allocator);
+xp_define void xp_heap_record_destroy(xpAllocator allocator, b8 report_leaks);
 
 //
 // char32_t 操作
@@ -1733,11 +1788,30 @@ XP_ALLOCATOR_PROC(xp_heap_allocator_proc) {
 
     return alloc_result;
 }
-xpAllocator xp_heap_allocator() {
+
+
+xpAllocator xp_pure_heap_allocator() {
     xpAllocator allocator;
     allocator.proc = xp_heap_allocator_proc;
     allocator.data = NULL;
     return allocator;
+}
+
+
+
+
+xpAllocator xp_heap_allocator() {
+#if defined(XP_HEAP_RECORD_ENABLE) && defined(__cplusplus)
+    // 启用监控模式（仅C++支持），返回全局单例
+    #ifdef XP_HEAP_RECORD_TRACK_LOCATIONS
+        return xp_heap_record_allocator_with_location_tracking();
+    #else
+        return xp_heap_record_allocator();
+    #endif
+#else
+    // 默认使用普通堆分配器，每次都返回新的实例（和原有行为一致）
+    return xp_pure_heap_allocator();
+#endif
 }
 
 
@@ -2618,7 +2692,443 @@ usize xp_hash_func<std::string>(std::string *key) {
     return hasher(*key);
 }
 
+template<>
+usize xp_hash_func<void*>(void** key) {
+    return cast(usize)(*key);
+}
 
+//
+// Heap Record Allocator 实现
+//
+
+struct xpHeapRecordAllocator {
+    xpAllocator backing_allocator;  // 底层实际分配器
+    xpHashMap<void*, xpHeapRecordEntry> records;  // 分配记录
+    xpHeapRecordStats stats;        // 统计信息
+    b8 track_locations;             // 是否跟踪分配位置（文件/行号）
+    b8 auto_report_on_destroy;      // 销毁时自动报告内存泄漏
+};
+
+// 内部：获取当前时间戳（简单实现）
+u64 xp_heap_record_get_timestamp() {
+    // 这里可以根据需要替换为更精确的时间实现
+    static u64 counter = 0;
+    return counter++;
+}
+
+// 监控分配器的核心处理函数
+XP_ALLOCATOR_PROC(xp_heap_record_allocator_proc) {
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator_data;
+    XP_ASSERT_DEFAULT(record_allocator != NULL);
+
+    void* result = NULL;
+
+    switch (type) {
+        case xpAlloc: {
+            // 从底层分配器分配内存
+            result = xp_alloc(record_allocator->backing_allocator, size);
+
+            if (result != NULL) {
+                // 记录分配信息
+                xpHeapRecordEntry entry = {};
+                entry.ptr = result;
+                entry.size = size;
+                entry.timestamp = xp_heap_record_get_timestamp();
+
+                // 如果启用了位置跟踪，这里可以获取调用栈信息
+                // （目前简化实现，位置信息需要编译器支持或宏包装）
+                entry.file = NULL;
+                entry.line = 0;
+
+                // 插入到记录中
+                xp_hash_map_insert(&record_allocator->records, result, entry);
+
+                // 更新统计信息
+                record_allocator->stats.total_allocs++;
+                record_allocator->stats.current_allocs++;
+                record_allocator->stats.total_bytes += size;
+                record_allocator->stats.current_bytes += size;
+
+                // 更新峰值
+                if (record_allocator->stats.current_bytes > record_allocator->stats.peak_bytes) {
+                    record_allocator->stats.peak_bytes = record_allocator->stats.current_bytes;
+                }
+            }
+            break;
+        }
+
+        case xpFree: {
+            if (ptr != NULL) {
+                // 查找记录
+                xpHeapRecordEntry* entry = xp_hash_map_get(record_allocator->records, ptr);
+
+                if (entry != NULL) {
+                    // 更新统计信息
+                    record_allocator->stats.total_frees++;
+                    record_allocator->stats.current_allocs--;
+                    record_allocator->stats.freed_bytes += entry->size;
+                    record_allocator->stats.current_bytes -= entry->size;
+
+                    // 从记录中移除
+                    xp_hash_map_remove(&record_allocator->records, ptr);
+                }
+
+                // 执行实际释放
+                xp_free(record_allocator->backing_allocator, ptr);
+            }
+            break;
+        }
+
+        case xpRealloc: {
+            if (ptr == NULL) {
+                // 相当于分配新内存
+                result = xp_alloc(record_allocator->backing_allocator, size);
+                if (result != NULL) {
+                    xpHeapRecordEntry entry = {};
+                    entry.ptr = result;
+                    entry.size = size;
+                    entry.timestamp = xp_heap_record_get_timestamp();
+                    entry.file = NULL;
+                    entry.line = 0;
+
+                    xp_hash_map_insert(&record_allocator->records, result, entry);
+
+                    record_allocator->stats.total_allocs++;
+                    record_allocator->stats.current_allocs++;
+                    record_allocator->stats.total_bytes += size;
+                    record_allocator->stats.current_bytes += size;
+
+                    if (record_allocator->stats.current_bytes > record_allocator->stats.peak_bytes) {
+                        record_allocator->stats.peak_bytes = record_allocator->stats.current_bytes;
+                    }
+                }
+            } else {
+                // 查找旧记录
+                xpHeapRecordEntry* old_entry = xp_hash_map_get(record_allocator->records, ptr);
+
+                if (old_entry != NULL) {
+                    // 执行实际重分配
+                    result = xp_realloc(record_allocator->backing_allocator, ptr, size, old_size);
+
+                    if (result != NULL) {
+                        // 移除旧记录
+                        xp_hash_map_remove(&record_allocator->records, ptr);
+
+                        // 更新统计信息
+                        record_allocator->stats.freed_bytes += old_entry->size;
+                        record_allocator->stats.current_bytes -= old_entry->size;
+
+                        // 添加新记录
+                        xpHeapRecordEntry new_entry = {};
+                        new_entry.ptr = result;
+                        new_entry.size = size;
+                        new_entry.timestamp = xp_heap_record_get_timestamp();
+                        new_entry.file = old_entry->file;
+                        new_entry.line = old_entry->line;
+
+                        xp_hash_map_insert(&record_allocator->records, result, new_entry);
+
+                        record_allocator->stats.total_allocs++;
+                        record_allocator->stats.total_bytes += size;
+                        record_allocator->stats.current_bytes += size;
+
+                        if (record_allocator->stats.current_bytes > record_allocator->stats.peak_bytes) {
+                            record_allocator->stats.peak_bytes = record_allocator->stats.current_bytes;
+                        }
+                    }
+                } else {
+                    // 找不到旧记录，直接透传给底层分配器（不跟踪）
+                    result = xp_realloc(record_allocator->backing_allocator, ptr, size, old_size);
+                }
+            }
+            break;
+        }
+
+        case xpFreeAll: {
+            // 释放所有记录的内存
+            xpHashMapEntry<void*, xpHeapRecordEntry>* entry = NULL;
+            isize pos = xp_hash_map_first_entry(&record_allocator->records, &entry);
+
+            while (pos != END_OF_HASH_MAP_INDEX) {
+                xp_free(record_allocator->backing_allocator, entry->value.ptr);
+                pos = xp_hash_map_next_entry(&record_allocator->records, pos, &entry);
+            }
+
+            // 清空记录和统计信息
+            xp_hash_map_clear(&record_allocator->records);
+            xp_zero(&record_allocator->stats, sizeof(xpHeapRecordStats));
+
+            // 调用底层分配器的free_all（如果支持）
+            xp_free_all(record_allocator->backing_allocator);
+            break;
+        }
+
+        default: {
+            XP_ASSERT_DEFAULT(0);
+            break;
+        }
+    }
+
+    return result;
+}
+
+// 创建新的独立监控分配器
+xpAllocator xp_heap_record_allocator_create_new() {
+    // 直接创建底层普通堆分配器，避免递归
+    xpAllocator backing = xp_pure_heap_allocator();
+
+    // 分配监控分配器结构体
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)xp_alloc(backing, sizeof(xpHeapRecordAllocator));
+    xp_zero(record_allocator, sizeof(xpHeapRecordAllocator));
+
+    record_allocator->backing_allocator = backing;
+    record_allocator->records = xp_hash_map_make<void*, xpHeapRecordEntry>(backing);
+    record_allocator->track_locations = false;
+    record_allocator->auto_report_on_destroy = true;
+
+    // 初始化统计信息
+    xp_zero(&record_allocator->stats, sizeof(xpHeapRecordStats));
+
+    // 返回包装后的分配器
+    xpAllocator result;
+    result.proc = xp_heap_record_allocator_proc;
+    result.data = record_allocator;
+
+    return result;
+}
+
+// 获取全局单例监控分配器
+xpAllocator xp_heap_record_allocator() {
+    struct StaticAllocatorHolder {
+        xpAllocator allocator;
+
+        StaticAllocatorHolder() {
+            allocator = xp_heap_record_allocator_create_new();
+        }
+
+        ~StaticAllocatorHolder() {
+            // 程序退出时自动报告泄漏
+            xp_heap_record_destroy(allocator, true);
+        }
+    };
+
+    static StaticAllocatorHolder holder;
+    return holder.allocator;
+}
+
+// 创建新的独立监控分配器（带位置跟踪）
+xpAllocator xp_heap_record_allocator_create_new_with_location_tracking() {
+    xpAllocator allocator = xp_heap_record_allocator_create_new();
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+    record_allocator->track_locations = true;
+    return allocator;
+}
+
+// 获取全局单例监控分配器（带位置跟踪）
+xpAllocator xp_heap_record_allocator_with_location_tracking() {
+    struct StaticAllocatorHolder {
+        xpAllocator allocator;
+
+        StaticAllocatorHolder() {
+            allocator = xp_heap_record_allocator_create_new_with_location_tracking();
+        }
+
+        ~StaticAllocatorHolder() {
+            // 程序退出时自动报告泄漏
+            xp_heap_record_destroy(allocator, true);
+        }
+    };
+
+    static StaticAllocatorHolder holder;
+    return holder.allocator;
+}
+
+// 销毁全局单例监控分配器
+void xp_heap_record_destroy_global(b8 report_leaks) {
+    // 由于使用了静态持有器，全局单例会在程序退出时自动销毁
+    // 这个函数留作兼容性接口，手动触发报告
+    xpAllocator instance = xp_heap_record_allocator();
+    if (report_leaks) {
+        xp_heap_record_check_leaks(instance);
+    }
+}
+
+// 全局单例版本：获取统计信息
+xpHeapRecordStats xp_heap_record_get_stats() {
+    return xp_heap_record_get_stats(xp_heap_record_allocator());
+}
+
+// 全局单例版本：打印统计信息
+void xp_heap_record_print_stats() {
+    xp_heap_record_print_stats(xp_heap_record_allocator());
+}
+
+// 全局单例版本：打印内存泄漏
+void xp_heap_record_print_leaks() {
+    xp_heap_record_print_leaks(xp_heap_record_allocator());
+}
+
+// 全局单例版本：检查内存泄漏
+isize xp_heap_record_check_leaks() {
+    return xp_heap_record_check_leaks(xp_heap_record_allocator());
+}
+
+// 获取监控分配器的统计信息
+xpHeapRecordStats xp_heap_record_get_stats(xpAllocator allocator) {
+    XP_ASSERT_DEFAULT(allocator.proc == xp_heap_record_allocator_proc);
+    XP_ASSERT_DEFAULT(allocator.data != NULL);
+
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+    return record_allocator->stats;
+}
+
+// 辅助函数：格式化字节大小
+xp_internal void xp_format_bytes(isize bytes, char* buffer, isize buffer_size) {
+    XP_ASSERT_DEFAULT(buffer != NULL && buffer_size > 0);
+
+    if (bytes == 0) {
+        snprintf(buffer, buffer_size, "0B");
+        return;
+    }
+
+    isize remaining = bytes;
+    isize gb = remaining / (1024 * 1024 * 1024);
+    remaining %= (1024 * 1024 * 1024);
+
+    isize mb = remaining / (1024 * 1024);
+    remaining %= (1024 * 1024);
+
+    isize kb = remaining / 1024;
+    remaining %= 1024;
+
+    isize b = remaining;
+
+    buffer[0] = '\0';
+    isize offset = 0;
+
+    if (gb > 0) {
+        offset += snprintf(buffer + offset, buffer_size - offset, "%lldGB", gb);
+    }
+
+    if (mb > 0) {
+        if (offset > 0) {
+            offset += snprintf(buffer + offset, buffer_size - offset, "+");
+        }
+        offset += snprintf(buffer + offset, buffer_size - offset, "%lldMB", mb);
+    }
+
+    if (kb > 0) {
+        if (offset > 0) {
+            offset += snprintf(buffer + offset, buffer_size - offset, "+");
+        }
+        offset += snprintf(buffer + offset, buffer_size - offset, "%lldKB", kb);
+    }
+
+    if (b > 0) {
+        if (offset > 0) {
+            offset += snprintf(buffer + offset, buffer_size - offset, "+");
+        }
+        snprintf(buffer + offset, buffer_size - offset, "%lldB", b);
+    }
+}
+
+// 打印内存使用统计报告
+void xp_heap_record_print_stats(xpAllocator allocator) {
+    XP_ASSERT_DEFAULT(allocator.proc == xp_heap_record_allocator_proc);
+    XP_ASSERT_DEFAULT(allocator.data != NULL);
+
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+    xpHeapRecordStats* stats = &record_allocator->stats;
+
+    char total_bytes[32], freed_bytes[32], current_bytes[32], peak_bytes[32];
+    xp_format_bytes(stats->total_bytes, total_bytes, sizeof(total_bytes));
+    xp_format_bytes(stats->freed_bytes, freed_bytes, sizeof(freed_bytes));
+    xp_format_bytes(stats->current_bytes, current_bytes, sizeof(current_bytes));
+    xp_format_bytes(stats->peak_bytes, peak_bytes, sizeof(peak_bytes));
+
+    printf("=== Heap Memory Allocator Stats ===\n");
+    printf("Total allocations:    %lld\n", stats->total_allocs);
+    printf("Total frees:          %lld\n", stats->total_frees);
+    printf("Current allocations:  %lld\n", stats->current_allocs);
+    printf("Total bytes allocated:%s\n", total_bytes);
+    printf("Total bytes freed:    %s\n", freed_bytes);
+    printf("Current bytes used:   %s\n", current_bytes);
+    printf("Peak bytes used:      %s\n", peak_bytes);
+    printf("===================================\n");
+}
+
+// 打印所有未释放的内存分配（内存泄漏报告）
+void xp_heap_record_print_leaks(xpAllocator allocator) {
+    XP_ASSERT_DEFAULT(allocator.proc == xp_heap_record_allocator_proc);
+    XP_ASSERT_DEFAULT(allocator.data != NULL);
+
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+
+    if (record_allocator->stats.current_allocs == 0) {
+        printf("No memory leaks detected!\n");
+        return;
+    }
+
+    printf("Memory leak report: %lld unfreed allocations found\n", record_allocator->stats.current_allocs);
+    printf("===================================\n");
+
+    xpHashMapEntry<void*, xpHeapRecordEntry>* entry = NULL;
+    isize pos = xp_hash_map_first_entry(&record_allocator->records, &entry);
+    isize index = 0;
+
+    while (pos != END_OF_HASH_MAP_INDEX) {
+        char size_str[32];
+        xp_format_bytes(entry->value.size, size_str, sizeof(size_str));
+
+        printf("Leak #%lld: Address %p, Size: %s (alloc #%lld)",
+               index++, entry->value.ptr, size_str, entry->value.timestamp);
+
+        if (entry->value.file != NULL) {
+            printf(" at %s:%lld", entry->value.file, entry->value.line);
+        }
+        printf("\n");
+
+        pos = xp_hash_map_next_entry(&record_allocator->records, pos, &entry);
+    }
+    printf("===================================\n");
+}
+
+// 手动检查并报告内存泄漏，返回泄漏数量
+isize xp_heap_record_check_leaks(xpAllocator allocator) {
+    XP_ASSERT_DEFAULT(allocator.proc == xp_heap_record_allocator_proc);
+    XP_ASSERT_DEFAULT(allocator.data != NULL);
+
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+
+    if (record_allocator->stats.current_allocs > 0) {
+        xp_heap_record_print_leaks(allocator);
+    }
+
+    return record_allocator->stats.current_allocs;
+}
+
+// 销毁监控分配器，可选是否报告泄漏
+void xp_heap_record_destroy(xpAllocator allocator, b8 report_leaks) {
+    XP_ASSERT_DEFAULT(allocator.proc == xp_heap_record_allocator_proc);
+    XP_ASSERT_DEFAULT(allocator.data != NULL);
+
+    xpHeapRecordAllocator* record_allocator = cast(xpHeapRecordAllocator*)allocator.data;
+    xpAllocator backing_allocator = record_allocator->backing_allocator;
+
+    // 报告泄漏
+    if (report_leaks || record_allocator->auto_report_on_destroy) {
+        xp_heap_record_check_leaks(allocator);
+    }
+
+    // 释放所有未释放的内存
+    xp_free_all(allocator);
+
+    // 释放哈希表
+    xp_hash_map_free(record_allocator->records);
+
+    // 释放监控分配器本身
+    xp_free(backing_allocator, record_allocator);
+}
 
 size_t xp_strlen_char32(const char32_t *s) {
     if (!s) return 0;
@@ -2630,7 +3140,7 @@ size_t xp_strlen_char32(const char32_t *s) {
 }
 
 
-#endif
+#endif // __cplusplus
 
 
 
