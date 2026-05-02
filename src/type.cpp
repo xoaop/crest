@@ -664,6 +664,10 @@ void init_type_table(Context *ctx) {
     xp_interning_table_init(&global_type_table.type_interning_table);
 }
 
+void free_type_table(Context *ctx) {
+    xp_interning_table_free(&global_type_table.type_interning_table);
+}
+
 
 TypeRef easy_type(TypeKind kind) {
     XP_ASSERT_DEFAULT(is_easy_type_kind(kind));
