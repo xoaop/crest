@@ -43,8 +43,8 @@ TypeRef resolve_type(Ast *type_ast, Analyser analyser);
 
 
 // NOTE: for evaluator.hpp/cpp
-Value resolve_comptime_expr(Ast *expr, Analyser analyser);
-void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser);
+Value resolve_comptime_expr(Ast *expr, Analyser analyser, TypeRef target_typ = nullptr);
+void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
 
 
 

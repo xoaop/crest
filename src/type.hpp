@@ -120,7 +120,8 @@ struct Type {
         return is_equal_type(*this, other);
     }
 
-    xpString name();
+    xpString name();   // 符号名, 可能是结构体的名字, 包的名字, 基本类型的名字等
+    xpString t_name(); // 纯类型名, 可能是type(struct)
 };
 
 
@@ -196,9 +197,9 @@ bool check_float_overflow(double val, TypeRef type);
 
 
 
-xpString get_type_name(TypeRef type);
+xpString get_type_name(TypeRef type, bool is_pure_type_name = false);
 xpString get_type_kind_str(TypeKind kind);
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator);
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name = false);
 
 
 void print_type(TypeRef type);

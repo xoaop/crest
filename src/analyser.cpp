@@ -99,11 +99,10 @@ void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyse
 void resolve_ast_file(AstFile *ast_file, Analyser analyser);
 void resolve_top_stmt(Ast *ast, Analyser analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
-TypeRef resolve_function_value_type(Ast *value, Analyser analyser);
+TypeRef resolve_function_decl_type(Ast *value, Analyser analyser);
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
-void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 TypeRef resolve_type(Ast *type_ast, Analyser analyser);
@@ -165,7 +164,6 @@ static void init_global_symbols() {
     }
 
 
-    // TODO 添加全局符号, 如string类型
     {
         xpString string_struct_name = xp_string_c("string");
 
@@ -280,9 +278,11 @@ void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
 
 
 
-Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
+Value resolve_comptime_expr(Ast *expr, Analyser analyser, TypeRef target_type) {
     resolve_expr(expr, analyser);
-    infer_expr_type(expr, false, NULL, analyser, true);
+
+    // @Robostness: target_type 目前只用在遇到untyped_type可能需要转化的情况
+    infer_expr_type(expr, (target_type != nullptr), target_type, analyser, true);
 
     if(expr->v_type == error_type()) {
         return make_error_value();
@@ -293,8 +293,15 @@ Value resolve_comptime_expr(Ast *expr, Analyser analyser) {
     if(result.is_err()) {
         return make_error_value();
     }
+
+
+    // @Robostness: 只有result类型为untyped_type才可能需要同步
+    // TODO: 统一同步Value的类型和AST的类型
+    // 把类型设置为expr的类型, 以便后续使用
+    Value val = result.as_ok();
+    val.set_type(expr->v_type);
     
-    return result.as_ok();
+    return val;
 }
 
 
@@ -448,7 +455,7 @@ void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
 }
 
 
-void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
+void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type) {
 
 
     xpString const_ident = const_decl_ast->ConstDecl.name;
@@ -485,13 +492,13 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser) {
       } break;
 
       case AstType_StructDeclValue: {
-        val = eval_struct_decl_value(val_ast, const_ident, analyser);
+        val = eval_struct_decl(val_ast, const_ident, analyser);
       } break;
 
 
 
       default: {
-        val = resolve_comptime_expr(val_ast, analyser);
+        val = resolve_comptime_expr(val_ast, analyser, target_type);
       } break;  
     }
 
@@ -562,7 +569,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         
         // TODO 用现有的eval_comptime_expr代替, 添加针对var_decl的特殊处理, 以支持更多的表达式类型
         // 目前存在报错重复, 诸如array init, struct init等不支持
-        // ValueResult try_const_val = eval_comptime_expr(var_decl_ast->VariableDecl.expr, analyser);
+        ValueResult try_const_val = eval_comptime_expr(var_decl_ast->VariableDecl.expr, analyser, true);
         // TODO: 如果值无问题, 尝试记录下来, 以便后续编译优化使用
     }
 

@@ -125,6 +125,10 @@ xpString Type::name() {
     return get_type_name(this);
 }
 
+xpString Type::t_name() {
+    return get_type_name(this, true);
+}
+
 
 
 //
@@ -878,7 +882,7 @@ xpString get_type_kind_str(TypeKind kind) {
     return xp_string_c(type_strings[kind]);
 }
 
-xpString get_type_name(TypeRef type) {
+xpString get_type_name(TypeRef type, bool is_pure_type_name) {
 
     // 如果已经有名字就直接返回
     if(type->type_name.capacity != 0) {
@@ -890,13 +894,13 @@ xpString get_type_name(TypeRef type) {
         xpAutoArenaRestore::Mode::RestoreOnly
     };
 
-    type->type_name = get_or_make_type_str(type, permanent_allocator());
+    type->type_name = get_or_make_type_str(type, permanent_allocator(), is_pure_type_name);
 
     return type->type_name;
 }
 
 
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
+xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name) {
 
     if(is_easy_type_kind(type->kind)) {
 
@@ -905,15 +909,20 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
         xpString base_str = xp_make_string(allocator, "*");
 
         // 因为可能有多级指针，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator());
+        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator(), is_pure_type_name);
 
         xp_string_append(&base_str, pointed_type_str);
 
         return base_str;
 
     } else if(is_struct_type(type) || type->kind == Type_enum) {
-        // 直接用类型名
 
+        // 如果是纯类型名, 就直接返回类型的kind字符串, 否则返回类型名
+        if(is_pure_type_name) {
+            return get_type_kind_str(type->kind);
+        }
+        
+        // 直接用类型名
         return type->type_name;
 
     } else if(is_array_type(type)) {
@@ -925,7 +934,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
         xp_string_append(&base_str, xp_string_c("]"));
 
         // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator());
+        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name);
 
         xp_string_append(&base_str, elem_type_str);
 
@@ -936,7 +945,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
 
         for(isize i = 0; i < type->function_info.param_types.count; i++) {
 
-            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator());
+            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), is_pure_type_name);
             xp_string_append(&func_str, param_type_str);
 
             if(i != type->function_info.param_types.count - 1) {
@@ -947,7 +956,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
             xpString rb_arrow_str = xp_string_c(") -> ");
             xp_string_append(&func_str, rb_arrow_str);
 
-            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator());
+            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name);
             xp_string_append(&func_str, return_type_str);
 
             return func_str;
@@ -956,7 +965,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator) {
     } else if(is_type_type(type)) {
 
         xpString type_str = xp_make_string(allocator, "type(");
-        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator());
+        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name);
         xp_string_append(&type_str, self_type_str);
         xp_string_append(&type_str, xp_string_c(")"));
         return type_str;

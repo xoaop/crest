@@ -69,30 +69,38 @@ Type Definitions
     typedef usize uintptr;
 
 
-
+#if defined(XOAOP_I128_SUPPORT)
 
 #if defined(__clang__) || defined(__GNUC__)
     typedef __int128_t i128;
 #elif defined(_MSC_VER) 
-    /* MSVC does not support __int128, so i128 is not defined */
+    error("i128 not supported on MSVC");
 #endif
 
-#if defined(__clang__) || defined(__GNUC__)
+
 #define I128_MIN (((i128)1) << 127)
 #define I128_MAX ((((~(i128)0) >> 1)))
-#endif
 
 
-    void print_i128(i128 n);
+xp_define void print_i128(i128 n);
 
-    bool xp_check_i128_add_overflow(i128 a, i128 b, i128 *result);
-    bool xp_check_i128_sub_overflow(i128 a, i128 b, i128 *result);
-    bool xp_check_i128_mul_overflow(i128 a, i128 b, i128 *result);
-    bool xp_check_i128_div_overflow(i128 a, i128 b, i128 *result);
-    bool xp_check_i128_mod_overflow(i128 a, i128 b, i128 *result);
-    bool xp_check_i128_neg_overflow(i128 a, i128 *result);
+xp_define bool xp_check_i128_add_overflow(i128 a, i128 b, i128 *result);
+xp_define bool xp_check_i128_sub_overflow(i128 a, i128 b, i128 *result);
+xp_define bool xp_check_i128_mul_overflow(i128 a, i128 b, i128 *result);
+xp_define bool xp_check_i128_div_overflow(i128 a, i128 b, i128 *result);
+xp_define bool xp_check_i128_mod_overflow(i128 a, i128 b, i128 *result);
+xp_define bool xp_check_i128_neg_overflow(i128 a, i128 *result);
 
-    bool xp_check_f64_is_inf(f64 value);
+
+
+
+xp_define b32 xp_str_to_integer(char const *str, i128 *result);
+
+#endif // XOAOP_I128_SUPPORT
+
+
+bool xp_check_f64_is_inf(f64 value);
+
 
 
 /*
@@ -180,7 +188,7 @@ xp_define b32 xp_is_space(char c);
 xp_define b32 xp_is_digit_base_all(char c);
 
 xp_define b32 xp_str_to_num_base(char const *str, u32 base, u64 *result);
-xp_define b32 xp_str_to_integer(char const *str, i128 *result);
+
 
 
 #define xp_array_len(array) (sizeof(array) / sizeof(array[0]))
@@ -1517,6 +1525,41 @@ struct std::formatter<xpString> : std::formatter<std::string_view> {
 };
 
 
+
+#if defined(XOAOP_I128_SUPPORT)
+
+template<>
+struct std::formatter<i128>: std::formatter<std::string_view> {
+    using std::formatter<std::string_view>::parse;
+
+    auto format(const i128& value, std::format_context& ctx) const {
+        // 将i128转换为字符串
+        char buffer[64]; // 足够大以容纳i128的字符串表示
+
+        char *ptr = buffer + sizeof(buffer) - 1;
+        *ptr = '\0'; // null-terminate
+
+        i128 temp = value < 0 ? -value : value; // 处理负数
+        // 逐位转换为字符串
+        do {
+            --ptr;
+            *ptr = '0' + (temp % 10);
+            temp /= 10;
+        } while (temp != 0);
+
+        if(value < 0) {
+            --ptr;
+            *ptr = '-';
+        }
+        
+        
+        return std::formatter<std::string_view>::format(std::string_view(ptr, buffer + sizeof(buffer) - ptr - 1), ctx);
+    }
+};
+
+
+
+#endif // XOAOP_i128_SUPPORT
 
 
 

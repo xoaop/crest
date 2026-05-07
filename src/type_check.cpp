@@ -10,6 +10,8 @@ bool check_untyped_int_to_type(i128 value, TypeRef target_type) {
         return false;
     }
 
+
+    // TODO: 把溢出检查统一到eval_comptime_expr里
     // 在整数的基础上, 再检查溢出
     return !check_integer_overflow(value, target_type);
 }
@@ -20,6 +22,7 @@ bool check_untyped_float_to_type(double value, TypeRef target_type) {
         return false;
     }
 
+    // TODO: 把溢出检查统一到eval_comptime_expr里
     // 在浮点数的基础上, 再检查溢出
     return !check_float_overflow(value, target_type);
 }
@@ -1139,11 +1142,11 @@ TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyse
                 infer_expr_type(expr->FunctionCallExpr.args[i], false, nullptr, analyser, false);
 
                 if(expr->FunctionCallExpr.args[i]->v_type == error_type()) {
-                    context()->reporter.report_error(
-                        expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
-                        "unable to infer type of argument {} for variadic parameter of function '{}'",
-                        i + 1, info->name
-                    );
+                    // context()->reporter.report_error(
+                    //     expr->FunctionCallExpr.args[i]->span, analyser.curr_ast_file->source_code,
+                    //     "unable to infer type of argument {} for variadic parameter of function '{}'",
+                    //     i + 1, info->name
+                    // );
                     has_error = true;
                     break;
                 }
