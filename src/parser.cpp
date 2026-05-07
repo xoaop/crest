@@ -274,6 +274,7 @@ Ast *parse_union_decl(Parser *p) {
         Ast *type_ast = parse_type(p);
 
         
+        // TODO: 换掉StructField这个名字, 因为它现在不仅仅用于struct了, union的字段也复用了这个AST节点, 但是StructField这个名字又不太合适, 先暂时这样吧
         Ast *field_ast = ast_alloc(AstType_StructField, field_name_token);
         field_ast->StructField.name = field_name_token.token_str;
         field_ast->StructField.type_ast = type_ast;
@@ -293,7 +294,7 @@ Ast *parse_union_decl(Parser *p) {
 }
 
 
-Ast *parse_struct_value(Parser *p) {
+Ast *parse_struct_decl(Parser *p) {
     auto name_succ = expect2(p, TokenType::KW_struct);
     
     expect(p, TokenType::LeftCurlyBracket);
@@ -481,7 +482,7 @@ Ast *parse_const_decl(Parser *p) {
     Token curr = curr_token(p);
     switch(curr_token(p).type) {
     case TokenType::KW_struct: 
-        value_ast = parse_struct_value(p);
+        value_ast = parse_struct_decl(p);
         break;
     case TokenType::LeftBracket: 
         value_ast = parse_function_value(p);
@@ -1279,7 +1280,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     }
 
-    
+    // TODO: 统一
     // 检查溢出(类型)
     if(type_kind != Type_Undefined) {
         if(check_integer_overflow(val, easy_type(type_kind))) {
@@ -1354,6 +1355,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         );
     }
 
+    // TODO: 统一
     // 检查溢出(类型)
     if(type_kind != Type_Undefined) {
         if(check_float_overflow(val, easy_type(type_kind))) {

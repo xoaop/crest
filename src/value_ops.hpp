@@ -16,6 +16,8 @@ ValueResult unary_arithmetic_value(Value& v, TokenType op_type);
 // 一元布尔运算, 目前只有逻辑非
 ValueResult unary_boolean_value(Value& v, TokenType op_type);
 
+// 处理类型转化
+ValueResult eval_cast_expr(Value& v, TypeRef target_type);
 
 
 #endif // CREST_VALUE_OPS_HPP

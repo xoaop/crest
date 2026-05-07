@@ -118,6 +118,8 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser) {
 
 
 
+
+
 //
 // 2. Evaluate unsolved symbol
 //
@@ -156,16 +158,16 @@ void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
     // TODO: 避免const_val->val_ast被新值覆盖, llvm ir生成要用
     switch(val_ast->type) {
     case AstType_StructDeclValue: 
-        eval_struct_decl_value_in_symbol_table(unsolved_symbol, analyser);
+        eval_struct_decl_in_symbol_table(unsolved_symbol, analyser);
         break;
 
     case AstType_FunctionDeclValue: 
-        *const_val = eval_function_decl_value_only_type(val_ast, analyser);
+        *const_val = eval_function_decl_only_type(val_ast, analyser);
         const_val->val_ast = const_decl_ast;
         break;
 
     case AstType_Import: 
-        *const_val = eval_import_value(val_ast, analyser);
+        *const_val = eval_import_decl(val_ast, analyser);
         break;
     
     case AstType_EnumDecl:
@@ -193,12 +195,15 @@ void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser) {
 
 
 
+
+
+
 // 
 // 3. evaluate values
 // 
 
 
-Value eval_import_value(Ast *import_ast, Analyser analyser) {
+Value eval_import_decl(Ast *import_ast, Analyser analyser) {
 
     // 查找被import的package
     xpOption<Package *> imported_package_opt = get_package_by_import(
@@ -224,7 +229,7 @@ Value eval_import_value(Ast *import_ast, Analyser analyser) {
 }    
 
 
-TypeRef resolve_function_value_type(Ast *value, Analyser analyser) {
+TypeRef resolve_function_decl_type(Ast *value, Analyser analyser) {
     Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
     for(isize i = 0; i < value->FunctionDeclValue.params.count; i++) {
         Ast *param_ast = value->FunctionDeclValue.params[i];
@@ -254,9 +259,9 @@ TypeRef resolve_function_value_type(Ast *value, Analyser analyser) {
 
 
 // NOTE: 只解析了类型, 没有解析函数体, 为了避免解析到未解析的顶层符号
-Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser) {
+Value eval_function_decl_only_type(Ast *fn_val_ast, Analyser analyser) {
     Value func_value = make_comptime_sovled_val(
-        resolve_function_value_type(fn_val_ast, analyser)
+        resolve_function_decl_type(fn_val_ast, analyser)
     );
     func_value.set_function_value(fn_val_ast, fn_val_ast->FunctionDeclValue.is_extern_c);
 
@@ -265,7 +270,7 @@ Value eval_function_decl_value_only_type(Ast *fn_val_ast, Analyser analyser) {
 
 
 
-void eval_struct_decl_value_in_symbol_table(SymbolInfo *struct_symbol_info, Analyser analyser) {
+void eval_struct_decl_in_symbol_table(SymbolInfo *struct_symbol_info, Analyser analyser) {
     XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast != NULL);
     XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast->type == AstType_ConstDecl);
     XP_ASSERT_DEFAULT(struct_symbol_info->value.val_ast->ConstDecl.value_ast->type == AstType_StructDeclValue);
@@ -353,11 +358,14 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             }
 
             if(value.is_runtime_value) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "cannot use runtime value '{}' in constant expression",
-                    expr->Ident.name
-                );
+
+                if(!is_runtime_expr) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "cannot use runtime value '{}' in constant expression",
+                        expr->Ident.name
+                    );
+                }
                 return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
             }
 
@@ -372,11 +380,43 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         } break;
 
         case AstType_Constant: {
+            // TODO: 这里可能还需要检查常量值的类型是否合法, 以及是否溢出等
+            Value &val = expr->Constant.value;
+            if(val.has_error()) {
+                return ValueResult::err(ValueErrorKind::ErrorValue);
+            }
+
+
+            // 溢出检查
+            if(is_integer_type(expr->v_type)) {
+                if(check_integer_overflow(val.get_integer(), expr->v_type)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "{} is out of range for type '{}'",
+                        val.get_integer(),
+                        expr->v_type->name()
+                    );
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+            } else if(is_float_type(expr->v_type)) {
+                if(check_float_overflow(val.get_float(), expr->v_type)) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "{} is out of range for type '{}'",
+                        val.get_float(),
+                        expr->v_type->name()
+                    );
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+            }
+
+
+
             return ValueResult::ok(expr->Constant.value);
         } break;
 
         case AstType_FieldAccess: {
-            ValueResult parent_result = eval_comptime_expr(expr->FieldAccess.parent, analyser);
+            ValueResult parent_result = eval_comptime_expr(expr->FieldAccess.parent, analyser, is_runtime_expr);
             if(parent_result.is_err()) {
                 return parent_result;
             }
@@ -388,10 +428,12 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             }
 
             if(parent_value.is_runtime_value) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "cannot use runtime value in constant expression"
-                );
+                if(!is_runtime_expr) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "cannot use runtime value in constant expression"
+                    );
+                }
                 return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
             }
 
@@ -408,10 +450,12 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
                 }
 
                 if(field_sym->value.is_runtime_value) {
-                    context()->reporter.report_error(
-                        expr->span, analyser.curr_ast_file->source_code,
-                        "cannot use runtime value in constant expression"
-                    );
+                    if(!is_runtime_expr) {
+                        context()->reporter.report_error(
+                            expr->span, analyser.curr_ast_file->source_code,
+                            "cannot use runtime value in constant expression"
+                        );
+                    }
                     return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
                 }
 
@@ -433,8 +477,8 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
 
         case AstType_BinaryExpr: {
-            ValueResult left_result = eval_comptime_expr(expr->BinaryExpr.left, analyser);
-            ValueResult right_result = eval_comptime_expr(expr->BinaryExpr.right, analyser);
+            ValueResult left_result = eval_comptime_expr(expr->BinaryExpr.left, analyser, is_runtime_expr);
+            ValueResult right_result = eval_comptime_expr(expr->BinaryExpr.right, analyser, is_runtime_expr);
             if(left_result.is_err()) {
                 return left_result;
             }
@@ -448,10 +492,17 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             ValueResult compute_result = eval_binary_expr(left, right, expr->BinaryExpr.op);
 
             if(compute_result.is_err()) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "invalid constant expression"
-                );
+                ValueErrorKind error_kind = compute_result.as_err();
+                if(error_kind == ValueErrorKind::UsingRuntimeValue && is_runtime_expr) {
+
+                    // 遇到无法编译时求值的表达式, 如果是运行时表达式, 直接返回, 不报错
+                    return compute_result;
+                } else {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "invalid constant expression"
+                    );
+                }
             }
             
             return compute_result;
@@ -459,7 +510,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         } break;
 
         case AstType_UnaryExpr: {
-            ValueResult operand_result = eval_comptime_expr(expr->UnaryExpr.operand, analyser);
+            ValueResult operand_result = eval_comptime_expr(expr->UnaryExpr.operand, analyser, is_runtime_expr);
 
             if(operand_result.is_err()) {
                 return operand_result;
@@ -469,10 +520,17 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             ValueResult compute_result = eval_unary_expr(operand, expr->UnaryExpr.op);
 
             if(compute_result.is_err()) {
-                context()->reporter.report_error(
-                    expr->span, analyser.curr_ast_file->source_code,
-                    "invalid constant expression"
-                );    
+                ValueErrorKind error_kind = compute_result.as_err();
+                if(error_kind == ValueErrorKind::UsingRuntimeValue && is_runtime_expr) {
+
+                    // 遇到无法编译时求值的表达式, 如果是运行时表达式, 直接返回, 不报错
+                    return compute_result;
+                } else {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "invalid constant expression"
+                    );    
+                }
             }
 
             return compute_result;
@@ -480,24 +538,51 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         } break;
 
         case AstType_CastExpr: {
-            ValueResult operand_result = eval_comptime_expr(expr->CastExpr.expr, analyser);
+            ValueResult operand_result = eval_comptime_expr(expr->CastExpr.expr, analyser, is_runtime_expr);
 
             if(operand_result.is_err()) {
                 return operand_result;
             }
             Value operand = operand_result.as_ok();
 
-            // 直接修改为target type就行, 因为type check检查了
-            TypeRef target_type = expr->CastExpr.target_type;
-            operand.set_type(target_type);
+            ValueResult cast_result = eval_cast_expr(operand, expr->CastExpr.target_type);
 
-            return ValueResult::ok(operand);
+            if(cast_result.is_err()) {
+                ValueErrorKind error_kind = cast_result.as_err();
+
+                if(error_kind == ValueErrorKind::UsingRuntimeValue && is_runtime_expr) {
+                    // 运行时表达式不需要报错，直接返回错误码让上层处理
+                    return cast_result;
+                } else if(error_kind == ValueErrorKind::Overflow) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "type cast overflow: value cannot fit into target type '{}'",
+                        get_type_name(expr->CastExpr.target_type)
+                    );
+                } else if(error_kind == ValueErrorKind::TypeError) {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "unsupported type conversion from '{}' to '{}'",
+                        get_type_name(operand.type), get_type_name(expr->CastExpr.target_type)
+                    );
+                } else {
+                    context()->reporter.report_error(
+                        expr->span, analyser.curr_ast_file->source_code,
+                        "invalid constant cast expression"
+                    );
+                }
+
+                return cast_result;
+            }
+
+            // 移除旧的TODO注释，功能已经完整实现
+            return cast_result;
         } break;
 
         case AstType_ArrayInitExpr: {
             Array<Value> element_values = make_array<Value>(stage_allocator());
             for(Ast *elem_expr_ast: expr->ArrayInitExpr.elements) {
-                ValueResult elem_expr_result = eval_comptime_expr(elem_expr_ast, analyser);
+                ValueResult elem_expr_result = eval_comptime_expr(elem_expr_ast, analyser, is_runtime_expr);
                 if(elem_expr_result.is_err()) {
                     return elem_expr_result;
                 }
@@ -514,7 +599,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
             Array<Value> field_values = make_array<Value>(stage_allocator());
             for(isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
                 Ast *field_init_ast = expr->StructInitExpr.field_inits[i];
-                ValueResult field_init_result = eval_comptime_expr(field_init_ast, analyser);
+                ValueResult field_init_result = eval_comptime_expr(field_init_ast, analyser, is_runtime_expr);
                 if(field_init_result.is_err()) {
                     return field_init_result;
                 }
@@ -528,11 +613,11 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         } break;
 
         case AstType_IndexExpr: {
-            ValueResult indexed_value_result = eval_comptime_expr(expr->IndexExpr.array_var_expr, analyser);
+            ValueResult indexed_value_result = eval_comptime_expr(expr->IndexExpr.array_var_expr, analyser, is_runtime_expr);
             if(indexed_value_result.is_err()) {
                 return indexed_value_result;
             }
-            ValueResult index_result = eval_comptime_expr(expr->IndexExpr.index_expr, analyser);
+            ValueResult index_result = eval_comptime_expr(expr->IndexExpr.index_expr, analyser, is_runtime_expr);
             if(index_result.is_err()) {
                 return index_result;
             }
@@ -595,11 +680,17 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
         } break;
 
         default: {
-            context()->reporter.report_error(
-                expr->span, analyser.curr_ast_file->source_code,
-                "unsupported expression in constant expression evaluation"
-            );
-            return ValueResult::err(ValueErrorKind::ErrorValue);
+            if(is_runtime_expr) {
+
+                // 遇到无法编译时求值的表达式, 如果是运行时表达式, 直接返回, 不报错
+                return ValueResult::err(ValueErrorKind::UsingRuntimeValue);
+            } else {
+                context()->reporter.report_error(
+                    expr->span, analyser.curr_ast_file->source_code,
+                    "unsupported expression in constant expression evaluation"
+                );
+                return ValueResult::err(ValueErrorKind::ErrorValue);
+            }
         } break;
 
     }
@@ -608,7 +699,7 @@ ValueResult eval_comptime_expr(Ast *expr, Analyser analyser, bool is_runtime_exp
 
 
 
-Value eval_struct_decl_value(Ast *struct_decl_ast, xpString ident, Analyser analyser) {
+Value eval_struct_decl(Ast *struct_decl_ast, xpString ident, Analyser analyser) {
     Array<StructField> fields = make_array<StructField>(stage_allocator());
     for(Ast *field_ast: struct_decl_ast->StructDeclValue.fields) {
         TypeRef field_type = resolve_type(field_ast->StructField.type_ast, analyser);
@@ -668,21 +759,29 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
     for(isize i = 0; i < enum_decl_ast->EnumDecl.fields.count; i++) {
         Ast *const_decl_or_ident = enum_decl_ast->EnumDecl.fields[i];
 
+
         if(const_decl_or_ident->type == AstType_ConstDecl) {
             // 有初始化的枚举字段, 作为ConstDecl解析, 限制值只能是对应整型值
             // @TODO:  我想这个idea可以泛化成namespace, 若不加限制的话, 当然enum本身还是要限制的
 
-            resolve_const_decl_local(const_decl_or_ident, analyser.set_current_scope(&enum_type->enum_info.enum_scope));
-
+            // TODO: 溢出检查
+            resolve_const_decl_local(const_decl_or_ident, analyser.set_current_scope(&enum_type->enum_info.enum_scope), elem_type);
+            
             curr_enum_sym = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->ConstDecl.name);
             
+            if(curr_enum_sym == nullptr) {
+                return make_error_value();
+            }
+
             // 检查枚举字段的值类型是否正确
             if(curr_enum_sym != nullptr) {
                 // 只要是整数类型或无类型常量就行
-                if(!is_integer_type(curr_enum_sym->value.type) && !is_untyped_type(curr_enum_sym->value.type)) {
+                if(!is_integer_type(curr_enum_sym->value.type)) {
                     context()->reporter.report_error(
                         const_decl_or_ident->span, analyser.curr_ast_file->source_code,
-                        "enum field initializer must be an integer constant"
+                        "this enum field's type should be {}, but got '{}'",
+                        elem_type->t_name(),
+                        curr_enum_sym->value.type->t_name()
                     );
                     return make_error_value();
                 }
@@ -692,6 +791,18 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
             }
 
         } else if(const_decl_or_ident->type == AstType_Ident) {
+
+            SymbolInfo *info = find_symbol_curr(&enum_type->enum_info.enum_scope, const_decl_or_ident->Ident.name);
+            if(info != nullptr) {
+                context()->reporter.report_error(
+                    const_decl_or_ident->span, analyser.curr_ast_file->source_code,
+                    "duplicate enum member name '{}'",
+                    const_decl_or_ident->Ident.name
+                );
+                return make_error_value();
+            }
+
+
             if(i == 0) {
                 // 第一个枚举成员如果没有初始化, 默认值是0
 
@@ -714,6 +825,16 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
 
                 // TODO: 溢出检查
                 i128 new_enum_value_int = prev_enum_sym->value.get_enum_value() + 1;
+
+                if(check_integer_overflow(new_enum_value_int, elem_type)) {
+                    context()->reporter.report_error(
+                        const_decl_or_ident->span, analyser.curr_ast_file->source_code,
+                        "enum value {} is out of bounds for type '{}'",
+                        new_enum_value_int, elem_type->type_name
+                    );
+                    return make_error_value();
+                }
+
                 Value new_enum_value = make_comptime_sovled_val(enum_type);
                 new_enum_value.set_integer_value(new_enum_value_int);
                 new_enum_value.set_type(enum_type);
@@ -740,4 +861,11 @@ Value eval_enum_decl(Ast *enum_decl_ast, xpString ident, Analyser analyser) {
 
     Value enum_value = make_comptime_sovled_val(type_type(enum_type));
     return enum_value;
+}
+
+
+Value eval_union_decl(Ast *union_decl_ast, xpString ident, Analyser analyser) {
+    XP_ASSERT_DEFAULT(union_decl_ast->type == AstType_UnionDecl);
+
+    return make_error_value();
 }
