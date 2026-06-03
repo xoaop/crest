@@ -1,17 +1,16 @@
 #include "value.hpp"
 #include "type.hpp"
 
-Value Value::set_is_runtime(bool is_or_not) {
-    is_runtime_value = is_or_not;
-    return *this;
+
+
+
+
+
+Value::Value() {
+    type = undefined_type();
 }
 
 
-
-Value Value::set_value_state(ValueState new_state) {
-    state = new_state;
-    return *this;
-}
 
 Value Value::set_type(TypeRef new_type) {
     type = new_type;
@@ -19,33 +18,13 @@ Value Value::set_type(TypeRef new_type) {
 }
 
 
-bool Value::has_error() {
-    return state == ValueState::Error || type == error_type();
-}
-
-
 Value make_value() {
     Value v = {};
     v.type = undefined_type();
-    v.state = ValueState::Unsolved;
-    v.is_runtime_value = false;
-    v.actual_kind = ActualValueKind::Integer; // 初始化默认值，避免未定义行为
-    // v.error_kind = ValueErrorKind::Other;
-
+    v.actual_kind = ActualValueKind::None; // 初始化默认值，避免未定义行为
     return v;
 }
 
-Value make_value(ValueState state) {
-    return make_value().set_value_state(state);
-}
-
-Value make_comptime_sovled_val(TypeRef type) {
-    return make_value(type).set_is_runtime(false).set_value_state(ValueState::Solved);
-}
-
-Value make_value_for_var_decl(TypeRef type) {
-    return make_value(type).set_is_runtime(true).set_value_state(ValueState::Solved);
-}
 
 
 Value make_value(TypeRef type) {
@@ -54,20 +33,8 @@ Value make_value(TypeRef type) {
     return v;
 }
 
-Value make_value(TypeRef type, bool is_runtime) {
-    Value v = make_value(type);
-    v.set_is_runtime(is_runtime);
 
-    return v;
-}
 
-Value make_error_value() {
-    Value v = make_value(ValueState::Error);
-    v.type = error_type();
-    return v;
-}
-
-// ========== set_actual_value 函数族实现 ==========
 void Value::set_integer_value(i128 value) {
     integer_value = value;
     actual_kind = ActualValueKind::Integer;
@@ -109,7 +76,15 @@ void Value::set_function_value(Ast* function_ast, bool is_extern_c) {
     actual_kind = ActualValueKind::Function;
 }
 
+void Value::set_package_value(Package* pkg) {
+    type = package_type(pkg);
+    actual_kind = ActualValueKind::Package;
+}
 
+void Value::set_type_value(TypeRef type_value) {
+    type = type_value;
+    actual_kind = ActualValueKind::Type;
+}
 
 
 
@@ -165,14 +140,15 @@ i128 Value::get_enum_value() const {
     return integer_value;
 }
 
-TypeRef Value::get_type_value() const {
-    XP_ASSERT_DEFAULT(is_type_type(type));
-    return type->self_type_info;
-}
 
 Package* Value::get_package_value() const {
     XP_ASSERT_DEFAULT(is_package_type(type));
     return type->package_info;
+}
+
+TypeRef Value::get_type_value() const {
+    XP_ASSERT_DEFAULT(is_type_type(type));
+    return type->self_type_info;
 }
 
 

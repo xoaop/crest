@@ -22,7 +22,6 @@
 
 #include "tokenizer.hpp"
 #include "common.hpp"
-#include "string_map.hpp"
 
 #include "context.hpp"
 
@@ -35,7 +34,7 @@ const char* token_strings[] = {
     #undef TOKEN_INFO
 };
 
-xp_global StringHashMap<TokenType> keyword_map;
+xp_global xpHashMap<xpString, TokenType> keyword_map;
 
 
 
@@ -46,16 +45,16 @@ isize advance_characters(Tokenizer *t, isize count);
 
 void test_keyword_map() {
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
-        StringMapEntry<TokenType> *entry = string_map_get_entry(keyword_map, xp_string_c(token_strings[i]));
+        xpHashMapEntry<xpString, TokenType> *entry = xp_hash_map_get_entry(keyword_map, xp_string_c(token_strings[i]));
         XP_ASSERT_MSG(cast(TokenType)i == entry->value, "test_keyword_map() FAILED: %s\n", token_strings[i]);
     }
 }
 
 void init_keyword_map() {
-    keyword_map = string_map_make<TokenType>(permanent_allocator(), xp_array_len(token_strings));
+    keyword_map = xp_hash_map_make<xpString, TokenType>(permanent_allocator());
 
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
-        string_map_insert(&keyword_map, xp_make_string(permanent_allocator(), token_strings[i]), cast(TokenType)i);
+        xp_hash_map_insert(&keyword_map, xp_make_string(permanent_allocator(), token_strings[i]), cast(TokenType)i);
     }
 }
 
@@ -174,7 +173,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
         xpString str = xp_make_string_capacity(permanent_allocator(), t->source_code.code_string.c_str + old_index, t->curr_character_index - old_index);
         TokenType *type = NULL;
-        if((type = string_map_get(keyword_map, str)) != NULL) {
+        if((type = xp_hash_map_get(keyword_map, str)) != NULL) {
             token.type = *type;
         }
         token.token_str = str;

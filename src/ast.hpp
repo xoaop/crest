@@ -103,7 +103,6 @@ struct Ast;
     AST_INFO(CastExpr, "cast expr", struct {                                \
         Ast *expr;                                                          \
         Ast *target_type_ast;                                               \
-        TypeRef target_type;    /* TODO REMOVE */                           \
     })                                                                      \
     AST_INFO(StructInitExpr, "struct init expr", struct {                   \
         Ast *struct_type_ident;                                             \
@@ -182,8 +181,6 @@ struct Ast {
 
     Token token; // 记录该AST对应的第一个token
 
-
-    TypeRef v_type; // 该AST节点的类型
     ImplicitConversionTag implicit_conversion_tag;
 
     SymbolInfo *ast_symbol; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点

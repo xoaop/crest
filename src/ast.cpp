@@ -13,7 +13,6 @@ const char *ast_strs[] = {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
-    ast.v_type = undefined_type();
     
     ast.is_const_expr = false;
     ast.is_lvalue = false;
@@ -162,7 +161,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
     }
 
     // 打印当前节点类型
-    print_line(depth, is_last, "%s", ast_strs[static_cast<i32>(a->type)]);
+    print_line(depth, is_last, "{}", ast_strs[static_cast<i32>(a->type)]);
 
     // 根据类型打印子内容（全部在 depth+1 层级）
     switch (a->type) {
@@ -170,10 +169,10 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
 
         case AstType_VariableDecl: {
-            print_line(depth + 1, false, "name: %s", a->VariableDecl.var_name.c_str);
+            print_line(depth + 1, false, "name: {}", a->VariableDecl.var_name.c_str);
             print_ast(a->VariableDecl.expr, depth + 1, true);
             print_ast(a->VariableDecl.type_ast, depth + 1, true);
-            print_line(depth + 1, true, "no_zero_init: %s", a->VariableDecl.no_zero_init ? "true" : "false");
+            print_line(depth + 1, true, "no_zero_init: {}", a->VariableDecl.no_zero_init ? "true" : "false");
             break;
         }
 
@@ -199,7 +198,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_BinaryExpr: {
-            print_line(depth + 1, false, "op: %s", token_strings[a->BinaryExpr.op]);
+            print_line(depth + 1, false, "op: {}", token_strings[a->BinaryExpr.op]);
             print_line(depth + 1, false, "left:");
             print_ast(a->BinaryExpr.left, depth + 2, false);
             print_line(depth + 1, true, "right:");
@@ -208,7 +207,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_UnaryExpr: {
-            print_line(depth + 1, false, "op: %s", token_strings[a->UnaryExpr.op]);
+            print_line(depth + 1, false, "op: {}", token_strings[a->UnaryExpr.op]);
             print_line(depth + 1, true, "operand:");
             print_ast(a->UnaryExpr.operand, depth + 2, true);
             break;
@@ -273,10 +272,6 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         case AstType_CastExpr: {
             print_line(depth + 1, false, "target_type:");
             print_indent(depth + 2);
-            std::print("    "); // 对齐 type 打印
-            print_type(a->CastExpr.target_type);
-            std::println("");
-
             print_line(depth + 1, true, "expr:");
             print_ast(a->CastExpr.expr, depth + 2, true);
             break;
@@ -291,12 +286,12 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         case AstType_FieldAccess: {
             print_line(depth + 1, false, "parent:");
             print_ast(a->FieldAccess.parent, depth + 2, false);
-            print_line(depth + 1, true, "field: %s", a->FieldAccess.field_name.c_str);
+            print_line(depth + 1, true, "field: {}", a->FieldAccess.field_name.c_str);
             break;
         }
 
         case AstType_StructField: {
-            print_line(depth + 1, false, "name: %s", a->StructField.name.c_str);
+            print_line(depth + 1, false, "name: {}", a->StructField.name.c_str);
             print_line(depth + 1, true, "type:");
             print_ast(a->StructField.type_ast, depth + 2, true);
             break;
@@ -323,8 +318,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_EasyType: {
-            print_line(depth + 1, true, "type: %s", get_type_kind_str(a->EasyType.kind).c_str);
-             break;
+            print_line(depth + 1, true, "type: {}", get_type_kind_str(a->EasyType.kind).c_str);
 
             break;
         }
@@ -346,20 +340,20 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
         case AstType_Ident: {
-            print_line(depth + 1, true, "name: %s", a->Ident.name.c_str);
+            print_line(depth + 1, true, "name: {}", a->Ident.name.c_str);
             break;
         }
 
         case AstType_ConstDecl: {
-            print_line(depth + 1, false, "name: %s", a->ConstDecl.name.c_str);
+            print_line(depth + 1, false, "name: {}", a->ConstDecl.name.c_str);
             print_line(depth + 1, true, "value:");
             print_ast(a->ConstDecl.value_ast, depth + 2, true);
             break;
         }
 
         case AstType_ParamDecl: {
-            print_line(depth + 1, false, "name: %s", a->ParamDecl.name.c_str);
-            print_line(depth + 1, false, "is_var_arg: %s", a->ParamDecl.is_var_arg ? "true" : "false");
+            print_line(depth + 1, false, "name: {}", a->ParamDecl.name.c_str);
+            print_line(depth + 1, false, "is_var_arg: {}", a->ParamDecl.is_var_arg ? "true" : "false");
             print_line(depth + 1, true, "type:");
             print_ast(a->ParamDecl.type_ast, depth + 2, true);
             break;
@@ -394,12 +388,12 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_Import: {
-            print_line(depth + 1, true, "path: %s", a->Import.path.c_str);
+            print_line(depth + 1, true, "path: {}", a->Import.path.c_str);
             break;
         }
 
         case AstType_StringLiteralExpr: {
-            print_line(depth + 1, true, "value: %s", a->StringLiteralExpr.str.c_str);
+            print_line(depth + 1, true, "value: {}", a->StringLiteralExpr.str.c_str);
             break;
         }
 

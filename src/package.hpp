@@ -7,11 +7,14 @@
 #include "ast_file.hpp"
 #include "scope.hpp"
 
+struct CIRFile;
+
 
 struct Package {
     xpString path;
 
     Array<AstFile> ast_files;
+    Array<CIRFile> cir_files;
 
     Scope package_scope;
 };

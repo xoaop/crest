@@ -1,4 +1,5 @@
 #include "package.hpp"
+#include "cir_builder.hpp"
 
 
 Package make_package(xpString path, xpAllocator allocator) {
@@ -6,6 +7,7 @@ Package make_package(xpString path, xpAllocator allocator) {
     p.path = path;
 
     p.ast_files = make_array<AstFile>(allocator);
+    p.cir_files = make_array<CIRFile>(allocator);
 
     return p;
 }

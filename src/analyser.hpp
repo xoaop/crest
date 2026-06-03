@@ -37,13 +37,11 @@ Analyser make_analyser(AstFile *curr_ast_file, Package *pkg, Array<Package> *all
 
 
 
-void sema_analysis_all_packages(Array<Package> *all_packages);
-TypeRef resolve_type(Ast *type_ast, Analyser analyser);
+void resolve_ast_all_packages(Array<Package> *all_packages);
 
 
 
 // NOTE: for evaluator.hpp/cpp
-Value resolve_comptime_expr(Ast *expr, Analyser analyser, TypeRef target_typ = nullptr);
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
 
 

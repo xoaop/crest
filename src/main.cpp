@@ -13,13 +13,17 @@
 #include "xoaop.h"
 #include "common.hpp"
 #include "context.hpp"
-#include "string_map.hpp"
+
 #include "tokenizer.hpp"
-#include "symbol.hpp"
 #include "parser.hpp"
-#include "analyser.hpp"
 #include "resolve_depend.hpp"
-#include "llvm_generate_ir.hpp"
+#include "analyser.hpp"
+#include "cir_builder.hpp"
+
+
+
+
+
 
 static void crest_helper() {
     printf("Usage: crest <command> [options]\n");
@@ -117,10 +121,6 @@ int main(int argc, char** argv) {
     std::println("Current working directory: {}", context()->current_working_directory.string());
 
 
-    context()->thread_pool = new ThreadPool(std::thread::hardware_concurrency());
-    defer(delete context()->thread_pool);
-
-
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
     context()->ast_scope_map = xp_hash_map_make<Ast *, Scope *>(permanent_allocator());
@@ -132,59 +132,40 @@ int main(int argc, char** argv) {
     defer(free_type_table(context()));
 
 
-    end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end_time - start_time;
-    std::println("Initialization time: {:.5f} s", duration.count());
-    last_time = end_time;
+
+    context()->all_packages = resolve_dependencies(xp_string_c(main_path));
+    std::reverse(context()->all_packages.begin(), context()->all_packages.end()); // 反转包的顺序, 让被依赖的包在前面, 这样后续分析的时候就不需要担心包的依赖顺序了
 
 
-
-    Array<Package> all_packages = resolve_dependencies(xp_string_c(main_path));
-    std::reverse(all_packages.begin(), all_packages.end()); // 反转包的顺序, 让被依赖的包在前面, 这样后续分析的时候就不需要担心包的依赖顺序了
-
-    context()->all_packages = all_packages;
-
-    
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = end_time - last_time;
-    printf("Dependency resolution time: %.5f s\n", duration.count());
-    last_time = end_time;
-    
     if(context()->reporter.error_count > 0) {
-        // 如果有错误信息, 就不继续进行语义分析了
         context()->reporter.print_msg();
-        return -1;
+        return 0;
     }
 
-    sema_analysis_all_packages(&context()->all_packages);
+    resolve_ast_all_packages(&context()->all_packages);
 
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = end_time - last_time;
-    printf("Semantic analysis time: %.5f s\n", duration.count());
-    last_time = end_time;
 
-    
     if(context()->reporter.error_count > 0) {
-        // 如果有错误信息, 就不继续生成IR了
         context()->reporter.print_msg();
-        return -1;
+        return 0;
     }
 
-    
-    init_llvm();
-    Array<xpString> obj_paths = gen_ir_all_packages(all_packages, LLVMIRGenerateConfig{.optimization_level = LLVMIROptimizationLevel::O3});
-    
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = end_time - last_time;
-    printf("LLVM IR generation time: %.5f s\n", duration.count());
+    print_scope_tree(&context()->global_blank_package.package_scope);
 
 
-    // 链接
-    
+    for(auto& pkg : context()->all_packages) {
+        CIRBuilder builder = {};
+        for(auto& ast_file : pkg.ast_files) {
+            auto cir = builder.build_cir_file(&ast_file);
+            dump_cir_file(&cir);
+            pkg.cir_files.push_back(cir);
+        }
+    }
 
-
-    duration = end_time - start_time;
-    printf("Total compilation time: %.5f s\n", duration.count());
+    if(context()->reporter.error_count > 0) {
+        context()->reporter.print_msg();
+        return 0;
+    }
 
     
     return 0;

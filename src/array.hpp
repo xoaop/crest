@@ -2,6 +2,7 @@
 #define XOAOP_ARRAY_H
 
 #include "xoaop.h"
+#include <utility>
 
 #define ARRAY_NEW_CAPACITY(old) (cast(isize) (old + old / 2 + 1))
 
@@ -36,9 +37,13 @@ struct Array {
         array_push_back(this, elem);
     }
 
+    void pop_back() {
+        array_pop_back(this);
+    }
+
 
     void clear() {
-        count = 0;
+        array_clear(this);
     }
 
 
@@ -52,6 +57,11 @@ struct Array {
 
     b8 full() {
         return count == capacity;
+    }
+
+    T& back() {
+        XP_ASSERT(count > 0);
+        return data[count - 1];
     }
 };
 
@@ -81,6 +91,7 @@ Array<T> make_array_len(xpAllocator allocator, isize len) {
 
 template<typename T>
 void array_free(Array<T>* array) {
+    array_clear(array); // 先析构所有元素
     xp_free(array->allocator, array->data);
 
     array->data = NULL;
@@ -104,21 +115,29 @@ Array<T> array_copy(Array<T>* src, xpAllocator allocator) {
 template<typename T>
 Array<T>* array_resize(Array<T>* array, isize new_capacity) {
     if(array->capacity >= new_capacity) {
+        // 缩容时析构多余元素
+        if(new_capacity < array->count) {
+            for (isize i = new_capacity; i < array->count; i++) {
+                array->data[i].~T();
+            }
+            array->count = new_capacity;
+        }
         return array;
     }
 
+    T* new_data = cast(T*)xp_alloc(array->allocator, new_capacity * sizeof(T));
+
+    // 移动原有元素到新内存
     if(array->data != NULL) {
-        array->data = cast(T *)xp_realloc(array->allocator, array->data, new_capacity * sizeof(T), array->capacity * sizeof(T));
-    } else {
-        array->data = cast(T *)xp_alloc(array->allocator, new_capacity * sizeof(T));
+        for (isize i = 0; i < array->count; i++) {
+            new (&new_data[i]) T(std::move(array->data[i]));
+            array->data[i].~T();
+        }
+        xp_free(array->allocator, array->data);
     }
 
-    
-    //若容量小于先前的元素数量
+    array->data = new_data;
     array->capacity = new_capacity;
-    if(array->capacity < array->count) {
-        array->count = array->capacity;
-    }
 
     return array;
 }
@@ -129,7 +148,7 @@ T *array_push_back(Array<T> *array, T elem) {
         array_resize(array, ARRAY_NEW_CAPACITY(array->capacity));
     }
 
-    array->data[array->count] = elem;
+    new (&array->data[array->count]) T(std::move(elem)); // 构造元素
     array->count += 1;
 
     return &array->data[array->count - 1];
@@ -139,7 +158,8 @@ template<typename T>
 T array_pop_back(Array<T> *array) {
     XP_ASSERT_DEFAULT(array->count > 0);
 
-    T p = array->data[array->count - 1];
+    T p = std::move(array->data[array->count - 1]); // 移动元素
+    array->data[array->count - 1].~T(); // 析构原位置
     array->count -= 1;
     return p;
 }
@@ -163,8 +183,13 @@ Array<T>* array_insert(Array<T> *array, isize index, T elem) {
         array_resize(array, ARRAY_NEW_CAPACITY(array->capacity));
     }
 
-    memmove(array->data + index + 1, array->data + index, (array->count - index) * sizeof(T));
-    array->data[index] = elem;
+    // 从后往前移动元素，避免覆盖
+    for (isize i = array->count; i > index; i--) {
+        new (&array->data[i]) T(std::move(array->data[i-1]));
+        array->data[i-1].~T();
+    }
+
+    new (&array->data[index]) T(std::move(elem)); // 构造新元素
     array->count += 1;
     return array;
 }
@@ -172,12 +197,21 @@ Array<T>* array_insert(Array<T> *array, isize index, T elem) {
 // !TEST
 template<typename T>
 Array<T>* array_insert(Array<T> *array, isize index, T *elems, isize count) {
-    if(array->count + count < array->capacity) {
+    if(array->count + count > array->capacity) { // 修复：容量不足时才扩容
         array_resize(array, ARRAY_NEW_CAPACITY(array->capacity) + count); // NOTE: + count 防止新容量不够大
     }
 
-    memmove(array->data + index + count, array->data + index, (array->count - index) * sizeof(T));
-    memcpy(array->data + index, elems, count);
+    // 先移动后面的元素腾出空间
+    for (isize i = array->count + count - 1; i >= index + count; i--) {
+        new (&array->data[i]) T(std::move(array->data[i - count]));
+        array->data[i - count].~T();
+    }
+
+    // 逐个构造新元素
+    for (isize i = 0; i < count; i++) {
+        new (&array->data[index + i]) T(elems[i]);
+    }
+
     array->count += count;
 
     return array;
@@ -188,16 +222,15 @@ template<typename T>
 T array_rm(Array<T> *array, isize index) {
     XP_ASSERT_DEFAULT(index >= 0 && index < array->count);
 
-    T rm = array->data[index];
-    
-    // 最后一个元素
-    if(index == array->count - 1) {
-        array->count -= 1;
-        return rm;
+    T rm = std::move(array->data[index]); // 移动要返回的元素
+    array->data[index].~T(); // 析构被删除的元素
+
+    // 往前移动后面的元素
+    for (isize i = index; i < array->count - 1; i++) {
+        new (&array->data[i]) T(std::move(array->data[i+1]));
+        array->data[i+1].~T();
     }
-    
-    
-    memmove(array->data + index, array->data + index + 1, (array->count - index - 1) * sizeof(T));
+
     array->count -= 1;
     return rm;
 }
@@ -208,10 +241,13 @@ template<typename T>
 T array_rm_f(Array<T> *array, isize index) {
     XP_ASSERT_DEFAULT(index >= 0 && index < array->count);
 
-    T rm = array->data[index];
-    // 如果只有一个元素，直接减少count
-    if(array->count > 1) {
-        array->data[index] = array->data[array->count - 1];
+    T rm = std::move(array->data[index]); // 移动要返回的元素
+    array->data[index].~T(); // 析构被删除的元素
+
+    // 如果不是最后一个元素，把最后一个元素移过来
+    if(array->count > 1 && index != array->count - 1) {
+        new (&array->data[index]) T(std::move(array->data[array->count - 1]));
+        array->data[array->count - 1].~T();
     }
 
     array->count -= 1;
@@ -220,6 +256,9 @@ T array_rm_f(Array<T> *array, isize index) {
 
 template<typename T>
 void array_clear(Array<T> *array) {
+    for (isize i = 0; i < array->count; i++) {
+        array->data[i].~T();
+    }
     array->count = 0;
     return;
 }
@@ -255,14 +294,16 @@ Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {
 // Array As Buffer
 //
 
+// 注意：仅适用于平凡可构造类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 Array<T> make_array_as_buffer(xpAllocator allocator, isize len) {
     Array<T> array = make_array_len<T>(allocator, len);
     array.count = len;
-    
+
     return array;
 }
 
+// 注意：仅适用于平凡可拷贝类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 void array_memcpy(Array<T> *dst, isize dst_start, T *src, isize src_count) {
     XP_ASSERT_DEFAULT(dst_start + src_count <= dst->capacity);
@@ -271,17 +312,19 @@ void array_memcpy(Array<T> *dst, isize dst_start, T *src, isize src_count) {
 
 
 // 把dst当作环形数组, src不是
+// 注意：仅适用于平凡可拷贝类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 void array_memcpy_dst_loop(Array<T> *dst, isize dst_start, T *src, isize src_count) {
     for(isize i = 0; i < src_count; i++) {
-        isize dst_index = (dst_start + i) % dst->capacity; 
+        isize dst_index = (dst_start + i) % dst->capacity;
         isize src_index = i;
-        
+
         dst->data[dst_index] = src[src_index];
     }
 }
 
 // 把dst当作环形数组, src不是
+// 注意：仅适用于平凡可拷贝类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 void array_memcpy_dst_loop(Array<T> *dst, isize dst_start, Array<T> *src, isize src_count) {
     XP_ASSERT_DEFAULT(src_count <= src->capacity);

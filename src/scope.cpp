@@ -1,6 +1,7 @@
 #include "scope.hpp"
+#include "type.hpp"
 
-#include "analyser.hpp"
+struct Ast;
 
 
 Scope make_scope(Scope *parent, ScopeType type, xpAllocator allocator) {
@@ -8,19 +9,38 @@ Scope make_scope(Scope *parent, ScopeType type, xpAllocator allocator) {
     sc.scope_type = type;
     sc.parent = parent;
     sc.symbols = make_symbol_table(allocator);
-
+    sc.ast_to_scope = xp_hash_map_make<Ast*, Scope*>(allocator);
+    sc.children = make_array<Scope*>(allocator);
     return sc;
 }
 
-Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator) {
+
+Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator, Ast *owner_ast) {
     Scope *sc = (Scope *)xp_alloc(allocator, sizeof(Scope));
+
     *sc = make_scope(parent, type, allocator);
 
+    if(parent != nullptr) {
+        add_sub_scope(parent, sc, owner_ast);
+    }
     return sc;
+}
+
+void add_sub_scope(Scope *parent, Scope *child, Ast *owner_ast) {
+    XP_ASSERT_DEFAULT(parent != nullptr && child != nullptr);
+    
+    if(owner_ast != nullptr) {
+        xp_hash_map_insert(&parent->ast_to_scope, owner_ast, child);
+    }
+
+    array_push_back(&parent->children, child);
 }
 
 void free_scope(Scope *scope) {
     free_symbol_table(&scope->symbols);
+    // 释放当前Scope的子映射表
+    xp_hash_map_free(scope->ast_to_scope);
+    array_free(&scope->children);
 }
 
 
@@ -35,6 +55,18 @@ Scope *get_upper_scope_with_type(Scope *scope, ScopeType type) {
     }
 
     return NULL;
+}
+
+
+Scope *find_scope_by_ast(Scope *current_scope, Ast *ast) {
+    if (!current_scope || !ast) return nullptr;
+
+    auto opt = xp_hash_map_get(current_scope->ast_to_scope, ast);
+    if (opt != nullptr) {
+        return *opt;
+    }
+
+    return find_scope_by_ast(current_scope->parent, ast);
 }
 
 
@@ -112,4 +144,49 @@ SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpS
     }
 
     return info;
+}
+
+Scope *try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
+    XP_ASSERT_DEFAULT(parent != NULL && ast_for_child_scope != NULL);
+
+    Scope **child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
+    if(child_scope != nullptr) {
+        return *child_scope;
+    }
+
+    return nullptr;
+}
+
+Scope *try_exit_scope(Scope *current) {
+    XP_ASSERT_DEFAULT(current != NULL);
+    return current->parent; // 可能返回nullptr, 调用者需要检查, 不能退出全局作用域
+}
+
+
+Scope *enter_scope(Scope *parent, Ast *ast_for_child_scope) {
+    Scope *child_scope = try_enter_scope(parent, ast_for_child_scope);
+    XP_ASSERT_DEFAULT(child_scope != NULL);
+    return child_scope;
+}
+
+Scope *exit_scope(Scope *current) {
+    Scope *parent = try_exit_scope(current);
+    XP_ASSERT_DEFAULT(parent != NULL);
+    return parent;
+}
+
+
+void print_scope_tree(Scope *scope, int indent) {
+    if (!scope) return;
+
+    auto print_indent = [](int n) {
+        for (int i = 0; i < n; i++) std::print("  ");
+    };
+
+    print_indent(indent);
+    std::println("{}", *scope);
+
+    for(Scope *sub_scope : scope->children) {
+        print_scope_tree(sub_scope, indent + 1);
+    }
 }

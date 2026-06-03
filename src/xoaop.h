@@ -131,7 +131,7 @@ bool xp_check_f64_is_inf(f64 value);
 #define XP_ASSERT_MSG(exp, format, ...) do {                    \
     if(!(exp)) {                                                \
         printf("\nAssert FAILED at %s:%d: ", __FILE__, __LINE__); \
-        printf(format, __VA_ARGS__);                            \
+        printf(format, ##__VA_ARGS__);                            \
         XP_TRAP();                                              \
     }                                                           \
 } while(0)
@@ -423,6 +423,91 @@ xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
 #include <print>
 
 #endif // __cplusplus >= 202300L
+
+namespace xoaop {
+
+// ── HeapAllocator ── 全局堆分配器，所有实例等价，无状态
+template<typename T>
+struct HeapAllocator {
+    using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+
+    using propagate_on_container_copy_assignment = std::false_type;
+    using propagate_on_container_move_assignment = std::false_type;
+    using propagate_on_container_swap            = std::false_type;
+    using is_always_equal                        = std::true_type;
+
+    HeapAllocator() noexcept = default;
+
+    template<typename U>
+    HeapAllocator(const HeapAllocator<U>&) noexcept {}
+
+    T* allocate(std::size_t n) {
+        return static_cast<T*>(xp_alloc(xp_heap_allocator(), isize(n * sizeof(T))));
+    }
+
+    void deallocate(T* p, std::size_t) noexcept {
+        xp_free(xp_heap_allocator(), p);
+    }
+
+    friend bool operator==(const HeapAllocator&, const HeapAllocator&) noexcept { return true; }
+    friend bool operator!=(const HeapAllocator&, const HeapAllocator&) noexcept { return false; }
+};
+
+// ── ArenaAllocator ── Arena 分配器，有状态，绑定特定 arena
+template<typename T>
+struct ArenaAllocator {
+    using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+
+    using propagate_on_container_copy_assignment = std::false_type;
+    using propagate_on_container_move_assignment = std::true_type;
+    using propagate_on_container_swap            = std::true_type;
+    using is_always_equal                        = std::false_type;
+
+    xpAllocator allocator;
+
+    ArenaAllocator() = delete;
+    explicit ArenaAllocator(xpAllocator a) noexcept : allocator(a) {}
+
+    template<typename U>
+    ArenaAllocator(const ArenaAllocator<U>& other) noexcept : allocator(other.allocator) {}
+
+    T* allocate(std::size_t n) {
+        return static_cast<T*>(xp_alloc(allocator, isize(n * sizeof(T))));
+    }
+
+    void deallocate(T* p, std::size_t) noexcept {
+        xp_free(allocator, p);
+    }
+
+    // 重置 arena 使用位置，保留已分配块以供复用（不归还堆）
+    void clear() noexcept {
+        xp_arena_allocator_clear(allocator);
+    }
+
+    // 释放 arena 所有内存块归还堆
+    void free_all() noexcept {
+        xp_free_all(allocator);
+    }
+
+    friend bool operator==(const ArenaAllocator& a, const ArenaAllocator& b) noexcept {
+        return a.allocator.proc == b.allocator.proc && a.allocator.data == b.allocator.data;
+    }
+    friend bool operator!=(const ArenaAllocator& a, const ArenaAllocator& b) noexcept {
+        return !(a == b);
+    }
+};
+
+// 旧代码兼容别名
+template<typename T>
+using Allocator = HeapAllocator<T>;
+
+}
+
+
 
 //
 // Heap Record Allocator 带监控的堆内存分配器
@@ -1119,6 +1204,34 @@ isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntr
 }
 
 
+template<typename K, typename V>
+isize xp_hash_map_first_entry(const xpHashMap<K, V> *map, const xpHashMapEntry<K, V> **first_entry) {
+    for (isize i = 0; i < map->capacity; i++) {
+        if (map->entries[i].state == XP_HASH_SLOT_USED) {
+            *first_entry = &map->entries[i];
+            return i;
+        }
+    }
+
+    *first_entry = NULL;
+    return END_OF_HASH_MAP_INDEX;
+}
+
+
+template<typename K, typename V>
+isize xp_hash_map_next_entry(const xpHashMap<K, V> *map, isize curr_pos, const xpHashMapEntry<K, V> **next_entry) {
+    for (isize i = curr_pos + 1; i < map->capacity; i++) {
+        if (map->entries[i].state == XP_HASH_SLOT_USED) {
+            *next_entry = &map->entries[i];
+            return i;
+        }
+    }
+
+    *next_entry = NULL;
+    return END_OF_HASH_MAP_INDEX;
+}
+
+
 
 /*
 HashSet
@@ -1724,6 +1837,8 @@ b32 xp_str_to_num_base(char const *str, u32 base, u64 *result) {
     return true;
 }
 
+#if defined(XOAOP_I128_SUPPORT)
+
 b32 xp_str_to_integer(char const *str, i128 *result) {
     XP_ASSERT_DEFAULT(result != NULL);
 
@@ -1759,6 +1874,7 @@ b32 xp_str_to_integer(char const *str, i128 *result) {
     return success;
 }
 
+#endif // XOAOP_I128_SUPPORT
 
 
 //
