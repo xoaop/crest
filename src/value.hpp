@@ -46,47 +46,30 @@ enum class ActualValueKind {
     Array,
     Function,
     String,
-    Type,
     Package,
+    Type,
 };
 
 
 struct Value {
 public:
-    Value(): type(NULL), state(ValueState::Unsolved) {}
+    Value();
 
     Value set_type(TypeRef new_type);
-    Value set_is_runtime(bool is_or_not);
-    Value set_value_state(ValueState new_state);
 
-    bool has_error();
-
-    // ========== set_actual_value 函数族 ==========
-    // 设置整数值（包括enum底层值）
+    // set_actual_value 函数族
     void set_integer_value(i128 value);
-
-    // 设置浮点数值
     void set_float_value(double value);
-
-    // 设置布尔值
     void set_bool_value(bool value);
-
-    // 设置指针值
     void set_pointer_value(Value* pointed_value);
-
-    // 设置字符串值
     void set_string_value(xpString value);
-
-    // 设置结构体字段值
     void set_struct_value(Array<Value> field_values);
-
-    // 设置数组元素值
     void set_array_value(Array<Value> element_values);
-
-    // 设置函数值
     void set_function_value(Ast* function_ast, bool is_extern_c);
+    void set_package_value(Package* pkg);
+    void set_type_value(TypeRef type_value);
 
-    // ========== 辅助：安全获取实际值类型 ==========
+    // 辅助：安全获取实际值类型
     bool is_integer_stored() const { return actual_kind == ActualValueKind::Integer; }
     bool is_float_stored() const { return actual_kind == ActualValueKind::Float; }
     bool is_bool_stored() const { return actual_kind == ActualValueKind::Bool; }
@@ -96,7 +79,7 @@ public:
     bool is_array_stored() const { return actual_kind == ActualValueKind::Array; }
     bool is_function_stored() const { return actual_kind == ActualValueKind::Function; }
 
-    // ========== 类型安全的成员getter函数 ==========
+    // 类型安全的成员getter函数
     i128 get_integer() const;
     double get_float() const;
     bool get_bool() const;
@@ -107,19 +90,16 @@ public:
     Ast* get_function_ast() const;
     bool get_function_is_extern_c() const;
     i128 get_enum_value() const;
-    TypeRef get_type_value() const;
     Package* get_package_value() const;
+    TypeRef get_type_value() const;
 
-    // ========== 公共可直接访问字段 ==========
-    TypeRef type = NULL;
-    ValueState state = ValueState::Unsolved; // 主要用于求值过程中检测循环依赖
-    // ValueErrorKind error_kind; // 当state == Error时, 该字段表示错误的具体类型
-    bool is_runtime_value = false; // 是否是运行时值, 主要用于区分常量和非常量, 以及在求值过程中区分是否需要求值
-    Ast *val_ast; // 该值对应的AST节点
+
+
+    TypeRef type;
     ActualValueKind actual_kind = ActualValueKind::None;
 
+
 private:
-    
     union {
         i128 integer_value;
 
@@ -151,12 +131,7 @@ private:
 // Value Makers
 //
 Value make_value();
-Value make_value(ValueState state);
-Value make_comptime_sovled_val(TypeRef type);
-Value make_value_for_var_decl(TypeRef type);
 Value make_value(TypeRef type);
-Value make_value(TypeRef type, bool is_runtime);
-Value make_error_value();
 
 
 //
@@ -164,6 +139,60 @@ Value make_error_value();
 //
 
 Value clone_value(Value& v, xpAllocator allocator);
+
+
+
+
+template<>
+struct std::formatter<Value> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const Value& v, std::format_context& ctx) const {
+        switch (v.actual_kind) {
+        case ActualValueKind::None:
+            return std::format_to(ctx.out(), "(none)");
+        case ActualValueKind::Integer:
+            return std::format_to(ctx.out(), "{}", v.get_integer());
+        case ActualValueKind::Float:
+            return std::format_to(ctx.out(), "{}", v.get_float());
+        case ActualValueKind::Bool:
+            return std::format_to(ctx.out(), "{}", v.get_bool());
+        case ActualValueKind::Pointer:
+            return std::format_to(ctx.out(), "{}", static_cast<void*>(v.get_pointer()));
+        case ActualValueKind::String:
+            return std::format_to(ctx.out(), "\"{}\"", v.get_string());
+        case ActualValueKind::Struct: {
+            auto fields = v.get_struct_fields();
+            auto out = std::format_to(ctx.out(), "{{");
+            for (isize i = 0; i < fields.count; i++) {
+                if (i > 0) out = std::format_to(out, ", ");
+                out = std::format_to(out, "{}", fields[i]);
+            }
+            return std::format_to(out, "}}");
+        }
+        case ActualValueKind::Array: {
+            auto elems = v.get_array_elements();
+            auto out = std::format_to(ctx.out(), "[");
+            for (isize i = 0; i < elems.count; i++) {
+                if (i > 0) out = std::format_to(out, ", ");
+                out = std::format_to(out, "{}", elems[i]);
+            }
+            return std::format_to(out, "]");
+        }
+        case ActualValueKind::Function:
+            return std::format_to(ctx.out(), "(function {:p})", static_cast<void*>(v.get_function_ast()));
+        case ActualValueKind::Package:
+            return std::format_to(ctx.out(), "(package {:p})", static_cast<void*>(v.get_package_value()));
+        case ActualValueKind::Type:
+            return std::format_to(ctx.out(), "(type {:p})", static_cast<void*>(v.get_type_value()));
+        }
+        return std::format_to(ctx.out(), "(unknown)");
+    }
+};
+
+
 
 
 #endif // CREST_VALUE_HPP

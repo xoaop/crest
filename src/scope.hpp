@@ -4,9 +4,8 @@
 #include "xoaop.h"
 
 #include "symbol.hpp"
-
-
-
+// 前向声明AST，不需要引入完整头文件
+struct Ast;
 enum TypeKind: int;
 
 
@@ -29,14 +28,17 @@ enum class ScopeType {
 
     // 函数的Block, 包括:
     // 函数参数变量
-    Function,  
+    Function,
 
     // 不是函数的Block
-    Block,     
+    Block,
 
     // 循环块
     LoopBlock,
 
+
+    // struct块
+    StructBlock,
 
     // enum块
     EnumBlock,
@@ -47,12 +49,17 @@ struct Scope {
 
     SymbolTable symbols;
     Scope *parent;
+
+    xpHashMap<Ast*, Scope*> ast_to_scope;
+    Array<Scope *> children;
 };
 
 
 Scope make_scope(Scope *parent, ScopeType type, xpAllocator allocator);
-Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator);
+Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
 void free_scope(Scope *scope);
+
+void add_sub_scope(Scope *parent, Scope *child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 
@@ -64,5 +71,54 @@ SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString s
 SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind);
 SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind);
+
+
+Scope *try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
+Scope *try_exit_scope(Scope *current);
+Scope *enter_scope(Scope *parent, Ast *ast_for_child_scope);
+Scope *exit_scope(Scope *current);
+
+void print_scope_tree(Scope *scope, int indent = 0);
+
+
+
+
+
+
+
+
+template<>
+struct std::formatter<Scope> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const Scope& scope, std::format_context& ctx) const {
+        const char *scope_type_string = nullptr;
+        switch(scope.scope_type) {
+            case ScopeType::Global: scope_type_string = "Global"; break;
+            case ScopeType::Package: scope_type_string = "Package"; break;
+            case ScopeType::File: scope_type_string = "File"; break;
+            case ScopeType::Function: scope_type_string = "Function"; break;
+            case ScopeType::Block: scope_type_string = "Block"; break;
+            case ScopeType::LoopBlock: scope_type_string = "LoopBlock"; break;
+            case ScopeType::StructBlock: scope_type_string = "StructBlock"; break;
+            case ScopeType::EnumBlock: scope_type_string = "EnumBlock"; break;
+        }
+
+        return std::format_to(ctx.out(), "Scope {{ type: {}, symbols: [\n{}] }}",
+            scope_type_string,
+            scope.symbols
+        );
+    }
+};
+
+
+
+
+
+
+
+
 
 #endif

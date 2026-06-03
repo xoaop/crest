@@ -6,7 +6,6 @@
 void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_packages);
 void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages);
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
-void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser);
 
 
 

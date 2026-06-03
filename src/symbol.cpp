@@ -5,12 +5,20 @@
 // SymbolInfo, etc.
 //
 
-SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file) {
+SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file, Ast *ast) {
     SymbolInfo info = {};
     info.name = name;
     info.value = value;
     info.package = package;
     info.file = file;
+    info.ast = ast;
+    info.state = SymbolState::Solved;
+    return info;
+}
+
+SymbolInfo make_symbol(xpString name, Package *package, AstFile *file, Ast *ast) {
+    SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
+    info.state = SymbolState::Unsolved;
     return info;
 }
 

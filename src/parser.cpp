@@ -523,50 +523,14 @@ Ast *parse_var_decl(Parser *p) {
     Ast *a = NULL;
     Token curr = curr_token(p);
     switch(curr.type) {
-    case TokenType::ColonEqual: {
-        // VariableDecl without type annotation
+        case TokenType::ColonEqual: {
+            // VariableDecl without type annotation
 
-        expect(p, TokenType::ColonEqual);
+            expect(p, TokenType::ColonEqual);
 
-        a = ast_alloc(AstType_VariableDecl, name_token);
+            a = ast_alloc(AstType_VariableDecl, name_token);
 
-        a->VariableDecl.var_name = name_token.token_str;
-
-        Token curr = curr_token(p);
-        if(curr.type == TokenType::TripleMinus) {
-            // 无初始化
-
-            Token tm = expect(p, TokenType::TripleMinus);
-
-            a->VariableDecl.no_zero_init = true;
-
-            a->span = merge(a->token.span, tm.span);
-        } else {
-            // 有初始化表达式
-
-            a->VariableDecl.no_zero_init = false;
-            a->VariableDecl.expr = parse_expr(p, 0);
-
-            a->span = merge(a->token.span, a->VariableDecl.expr->span);
-        }
-
-        a->VariableDecl.type_ast = NULL;
-    } break;
-
-    case TokenType::Colon: {
-        // VariableDecl with type annotation
-        
-        expect(p, Colon);
-        
-        a = ast_alloc(AstType_VariableDecl, name_token);
-
-        a->VariableDecl.var_name = name_token.token_str;
-
-        a->VariableDecl.type_ast = parse_type(p);
-        
-        Token curr = curr_token(p);
-        if(curr.type == TokenType::Equal) {
-            expect(p, TokenType::Equal);
+            a->VariableDecl.var_name = name_token.token_str;
 
             Token curr = curr_token(p);
             if(curr.type == TokenType::TripleMinus) {
@@ -575,7 +539,6 @@ Ast *parse_var_decl(Parser *p) {
                 Token tm = expect(p, TokenType::TripleMinus);
 
                 a->VariableDecl.no_zero_init = true;
-                a->VariableDecl.expr = NULL;
 
                 a->span = merge(a->token.span, tm.span);
             } else {
@@ -586,21 +549,58 @@ Ast *parse_var_decl(Parser *p) {
 
                 a->span = merge(a->token.span, a->VariableDecl.expr->span);
             }
+
+            a->VariableDecl.type_ast = NULL;
+        } break;
+
+        case TokenType::Colon: {
+            // VariableDecl with type annotation
             
-        } else {
-            // 零初始化
+            expect(p, Colon);
+            
+            a = ast_alloc(AstType_VariableDecl, name_token);
 
-            a->VariableDecl.no_zero_init = false;
-            a->VariableDecl.expr = NULL;
+            a->VariableDecl.var_name = name_token.token_str;
 
-            a->span = merge(a->token.span, a->VariableDecl.type_ast->span);
-        }
+            a->VariableDecl.type_ast = parse_type(p);
+            
+            Token curr = curr_token(p);
+            if(curr.type == TokenType::Equal) {
+                expect(p, TokenType::Equal);
 
-    } break;
+                Token curr = curr_token(p);
+                if(curr.type == TokenType::TripleMinus) {
+                    // 无初始化
 
-    default: {
-        UNREACHABLE();
-    } break;
+                    Token tm = expect(p, TokenType::TripleMinus);
+
+                    a->VariableDecl.no_zero_init = true;
+                    a->VariableDecl.expr = NULL;
+
+                    a->span = merge(a->token.span, tm.span);
+                } else {
+                    // 有初始化表达式
+
+                    a->VariableDecl.no_zero_init = false;
+                    a->VariableDecl.expr = parse_expr(p, 0);
+
+                    a->span = merge(a->token.span, a->VariableDecl.expr->span);
+                }
+                
+            } else {
+                // 零初始化
+
+                a->VariableDecl.no_zero_init = false;
+                a->VariableDecl.expr = NULL;
+
+                a->span = merge(a->token.span, a->VariableDecl.type_ast->span);
+            }
+
+        } break;
+
+        default: {
+            UNREACHABLE();
+        } break;
 
     }
 
@@ -1297,7 +1297,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     a->type = AstType_Constant;
 
-    Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
+    Value value = make_value();
     value.set_integer_value(val);
     if(type_kind != Type_Undefined) {
         value.set_type(easy_type(type_kind));
@@ -1372,7 +1372,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     a->type = AstType_Constant;
     
-    Value value = make_value().set_is_runtime(false).set_value_state(ValueState::Solved);
+    Value value = make_value();
     value.set_float_value(val);
 
     a->Constant.value = value;
