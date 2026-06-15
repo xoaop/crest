@@ -44,6 +44,30 @@ enum class ScopeType {
     EnumBlock,
 };
 
+inline const char* to_string(ScopeType t) {
+    switch(t) {
+        case ScopeType::Global: return "Global";
+        case ScopeType::Package: return "Package";
+        case ScopeType::File: return "File";
+        case ScopeType::Function: return "Function";
+        case ScopeType::Block: return "Block";
+        case ScopeType::LoopBlock: return "LoopBlock";
+        case ScopeType::StructBlock: return "StructBlock";
+        case ScopeType::EnumBlock: return "EnumBlock";
+        default: return "Unknown";
+    }
+}
+
+
+struct SymbolIterator {
+    xpHashMap<xpString, SymbolInfo> *map;
+    isize pos;
+
+    SymbolInfo& operator*() const;
+    SymbolIterator& operator++();
+    bool operator!=(const SymbolIterator& other) const;
+};
+
 struct Scope {
     ScopeType scope_type;
 
@@ -52,6 +76,11 @@ struct Scope {
 
     xpHashMap<Ast*, Scope*> ast_to_scope;
     Array<Scope *> children;
+
+    SymbolIterator begin();
+    SymbolIterator end();
+
+    SymbolInfo& operator[](xpString name);
 };
 
 

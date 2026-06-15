@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <cstring>
 
 #include "ast.hpp"
 
@@ -10,10 +11,25 @@ const char *ast_strs[] = {
     #undef AST_INFO
 };
 
+Ast::Ast() {
+}
+
+Ast::Ast(const Ast& other) {
+    if(this == &other) return;
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(*this));
+}
+
+Ast& Ast::operator=(const Ast& other) {
+    if (this == &other) return *this;
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(*this));
+    return *this;
+}
+
 
 Ast ast_make(AstType type) {
     Ast ast = {};
     
+    ast.ast_symbol = nullptr;
     ast.is_const_expr = false;
     ast.is_lvalue = false;
     ast.is_null = false;
@@ -38,14 +54,15 @@ Ast *ast_alloc(AstType type) {
 Ast *ast_alloc(AstType type, Token token) {
     Ast *a = ast_alloc(type);
     a->token = token;
+    a->src_loc = token.src_loc;
     
     return a;
 }
 
-Ast *ast_alloc(AstType type, Token token, Span span) {
+Ast *ast_alloc(AstType type, Token token, SourceLocation src_loc) {
     Ast *a = ast_alloc(type);
     a->token = token;
-    a->span = span;
+    a->src_loc = src_loc;
 
     return a;
 }
@@ -181,12 +198,13 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
 
             print_branch(depth + 1, false);
             std::print("value: ");
-            if(a->Constant.value.is_integer_stored()) {
-                print_i128(a->Constant.value.get_integer());
-            } else if(a->Constant.value.is_float_stored()) {
-                std::print("{}", a->Constant.value.get_float());
-            } else if(a->Constant.value.is_bool_stored()) {
-                std::print("{}", a->Constant.value.get_bool() ? "true" : "false");
+            TypeRef t = a->Constant.value.type;
+            if(is_integer_or_untyped_type(t)) {
+                print_i128(a->Constant.value.integer_val());
+            } else if(is_float_or_untyped_type(t)) {
+                std::print("{}", a->Constant.value.float_val());
+            } else if(t->kind == Type_bool) {
+                std::print("{}", a->Constant.value.bool_val() ? "true" : "false");
             }
             std::println("");
             break;

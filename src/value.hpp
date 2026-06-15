@@ -14,14 +14,6 @@ using TypeRef = Type *;
 
 
 
-enum class ValueState {
-    Unsolved,   // 未求值
-    Solving,    // 正在求值, 可能会遇到循环依赖
-    Solved,     // 已经求值完毕
-
-    Error,      // 求值过程中发生错误
-};
-
 enum class ValueErrorKind {
     ErrorValue,
     UsingRuntimeValue,
@@ -36,70 +28,51 @@ enum class ValueErrorKind {
 using ValueResult = xpResult<Value, ValueErrorKind>;
 
 
-enum class ActualValueKind {
-    None,
+enum class ActualValueType {
+    Nothing,
     Integer,
     Float,
     Bool,
-    Pointer,
+    String,
     Struct,
     Array,
-    Function,
-    String,
-    Package,
-    Type,
 };
-
 
 struct Value {
 public:
     Value();
+    Value(const Value& other);
+    Value& operator=(const Value& other);
 
     Value set_type(TypeRef new_type);
 
-    // set_actual_value 函数族
-    void set_integer_value(i128 value);
-    void set_float_value(double value);
-    void set_bool_value(bool value);
-    void set_pointer_value(Value* pointed_value);
-    void set_string_value(xpString value);
-    void set_struct_value(Array<Value> field_values);
-    void set_array_value(Array<Value> element_values);
-    void set_function_value(Ast* function_ast, bool is_extern_c);
-    void set_package_value(Package* pkg);
-    void set_type_value(TypeRef type_value);
-
-    // 辅助：安全获取实际值类型
-    bool is_integer_stored() const { return actual_kind == ActualValueKind::Integer; }
-    bool is_float_stored() const { return actual_kind == ActualValueKind::Float; }
-    bool is_bool_stored() const { return actual_kind == ActualValueKind::Bool; }
-    bool is_pointer_stored() const { return actual_kind == ActualValueKind::Pointer; }
-    bool is_string_stored() const { return actual_kind == ActualValueKind::String; }
-    bool is_struct_stored() const { return actual_kind == ActualValueKind::Struct; }
-    bool is_array_stored() const { return actual_kind == ActualValueKind::Array; }
-    bool is_function_stored() const { return actual_kind == ActualValueKind::Function; }
-
-    // 类型安全的成员getter函数
-    i128 get_integer() const;
-    double get_float() const;
-    bool get_bool() const;
-    Value* get_pointer() const;
-    xpString get_string() const;
-    Array<Value> get_struct_fields() const;
-    Array<Value> get_array_elements() const;
-    Ast* get_function_ast() const;
-    bool get_function_is_extern_c() const;
-    i128 get_enum_value() const;
-    Package* get_package_value() const;
-    TypeRef get_type_value() const;
-
-
-
     TypeRef type;
-    ActualValueKind actual_kind = ActualValueKind::None;
 
 
+    ActualValueType actual_type() const;
+
+    void integer_val(i128 int_val);
+    void float_val(double float_val);
+    void bool_val(bool bool_val);
+    void string_val(xpString str_val);
+    void struct_fields_val(Array<Value> field_values);
+    void array_element_values(Array<Value> elem_values);
+
+    i128 integer_val() const;
+    float float_val() const;
+    bool bool_val() const;
+    xpString string_val() const;
+    Array<Value> struct_fields_val() const;
+    Value struct_field_val(isize index) const;
+    Value struct_field_val(xpString field_name) const;
+    Value array_element_val(isize index) const;
+
+
+
+    
+    bool is_null = false;
 private:
+    ActualValueType actual_value_type = ActualValueType::Nothing;
     union {
         i128 integer_value;
 
@@ -107,22 +80,12 @@ private:
 
         bool bool_value;
 
-        Value *pointed_value;
-
-        Array<Value> struct_field_values;
-
-        Array<Value> array_element_values;
-
-        struct {
-            Ast *function_ast;
-            bool is_extern_c;
-        } function_value;
-
         xpString string_value;
+
+        Array<Value> struct_or_array_fields; // 结构体或数组的字段值, 结构体字段顺序和定义时一致, 数组字段顺序和元素顺序一致
     };
 
-    
-    // 友元声明：仅允许克隆函数访问私有成员
+
     friend Value clone_value(Value& v, xpAllocator allocator);
 };
 
@@ -143,6 +106,25 @@ Value clone_value(Value& v, xpAllocator allocator);
 
 
 
+enum class ProgressType {
+    Undefined,
+    InProgress,
+    Finished,
+};
+
+struct TypeProgress {
+
+    static Value Undefined();
+    static Value InProgress();
+    static Value Finished();
+};
+
+
+
+
+
+
+
 template<>
 struct std::formatter<Value> {
     constexpr auto parse(std::format_parse_context& ctx) {
@@ -150,45 +132,16 @@ struct std::formatter<Value> {
     }
 
     auto format(const Value& v, std::format_context& ctx) const {
-        switch (v.actual_kind) {
-        case ActualValueKind::None:
-            return std::format_to(ctx.out(), "(none)");
-        case ActualValueKind::Integer:
-            return std::format_to(ctx.out(), "{}", v.get_integer());
-        case ActualValueKind::Float:
-            return std::format_to(ctx.out(), "{}", v.get_float());
-        case ActualValueKind::Bool:
-            return std::format_to(ctx.out(), "{}", v.get_bool());
-        case ActualValueKind::Pointer:
-            return std::format_to(ctx.out(), "{}", static_cast<void*>(v.get_pointer()));
-        case ActualValueKind::String:
-            return std::format_to(ctx.out(), "\"{}\"", v.get_string());
-        case ActualValueKind::Struct: {
-            auto fields = v.get_struct_fields();
-            auto out = std::format_to(ctx.out(), "{{");
-            for (isize i = 0; i < fields.count; i++) {
-                if (i > 0) out = std::format_to(out, ", ");
-                out = std::format_to(out, "{}", fields[i]);
-            }
-            return std::format_to(out, "}}");
+        switch (v.actual_type()) {
+            case ActualValueType::Integer:
+                return std::format_to(ctx.out(), "{}", v.integer_val());
+            case ActualValueType::Float:
+                return std::format_to(ctx.out(), "{}", v.float_val());
+            case ActualValueType::Bool:
+                return std::format_to(ctx.out(), "{}", v.bool_val());
+            default:
+                return std::format_to(ctx.out(), "(unimplemented)");
         }
-        case ActualValueKind::Array: {
-            auto elems = v.get_array_elements();
-            auto out = std::format_to(ctx.out(), "[");
-            for (isize i = 0; i < elems.count; i++) {
-                if (i > 0) out = std::format_to(out, ", ");
-                out = std::format_to(out, "{}", elems[i]);
-            }
-            return std::format_to(out, "]");
-        }
-        case ActualValueKind::Function:
-            return std::format_to(ctx.out(), "(function {:p})", static_cast<void*>(v.get_function_ast()));
-        case ActualValueKind::Package:
-            return std::format_to(ctx.out(), "(package {:p})", static_cast<void*>(v.get_package_value()));
-        case ActualValueKind::Type:
-            return std::format_to(ctx.out(), "(type {:p})", static_cast<void*>(v.get_type_value()));
-        }
-        return std::format_to(ctx.out(), "(unknown)");
     }
 };
 

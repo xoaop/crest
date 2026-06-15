@@ -6,17 +6,27 @@
 #include "ast.hpp"
 #include "ast_file.hpp"
 #include "scope.hpp"
+#include "cir_builder.hpp"
 
-struct CIRFile;
+
+struct CIRPackage;
 
 
 struct Package {
     xpString path;
 
-    Array<AstFile> ast_files;
-    Array<CIRFile> cir_files;
 
+    //
+    // ast build
+    //
+    Array<AstFile> ast_files;
     Scope package_scope;
+
+
+    //
+    // cir build
+    //
+    CIRPackage cir_package;
 };
 
 Package make_package(xpString path, xpAllocator allocator);

@@ -182,7 +182,7 @@ static void init_global_symbols() {
             easy_type(Type_i64) // TODO 考虑改成isize
         });    
 
-        TypeRef string_struct_typeref = struct_type(&context()->global_blank_package, nullptr, string_struct_name, fields);
+        TypeRef string_struct_typeref = struct_type(nullptr, string_struct_name, fields);
         TypeRef string_type = type_type(string_struct_typeref);
 
         // 符号表
@@ -279,7 +279,8 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
             // @NOTE: 单独处理import声明
             if(ast->ConstDecl.value_ast->type == AstType_Import) {
-                const_info->value = eval_import_decl(ast->ConstDecl.value_ast, analyser); 
+                const_info->val(eval_import_decl(ast->ConstDecl.value_ast, analyser)); 
+                const_info->state = SymbolState::Solved;
                 break;
             }
 
@@ -289,7 +290,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
         default: {
             context()->reporter.report_error(
-                ast->span, analyser.curr_ast_file->source_code,
+                ast->src_loc,
                 "invalid top level declaration"
             );
 
@@ -314,25 +315,23 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type) {
     xpString const_ident = const_decl_ast->ConstDecl.name;
 
-    SymbolInfo *exist = find_symbol_curr(analyser.current_scope, const_ident);
-    if(exist != NULL) {
-        context()->reporter.report_error(
-            const_decl_ast->span, analyser.curr_ast_file->source_code,
-            "symbol '{}' already declared in the same scope",
-            const_decl_ast->ConstDecl.name
-        );
+    if(!(analyser.current_scope->scope_type == ScopeType::File)) {
+        SymbolInfo *exist = find_symbol_curr(analyser.current_scope, const_ident);
+        if(exist != NULL) {
+            context()->reporter.report_error(
+                const_decl_ast->src_loc,
+                "symbol '{}' already declared in the same scope",
+                const_decl_ast->ConstDecl.name
+            );
+        }
     }
 
     Ast *val_ast = const_decl_ast->ConstDecl.value_ast;
-    
-
-
-
     switch(val_ast->type) {
         case AstType_Import: {
             // NOTE: 不允许import在局部定义
             context()->reporter.report_error(
-                val_ast->span, analyser.curr_ast_file->source_code,
+                val_ast->src_loc,
                 "import declaration is not allowed in local scope"
             );
         } break;
@@ -349,9 +348,10 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     }
 
 
-
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
-    add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
+    if(!(analyser.current_scope->scope_type == ScopeType::File)) {
+        SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
+        add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
+    }
 }
 
 
@@ -375,7 +375,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
 
         if(may_fall_through(value_ast->FunctionDeclValue.block)) {
             context()->reporter.report_error(
-                value_ast->FunctionDeclValue.block->span, analyser.curr_ast_file->source_code,
+                value_ast->FunctionDeclValue.block->src_loc,
                 "function body may fall through without returning"
             );
         }
@@ -393,7 +393,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
         
         if(param->ParamDecl.is_var_arg && i != params.count - 1) {
             context()->reporter.report_error(
-                param->span, analyser.curr_ast_file->source_code,
+                param->src_loc,
                 "variadic parameter must be the last parameter"
             );
         }
@@ -407,7 +407,7 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     SymbolInfo *existing = find_symbol_curr(analyser.current_scope, param_ast->ParamDecl.name);
     if(existing != nullptr) {
         context()->reporter.report_error(
-            param_ast->span, analyser.curr_ast_file->source_code,
+            param_ast->src_loc,
             "duplicate parameter name '{}'",
             param_ast->ParamDecl.name
         );
@@ -507,7 +507,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     case AstType_Break: {
         if(get_upper_scope_with_type(analyser.current_scope, ScopeType::LoopBlock) == NULL) {
             context()->reporter.report_error(
-                stmt_ast->span, analyser.curr_ast_file->source_code,
+                stmt_ast->src_loc,
                 "break statement not within loop"
             );
         }
@@ -515,7 +515,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     case AstType_Continue: {
         if(get_upper_scope_with_type(analyser.current_scope, ScopeType::LoopBlock) == NULL) {
             context()->reporter.report_error(
-                stmt_ast->span, analyser.curr_ast_file->source_code,
+                stmt_ast->src_loc,
                 "continue statement not within loop"
             );
         }
@@ -532,7 +532,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
 
     default: {
         context()->reporter.report_error(
-            stmt_ast->span, analyser.curr_ast_file->source_code,
+            stmt_ast->src_loc,
             "invalid statement"
         );
     } break;
@@ -545,7 +545,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     SymbolInfo *existing = find_symbol_curr(analyser.current_scope, var_decl_ast->VariableDecl.var_name);
     if(existing != NULL) {
         context()->reporter.report_error(
-            var_decl_ast->span, analyser.curr_ast_file->source_code,
+            var_decl_ast->src_loc,
             "symbol '{}' already declared in the same scope",
             var_decl_ast->VariableDecl.var_name
         );
@@ -621,7 +621,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
             if(symbol == NULL) {
                 context()->reporter.report_error(
-                    expr_ast->span, analyser.curr_ast_file->source_code,
+                    expr_ast->src_loc,
                     "try to initialize undefined struct type '{}'",
                     get_ident_or_fieldaccess_string(expr_ast->StructInitExpr.struct_type_ident, temp_allocator())
                 );
@@ -681,7 +681,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
                 SymbolInfo *existing = find_symbol_curr(struct_analyser.current_scope, field->StructField.name);
                 if(existing != NULL) {
                     context()->reporter.report_error(
-                        field->span, analyser.curr_ast_file->source_code,
+                        field->src_loc,
                         "duplicate struct field '{}'", field->StructField.name
                     );
                 }
@@ -707,7 +707,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
                     SymbolInfo *existing = find_symbol_curr(enum_analyser.current_scope, field_name);
                     if(existing != NULL) {
                         context()->reporter.report_error(
-                            field->span, analyser.curr_ast_file->source_code,
+                            field->src_loc,
                             "duplicate enum field '{}'", field_name
                         );
                     }
@@ -720,7 +720,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
         case AstType_UnionDecl: {
             context()->reporter.report_error(
-                expr_ast->span, analyser.curr_ast_file->source_code,
+                expr_ast->src_loc,
                 "union type is not supported yet"
             );
         } break;
@@ -760,7 +760,7 @@ SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser) {
 
     if(info == NULL) {
         context()->reporter.report_error(
-            ident_ast->span, analyser.curr_ast_file->source_code,
+            ident_ast->src_loc,
             "undefined symbol '{}'",
             ident_str
         );
@@ -779,15 +779,15 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
 
 
     SymbolInfo *parent_symbol_info = parent_ast->ast_symbol;
-    if(parent_symbol_info == NULL) {
-        return NULL;
+    if(parent_symbol_info == nullptr) {
+        return nullptr;
     }
 
 
-    Value parent_value = parent_symbol_info->value;
+    Value parent_value = parent_symbol_info->val();
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
-        Package *pkg = parent_value.get_package_value();
+        Package *pkg = parent_value.type->package_info;
 
         SymbolInfo *field_sym = resolve_string_as_ident(
             field_name,
@@ -799,7 +799,7 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
 
         if(field_sym == NULL) {
             context()->reporter.report_error(
-                field_access_ast->span, analyser.curr_ast_file->source_code,
+                field_access_ast->src_loc,
                 "undefined symbol '{}' in package '{}'",
                 field_name, parent_symbol_info->name
             );

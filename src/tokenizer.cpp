@@ -382,9 +382,8 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
                 // false表示字符串未闭合就到达文件末尾, 这个token不会被加入token数组
 
                 context()->reporter.report(
-                    ErrorLevel::Error, 
-                    make_span(old_index, t->curr_character_index),
-                    t->source_code,
+                    ErrorLevel::Error,
+                    SourceLocation(t->source_code, make_span(old_index, t->curr_character_index)),
                     "string literal not closed"
                 );
 
@@ -409,9 +408,8 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             // XP_ASSERT_DEFAULT(0);
 
             context()->reporter.report(
-                ErrorLevel::Error, 
-                make_span(old_index, t->curr_character_index),
-                t->source_code,
+                ErrorLevel::Error,
+                SourceLocation(t->source_code, make_span(old_index, t->curr_character_index)),
                 "unknown character '{}'",
                 tokenizer_curr_character(t)
             );
@@ -425,7 +423,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
 
 
     token.span = make_span(old_index, t->curr_character_index);
-
+    token.src_loc = SourceLocation(t->source_code, token.span);
 
     return xp_make_pair(xpOption<Token>(token), true);
 }

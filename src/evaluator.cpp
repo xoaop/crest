@@ -64,16 +64,14 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
 
     if(info != NULL) {
         context()->reporter.report_error(
-            const_decl_ast->span, analyser.curr_ast_file->source_code,
+            SourceLocation(analyser.curr_ast_file->source_code, const_decl_ast->src_loc.span),
             "symbol '{}' repeated definition",
             const_decl_ast->ConstDecl.name
         );    
         return;
     }    
 
-    Value new_value = make_value();
-
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, new_value, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
+    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
     if(value_ast->type == AstType_Import) {
         add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
     } else {
@@ -99,8 +97,7 @@ Value eval_import_decl(Ast *import_ast, Analyser analyser) {
 
     if(imported_package_opt.is_none()) {
         context()->reporter.report_error(
-            import_ast->span,
-            analyser.curr_ast_file->source_code,
+            SourceLocation(analyser.curr_ast_file->source_code, import_ast->src_loc.span),
             "imported package '{}' not found",
             import_ast->Import.path
         );    
@@ -109,7 +106,7 @@ Value eval_import_decl(Ast *import_ast, Analyser analyser) {
 
     Package *imported_package = imported_package_opt.unwrap();
     Value import_value = make_value();
-    import_value.set_package_value(imported_package);
+    import_value.set_type(package_type(imported_package));
 
     return import_value;
 }    

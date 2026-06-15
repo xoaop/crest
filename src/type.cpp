@@ -17,39 +17,58 @@
 
 static const char *type_strings[] = {
 
-#define TYPE_KIND(name, str) str,
+#define TYPE_KIND(name) #name,
     TYPE_KINDS
 #undef TYPE_KIND
 
 };
 
 
+u64 TypeHashKey::hash() const {
 
+    auto hash = reinterpret_cast<u64>(decl_ast);
+
+    if(name.has_value()) {
+        hash = xp_hash_combine_u64(hash, xp_hash_func<xpString>(const_cast<xpString*>(&name.value())));
+    }
+
+    return hash;
+}
+
+
+bool TypeHashKey::operator==(const TypeHashKey& other) const {
+    bool same_decl = decl_ast == other.decl_ast;
+    bool same_name_or_no_name = true;
+
+    if(name.has_value() && other.name.has_value()) {
+        xpString n1 = name.value();
+        xpString n2 = other.name.value();
+
+        same_name_or_no_name = xp_string_equal(n1, n2);
+    }
+
+    return same_decl && same_name_or_no_name;
+}
+
+
+TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
+    TypeHashKey copy = *this;
+    if(name.has_value()) {
+        copy.name = xp_string_copy(allocator, name.value());
+    }
+    return copy;
+}
 
 
 TypeKind string_to_type_kind(xpString str) {
-    if(!xp_string_cmp(str, xp_string_c("i8"))) {
-        return Type_i8;
-    } else if(!xp_string_cmp(str, xp_string_c("i32"))) {
-        return Type_i32;
-    } else if(!xp_string_cmp(str, xp_string_c("i64"))) {
-        return Type_i64;
-    } else if(!xp_string_cmp(str, xp_string_c("u8"))) {
-        return Type_u8;
-    } else if(!xp_string_cmp(str, xp_string_c("u32"))) {
-        return Type_u32;
-    } else if(!xp_string_cmp(str, xp_string_c("u64"))) {
-        return Type_u64;
-    } else if(!xp_string_cmp(str, xp_string_c("f32"))) {
-        return Type_f32;
-    } else if(!xp_string_cmp(str, xp_string_c("f64"))) {
-        return Type_f64;
-    } else if(!xp_string_cmp(str, xp_string_c("bool"))) {
-        return Type_bool;
-    } else if(!xp_string_cmp(str, xp_string_c("void"))) {
-        return Type_void;
-    } else {
-        XP_ASSERT_DEFAULT(0);
+    if(sizeof(type_strings) <= 0) {
+        return Type_Undefined;
+    }
+
+    for(size_t i = 0; i < sizeof(type_strings) / sizeof(type_strings[0]); i++) {
+        if(xp_string_equal(str, xp_string_c(type_strings[i]))) {
+            return static_cast<TypeKind>(i);
+        }
     }
 
     return Type_Undefined;
@@ -74,7 +93,8 @@ Type *alloc_type(xpAllocator allocator, TypeKind kind) {
 
 
 Type copy_type(Type *src) {
-    Type t;
+    Type t{};
+    t.kind = src->kind;
     t.kind = src->kind;
     if(src->type_name != xp_make_string_zero()) {
         t.type_name = xp_string_copy(type_allocator(), src->type_name);
@@ -90,14 +110,14 @@ Type copy_type(Type *src) {
         t.pointed_type = src->pointed_type;
     } break;
     case Type_struct: {
-        t.struct_info.pkg = src->struct_info.pkg;
         t.struct_info.struct_fields = array_copy(&src->struct_info.struct_fields, type_allocator());
-        t.struct_info.decl_ast = src->struct_info.decl_ast;
+        t.struct_info.hash_key = src->struct_info.hash_key.clone(type_allocator());
     } break;
 
     case Type_enum: {
         t.enum_info = src->enum_info;
         t.enum_info.enum_scope = src->enum_info.enum_scope;
+        t.enum_info.hash_key = src->enum_info.hash_key.clone(type_allocator());
     } break;
 
     case Type_array: {
@@ -202,15 +222,12 @@ bool is_equal_type(Type a, Type b) {
         return is_equal_type(*a.pointed_type, *b.pointed_type);
     
     case Type_struct: 
-        return xp_string_equal(a.type_name, b.type_name) && 
-               xp_string_equal(a.struct_info.pkg->path, b.struct_info.pkg->path) && 
-               a.struct_info.decl_ast == b.struct_info.decl_ast;
+        return a.struct_info.hash_key == b.struct_info.hash_key;
 
     // 1. type_name
     // 2. decl_ast
     case Type_enum:
-        return xp_string_equal(a.type_name, b.type_name) && 
-               a.enum_info.decl_ast == b.enum_info.decl_ast;
+        return a.enum_info.hash_key == b.enum_info.hash_key;
     
     // TODO 更多复杂类型比较
     default:
@@ -399,6 +416,10 @@ bool is_slice_struct_type(TypeRef type) {
         return false;
     }
 
+    if(type->type_name.length <= 0) {
+        return false;
+    }
+    
     if(type->type_name[0] != '[') {
         return false;
     }
@@ -708,46 +729,74 @@ TypeRef array_type(TypeRef element_type, usize count) {
     return get_or_add_type(t);
 }
 
-TypeRef struct_type(Package *pkg, Ast *decl, xpString ident, Array<StructField> fields) {
+TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields) {
     Type t = {};
     t.kind = Type_struct;
-    t.type_name = ident;
-    t.struct_info.pkg = pkg;
-    t.struct_info.decl_ast = decl;
+
     t.struct_info.struct_fields = fields;
+    t.struct_info.hash_key = TypeHashKey{ decl };
 
     TypeRef type_ref = get_or_add_type(t);
 
     return type_ref;
 }
 
-TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident) {
+TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields) {
     Type t = {};
     t.kind = Type_struct;
-    t.type_name = ident;
-    t.struct_info.decl_ast = decl;
-    t.struct_info.pkg = pkg;
+    t.type_name = name;
+
+    t.struct_info.struct_fields = fields;
+    t.struct_info.hash_key = TypeHashKey{ decl, name };
 
     TypeRef type_ref = get_or_add_type(t);
 
     return type_ref;
 }
 
-TypeRef unifinished_enum_type(Ast *decl_ast, Scope *parent, xpString ident, TypeRef elem_type) {
+TypeRef unfinished_anonymous_struct_type(Ast *decl) {
+    Type t = {};
+    t.kind = Type_struct;
+    t.struct_info.hash_key = TypeHashKey{ decl };
+
+    TypeRef type_ref = get_or_add_type(t);
+
+    return type_ref;
+}
+
+TypeRef unfinished_struct_type(Ast *decl, xpString ident) {
+    Type t = {};
+    t.kind = Type_struct;
+    t.struct_info.hash_key = TypeHashKey{ decl, ident };
+
+    TypeRef type_ref = get_or_add_type(t);
+
+    return type_ref;
+}
+
+void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
+    XP_ASSERT_DEFAULT(is_struct_type(unfinish));
+    XP_ASSERT_DEFAULT(unfinish->struct_info.struct_fields.count == 0);
+
+    unfinish->struct_info.struct_fields = fields;
+}
+
+
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Scope *scope) {
     XP_ASSERT_DEFAULT(is_integer_type(elem_type));
 
-    Type t = {};
-    t.kind = Type_enum;
-    t.type_name = ident;
-    t.enum_info.decl_ast = decl_ast;
+    Type t{Type_enum};
+
+    xpAllocator alloc = type_allocator();
+    t.enum_info.hash_key = ident.has_value()
+        ? TypeHashKey{ decl_ast, ident.value() }
+        : TypeHashKey{ decl_ast };
     t.enum_info.element_type = elem_type;
-    t.enum_info.enum_scope = make_scope(parent, ScopeType::EnumBlock, type_allocator());
-    t.enum_info.pkg = nullptr; // NOTE: 目前没用
+    t.enum_info.enum_scope = scope;
 
-    TypeRef type_ref = get_or_add_type(t);
-
-    return type_ref;
+    return get_or_add_type(t);
 }
+
 
 TypeRef type_type(TypeRef self_type_info) {
     Type t = {};
@@ -774,12 +823,7 @@ TypeRef undefined_type() {
     return get_or_add_type(t);
 }
 
-void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
-    XP_ASSERT_DEFAULT(is_struct_type(unfinish));
-    XP_ASSERT_DEFAULT(unfinish->struct_info.struct_fields.count == 0);
 
-    unfinish->struct_info.struct_fields = fields;
-}
 
 
 TypeRef error_type() {
@@ -850,8 +894,8 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
      * 假如不给结构体加上decl, 那要是不同作用域有同名struct的slice
      * 那它们的slice类型就会被认为是同一个类型, 这显然不对, 因此必须加上decl来区分
     */
-    Ast *decl = is_struct_type(elem_type) ? elem_type->struct_info.decl_ast : nullptr;
-    return struct_type(&context()->global_blank_package, decl, slice_struct_name, fields);
+    Ast *decl = is_struct_type(elem_type) ? elem_type->struct_info.hash_key.decl_ast : nullptr;
+    return struct_type(decl, slice_struct_name, fields);
 }
 
 // NOTE: 实际上就是结构体
@@ -860,8 +904,7 @@ TypeRef string_type_as_struct() {
 
     Type t = {};
     t.kind = Type_struct;
-    t.type_name = string_struct_name;
-    t.struct_info.pkg = &context()->global_blank_package;
+    t.struct_info.hash_key = TypeHashKey{ nullptr, string_struct_name };
 
     TypeRef type_ref = get_type(t);
     
@@ -1051,19 +1094,10 @@ usize xp_hash_func(Type *type) {
 
         case Type_struct: {
             u64 hash_struct = Type_struct;
-            u64 hash_type_name = cast(u64)(xp_hash_func(&type->type_name));
-
-            // package用path作为哈希值
-            u64 hash_package = cast(u64)(xp_hash_func(&type->struct_info.pkg->path));
-
-
-            u64 hash_value = xp_hash_combine_u64(hash_struct, hash_type_name);
-            hash_value = xp_hash_combine_u64(hash_value, hash_package);
-
 
             // decl_ast要参与hash, 为了区分不同作用域的同名结构体
-            u64 hash_decl_ast = cast(u64)(xp_hash_func(&type->struct_info.decl_ast));
-            hash_value = xp_hash_combine_u64(hash_value, hash_decl_ast);
+            u64 hash_decl_ast = type->struct_info.hash_key.hash();
+            u64 hash_value = xp_hash_combine_u64(hash_struct, hash_decl_ast);
 
             return cast(usize)(hash_value);
         } break;
@@ -1095,13 +1129,11 @@ usize xp_hash_func(Type *type) {
 
         case Type_enum: {
             u64 hash_enum = Type_enum;
-            u64 hash_type_name = cast(u64)(xp_hash_func(&type->type_name));
 
             // decl_ast要参与hash, 为了区分不同作用域的同名枚举
-            u64 hash_decl_ast = cast(u64)(xp_hash_func(&type->enum_info.decl_ast));
+            u64 hash_decl_ast = type->enum_info.hash_key.hash();
 
-            u64 hash_value = xp_hash_combine_u64(hash_enum, hash_type_name);
-            hash_value = xp_hash_combine_u64(hash_value, hash_decl_ast);
+            u64 hash_value = xp_hash_combine_u64(hash_enum, hash_decl_ast);
 
             return cast(usize)(hash_value);
         } break;

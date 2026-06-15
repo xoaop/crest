@@ -33,4 +33,34 @@ struct std::formatter<Span> {
 };
 
 
+struct SourceLocation {
+    SourceLocation();
+    SourceLocation(SourceCode src_code, Span span);
+
+    SourceCode src_code;
+    Span span;
+};
+
+SourceLocation merge(const SourceLocation& a, const SourceLocation& b);
+
+
+template<>
+struct std::formatter<SourceLocation> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const SourceLocation& loc, std::format_context& ctx) const {
+        auto start = cal_line_column_index_of_byte_pos(loc.src_code, loc.span.start);
+        auto end = cal_line_column_index_of_byte_pos(loc.src_code, loc.span.end);
+
+        return std::format_to(ctx.out(), "{}:{}:{} - {}:{}",
+            loc.src_code.file_path,
+            start.first, start.second,
+            end.first, end.second
+        );
+    }
+};
+
+
 #endif

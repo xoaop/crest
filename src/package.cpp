@@ -7,7 +7,6 @@ Package make_package(xpString path, xpAllocator allocator) {
     p.path = path;
 
     p.ast_files = make_array<AstFile>(allocator);
-    p.cir_files = make_array<CIRFile>(allocator);
-
+    p.cir_package = {};
     return p;
 }
