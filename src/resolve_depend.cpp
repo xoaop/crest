@@ -148,9 +148,8 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
                 if(state == PackageState::Resolving) {
                     // TODO ERROR: 循环依赖
                     context()->reporter.report_error(
-                        import_asts[k]->span, 
-                        curr_pkg.ast_files[j].source_code,
-                        "circular dependency detected for package: {}", 
+                        SourceLocation(curr_pkg.ast_files[j].source_code, import_asts[k]->src_loc.span),
+                        "circular dependency detected for package: {}",
                         abs_import_path
                     );
 

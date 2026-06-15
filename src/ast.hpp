@@ -183,12 +183,16 @@ struct Ast {
 
     ImplicitConversionTag implicit_conversion_tag;
 
-    SymbolInfo *ast_symbol; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
+    SymbolInfo *ast_symbol = nullptr; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
 
     // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式
     bool is_lvalue = false;     // 该AST是否是一个左值表达式
     bool is_null = false;       // 该AST是否是一个null值(仅用于常量表达式)
+
+    Ast();
+    Ast(const Ast& other);
+    Ast& operator=(const Ast& other);
     
 
     union {
@@ -197,8 +201,7 @@ struct Ast {
         #undef AST_INFO
     };
 
-    Span span; // 该AST节点对应的源代码范围, 主要用于错误提示
-    
+    SourceLocation src_loc; // 该AST节点对应的源代码位置, 主要用于错误提示
 };
 
 extern const char *ast_strs[];
@@ -207,7 +210,7 @@ extern const char *ast_strs[];
 Ast *ast_alloc(AstType type, xpAllocator allocator);
 Ast *ast_alloc(AstType type);
 Ast *ast_alloc(AstType type, Token token);
-Ast *ast_alloc(AstType type, Token token, Span span);
+Ast *ast_alloc(AstType type, Token token, SourceLocation src_loc);
 Ast ast_make(AstType type);
 
 

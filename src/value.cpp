@@ -1,13 +1,20 @@
 #include "value.hpp"
 #include "type.hpp"
 
-
-
-
-
+#include <cstring>
 
 Value::Value() {
     type = undefined_type();
+}
+
+Value::Value(const Value& other) {
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(Value));
+}
+
+Value& Value::operator=(const Value& other) {
+    if (this == &other) return *this;
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(Value));
+    return *this;
 }
 
 
@@ -17,15 +24,11 @@ Value Value::set_type(TypeRef new_type) {
     return *this;
 }
 
-
 Value make_value() {
     Value v = {};
     v.type = undefined_type();
-    v.actual_kind = ActualValueKind::None; // 初始化默认值，避免未定义行为
     return v;
 }
-
-
 
 Value make_value(TypeRef type) {
     Value v = make_value();
@@ -33,139 +36,134 @@ Value make_value(TypeRef type) {
     return v;
 }
 
-
-
-void Value::set_integer_value(i128 value) {
-    integer_value = value;
-    actual_kind = ActualValueKind::Integer;
+ActualValueType Value::actual_type() const {
+    return actual_value_type;
 }
 
-void Value::set_float_value(double value) {
-    float_value = value;
-    actual_kind = ActualValueKind::Float;
+
+void Value::integer_val(i128 int_val) {
+    actual_value_type = ActualValueType::Integer;
+    integer_value = int_val;
 }
 
-void Value::set_bool_value(bool value) {
-    bool_value = value;
-    actual_kind = ActualValueKind::Bool;
+void Value::float_val(double fval) {
+    actual_value_type = ActualValueType::Float;
+    float_value = fval;
 }
 
-void Value::set_pointer_value(Value* pointed_value) {
-    this->pointed_value = pointed_value;
-    actual_kind = ActualValueKind::Pointer;
+void Value::bool_val(bool bval) {
+    actual_value_type = ActualValueType::Bool;
+    bool_value = bval;
 }
 
-void Value::set_string_value(xpString value) {
-    string_value = value;
-    actual_kind = ActualValueKind::String;
+void Value::string_val(xpString str_val) {
+    actual_value_type = ActualValueType::String;
+    string_value = str_val;
 }
 
-void Value::set_struct_value(Array<Value> field_values) {
-    struct_field_values = field_values;
-    actual_kind = ActualValueKind::Struct;
+void Value::struct_fields_val(Array<Value> field_values) {
+    actual_value_type = ActualValueType::Struct;
+    struct_or_array_fields = field_values;
 }
 
-void Value::set_array_value(Array<Value> element_values) {
-    array_element_values = element_values;
-    actual_kind = ActualValueKind::Array;
-}
-
-void Value::set_function_value(Ast* function_ast, bool is_extern_c) {
-    function_value.function_ast = function_ast;
-    function_value.is_extern_c = is_extern_c;
-    actual_kind = ActualValueKind::Function;
-}
-
-void Value::set_package_value(Package* pkg) {
-    type = package_type(pkg);
-    actual_kind = ActualValueKind::Package;
-}
-
-void Value::set_type_value(TypeRef type_value) {
-    type = type_value;
-    actual_kind = ActualValueKind::Type;
+void Value::array_element_values(Array<Value> elem_values) {
+    actual_value_type = ActualValueType::Array;
+    struct_or_array_fields = elem_values;
 }
 
 
 
-
-i128 Value::get_integer() const {
-    XP_ASSERT_DEFAULT(is_integer_stored());
+i128 Value::integer_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Integer);
     return integer_value;
 }
 
-double Value::get_float() const {
-    XP_ASSERT_DEFAULT(is_float_stored());
+float Value::float_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Float);
     return float_value;
 }
 
-bool Value::get_bool() const {
-    XP_ASSERT_DEFAULT(is_bool_stored());
+bool Value::bool_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Bool);
     return bool_value;
 }
 
-Value* Value::get_pointer() const {
-    XP_ASSERT_DEFAULT(is_pointer_stored());
-    return pointed_value;
-}
-
-xpString Value::get_string() const {
-    XP_ASSERT_DEFAULT(is_string_stored());
+xpString Value::string_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::String);
     return string_value;
 }
 
-Array<Value> Value::get_struct_fields() const {
-    XP_ASSERT_DEFAULT(is_struct_stored());
-    return struct_field_values;
+Array<Value> Value::struct_fields_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
+    return struct_or_array_fields;
 }
 
-Array<Value> Value::get_array_elements() const {
-    XP_ASSERT_DEFAULT(is_array_stored());
-    return array_element_values;
+Value Value::struct_field_val(isize index) const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
+    XP_ASSERT_DEFAULT(is_struct_type(type));
+    XP_ASSERT_DEFAULT(index >= 0 && index < type->struct_info.struct_fields.count);
+
+    return struct_fields_val()[index];
 }
 
-Ast* Value::get_function_ast() const {
-    XP_ASSERT_DEFAULT(is_function_stored());
-    return function_value.function_ast;
-}
-
-bool Value::get_function_is_extern_c() const {
-    XP_ASSERT_DEFAULT(is_function_stored());
-    return function_value.is_extern_c;
-}
-
-i128 Value::get_enum_value() const {
-    XP_ASSERT_DEFAULT(is_enum_type(type));
-    XP_ASSERT_DEFAULT(is_integer_stored());
-    return integer_value;
-}
+Value Value::struct_field_val(xpString field_name) const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
+    XP_ASSERT_DEFAULT(is_struct_type(type));
 
 
-Package* Value::get_package_value() const {
-    XP_ASSERT_DEFAULT(is_package_type(type));
-    return type->package_info;
-}
+    for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+        auto field = type->struct_info.struct_fields[i];
 
-TypeRef Value::get_type_value() const {
-    XP_ASSERT_DEFAULT(is_type_type(type));
-    return type->self_type_info;
-}
-
-
-
-
-Value clone_value(Value& v, xpAllocator allocator) {
-    Value new_value = v;
-
-    if(is_string_struct_type(v.type)) {
-        new_value.string_value = v.string_value;
-    } else if(is_struct_type(v.type) && !is_string_struct_type(v.type)) {
-        // NOTE: 注意区分普通结构体和字符串(结构体)
-
-        new_value.struct_field_values = array_copy(&v.struct_field_values, allocator);
-    } else if(is_array_type(v.type)) {
-        new_value.array_element_values = array_copy(&v.array_element_values, allocator);
+        if(xp_string_equal(field.name, field_name)) {
+            return struct_field_val(i);
+        }
     }
+    
+    XP_ASSERT_MSG(false, "struct field not found");
+    return Value();
+}
 
-    return new_value;
+Value Value::array_element_val(isize index) const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
+    XP_ASSERT_DEFAULT(is_array_type(type));
+    XP_ASSERT_DEFAULT(index >= 0 && index < type->array_info.count);
+
+    return struct_or_array_fields[index];
+}
+
+
+// Value clone_value(Value& v, xpAllocator allocator) {
+//     Value new_value = v;
+
+//     if(is_string_struct_type(v.type)) {
+//         new_value.string_value = v.string_value;
+//     } else if(is_struct_type(v.type) && !is_string_struct_type(v.type)) {
+//         new_value.struct_field_values = array_copy(&v.struct_field_values, allocator);
+//     } else if(is_array_type(v.type)) {
+//         new_value.array_element_values = array_copy(&v.array_element_values, allocator);
+//     }
+
+//     return new_value;
+// }
+
+
+Value TypeProgress::Undefined() {
+    Value v = make_value();
+    v.set_type(easy_type(Type_untyped_int));
+    v.integer_val(static_cast<i128>(ProgressType::Undefined));
+    return v;
+}
+
+Value TypeProgress::InProgress() {
+    Value v = make_value();
+    v.set_type(easy_type(Type_untyped_int));
+    v.integer_val(static_cast<i128>(ProgressType::InProgress));
+    return v;
+}
+
+Value TypeProgress::Finished() {
+    Value v = make_value();
+    v.set_type(easy_type(Type_untyped_int));
+    v.integer_val(static_cast<i128>(ProgressType::Finished));
+    return v;
 }

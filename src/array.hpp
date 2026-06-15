@@ -25,6 +25,11 @@ struct Array {
         return data[index];
     }
 
+    const T& operator[](isize index) const {
+        XP_ASSERT(index >= 0 && index < count);
+        return data[index];
+    }
+
 
     // 妥协
     // Array(xpAllocator allocator) {
@@ -60,6 +65,11 @@ struct Array {
     }
 
     T& back() {
+        XP_ASSERT(count > 0);
+        return data[count - 1];
+    }
+
+    const T& back() const {
         XP_ASSERT(count > 0);
         return data[count - 1];
     }

@@ -1,8 +1,16 @@
-// #include "type_check.hpp"
+#include "type_check.hpp"
 
-// #include "error_msg.hpp"
+#include "error_msg.hpp"
 
-// #include "context.hpp"
+#include "context.hpp"
+
+
+
+TypeRef infer_binary_expr_type(TokenType op, TypeRef left_type, TypeRef right_type) {
+    XP_TODO();
+    return undefined_type();
+}
+
 
 // bool check_untyped_int_to_type(i128 value, TypeRef target_type) {
 //     // 如连整数类型都不是, 那肯定无法转化

@@ -29,6 +29,9 @@ SourceCode make_source_code(xpString file_path, xpString code_string, xpAllocato
 
 xpPair<BytePos, BytePos> cal_line_column_idx(Array<BytePos> line_start_indices, BytePos byte_pos) {
     isize line_count = line_start_indices.count;
+    if(line_count == 0) {
+        return xp_make_pair((BytePos)1, (BytePos)1);
+    }
 
     isize left_idx = 0;
     isize right_idx = line_count;
@@ -67,10 +70,20 @@ xpString get_line_str_of_pos(SourceCode code, BytePos pos, xpAllocator allocator
     BytePos column_index = line_column.second;
     isize line_count = code.line_start_indices.count;
 
+    if(line_count == 0) {
+        return xp_make_string_capacity(allocator, nullptr, 0);
+    }
+
 
     BytePos line_start_pos = code.line_start_indices[line_index - 1]; // line_index从1开始计数，所以要减1得到正确的行起始位置
     BytePos line_end_pos = (line_index < line_count) ? code.line_start_indices[line_index] - 1 : code.code_string.length; // 如果是最后一行，行结束位置就是code_string的长度，否则就是下一行的起始位置减1
 
     xpString line_str = xp_make_string_capacity(allocator, code.code_string.c_str + line_start_pos, line_end_pos - line_start_pos);
     return line_str;
+}
+
+
+
+bool is_same_src_code(const SourceCode *a, const SourceCode *b) {
+    return xp_string_equal(a->file_path, b->file_path);
 }

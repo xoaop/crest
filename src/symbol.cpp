@@ -1,14 +1,82 @@
 #include "symbol.hpp"
 
+#include "ast.hpp"
+
+#include "cir_builder.hpp"
+
+#include <cstring>
 
 //
 // SymbolInfo, etc.
 //
 
+SymbolInfo::SymbolInfo() {
+    value_store_type = ValueStoreType::Nothing;
+    value = make_value();
+}
+
+SymbolInfo::SymbolInfo(const SymbolInfo& other) {
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(SymbolInfo));
+}
+
+SymbolInfo& SymbolInfo::operator=(const SymbolInfo& other) {
+    if (this == &other) return *this;
+    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(SymbolInfo));
+    return *this;
+}
+
+Value SymbolInfo::val() const {
+    if(value_store_type == ValueStoreType::InSymbolInfo) {
+        return value;
+    } else if(value_store_type == ValueStoreType::InCIRInstruction) {
+        CIRInstruction *inst = inst_key.package->Inst(inst_key.defining_inst);
+        XP_ASSERT_DEFAULT(inst->result.type == CIRResultType::OnlyType || inst->result.type == CIRResultType::WholeValue);
+        return inst->result.val;
+    }
+
+    return make_value();
+}
+
+CIRInstUniqueKey SymbolInfo::val_as_inst_key() const {
+    XP_ASSERT_DEFAULT(value_store_type == ValueStoreType::InCIRInstruction);
+    return inst_key;
+}
+
+void SymbolInfo::val(Value new_val) {
+    value_store_type = ValueStoreType::InSymbolInfo;
+    value = new_val;
+}
+void SymbolInfo::val(CIRInstUniqueKey new_key) {
+    value_store_type = ValueStoreType::InCIRInstruction;
+    inst_key = new_key;
+}
+
+
+
+bool SymbolInfo::is_var_decl() {
+    if(ast == nullptr) return false;
+
+    return ast->type == AstType_VariableDecl || ast->type == AstType_ParamDecl;
+}
+
+bool SymbolInfo::is_const_decl() {
+    if(ast == nullptr) return false;
+
+    return ast->type == AstType_ConstDecl;
+}
+
+bool SymbolInfo::is_const_decl_and_func() {
+    if(ast == nullptr) return false;
+
+    return ast->type == AstType_ConstDecl && 
+           ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue;
+}
+
+
 SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file, Ast *ast) {
-    SymbolInfo info = {};
+    SymbolInfo info{};
     info.name = name;
-    info.value = value;
+    info.val(value);
     info.package = package;
     info.file = file;
     info.ast = ast;
@@ -19,6 +87,9 @@ SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *fi
 SymbolInfo make_symbol(xpString name, Package *package, AstFile *file, Ast *ast) {
     SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
     info.state = SymbolState::Unsolved;
+
+    info.value_store_type = ValueStoreType::Nothing;
+    info.value = make_value();
     return info;
 }
 

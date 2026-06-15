@@ -13,6 +13,7 @@
 #include "xoaop.h"
 #include "common.hpp"
 #include "context.hpp"
+#include "cir_interpreter.hpp"
 
 #include "tokenizer.hpp"
 #include "parser.hpp"
@@ -155,11 +156,11 @@ int main(int argc, char** argv) {
 
     for(auto& pkg : context()->all_packages) {
         CIRBuilder builder = {};
-        for(auto& ast_file : pkg.ast_files) {
-            auto cir = builder.build_cir_file(&ast_file);
-            dump_cir_file(&cir);
-            pkg.cir_files.push_back(cir);
-        }
+        pkg.cir_package = builder.build_cir_package(&pkg);
+    }
+
+    for(auto& pkg : context()->all_packages) {
+        dump_cir_package(&pkg.cir_package);
     }
 
     if(context()->reporter.error_count > 0) {
@@ -167,6 +168,14 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    
+    for(auto& pkg : context()->all_packages) {
+        analyze_package(&pkg);
+    }
+
+    // if(context()->reporter.error_count > 0) {
+    //     context()->reporter.print_msg();
+    //     return 0;
+    // }
+
     return 0;
 }

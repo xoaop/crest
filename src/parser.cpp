@@ -102,7 +102,7 @@ Ast *parse_pointer_type(Parser *p) {
 
     a->PointerType.pointed_type_ast = pointed_type_ast;
 
-    a->span = merge(a->token.span, pointed_type_ast->span);
+    a->src_loc = merge(a->token.src_loc, pointed_type_ast->src_loc);
 
     return a;
 }
@@ -119,7 +119,7 @@ Ast *parse_array_type(Parser *p) {
     Ast *element_type_ast = parse_type(p);
     a->ArrayType.element_type_ast = element_type_ast;
 
-    a->span = merge(a->token.span, element_type_ast->span);
+    a->src_loc = merge(a->token.src_loc, element_type_ast->src_loc);
 
     return a;
 }
@@ -139,7 +139,7 @@ Ast *parse_basic_and_ident_type(Parser *p) {
         default: {
             report_unexpected(p, "type");
             a = ast_alloc(AstType_BadType, curr);
-            a->span = curr.span;
+            a->src_loc = curr.src_loc;
 
             advance_token(p); // 跳过错误token
         } break;
@@ -164,12 +164,11 @@ Ast *parse_type(Parser *p) {
             Ast *element_type_ast = parse_type(p);
             a->SliceType.element_type_ast = element_type_ast;
 
-            a->span = merge(a->token.span, element_type_ast->span);
+            a->src_loc = merge(a->token.src_loc, element_type_ast->src_loc);
 
             return a;
         } else {
             // Array Type
-
             return parse_array_type(p);
         }
     } else {
@@ -204,7 +203,7 @@ Ast *parse_import(Parser *p) {
     }
 
 
-    Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.span, path_succ.first.span));
+    Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.src_loc, path_succ.first.src_loc));
     a->Import.path = normalize_path(path, ast_allocator());
     a->Import.search_prefix = search_prefix;
     
@@ -252,7 +251,7 @@ Ast *parse_enum_decl(Parser *p) {
     Ast *a = ast_alloc(AstType_EnumDecl, name_succ.first);
     a->EnumDecl.type_ast = type;
     a->EnumDecl.fields = fields;
-    a->span = merge(name_succ.first.span, curr_token(p).span);
+    a->src_loc = merge(name_succ.first.src_loc, curr_token(p).src_loc);
 
     return a;
 }
@@ -278,9 +277,9 @@ Ast *parse_union_decl(Parser *p) {
         Ast *field_ast = ast_alloc(AstType_StructField, field_name_token);
         field_ast->StructField.name = field_name_token.token_str;
         field_ast->StructField.type_ast = type_ast;
-        field_ast->span = merge(field_name_token.span, type_ast->span);
+        field_ast->src_loc = merge(field_name_token.src_loc, type_ast->src_loc);
         array_push_back(&field_types, field_ast);
-        
+
         expect(p, TokenType::Semicolon);
     }
 
@@ -288,7 +287,7 @@ Ast *parse_union_decl(Parser *p) {
 
     Ast *a = ast_alloc(AstType_UnionDecl, name_succ.first);
     a->UnionDecl.fields = field_types;
-    a->span = merge(name_succ.first.span, rcb.span);
+    a->src_loc = merge(name_succ.first.src_loc, rcb.src_loc);
 
     return a;
 }
@@ -313,9 +312,9 @@ Ast *parse_struct_decl(Parser *p) {
         Ast *field_ast = ast_alloc(AstType_StructField, field_name_token);
         field_ast->StructField.name = field_name_token.token_str;
         field_ast->StructField.type_ast = type_ast;
-        field_ast->span = merge(field_name_token.span, type_ast->span);
+        field_ast->src_loc = merge(field_name_token.src_loc, type_ast->src_loc);
         array_push_back(&field_types, field_ast);
-        
+
         expect(p, TokenType::Semicolon);
     }
 
@@ -324,7 +323,7 @@ Ast *parse_struct_decl(Parser *p) {
 
     Ast *a = ast_alloc(AstType_StructDeclValue, name_succ.first);
     a->StructDeclValue.fields = field_types;
-    a->span = merge(name_succ.first.span, rcb.span);
+    a->src_loc = merge(name_succ.first.src_loc, rcb.src_loc);
 
     return a;
 }
@@ -379,7 +378,7 @@ Ast *parse_function_value(Parser *p) {
         param_ast->ParamDecl.name = param_name_token.token_str;
         param_ast->ParamDecl.type_ast = param_type_ast;
         param_ast->ParamDecl.is_var_arg = false;
-        param_ast->span = merge(param_name_token.span, param_type_ast->span);
+        param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
 
 
         array_push_back(&params, param_ast);
@@ -399,7 +398,7 @@ Ast *parse_function_value(Parser *p) {
     } else {
         Ast *void_ast = ast_alloc(AstType_EasyType, rb);
         void_ast->EasyType.kind = Type_void;
-        void_ast->span = rb.span; // TODO: FIX
+        void_ast->src_loc = rb.src_loc;
 
         return_type_ast = void_ast;
     }
@@ -411,21 +410,21 @@ Ast *parse_function_value(Parser *p) {
     } 
     
     Ast *block_ast = NULL;
-    Span span;
+    SourceLocation loc;
     if(is_extern_c) {
         // extern C函数没有函数体
 
         block_ast = NULL;
-        span = merge(rb.span, return_type_ast->span); // TODO: 这里的span不太准确
+        loc = merge(rb.src_loc, return_type_ast->src_loc); // TODO: 这里的span不太好, 因为extern C函数没有函数体, 没有左大括号, 只能以返回值类型的结束位置作为函数声明的结束位置了, 这样span就不能完全覆盖整个函数声明了, 先暂时这样吧
     } else {
         block_ast = parse_block(p);
         block_ast->Block.is_function_body = true; // 标记这是一个函数体, 方便后面类型检查时区分普通块和函数体
-        span = merge(rb.span, block_ast->span);
+        loc = merge(rb.src_loc, block_ast->src_loc);
     }
 
     if(must_be_c_fn && !is_extern_c) {
         context()->reporter.report_error(
-            span, p->f.source_code,
+            loc,
             "functions with variable arguments must be declared as extern C"
         );
     }
@@ -433,12 +432,11 @@ Ast *parse_function_value(Parser *p) {
 
 
 
-    Ast *a = ast_alloc(AstType_FunctionDeclValue, rb);
+    Ast *a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
     a->FunctionDeclValue.params = params;
     a->FunctionDeclValue.block = block_ast;
     a->FunctionDeclValue.return_type_ast = return_type_ast;
     a->FunctionDeclValue.is_extern_c = is_extern_c;
-    a->span = span;
 
     return a;
 }
@@ -453,7 +451,7 @@ Ast *parse_assignment_or_expr(Parser *p) {
         Ast *a = ast_alloc(AstType_Assignment, left->token);
         a->Assignment.left_var_expr = left;
         a->Assignment.right_expr = right;
-        a->span = merge(left->span, right->span);
+        a->src_loc = merge(left->src_loc, right->src_loc);
 
         return a;
     } else {
@@ -506,7 +504,7 @@ Ast *parse_const_decl(Parser *p) {
     const_decl->ConstDecl.name = name_token.token_str;
     const_decl->ConstDecl.type_ast = type_ast;
     const_decl->ConstDecl.value_ast = value_ast;
-    const_decl->span = merge(name_token.span, value_ast->span);
+    const_decl->src_loc = merge(name_token.src_loc, value_ast->src_loc);
 
     return const_decl;
 }
@@ -540,14 +538,14 @@ Ast *parse_var_decl(Parser *p) {
 
                 a->VariableDecl.no_zero_init = true;
 
-                a->span = merge(a->token.span, tm.span);
+                a->src_loc = merge(a->token.src_loc, tm.src_loc);
             } else {
                 // 有初始化表达式
 
                 a->VariableDecl.no_zero_init = false;
                 a->VariableDecl.expr = parse_expr(p, 0);
 
-                a->span = merge(a->token.span, a->VariableDecl.expr->span);
+                a->src_loc = merge(a->token.src_loc, a->VariableDecl.expr->src_loc);
             }
 
             a->VariableDecl.type_ast = NULL;
@@ -577,14 +575,14 @@ Ast *parse_var_decl(Parser *p) {
                     a->VariableDecl.no_zero_init = true;
                     a->VariableDecl.expr = NULL;
 
-                    a->span = merge(a->token.span, tm.span);
+                    a->src_loc = merge(a->token.src_loc, tm.src_loc);
                 } else {
                     // 有初始化表达式
 
                     a->VariableDecl.no_zero_init = false;
                     a->VariableDecl.expr = parse_expr(p, 0);
 
-                    a->span = merge(a->token.span, a->VariableDecl.expr->span);
+                    a->src_loc = merge(a->token.src_loc, a->VariableDecl.expr->src_loc);
                 }
                 
             } else {
@@ -593,7 +591,7 @@ Ast *parse_var_decl(Parser *p) {
                 a->VariableDecl.no_zero_init = false;
                 a->VariableDecl.expr = NULL;
 
-                a->span = merge(a->token.span, a->VariableDecl.type_ast->span);
+                a->src_loc = merge(a->token.src_loc, a->VariableDecl.type_ast->src_loc);
             }
 
         } break;
@@ -633,10 +631,10 @@ Ast *parse_stmt(Parser *p) {
 
         if(curr_token(p).type != TokenType::Semicolon) {
             a->ReturnStmt.expr = parse_expr(p, 0);
-            a->span = merge(a->token.span, a->ReturnStmt.expr->span);
+            a->src_loc = merge(a->token.src_loc, a->ReturnStmt.expr->src_loc);
         } else {
             a->ReturnStmt.expr = NULL;
-            a->span = a->token.span;
+            a->src_loc = a->token.src_loc;
         }
 
         expect(p, TokenType::Semicolon);
@@ -645,14 +643,14 @@ Ast *parse_stmt(Parser *p) {
     case TokenType::KW_break:
         a = ast_alloc(AstType_Break);
         a->token = expect(p, TokenType::KW_break);
-        a->span = a->token.span;
+        a->src_loc = a->token.src_loc;
         expect(p, TokenType::Semicolon);
         break;
 
     case TokenType::KW_continue:
         a = ast_alloc(AstType_Continue);
         a->token = expect(p, TokenType::KW_continue);
-        a->span = a->token.span;
+        a->src_loc = a->token.src_loc;
         expect(p, TokenType::Semicolon);
         break;
     
@@ -680,7 +678,7 @@ Ast *parse_stmt(Parser *p) {
             a = ast_alloc(AstType_ConstDecl, import_ast->token);
             a->ConstDecl.name = get_last_component_of_path(import_ast->Import.path, ast_allocator());
             a->ConstDecl.value_ast = import_ast;
-            a->span = import_ast->span;
+            a->src_loc = import_ast->src_loc;
         }
 
 
@@ -711,7 +709,7 @@ Ast *parse_block(Parser *p) {
 
     Token rcb = expect(p, TokenType::RightCurlyBracket);
 
-    a->span = merge(a->token.span, rcb.span);
+    a->src_loc = merge(a->token.src_loc, rcb.src_loc);
 
     return a;
 }
@@ -734,16 +732,16 @@ Ast *parse_if(Parser *p) {
             a->IfStmt.else_block->Block.statements = make_array<Ast *>(ast_allocator());
             array_push_back(&a->IfStmt.else_block->Block.statements, parse_if(p));
 
-            a->IfStmt.else_block->span = a->IfStmt.else_block->Block.statements[0]->span; // 只有一个子节点, span就是子节点的span
+            a->IfStmt.else_block->src_loc = a->IfStmt.else_block->Block.statements[0]->src_loc;
         } else {
             a->IfStmt.else_block = parse_block(p);
         }
     }
     
     if(a->IfStmt.else_block != NULL) {
-        a->span = merge(a->token.span, a->IfStmt.else_block->span);
+        a->src_loc = merge(a->token.src_loc, a->IfStmt.else_block->src_loc);
     } else {
-        a->span = merge(a->token.span, a->IfStmt.then_block->span);
+        a->src_loc = merge(a->token.src_loc, a->IfStmt.then_block->src_loc);
     }
 
     return a;
@@ -778,8 +776,7 @@ Ast *parse_for(Parser *p) {
         if(a->ForStmt.post->type != AstType_Assignment) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                curr_token(p).span,
-                p->f.source_code,
+                curr_token(p).src_loc,
                 "expected assignment expression in for loop post statement, got expression that is not an assignment"
             );
         }
@@ -791,7 +788,7 @@ Ast *parse_for(Parser *p) {
 
     a->ForStmt.body = parse_block(p);
 
-    a->span = merge(a->token.span, a->ForStmt.body->span);
+    a->src_loc = merge(a->token.src_loc, a->ForStmt.body->src_loc);
 
     return a;
 }
@@ -823,8 +820,7 @@ Ast *parse_string_literal(Parser *p) {
             if(curr_index >= raw_str_count) {
                 context()->reporter.report(
                     ErrorLevel::Error,
-                    str_token.span,
-                    p->f.source_code,
+                    str_token.src_loc,
                     "invalid escape sequence in string literal: unexpected end of string after backslash"
                 );
                 break;
@@ -928,8 +924,7 @@ Ast *parse_string_literal(Parser *p) {
                     if(!has_digits) {
                         context()->reporter.report(
                             ErrorLevel::Error,
-                            {str_token.span.start + 1 + curr_index, 1},
-                            p->f.source_code,
+                            SourceLocation(p->f.source_code, Span{str_token.span.start + 1 + curr_index, 1}),
                             "invalid escape sequence in string literal: \\x must be followed by at least one hexadecimal digit"
                         );
                     } else {
@@ -942,8 +937,7 @@ Ast *parse_string_literal(Parser *p) {
                 default:
                     context()->reporter.report(
                         ErrorLevel::Error,
-                        {str_token.span.start + 1 + curr_index, 1},
-                        p->f.source_code,
+                        SourceLocation(p->f.source_code, Span{str_token.span.start + 1 + curr_index, 1}),
                         "invalid escape sequence in string literal: unrecognized escape character"
                     );
             }
@@ -961,7 +955,7 @@ Ast *parse_string_literal(Parser *p) {
     if(curr_index == raw_str_count) {
         // 代表解析成功
 
-        Ast *a = ast_alloc(AstType_StringLiteralExpr, str_token, str_token.span);
+        Ast *a = ast_alloc(AstType_StringLiteralExpr, str_token, str_token.src_loc);
         a->StringLiteralExpr.str = parsed_str;
         return a;
     } else {
@@ -993,7 +987,7 @@ Ast *parse_expr_factor(Parser *p) {
         #define UNARY_OP_PRECEDENCE 114514
         a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE);
 
-        a->span = merge(curr.span, a->UnaryExpr.operand->span);
+        a->src_loc = merge(curr.src_loc, a->UnaryExpr.operand->src_loc);
 
     } else {
         switch (curr.type)
@@ -1002,16 +996,16 @@ Ast *parse_expr_factor(Parser *p) {
         // 字面量
         case TokenType::Integer:
         case TokenType::Float:
+        case TokenType::KW_true:
+        case TokenType::KW_false:
             a = parse_constant(p);
             break;
 
         // 关键字常量
-        case TokenType::KW_true:
-        case TokenType::KW_false:
         case TokenType::KW_null:
             a = ast_alloc(AstType_Constant);
             a->token = expect(p, curr.type);
-            a->span = a->token.span;
+            a->src_loc = a->token.src_loc;
             break;
         
         // (expr)
@@ -1049,7 +1043,7 @@ Ast *parse_expr_factor(Parser *p) {
             expect(p, TokenType::RightBracket);
             a->CastExpr.expr = parse_expr(p, UNARY_OP_PRECEDENCE);
 
-            a->span = merge(a->token.span, a->CastExpr.expr->span);
+            a->src_loc = merge(a->token.src_loc, a->CastExpr.expr->src_loc);
             break;
 
         case TokenType::LeftCurlyBracket:
@@ -1069,7 +1063,7 @@ Ast *parse_expr_factor(Parser *p) {
             report_unexpected(p, "factor (literal, ident, (expr), etc.)");
 
             a = ast_alloc(AstType_BadExpr, curr_token(p));
-            a->span = curr_token(p).span;
+            a->src_loc = curr_token(p).src_loc;
 
             advance_token(p);
 
@@ -1100,7 +1094,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
             Ast *new_left = ast_alloc(AstType_IndexExpr, curr);
             new_left->IndexExpr.array_var_expr = left;
             new_left->IndexExpr.index_expr = index_expr;
-            new_left->span = merge(left->span, rsb.span);
+            new_left->src_loc = merge(left->src_loc, rsb.src_loc);
 
             left = new_left;
 
@@ -1126,7 +1120,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
             }
             Token rb = expect(p, TokenType::RightBracket);
 
-            a->span = merge(left->span, rb.span);
+            a->src_loc = merge(left->src_loc, rb.src_loc);
 
             left = a;
         } else if(curr.type == TokenType::Dot) {
@@ -1162,7 +1156,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
 
                 Token rcb = expect(p, TokenType::RightCurlyBracket);
 
-                a->span = merge(left->span, rcb.span);
+                a->src_loc = merge(left->src_loc, rcb.src_loc);
 
                 left = a;
             } else {
@@ -1173,8 +1167,8 @@ Ast *parse_expr(Parser *p, isize min_prec) {
                 Token field_name_token = expect(p, TokenType::Ident);
                 new_left->FieldAccess.field_name = field_name_token.token_str;
                 
-                new_left->span = merge(left->span, field_name_token.span);
-    
+                new_left->src_loc = merge(left->src_loc, field_name_token.src_loc);
+
                 left = new_left;
             }
 
@@ -1195,7 +1189,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
             new_left->BinaryExpr.op = curr.type;
             new_left->BinaryExpr.left = left;
             new_left->BinaryExpr.right = right;
-            new_left->span = merge(left->span, right->span);
+            new_left->src_loc = merge(left->src_loc, right->src_loc);
 
             left = new_left;
 
@@ -1226,7 +1220,19 @@ Ast *parse_constant(Parser *p) {
         parse_float(curr.number_info.pure_number_str.c_str, curr.number_info.type_kind_of_number, a, p);
         expect(p, TokenType::Float);
     }
-    a->span = curr.span;
+
+    if(curr.type == TokenType::KW_true || curr.type == TokenType::KW_false) {
+        a->type = AstType_Constant;
+
+        Value value = make_value();
+        value.bool_val(curr.type == TokenType::KW_true);
+        value.set_type(easy_type(Type_bool));
+        a->Constant.value = value;
+
+        expect(p, curr.type);
+    }
+
+    a->src_loc = curr.src_loc;
 
     return a;
 }
@@ -1258,8 +1264,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     if(errno == ERANGE) {
         context()->reporter.report(
             ErrorLevel::Error,
-            a->token.span,
-            p->f.source_code,
+            a->token.src_loc,
             "integer literal '{}' is too large",
             str
         );
@@ -1271,8 +1276,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         if(!(val >= INTPTR_MIN && val <= INTPTR_MAX)) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                a->token.span,
-                p->f.source_code,
+                a->token.src_loc,
                 "integer literal '-{}' is too small",
                 str
             );
@@ -1286,8 +1290,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         if(check_integer_overflow(val, easy_type(type_kind))) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                a->token.span,
-                p->f.source_code,
+                a->token.src_loc,
                 "integer literal '{}' can't fit in type '{}'",
                 str,
                 get_type_kind_str(type_kind)
@@ -1298,7 +1301,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     a->type = AstType_Constant;
 
     Value value = make_value();
-    value.set_integer_value(val);
+    value.integer_val(val);
     if(type_kind != Type_Undefined) {
         value.set_type(easy_type(type_kind));
     } else {
@@ -1325,16 +1328,14 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         if(val == HUGE_VAL) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                a->token.span,
-                p->f.source_code,
+                a->token.src_loc,
                 "float literal '{}' is too large",
                 str
             );
         } else if(val == -HUGE_VAL) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                a->token.span,
-                p->f.source_code,
+                a->token.src_loc,
                 "float literal '{}' is too small",
                 str
             );
@@ -1348,8 +1349,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     if(!isfinite(val)) {
         context()->reporter.report(
             ErrorLevel::Error,
-            a->token.span,
-            p->f.source_code,
+            a->token.src_loc,
             "float literal '{}' is not a finite number",
             str
         );
@@ -1361,8 +1361,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         if(check_float_overflow(val, easy_type(type_kind))) {
             context()->reporter.report(
                 ErrorLevel::Error,
-                a->token.span,
-                p->f.source_code,
+                a->token.src_loc,
                 "float literal '{}' can't fit in type '{}'",
                 str,
                 get_type_kind_str(type_kind)
@@ -1373,7 +1372,8 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     a->type = AstType_Constant;
     
     Value value = make_value();
-    value.set_float_value(val);
+    value.set_type(type_kind != Type_Undefined ? easy_type(type_kind) : easy_type(Type_untyped_float));
+    value.float_val(val);
 
     a->Constant.value = value;
     
@@ -1403,7 +1403,7 @@ Ast *parse_array_init_expr(Parser *p) {
 
     Token rsb = expect(p, TokenType::RightCurlyBracket);
 
-    a->span = merge(a->token.span, rsb.span);
+    a->src_loc = merge(a->token.src_loc, rsb.src_loc);
 
     return a;
 }
@@ -1412,7 +1412,7 @@ Ast *parse_array_init_expr(Parser *p) {
 Ast *parse_ident(Parser *p) {
     Ast *a = ast_alloc(AstType_Ident, expect(p, TokenType::Ident));
     a->Ident.name = a->token.token_str;
-    a->span = a->token.span;
+    a->src_loc = a->token.src_loc;
     return a;
 }
 
@@ -1432,7 +1432,7 @@ Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p) {
         
         Ast *new_a = ast_alloc(AstType_FieldAccess, dot_t);
         new_a->FieldAccess.parent = a;
-        new_a->span = merge(a->span, field_token.first.span);
+        new_a->src_loc = merge(a->src_loc, field_token.first.src_loc);
         new_a->FieldAccess.field_name = field_token.first.token_str;
         a = new_a;
     }
@@ -1486,16 +1486,14 @@ void report_unexpected(Parser *p, Token token, xpString expected_string) {
     if(token.type == TokenType::EndOfTokens) {
         context()->reporter.report(
             ErrorLevel::Error, 
-            token.span,
-            p->f.source_code,
+            token.src_loc,
             "unexpected end of tokens, expected {}",
             expected_string
         );
     } else {
         context()->reporter.report(
             ErrorLevel::Error, 
-            token.span,
-            p->f.source_code,
+            token.src_loc,
             "unexpected token '{}', expected {}",
             token.token_str,
             expected_string

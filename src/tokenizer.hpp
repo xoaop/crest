@@ -107,6 +107,7 @@ struct Token {
     isize column_index;
 
     Span span;
+    SourceLocation src_loc;
 };
 
 

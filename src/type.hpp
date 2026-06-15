@@ -1,44 +1,46 @@
 #pragma once
 
+#include <optional>
+
 #include "xoaop.h"
 #include "array.hpp"
 #include "common.hpp"
 #include "scope.hpp"
 
 #define TYPE_KINDS                                      \
-    TYPE_KIND(Undefined, "undefined")                   \
-    TYPE_KIND(i8, "i8")                                 \
-    TYPE_KIND(i32, "i32")                               \
-    TYPE_KIND(i64, "i64")                               \
-    TYPE_KIND(u8, "u8")                                 \
-    TYPE_KIND(u32, "u32")                               \
-    TYPE_KIND(u64, "u64")                               \
-    TYPE_KIND(f32, "f32")                               \
-    TYPE_KIND(f64, "f64")                               \
-    TYPE_KIND(bool, "bool")                             \
-    TYPE_KIND(void, "void")                             \
-    TYPE_KIND(function, "function")                     \
-    TYPE_KIND(pointer, "pointer")                       \
-    TYPE_KIND(struct, "struct")                         \
-    TYPE_KIND(array, "array")                           \
-    TYPE_KIND(enum, "enum")                             \
-    TYPE_KIND(union, "union")                           \
-    TYPE_KIND(untyped_int, "untyped_int")               \
-    TYPE_KIND(untyped_float, "untyped_float")           \
+    TYPE_KIND(Undefined)                   \
+    TYPE_KIND(i8)                                 \
+    TYPE_KIND(i32)                               \
+    TYPE_KIND(i64)                               \
+    TYPE_KIND(u8)                                 \
+    TYPE_KIND(u32)                               \
+    TYPE_KIND(u64)                               \
+    TYPE_KIND(f32)                               \
+    TYPE_KIND(f64)                               \
+    TYPE_KIND(bool)                             \
+    TYPE_KIND(void)                             \
+    TYPE_KIND(function)                     \
+    TYPE_KIND(pointer)                       \
+    TYPE_KIND(struct)                         \
+    TYPE_KIND(array)                           \
+    TYPE_KIND(enum)                             \
+    TYPE_KIND(union)                           \
+    TYPE_KIND(untyped_int)               \
+    TYPE_KIND(untyped_float)           \
                                                         \
-    TYPE_KIND(type, "type")                             \
-    TYPE_KIND(package, "package")                       \
+    TYPE_KIND(type)                             \
+    TYPE_KIND(package)                       \
                                                         \
-    TYPE_KIND(var_arg_c, "var_arg_c")                   \
+    TYPE_KIND(var_arg_c)                   \
                                                         \
                                                         \
-    TYPE_KIND(error, "error")                           \
+    TYPE_KIND(error)                           \
 /**/
 
 
 enum TypeKind: int {
 
-#define TYPE_KIND(name, str) Type_##name,
+#define TYPE_KIND(name) Type_##name,
     TYPE_KINDS
 #undef TYPE_KIND
 
@@ -60,6 +62,20 @@ struct Package;
 struct Ast;
 
 
+struct TypeHashKey {
+
+    TypeHashKey(Ast *decl_ast) : decl_ast(decl_ast) {}
+    TypeHashKey(Ast *decl_ast, xpString name) : decl_ast(decl_ast), name(name) {}
+
+    u64 hash() const;
+    bool operator==(const TypeHashKey& other) const;
+
+    TypeHashKey clone(xpAllocator allocator) const;
+    
+    Ast *decl_ast; // 结构体/枚举/联合体的声明AST节点
+    std::optional<xpString> name;
+};
+
 struct Type {
     TypeKind kind;
     xpString type_name;
@@ -77,9 +93,8 @@ struct Type {
         
         // 结构体
         struct {
-            Package *pkg;
             Array<StructField> struct_fields;
-            Ast *decl_ast;
+            TypeHashKey hash_key;
         } struct_info;
 
         
@@ -94,9 +109,8 @@ struct Type {
         // 枚举
         struct {
             TypeRef element_type; // 枚举成员的类型
-            Scope enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
-            Package *pkg; // NOTE: 目前没用
-            Ast *decl_ast;
+            Scope *enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
+            TypeHashKey hash_key;
         } enum_info;
 
 
@@ -104,7 +118,7 @@ struct Type {
         struct {
             Scope union_fields; // 联合体的字段列表
             Package *pkg;
-            Ast *decl_ast;
+            TypeHashKey hash_key;
         } union_info;
 
 
@@ -227,16 +241,18 @@ TypeRef easy_type(TypeKind kind);
 TypeRef pointer_type(TypeRef pointed_type);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
-TypeRef struct_type(Package *pkg, Ast *decl, xpString ident, Array<StructField> fields);
+TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
+TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields);
 TypeRef type_type(TypeRef self_type_info);
 TypeRef package_type(Package *package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 
-TypeRef unfinished_struct_type(Package *pkg, Ast *decl, xpString ident);
+TypeRef unfinished_anonymous_struct_type(Ast *decl);
+TypeRef unfinished_struct_type(Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
-TypeRef unifinished_enum_type(Ast *decl_ast, Scope *parent, xpString ident, TypeRef elem_type);
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Scope *scope);
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
 TypeRef string_type_as_struct();

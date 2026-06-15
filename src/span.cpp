@@ -42,3 +42,22 @@ void print_span(SourceCode src_code, Span span) {
 
 
 
+SourceLocation::SourceLocation() : src_code(), span() {
+
+}
+
+SourceLocation::SourceLocation(SourceCode src_code, Span span) {
+    this->src_code = src_code;
+    this->span = span;
+}
+
+SourceLocation merge(const SourceLocation& a, const SourceLocation& b) {
+    XP_ASSERT_MSG(is_same_src_code(&a.src_code, &b.src_code), "Cannot merge SourceLocations from different SourceCodes");
+
+    SourceLocation merged{
+        a.src_code,
+        merge(a.span, b.span)
+    };
+
+    return merged;
+}

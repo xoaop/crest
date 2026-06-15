@@ -21,4 +21,6 @@ xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode src_code, 
 
 xpString get_line_str_of_pos(SourceCode code, BytePos pos, xpAllocator allocator);
 
+bool is_same_src_code(const SourceCode *a, const SourceCode *b);
+
 #endif

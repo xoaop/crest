@@ -84,6 +84,35 @@ __int128 __fixdfti(double a) {
     return negative ? -result : result;
 }
 
+// float转__int128
+__int128 __fixsfti(float a) {
+    assert(!(a != a) && "Cannot convert NaN to __int128");
+    assert(!(a == 1.0f / 0.0f) && "Cannot convert positive infinity to __int128");
+    assert(!(a == -1.0f / 0.0f) && "Cannot convert negative infinity to __int128");
+
+    if (a != a || a == 1.0f / 0.0f || a == -1.0f / 0.0f) {
+        return 0;
+    }
+
+    if (a >= static_cast<float>(INT64_MIN) && a <= static_cast<float>(INT64_MAX)) {
+        return static_cast<__int128>(static_cast<int64_t>(a));
+    }
+
+    bool negative = false;
+    if (a < 0) {
+        negative = true;
+        a = -a;
+    }
+
+    __int128 result = 0;
+    while (a >= 1.0f) {
+        result = result * 2 + ((int)fmodf(a, 2.0f));
+        a = floorf(a / 2.0f);
+    }
+
+    return negative ? -result : result;
+}
+
 #ifdef __cplusplus
 }
 #endif
