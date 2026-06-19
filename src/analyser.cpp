@@ -82,16 +82,6 @@ Analyser Analyser::set_curr_func(Ast *curr_func) {
 
 
 
-void bind_ast_with_scope(Ast *ast, Scope *scope) {
-    XP_ASSERT_DEFAULT(ast->type == AstType_Block || ast->type == AstType_FunctionDeclValue || ast->type == AstType_ForStmt || ast->type == AstType_ConstDecl || ast->type == AstType_StructDeclValue || ast->type == AstType_EnumDecl);
-
-    xp_hash_map_insert(&context()->ast_scope_map, ast, scope);
-}
-
-
-
-void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser);
-
 
 
 //
@@ -101,13 +91,13 @@ void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyse
 void resolve_ast_file(AstFile *ast_file, Analyser analyser);
 void resolve_top_stmt(Ast *ast, Analyser analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
-TypeRef resolve_function_decl_type(Ast *value, Analyser analyser);
+void resolve_struct_decl(Ast *decl, Analyser analyser);
+void resolve_enum_decl(Ast *decl, Analyser analyser);
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
-TypeRef resolve_type(Ast *type_ast, Analyser analyser);
 SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser);
 SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
@@ -246,7 +236,6 @@ Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast) {
     Analyser new_state = old_state;
     new_state.current_scope = new_scope;
     
-    bind_ast_with_scope(related_ast, new_scope);
     
     return new_state;
 }    
@@ -340,6 +329,14 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             resolve_function_decl(const_decl_ast, analyser);
         } break;
 
+        case AstType_StructDeclValue: {
+            resolve_struct_decl(const_decl_ast, analyser);
+        } break;
+
+        case AstType_EnumDecl: {
+            resolve_enum_decl(const_decl_ast, analyser);
+        } break;
+
 
         default: {
             resolve_expr(val_ast, analyser);
@@ -383,6 +380,58 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
 
 }
 
+void resolve_struct_decl(Ast *decl, Analyser analyser) {
+    Ast *value_ast = decl->ConstDecl.value_ast;
+    XP_ASSERT_DEFAULT(value_ast->type == AstType_StructDeclValue);
+
+    Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, value_ast);
+
+    for(isize i = 0; i < value_ast->StructDeclValue.fields.count; i++) {
+        auto field = value_ast->StructDeclValue.fields[i];
+
+        SymbolInfo *existing = find_symbol_curr(struct_analyser.current_scope, field->StructField.name);
+        if(existing != NULL) {
+            context()->reporter.report_error(
+                field->src_loc,
+                "duplicate struct field '{}'", field->StructField.name
+            );
+        }
+
+        resolve_expr(field->StructField.type_ast, analyser);
+
+        SymbolInfo field_symbol = make_symbol(field->StructField.name, analyser.pkg, analyser.curr_ast_file, field);
+        add_symbol_to_scope(struct_analyser.current_scope, field->StructField.name, field_symbol);
+    }
+}
+
+void resolve_enum_decl(Ast *decl, Analyser analyser) {
+    Ast *value_ast = decl->ConstDecl.value_ast;
+    XP_ASSERT_DEFAULT(value_ast->type == AstType_EnumDecl);
+
+    Analyser enum_analyser = new_scope(analyser, ScopeType::EnumBlock, value_ast);
+
+    for(isize i = 0; i < value_ast->EnumDecl.fields.count; i++) {
+        auto field = value_ast->EnumDecl.fields[i];
+
+        if(field->type == AstType_ConstDecl) {
+            resolve_const_decl_local(field, enum_analyser);
+        } else {
+            xpString field_name = field->Ident.name;
+
+            SymbolInfo *existing = find_symbol_curr(enum_analyser.current_scope, field_name);
+            if(existing != NULL) {
+                context()->reporter.report_error(
+                    field->src_loc,
+                    "duplicate enum field '{}'", field_name
+                );
+            }
+
+            SymbolInfo field_symbol = make_symbol(field_name, analyser.pkg, analyser.curr_ast_file, field);
+            add_symbol_to_scope(enum_analyser.current_scope, field_name, field_symbol);
+        }
+    }
+}
+
 
 void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
     for(isize i = 0; i < params.count; i++) {
@@ -423,7 +472,6 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
     if(ast->Block.is_function_body) {
 
-        bind_ast_with_scope(ast, analyser.current_scope);
 
         for(isize i = 0; i < ast->Block.statements.count; i++) {
             resolve_local_stmt(ast->Block.statements[i], analyser);
@@ -433,8 +481,6 @@ void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
 
     if(need_new_scope) {
         analyser = new_scope(analyser, ScopeType::Block, ast);
-    } else {
-        bind_ast_with_scope(ast, analyser.current_scope);
     }
     
     for(isize i = 0; i < ast->Block.statements.count; i++) {
@@ -672,52 +718,6 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
             resolve_expr(expr_ast->SliceType.element_type_ast, analyser);
         } break;
 
-        case AstType_StructDeclValue: {
-            Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, expr_ast);
-
-            for(isize i = 0; i < expr_ast->StructDeclValue.fields.count; i++) {
-                auto field = expr_ast->StructDeclValue.fields[i];
-
-                SymbolInfo *existing = find_symbol_curr(struct_analyser.current_scope, field->StructField.name);
-                if(existing != NULL) {
-                    context()->reporter.report_error(
-                        field->src_loc,
-                        "duplicate struct field '{}'", field->StructField.name
-                    );
-                }
-
-                resolve_expr(field->StructField.type_ast, analyser);
-
-                SymbolInfo field_symbol = make_symbol(field->StructField.name, analyser.pkg, analyser.curr_ast_file, field);
-                add_symbol_to_scope(struct_analyser.current_scope, field->StructField.name, field_symbol);
-            }
-        } break;
-
-        case AstType_EnumDecl: {
-            Analyser enum_analyser = new_scope(analyser, ScopeType::EnumBlock, expr_ast);
-
-            for(isize i = 0; i < expr_ast->EnumDecl.fields.count; i++) {
-                auto field = expr_ast->EnumDecl.fields[i];
-
-                if(field->type == AstType_ConstDecl) {
-                    resolve_const_decl_local(field, enum_analyser);
-                } else {
-                    xpString field_name = field->Ident.name;
-
-                    SymbolInfo *existing = find_symbol_curr(enum_analyser.current_scope, field_name);
-                    if(existing != NULL) {
-                        context()->reporter.report_error(
-                            field->src_loc,
-                            "duplicate enum field '{}'", field_name
-                        );
-                    }
-
-                    SymbolInfo field_symbol = make_symbol(field_name, analyser.pkg, analyser.curr_ast_file, field);
-                    add_symbol_to_scope(enum_analyser.current_scope, field_name, field_symbol);
-                }
-            }
-        } break;
-
         case AstType_UnionDecl: {
             context()->reporter.report_error(
                 expr_ast->src_loc,
@@ -871,173 +871,3 @@ bool may_fall_through(Ast *ast) {
     return true;
 }
 
-
-
-
-
-
-
-
-
-
-
-//// DEPRECATED
-// TypeRef resolve_type(Ast *type_ast, Analyser analyser) {
-//     XP_ASSERT_DEFAULT(type_ast != NULL);
-
-//     switch (type_ast->type) {
-//         case AstType_EasyType: {
-//             return easy_type(type_ast->EasyType.kind);
-//         } break;    
-
-        
-//         case AstType_PointerType: {
-//             TypeRef pointed_type = resolve_type(type_ast->PointerType.pointed_type_ast, analyser);
-//             if(pointed_type == error_type()) {
-//                 return error_type();
-//             }    
-
-//             return pointer_type(pointed_type);
-//         } break;    
-
-        
-//         case AstType_Ident: {
-//             SymbolInfo *maybe_type_info = resolve_ident(type_ast, analyser);
-
-//             if(maybe_type_info == NULL) {
-//                 return error_type();
-//             }
-            
-
-//             TypeRef type = maybe_type_info->value.type;
-
-//             // TODO: 修复 5.1-2026
-//             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-//             if(!(is_type_type(type) && (is_value_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
-//                 context()->reporter.report_error(
-//                     type_ast->span, analyser.curr_ast_file->source_code,
-//                     "symbol '{}' is not a type",
-//                     type_ast->Ident.name
-//                 );
-
-//                 return error_type();
-//             }
-
-            
-//             return type->self_type_info;
-//         } break;    
-
-//         // 作为类型, parent只能是package, child只能是类型(目前只有结构体)名
-//         case AstType_FieldAccess: {
-//             xpString filde_ident = type_ast->FieldAccess.field_name;
-
-//             SymbolInfo *symbol = resolve_field_access(type_ast, analyser); 
-//             if(symbol == NULL) {
-//                 return error_type();
-//             }
-
-//             TypeRef type = symbol->value.type;
-
-//             // TODO: 修复 5.1-2026
-//             // @Robost: 这个判断很随意, 目前只允许结构体类型和基本类型被访问作为类型, 以后可能需要更细化的判断
-//             if(!(is_type_type(type) && (is_value_type(type->self_type_info) || is_basic_type_kind(type->self_type_info->kind)))) {
-//                 context()->reporter.report_error(
-//                     type_ast->span, analyser.curr_ast_file->source_code,
-//                     "symbol '{}' is not a type",
-//                     filde_ident
-//                 );
-
-//                 return error_type();
-//             }
-
-//             return type->self_type_info;
-//         } break;    
-            
-
-
-//         case AstType_ArrayType: {
-//             TypeRef element_type = resolve_type(type_ast->ArrayType.element_type_ast, analyser);
-//             if(element_type == error_type()) {
-//                 return error_type();
-//             }
-
-//             Ast *count_expr = type_ast->ArrayType.count_expr;
-
-
-//             resolve_expr(count_expr, analyser);
-//             infer_expr_type(count_expr, false, NULL, analyser, false);
-
-//             if(count_expr->v_type == error_type()) {
-//                 context()->reporter.report_error(
-//                     count_expr->span, analyser.curr_ast_file->source_code,
-//                     "invalid array size expression type"
-//                 );    
-
-//                 return error_type();
-//             }
-
-//             if(!is_integer_type(count_expr->v_type)) {
-//                 context()->reporter.report_error(
-//                     count_expr->span, analyser.curr_ast_file->source_code,
-//                     "array size expression must be a constant integer expression"
-//                 );    
-                
-//                 return error_type();
-//             }
-            
-//             ValueResult count_val_result = eval_comptime_expr(count_expr, analyser);
-//             if(count_val_result.is_err()) {
-//                 context()->reporter.report_error(
-//                     count_expr->span, analyser.curr_ast_file->source_code,
-//                     "not a valid constant expression for array size"
-//                 );    
-
-//                 return error_type();
-//             }
-
-            
-//             Value count_val = count_val_result.as_ok();
-//             i128 count = count_val.get_integer();
-//             if(count <= 0 || count > INTPTR_MAX) { // TODO 换掉这个最大值宏
-
-//                 context()->reporter.report_error(
-//                     count_expr->span, analyser.curr_ast_file->source_code,
-//                     "array size must be a positive integer and less than max of isize"
-//                 );    
-
-//                 return error_type();
-//             }    
-
-//             TypeRef type_ref = array_type(element_type, cast(usize)count);
-//             return type_ref;
-//         } break;
-
-
-//         case AstType_SliceType: {
-//             TypeRef elem_type = resolve_type(type_ast->SliceType.element_type_ast, analyser);
-//             if(elem_type == error_type()) {
-//                 return error_type();
-//             }    
-
-//             TypeRef slice_type = slice_type_as_struct(elem_type);
-
-//             return slice_type;
-//         } break;
-
-
-
-//         case AstType_BadType: {
-//             // BadType, 不解析类型, 直接等后续阶段报错
-//             return error_type();
-//         } break;
-
-//         case AstType_BadExpr: {
-//             return error_type();
-//         } break;    
-
-//         default: {
-//             return error_type();
-//         } break;
-
-//     }    
-// }    

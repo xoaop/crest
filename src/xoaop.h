@@ -841,6 +841,9 @@ HashMap
 template<typename K>
 usize xp_hash_func(K *key);
 
+template<typename K>
+usize xp_hash_func(const K *key);
+
 template<typename T>
 usize xp_hash_func(T **key) {
     return reinterpret_cast<usize>(*key);

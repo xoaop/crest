@@ -20,7 +20,7 @@ struct Context {
 
 
     // NOTE: const_decl:function_decl_value, block, for_stmt, 
-    xpHashMap<Ast *, Scope *> ast_scope_map;
+    // xpHashMap<Ast *, Scope *> ast_scope_map;
 
     ErrorReporter reporter;
 

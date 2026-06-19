@@ -3,6 +3,7 @@
 
 #include "xoaop.h"
 #include "common.hpp"
+#include "cir_key.hpp"
 
 #include "value.hpp"
 
@@ -10,10 +11,6 @@
 struct AstFile;
 struct Package;
 struct Ast;
-struct CIRPackage;
-
-using CIRInstructionRef = isize;
-
 
 enum class SymbolState {
     Unsolved, // 还未解析
@@ -29,13 +26,6 @@ inline const char* to_string(SymbolState state) {
         default: return "Unknown";
     }
 }
-
-
-// 定位到唯一的符号定义, 用于CIR指令中需要引用符号定义的情况
-struct CIRInstUniqueKey {
-    CIRPackage *package;
-    CIRInstructionRef defining_inst;
-};
 
 
 enum class ValueStoreType {

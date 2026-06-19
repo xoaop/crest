@@ -78,6 +78,11 @@ struct Interpreter {
     void Set_ResultValue(CIRInstructionRef ref, Value val);
     void Set_ResultTypeAndValue(CIRInstructionRef ref, Value val);
     bool has_result_val(CIRInstructionRef ref);
+    bool has_result_type(CIRInstructionRef ref);
+    bool has_error(CIRInstructionRef ref);
+    void Set_ResultError(CIRInstructionRef ref);
+    bool propagate_error(std::initializer_list<CIRInstructionRef> refs);
+    bool propagate_error(Array<CIRInstructionRef>& refs);
 
     bool is_lvalue(CIRInstructionRef ref);
     void set_lvalue(CIRInstructionRef ref);
