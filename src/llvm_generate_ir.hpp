@@ -30,7 +30,7 @@ struct LLVMIRGenerateConfig {
 
 
 void init_llvm();
-Array<xpString> gen_ir_all_packages(Array<Package> all_packages, LLVMIRGenerateConfig config);
+Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerateConfig config);
 
 
 

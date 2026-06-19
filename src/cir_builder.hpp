@@ -12,81 +12,7 @@
 #include "scope.hpp"
 
 #include "dag.hpp"
-/*
 
-Design:
-
-a file, such as foo.cst be like:
-
-CIRFile {
-
-%0(
-    attr: const_decl(ident: fn1)
-) = function_decl(
-        arg1_type: block :a1 {
-            %1 = symbol_find("i32")
-            break :a1 %1
-        }
-        arg2_type: block :a2 {
-            %2 = call ...
-            break :a2 %2
-        }
-        count_of_args: [%3, %4]
-        count_of_returns: 1
-        body: block :entry {
-            %5 = local i32, 0       // var x: i32 = 0
-            %6 = add(%5, 1)         // x + 1
-            store %5, %6            // x = x + 1
-
-            %7 = call "fn2" with (%5, %6)
-
-            // block 表达式
-            %8 = block :blk8 {
-                %9 = add(1, 2)
-                break :blk8 %9
-            }
-
-            // if 表达式 (branch)
-            %10 = greater(%5, 10)
-            %result = branch(%10) {
-                true: block :then {
-                    %11 = sub(%5, 10)
-                    break :then %11
-                }
-                false: block :else {
-                    %12 = add(%5, 10)
-                    break :else %12
-                }
-            }
-
-            // while 循环
-            loop :my_loop {
-                condition: block :cond {
-                    %cond = less(%i, %n)
-                    break :cond %cond
-                }
-                body: block :body {
-                    %i = add(%i, 1)
-                    break :body         // void → 回到 condition
-                }
-            }
-
-            break :entry %8
-        }
-    )
-
-
-%13(
-    attr: const_decl(ident: n1)
-) = block :n1_init {
-        %14 = symbol_find("i32")
-        break :n1_init %14
-    }
-
-
-}
-
-*/
 
 struct Package;
 
@@ -105,6 +31,8 @@ struct CIRVariableDecl {
     xpString name;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
+
+    bool no_zero_init;
 };
 
 struct EnumFieldInit {
@@ -131,8 +59,7 @@ struct CIRFunction {
 
 
 struct CIRLoop {
-    CIRInstructionRef condition_inst;
-    CIRInstructionRef loop_body_inst;
+    isize body_len;
 };
 
 struct CIRIf {
@@ -184,7 +111,6 @@ struct CIRBlock {
     X(StructField) \
     X(FinishStruct) \
     X(EnumDeclInit) \
-    X(GetTypeProgress) \
     X(SizeOf) \
     X(Deref) \
     X(AddrOf) \
@@ -213,7 +139,8 @@ enum class CIRResultType: u32 {
     NothingYet,  // 还没有计算结果
     DontHave,    // 这个指令没有结果（如 Store）
     OnlyType,   // 仅仅只有类型推导
-    WholeValue  // 计算出实际值了
+    WholeValue,  // 计算出实际值了
+    Error        // 本指令分析出错，结果不可用，下游应跳过
 };
 
 enum class CIRValueKind : u8 {
@@ -360,10 +287,6 @@ struct CIRInstruction {
         } determine_type_info;
 
         struct {
-            CIRInstructionRef progressing_type;
-        } get_type_progress_info;
-
-        struct {
             CIRInstructionRef type_inst;
         } sizeof_info;
 
@@ -408,9 +331,14 @@ struct CIRPackage {
 
     Array<CIRFileRange>       file_ranges;  // 按 start 升序，文件级 scope 切换点
 
+    Array<std::tuple<CIRInstructionRef, SymbolInfo*, Scope*>> all_func_inst_sym_scopes; // 所有函数实例对应的符号和作用域，供llvmcodegen使用
 
-    CIRInstruction* Inst(CIRInstructionRef ref);
-    Scope *scope_for_pc(CIRInstructionRef pc);
+
+    CIRInstruction* inst(CIRInstructionRef ref);
+    CIRInstResult result_of(CIRInstructionRef ref);
+    Scope *scope_for_pc(CIRInstructionRef pc) const;
+
+    CIRInstructionRef get_first_inst_ref_in_block(CIRInstructionRef ref);
 };
 
 CIRPackage make_cir_package(xpAllocator allocator);
@@ -463,17 +391,25 @@ struct CIRBuilder {
 
     CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
     std::pair<CIRInstructionRef, CIRInstruction&> New_Inst(CIROperator op, Ast *ast);
-    CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, Ast *ast);
+    CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast);
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 
     CIRInstructionRef Begin_Block(bool is_comptime, Ast *ast);
     void End_Block(CIRInstructionRef block_inst);
+    CIRInstructionRef Begin_Loop(Ast *ast);
+    void End_Loop(CIRInstructionRef loop_inst);
+
 
 
     bool Enter_Scope(Ast *ast);
     void Exit_Scope();
 
 };
+
+
+bool is_cir_binary_op(TokenType type);
+bool is_cir_unary_op(TokenType type);
+
 
 void dump_cir_package(CIRPackage *file);

@@ -100,6 +100,13 @@ Array<T> make_array_len(xpAllocator allocator, isize len) {
 }
 
 template<typename T>
+Array<T> make_array_reserved(xpAllocator allocator, isize count) {
+    Array<T> array = make_array_len<T>(allocator, count);
+    array.count = count;
+    return array;
+}
+
+template<typename T>
 void array_free(Array<T>* array) {
     array_clear(array); // 先析构所有元素
     xp_free(array->allocator, array->data);

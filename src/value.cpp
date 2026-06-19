@@ -71,6 +71,14 @@ void Value::array_element_values(Array<Value> elem_values) {
     struct_or_array_fields = elem_values;
 }
 
+void Value::func_val(xpString func_name) {
+    actual_value_type = ActualValueType::Function;
+    this->func_value.name = func_name;
+}
+
+void Value::func_val_key(CIRInstUniqueKey key) {
+    this->func_value.func_key = key;
+}
 
 
 i128 Value::integer_val() const {
@@ -123,12 +131,23 @@ Value Value::struct_field_val(xpString field_name) const {
     return Value();
 }
 
+Array<Value> Value::array_element_values() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
+    return struct_or_array_fields;
+}
+
 Value Value::array_element_val(isize index) const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
     XP_ASSERT_DEFAULT(is_array_type(type));
     XP_ASSERT_DEFAULT(index >= 0 && index < type->array_info.count);
 
     return struct_or_array_fields[index];
+}
+
+FuncValue Value::func_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
+    XP_ASSERT_DEFAULT(is_function_type(type));
+    return func_value;
 }
 
 
@@ -145,6 +164,15 @@ Value Value::array_element_val(isize index) const {
 
 //     return new_value;
 // }
+
+
+
+TypeRef extract_type_from_val_as_type(Value v) {
+    XP_ASSERT_DEFAULT(is_type_type(v.type));
+    return v.type->self_type_info;
+}
+
+
 
 
 Value TypeProgress::Undefined() {

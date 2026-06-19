@@ -76,6 +76,12 @@ struct TypeHashKey {
     std::optional<xpString> name;
 };
 
+
+template<>
+usize xp_hash_func(TypeHashKey *key);
+
+
+
 struct Type {
     TypeKind kind;
     xpString type_name;

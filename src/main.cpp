@@ -20,6 +20,7 @@
 #include "resolve_depend.hpp"
 #include "analyser.hpp"
 #include "cir_builder.hpp"
+#include "llvm_generate_ir.hpp"
 
 
 
@@ -124,7 +125,7 @@ int main(int argc, char** argv) {
 
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-    context()->ast_scope_map = xp_hash_map_make<Ast *, Scope *>(permanent_allocator());
+    // context()->ast_scope_map = xp_hash_map_make<Ast *, Scope *>(permanent_allocator());
 
     context()->reporter = make_error_reporter(permanent_allocator());
 
@@ -172,10 +173,15 @@ int main(int argc, char** argv) {
         analyze_package(&pkg);
     }
 
-    // if(context()->reporter.error_count > 0) {
-    //     context()->reporter.print_msg();
-    //     return 0;
-    // }
+    if(context()->reporter.error_count > 0) {
+        context()->reporter.print_msg();
+        return 0;
+    }
+
+    init_llvm();
+
+    LLVMIRGenerateConfig llvm_config = {};
+    Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
 
     return 0;
 }

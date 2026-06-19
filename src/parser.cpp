@@ -924,7 +924,7 @@ Ast *parse_string_literal(Parser *p) {
                     if(!has_digits) {
                         context()->reporter.report(
                             ErrorLevel::Error,
-                            SourceLocation(p->f.source_code, Span{str_token.span.start + 1 + curr_index, 1}),
+                            str_token.src_loc,
                             "invalid escape sequence in string literal: \\x must be followed by at least one hexadecimal digit"
                         );
                     } else {
@@ -937,7 +937,7 @@ Ast *parse_string_literal(Parser *p) {
                 default:
                     context()->reporter.report(
                         ErrorLevel::Error,
-                        SourceLocation(p->f.source_code, Span{str_token.span.start + 1 + curr_index, 1}),
+                        SourceLocation(p->f.source_code, Span{str_token.src_loc.span.start + 1 + curr_index, 1}),
                         "invalid escape sequence in string literal: unrecognized escape character"
                     );
             }

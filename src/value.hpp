@@ -4,11 +4,11 @@
 
 #include "xoaop.h"
 #include "array.hpp"
+#include "cir_key.hpp"
 
 
 struct Value;
 struct Ast;
-struct Package;
 struct Type;
 using TypeRef = Type *;
 
@@ -36,6 +36,7 @@ enum class ActualValueType {
     String,
     Struct,
     Array,
+    Function,
 };
 
 struct Value {
@@ -57,6 +58,7 @@ public:
     void string_val(xpString str_val);
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
+    void func_val(xpString func_name);
 
     i128 integer_val() const;
     float float_val() const;
@@ -65,11 +67,13 @@ public:
     Array<Value> struct_fields_val() const;
     Value struct_field_val(isize index) const;
     Value struct_field_val(xpString field_name) const;
+    Array<Value> array_element_values() const;
     Value array_element_val(isize index) const;
+    void func_val_key(CIRInstUniqueKey key);
 
 
 
-    
+
     bool is_null = false;
 private:
     ActualValueType actual_value_type = ActualValueType::Nothing;
@@ -82,8 +86,13 @@ private:
 
         xpString string_value;
 
-        Array<Value> struct_or_array_fields; // 结构体或数组的字段值, 结构体字段顺序和定义时一致, 数组字段顺序和元素顺序一致
+        Array<Value> struct_or_array_fields;
+
+        FuncValue func_value;
     };
+
+public:
+    FuncValue func_val() const;
 
 
     friend Value clone_value(Value& v, xpAllocator allocator);
@@ -102,6 +111,9 @@ Value make_value(TypeRef type);
 //
 
 Value clone_value(Value& v, xpAllocator allocator);
+
+
+TypeRef extract_type_from_val_as_type(Value v);
 
 
 

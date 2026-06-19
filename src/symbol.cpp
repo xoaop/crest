@@ -29,7 +29,7 @@ Value SymbolInfo::val() const {
     if(value_store_type == ValueStoreType::InSymbolInfo) {
         return value;
     } else if(value_store_type == ValueStoreType::InCIRInstruction) {
-        CIRInstruction *inst = inst_key.package->Inst(inst_key.defining_inst);
+        CIRInstruction *inst = inst_key.cir_package->inst(inst_key.defining_inst);
         XP_ASSERT_DEFAULT(inst->result.type == CIRResultType::OnlyType || inst->result.type == CIRResultType::WholeValue);
         return inst->result.val;
     }

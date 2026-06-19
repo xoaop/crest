@@ -59,6 +59,11 @@ TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
     return copy;
 }
 
+template<>
+usize xp_hash_func(TypeHashKey *key) {
+    return key->hash();
+}
+
 
 TypeKind string_to_type_kind(xpString str) {
     if(sizeof(type_strings) <= 0) {

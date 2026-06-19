@@ -117,7 +117,7 @@ xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code) {
             // End Of Tokens
             Token end = {};
             end.type = TokenType::EndOfTokens;
-            end.span = make_span(t.source_code.code_string.length, t.source_code.code_string.length);
+            end.src_loc = SourceLocation(t.source_code, make_span(t.source_code.code_string.length, t.source_code.code_string.length));
 
 
             array_push_back(&t.token_array, end);
@@ -130,15 +130,15 @@ xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code) {
     for(isize i = 0; i < t.token_array.count; i++) {
         Token *token = &t.token_array[i];
 
-        auto start = cal_line_column_index_of_byte_pos(t.source_code, token->span.start);
-        auto end = cal_line_column_index_of_byte_pos(t.source_code, token->span.end);
+        auto start = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.start);
+        auto end = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.end);
         printf("Token[%3lld]: Type: %-20s Str: %-15.*s Span: [%lld:%lld - %lld:%lld] BytePos[%lld - %lld]\n",
-            i, 
-            get_token_str(token->type), 
+            i,
+            get_token_str(token->type),
             cast(int)token->token_str.length, token->token_str.c_str,
             start.first, start.second,
             end.first, end.second,
-            token->span.start, token->span.end
+            token->src_loc.span.start, token->src_loc.span.end
         );
         
     }
@@ -422,8 +422,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
     }
 
 
-    token.span = make_span(old_index, t->curr_character_index);
-    token.src_loc = SourceLocation(t->source_code, token.span);
+    token.src_loc = SourceLocation(t->source_code, make_span(old_index, t->curr_character_index));
 
     return xp_make_pair(xpOption<Token>(token), true);
 }
