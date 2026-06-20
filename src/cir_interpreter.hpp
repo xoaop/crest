@@ -48,17 +48,14 @@ struct Interpreter {
     void analyze_array_init();
     void analyze_index();
     void analyze_index_ptr();
-    void analyze_deref();
     void analyze_addr_of();
     void analyze_pointer_type();
     void analyze_array_type();
     void analyze_slice_type();
     void analyze_block(std::optional<EvalMode> force_eval_mode = std::nullopt);
     void analyze_loop();
-    void analyze_if();
+    void analyze_condbr();
     void analyze_break();
-    void analyze_loop_break();
-    void analyze_continue();
     void analyze_load();
     void analyze_store();
     void analyze_type_ascribe();
@@ -69,6 +66,7 @@ struct Interpreter {
     void analyze_determine_type();
     void analyze_type_of_inst_result();
     void analyze_field_type_of_struct();
+    void analyze_func_param_type();
 
     CIRResultType result_state(CIRInstructionRef ref);
     void set_result_state(CIRInstructionRef ref, CIRResultType state);

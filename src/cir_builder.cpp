@@ -94,6 +94,16 @@ CIRInstruction& CIRInstruction::operator=(CIRInstruction&& other) {
     return *this;
 }
 
+CIRBuilder::CIRBuilder(xpAllocator allocator) {
+    loop_body_block_stack = make_array<CIRInstructionRef>(allocator);
+    loop_stack = make_array<CIRInstructionRef>(allocator);
+}
+
+CIRBuilder::~CIRBuilder() {
+    array_free(&loop_body_block_stack);
+    array_free(&loop_stack);
+}
+
 
 
 CIRPackage CIRBuilder::build_cir_package(Package *pkg) {
@@ -335,15 +345,22 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
             auto cond_inst = build_inst_for_expr(if_stmt.condition);
             
             
-            auto [if_inst, _] = New_Inst(CIROperator::If, stmt);
             auto then_inst = build_inst_for_ast_block(if_stmt.then_block, true);
+            
 
-            CIRInstructionRef else_inst = INVALID_INST;
+            auto else_inst = INVALID_INST;
             if(if_stmt.else_block != nullptr) {
                 else_inst = build_inst_for_ast_block(if_stmt.else_block, true);
+            } else {
+                // 没有 else 块的 if, else_inst 指向一个空块
+                else_inst = Begin_Block(false, stmt);
+                New_Break(else_inst, INVALID_INST, stmt);
+                End_Block(else_inst);
             }
 
-            Instruction(if_inst).if_info = {
+            
+            auto condbr_inst = New_Instruction(CIROperator::CondBr, stmt);
+            Instruction(condbr_inst).condbr_info = {
                 .condition_inst    = cond_inst,
                 .true_block_inst   = then_inst,
                 .false_block_inst  = else_inst,
@@ -361,34 +378,57 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
             auto loop_inst = Begin_Loop(stmt);
             
             auto cond_blk = INVALID_INST;
-
             if(stmt->ForStmt.condition != nullptr) {
                 cond_blk = build_block_inst_for_expr(stmt->ForStmt.condition, false);
             } else {
                 // 无条件 for：Block { ConstantValue(true); Break(block, true_val); }
-                auto cond_block = Begin_Block(false, stmt);
+                cond_blk = Begin_Block(false, stmt);
                 auto true_val_inst = New_Instruction(CIROperator::ConstantValue, stmt);
                 auto true_val = make_value();
                 true_val.set_type(easy_type(Type_bool));
                 true_val.bool_val(true);
                 Instruction(true_val_inst).imm_val = true_val;
-                New_Break(cond_block, true_val_inst, stmt);
-                End_Block(cond_block);
-                loop_info.condition_inst = cond_block;
+                New_Break(cond_blk, true_val_inst, stmt);
+                End_Block(cond_blk);
             }
 
-            auto body_inst = Begin_Block(false, stmt->ForStmt.body);
+            auto then = INVALID_INST;
+            {
+                then = Begin_Block(false, stmt);
+                defer(End_Block(then));
 
-            build_inst_for_ast_block(stmt->ForStmt.body, false);
+                // TODO: ABSTRACT
+                loop_body_block_stack.push_back(then);
+                defer({
+                    XP_ASSERT_DEFAULT(loop_body_block_stack.back() == then);
+                    loop_body_block_stack.pop_back();
+                });
+
+                build_inst_for_ast_block(stmt->ForStmt.body, false);
+            }
+
+            auto else_blk = INVALID_INST;
+            {
+                else_blk = Begin_Block(false, stmt);
+                defer(End_Block(else_blk));
+
+                New_Break(loop_inst, INVALID_INST, stmt); // TODO: 妥善处理无返回值的Break
+            }
+
+            auto condbr_for_loop = New_Instruction(CIROperator::CondBr, stmt);
+            Instruction(condbr_for_loop).condbr_info = {
+                .condition_inst = cond_blk,
+                .true_block_inst = then,
+                .false_block_inst = else_blk,
+            };
+
 
             if(stmt->ForStmt.post != nullptr) {
                 build_inst_for_stmt(stmt->ForStmt.post);
             }
 
-            End_Block(body_inst);
-            loop_info.loop_body_inst = body_inst;
+            End_Loop(loop_inst);
 
-            Instruction(loop_inst).loop_info = loop_info;
         } break;
 
         case AstType_ReturnStmt: {
@@ -404,11 +444,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
         } break;
 
         case AstType_Break: {
-            New_Instruction(CIROperator::LoopBreak, stmt);
+            New_Break(loop_stack.back(), INVALID_INST, stmt); // TODO: 妥善处理无返回值的Break
         } break;
 
         case AstType_Continue: {
-            New_Instruction(CIROperator::Continue, stmt);
+            New_Break(loop_body_block_stack.back(), INVALID_INST, stmt); // TODO: 妥善处理无返回值的Break
         } break;
 
         case AstType_ConstDecl: {
@@ -420,7 +460,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
         } break;
     }
 
-
+    // TODO: 妥善处理
     return INVALID_INST;
 }
 
@@ -561,12 +601,9 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_UnaryExpr: {
-            // ^ptr 左值: 对指针值 Deref，获得位置句柄
+            // ^ptr 左值: 指针值就是地址
             if(expr->UnaryExpr.op == TokenType::Caret) {
-                auto ptr_val_inst = build_inst_for_expr(expr->UnaryExpr.operand);
-                auto deref = New_Instruction(CIROperator::Deref, expr);
-                Instruction(deref).deref_info.ptr_val_inst = ptr_val_inst;
-                return deref;
+                return build_inst_for_expr(expr->UnaryExpr.operand);
             }
             return build_inst_for_expr(expr);
         } break;
@@ -601,28 +638,42 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_FunctionCallExpr: {
-            Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(stage_allocator());
-            for (Ast *arg : expr->FunctionCallExpr.args) {
-                auto arg_inst = build_inst_for_expr(arg);
-
-                auto determine_type = New_Instruction(CIROperator::DetermineType, arg);
-                Instruction(determine_type).determine_type_info = {
-                    .determining_inst = arg_inst,
-                    .type_inst = std::nullopt,
+                // func_type = TypeOfInstResult(func_val)
+                auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
+                auto typeof_func = New_Instruction(CIROperator::TypeOfInstResult, expr);
+                Instruction(typeof_func).type_of_inst_result_info = {
+                    .target_inst = called_thing_inst
                 };
 
-                arg_insts.push_back(arg_inst);
-            }
+                // 每个实参: FunParamType + DetermineType
+                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(stage_allocator());
+                for (isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                    Ast *arg = expr->FunctionCallExpr.args[i];
+                    auto arg_inst = build_inst_for_expr(arg);
 
-            auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
-            auto call_inst = New_Instruction(CIROperator::Call, expr);
-            Instruction(call_inst).call_info = {
-                .called_thing = called_thing_inst,
-                .arg_insts = array_copy(&arg_insts, permanent_allocator()),
-            };
-            
-            result = call_inst;
-        } break;
+                    auto fpt = New_Instruction(CIROperator::FuncParamType, arg);
+                    Instruction(fpt).func_param_type_info = {
+                        .type_of_func_type_inst = typeof_func,
+                        .param_index = i,
+                    };
+
+                    auto determine_type = New_Instruction(CIROperator::DetermineType, arg);
+                    Instruction(determine_type).determine_type_info = {
+                        .determining_inst = arg_inst,
+                        .type_inst = fpt,
+                    };
+
+                    arg_insts.push_back(arg_inst);
+                }
+
+                auto call_inst = New_Instruction(CIROperator::Call, expr);
+                Instruction(call_inst).call_info = {
+                    .called_thing = called_thing_inst,
+                    .arg_insts = array_copy(&arg_insts, permanent_allocator()),
+                };
+
+                result = call_inst;
+            } break;
 
         case AstType_BinaryExpr: {
             auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
@@ -647,13 +698,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 Instruction(addr_of).addr_of_info.lval_inst = lval;
                 result = addr_of; break;
             }
-            // ^ptr: 解引用读值 → Deref(LValue) → Load → RValue
+            // ^ptr: 对指针值 Load
             if(op == TokenType::Caret) {
                 auto ptr_val_inst = build_inst_for_expr(expr->UnaryExpr.operand);
-                auto deref = New_Instruction(CIROperator::Deref, expr);
-                Instruction(deref).deref_info.ptr_val_inst = ptr_val_inst;
                 auto load = New_Instruction(CIROperator::Load, expr);
-                Instruction(load).load_info.ptr_inst = deref;
+                Instruction(load).load_info.ptr_inst = ptr_val_inst;
                 result = load; break;
             }
 
@@ -701,8 +750,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                     .field_index = i,
                 };
 
-                auto [determine_type, body] = New_Inst(CIROperator::DetermineType, field_init);
-                body.determine_type_info = {
+                auto determine_type = New_Instruction(CIROperator::DetermineType, field_init);
+                Instruction(determine_type).determine_type_info = {
                     .determining_inst = field_value_inst,
                     .type_inst = field_type_of_struct
                 };
@@ -951,10 +1000,10 @@ CIRInstructionRef CIRBuilder::New_Instruction(CIROperator op, Ast *ast) {
     return inst_ref;
 }
 
-std::pair<CIRInstructionRef, CIRInstruction&> CIRBuilder::New_Inst(CIROperator op, Ast *ast) {
-    auto inst_ref = New_Instruction(op, ast);
-    return {inst_ref, Instruction(inst_ref)};
-}
+// std::pair<CIRInstructionRef, CIRInstruction&> CIRBuilder::New_Inst(CIROperator op, Ast *ast) {
+//     auto inst_ref = New_Instruction(op, ast);
+//     return {inst_ref, Instruction(inst_ref)};
+// }
 
 
 CIRInstruction& CIRBuilder::Instruction(CIRInstructionRef ref) {
@@ -978,6 +1027,10 @@ void CIRBuilder::End_Block(CIRInstructionRef block_inst) {
 
 CIRInstructionRef CIRBuilder::Begin_Loop(Ast *ast) {
     auto ref = New_Instruction(CIROperator::Loop, ast);
+
+    // TODO: ABSTRACT
+    loop_stack.push_back(ref);
+
     return ref;
 }
 
@@ -985,6 +1038,10 @@ void CIRBuilder::End_Loop(CIRInstructionRef loop_inst) {
     Instruction(loop_inst).loop_info = {
         .body_len = curr_instruction_buffer->count - loop_inst - 1,
     };
+
+    // TODO: ABSTRACT
+    XP_ASSERT_DEFAULT(loop_stack.back() == loop_inst);
+    loop_stack.pop_back();
 }
 
 
@@ -1120,12 +1177,6 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
             std::print("Break(%{}, void)", inst.break_info.break_block);
         }
         break;
-    case CIROperator::LoopBreak:
-        std::print("LoopBreak");
-        break;
-    case CIROperator::Continue:
-        std::print("Continue");
-        break;
     case CIROperator::Store:
         std::print("Store(%{}, %{})", inst.store_info.var_inst, inst.store_info.value_inst);
         break;
@@ -1240,9 +1291,6 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
     case CIROperator::UnionDecl:
         std::print("UnionDecl");
         break;
-    case CIROperator::Deref:
-        std::print("Deref(%{})", inst.deref_info.ptr_val_inst);
-        break;
     case CIROperator::AddrOf:
         std::print("AddrOf(%{})", inst.addr_of_info.lval_inst);
         break;
@@ -1254,17 +1302,22 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
             inst.field_type_of_struct_info.struct_type_inst,
             inst.field_type_of_struct_info.field_index);
         break;
+    case CIROperator::FuncParamType:
+        std::print("FuncParamType(type_func=%{}, param_index={})",
+            inst.func_param_type_info.type_of_func_type_inst,
+            inst.func_param_type_info.param_index);
+        break;
     case CIROperator::SizeOf:
         std::print("SizeOf(%{})", inst.sizeof_info.type_inst);
         break;
-    case CIROperator::If:
-        std::print("If(cond=%{}, then=%{}, else={})",
-            inst.if_info.condition_inst, inst.if_info.true_block_inst,
-            inst.if_info.false_block_inst == INVALID_INST ? "none" : std::format("%{}", inst.if_info.false_block_inst));
+    case CIROperator::CondBr:
+        std::print("CondBr(cond=%{}, then=%{}, else={})",
+            inst.condbr_info.condition_inst, inst.condbr_info.true_block_inst,
+            inst.condbr_info.false_block_inst == INVALID_INST ? "none" : std::format("%{}", inst.condbr_info.false_block_inst));
         break;
     case CIROperator::Loop:
-        std::print("Loop(cond=%{}, body=%{})",
-            inst.loop_info.condition_inst, inst.loop_info.loop_body_inst);
+        std::print("Loop(body_len={})",
+            inst.loop_info.body_len);
         break;
     case CIROperator::EnterScope:
         std::print("EnterScope {}", to_string(inst.scope_info.scope->scope_type));

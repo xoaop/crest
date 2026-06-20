@@ -62,7 +62,7 @@ struct CIRLoop {
     isize body_len;
 };
 
-struct CIRIf {
+struct CIRCondBr {
     CIRInstructionRef condition_inst;
     CIRInstructionRef true_block_inst;
     CIRInstructionRef false_block_inst;
@@ -97,10 +97,8 @@ struct CIRBlock {
     X(ExitScope) \
     X(Block) \
     X(Loop) \
-    X(If) \
+    X(CondBr) \
     X(Break) \
-    X(LoopBreak) \
-    X(Continue) \
     X(Load) \
     X(Store) \
     X(IdentRef) \
@@ -112,9 +110,9 @@ struct CIRBlock {
     X(FinishStruct) \
     X(EnumDeclInit) \
     X(SizeOf) \
-    X(Deref) \
     X(AddrOf) \
     X(FieldTypeOfStruct) \
+    X(FuncParamType) \
     X(TypeOfInstResult) \
 
 /**/
@@ -175,7 +173,7 @@ struct CIRInstruction {
 
         CIRFunction  func_decl;
         CIRLoop      loop_info;
-        CIRIf        if_info;
+        CIRCondBr    condbr_info;
 
         CIRBlock block_info;
 
@@ -284,6 +282,7 @@ struct CIRInstruction {
         struct {
             CIRInstructionRef determining_inst;
             std::optional<CIRInstructionRef> type_inst;
+            bool implicit_cast = false;  // array→slice, ptr→*void, etc.
         } determine_type_info;
 
         struct {
@@ -291,16 +290,17 @@ struct CIRInstruction {
         } sizeof_info;
 
         struct {
-            CIRInstructionRef ptr_val_inst;  // 指针值的指令（RValue of *T）
-        } deref_info;
-
-        struct {
             CIRInstructionRef lval_inst;  // 左值指令（LValue of T）
         } addr_of_info;
 
         struct {
-            CIRInstructionRef struct_type_inst; // 结构体类型的指令
-            isize field_index; // 字段在结构体定义中的索引
+            CIRInstructionRef type_of_func_type_inst; // type_type(function_type) 的指令
+            isize param_index;
+        } func_param_type_info;
+
+        struct {
+            CIRInstructionRef struct_type_inst;
+            isize field_index;
         } field_type_of_struct_info;
 
         struct {
@@ -365,15 +365,8 @@ struct ScopeGuard {
 
 struct CIRBuilder {
 
-    // state
-    AstFile *curr_ast_file;
-
-    CIRPackage *curr_pkg;
-    Array<CIRInstruction> *curr_instruction_buffer;
-    CIRFunction *curr_func;
-    CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
-    Scope *curr_scope;
-    SymbolInfo *curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
+    CIRBuilder(xpAllocator allocator);
+    ~CIRBuilder();
 
 
     CIRPackage build_cir_package(Package *pkg);
@@ -390,7 +383,7 @@ struct CIRBuilder {
     void build_inst_for_return_stmt(Ast *return_stmt_ast);
 
     CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
-    std::pair<CIRInstructionRef, CIRInstruction&> New_Inst(CIROperator op, Ast *ast);
+    // std::pair<CIRInstructionRef, CIRInstruction&> New_Inst(CIROperator op, Ast *ast);
     CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast);
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
@@ -405,6 +398,25 @@ struct CIRBuilder {
     bool Enter_Scope(Ast *ast);
     void Exit_Scope();
 
+
+public:
+
+
+    // state
+    AstFile *curr_ast_file;
+
+    CIRPackage *curr_pkg;
+    Array<CIRInstruction> *curr_instruction_buffer;
+    CIRFunction *curr_func;
+    CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
+    CIRInstructionRef curr_block_inst;
+    Scope *curr_scope;
+    SymbolInfo *curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
+
+
+    // cirbuilder所有的状态, 需要分配
+    Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
+    Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
 };
 
 

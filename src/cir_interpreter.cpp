@@ -556,15 +556,13 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
 void Interpreter::analyze_instruction() {
     CIRInstruction *inst = pkg->inst(pc);
 
-    std::println("curr pc: {}", pc);
+    DEBUG_TRACE("curr pc: {}", pc);
 
     switch(inst->op) {
         case CIROperator::Block:         analyze_block(); break;
         case CIROperator::Break:         analyze_break(); break;
-        case CIROperator::If:            analyze_if(); break;
+        case CIROperator::CondBr:        analyze_condbr(); break;
         case CIROperator::Loop:          analyze_loop(); break;
-        case CIROperator::LoopBreak:     analyze_loop_break(); break;
-        case CIROperator::Continue:      analyze_continue(); break;
 
         case CIROperator::ConstDecl:     analyze_const_decl(); break;
         case CIROperator::FunctionDecl:  analyze_function_decl(); break;
@@ -604,10 +602,10 @@ void Interpreter::analyze_instruction() {
 
         case CIROperator::DetermineType: analyze_determine_type(); break;
 
-        case CIROperator::Deref:         analyze_deref(); break;
         case CIROperator::AddrOf:        analyze_addr_of(); break;
         case CIROperator::TypeOfInstResult: analyze_type_of_inst_result(); break;
         case CIROperator::FieldTypeOfStruct: analyze_field_type_of_struct(); break;
+        case CIROperator::FuncParamType: analyze_func_param_type(); break;
 
         default:
             XP_ASSERT_MSG(false, "Unsupported CIR instruction");
@@ -654,7 +652,7 @@ void Interpreter::analyze_break() {
     auto info = pkg->inst(pc)->break_info;
 
     CIRInstructionRef target_block = info.break_block;
-    XP_ASSERT_DEFAULT(pkg->inst(target_block)->op == CIROperator::Block);
+    XP_ASSERT_DEFAULT(pkg->inst(target_block)->op == CIROperator::Block || pkg->inst(target_block)->op == CIROperator::Loop);
 
 
     if(info.break_value_inst != INVALID_INST) {
@@ -677,7 +675,7 @@ void Interpreter::analyze_break() {
         }
 
 
-        if(curr_eval_mode() == EvalMode::FullEval || has_result_val(info.break_value_inst)) {
+        if(curr_eval_mode() == EvalMode::FullEval) {
             Set_ResultValue(target_block, ResultValue(info.break_value_inst));
         }
     } else {
@@ -688,53 +686,33 @@ void Interpreter::analyze_break() {
 
 }
 
-void Interpreter::analyze_if() {
-    auto if_info = pkg->inst(pc)->if_info;
+void Interpreter::analyze_condbr() {
+    XP_ASSERT_DEFAULT(pkg->inst(pc)->op == CIROperator::CondBr);
+
+    auto if_info = pkg->inst(pc)->condbr_info;
     auto cond_inst = if_info.condition_inst;
     auto true_blk = if_info.true_block_inst;
     auto false_blk = if_info.false_block_inst;
 
     XP_ASSERT_DEFAULT(cond_inst != INVALID_INST);
-    XP_ASSERT_DEFAULT(if_info.true_block_inst != INVALID_INST);
+    XP_ASSERT_DEFAULT(true_blk != INVALID_INST);
+    XP_ASSERT_DEFAULT(false_blk != INVALID_INST);
 
     auto cond_info = pkg->inst(cond_inst);
     auto true_info = pkg->inst(true_blk);
+    auto false_info = pkg->inst(false_blk);
     XP_ASSERT_DEFAULT(true_info->op == CIROperator::Block);
+    XP_ASSERT_DEFAULT(false_info->op == CIROperator::Block);
 
+    
 
-    CIRInstructionRef next_inst = pc + 1 + true_info->block_info.body_len + 1;
-    if(false_blk != INVALID_INST) {
-        auto false_info = pkg->inst(false_blk);
-        XP_ASSERT_DEFAULT(false_info->op == CIROperator::Block);
-        XP_ASSERT_DEFAULT(next_inst == false_blk);
-
-        next_inst += false_info->block_info.body_len + 1;
-    }
-
-    if(has_error(cond_inst)) {
-        Set_ResultError(pc);
-        pc = next_inst - 1;
+    if(propagate_error({cond_inst})) {
         return;
     }
-
-    pc += 1; // 跳过 If 指令本身，进入 true block 分析
-
-    // 先切换为TypeOnly, 把所有的block都先类型推导, 不能一下子就执行了, 得根据条件
-    eval_mode_stack.push_back(EvalMode::TypeOnly);
-
-    analyze_block(EvalMode::TypeOnly); // true block
-
-    if(false_blk != INVALID_INST) {
-        pc += 1;                          // 前进到 false block
-        analyze_block(EvalMode::TypeOnly); // false block
-    }
-
-    eval_mode_stack.pop_back();
 
     TypeRef cond_type = ResultType(cond_inst);
     if(cond_type != easy_type(Type_bool)) {
         context()->reporter.report_error(pkg->inst(pc)->src_loc, "condition expression of if statement must be of type bool");
-        pc = next_inst - 1;
         return;
     }
 
@@ -751,63 +729,34 @@ void Interpreter::analyze_if() {
         analyze_block();
         recover_pc_flow();
     }
-
-    pc = next_inst - 1; // 跳过整个 if 结构，进入后续指令分析
 }
 
 void Interpreter::analyze_loop() {
     auto& loop_info = pkg->inst(pc)->loop_info;
 
-    CIRInstructionRef loop_inst = pc;
-    CIRInstructionRef cond_blk  = loop_info.condition_inst;
-    CIRInstructionRef body_blk  = loop_info.loop_body_inst;
 
-    auto cond_info = pkg->inst(cond_blk);
-    auto body_info = pkg->inst(body_blk);
-    XP_ASSERT_DEFAULT(cond_info->op == CIROperator::Block);
-    XP_ASSERT_DEFAULT(body_info->op == CIROperator::Block);
+    CIRInstructionRef loop_inst_ref = pc;
 
-    // 计算 next_inst：Loop + cond Block+body + body Block+body
-    CIRInstructionRef next_inst = pc + 1
-        + cond_info->block_info.body_len + 1
-        + body_info->block_info.body_len + 1;
-
-    loop_stack.push_back(loop_inst);
-    pc += 1; // 跳过 Loop 指令
-
-    // TypeOnly: 分析 cond 和 body（仅类型推导）
-    analyze_block(EvalMode::TypeOnly); // cond block
-    pc += 1;                            // 前进到 body block
-    analyze_block(EvalMode::TypeOnly); // body block
+    isize end_pc = pc + 1 + loop_info.body_len;
+    pc += 1; // 跳过 Block 指令本身，进入 Block 内部指令分析
+    while(pc < end_pc && !has_result_val(loop_inst_ref)) {
+        analyze_instruction();
+    }
+    pc = end_pc - 1; // FullEval 提前退出时跳过剩余指令
 
     if(curr_eval_mode() == EvalMode::FullEval) {
         XP_TODO(); // TODO: 目前不支持编译时循环
     }
 
-    loop_stack.pop_back();
-    pc = next_inst - 1;
-}
-
-void Interpreter::analyze_loop_break() {
-    XP_ASSERT(loop_stack.count > 0);
-    CIRInstructionRef target_loop = loop_stack.back();
-
-    // LoopBreak 类似 Break：设置 loop 指令的结果
-    set_result_state(target_loop, CIRResultType::DontHave);
-
-
-}
-
-void Interpreter::analyze_continue() {
-    // Continue 在编译时循环中表示"本次迭代结束，继续下一轮"
-    // 外层 analyze_loop 的 while 循环会处理 condition 重新求值和 body 重新执行
-    // 所以这里只需标记并跳出当前循环体 Block
-    XP_ASSERT(loop_stack.count > 0);
 }
 
 
 
 void Interpreter::analyze_const_decl() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     CIRConstDecl info = pkg->inst(pc)->const_decl;
     SymbolInfo* sym = find_symbol_until_global(curr_scope, info.ident);
     XP_ASSERT_DEFAULT(sym != nullptr);
@@ -905,6 +854,38 @@ void Interpreter::analyze_call() {
         return;
     }
 
+    auto& param_types = called_type->function_info.param_types;
+
+    // 参数数量检查
+    isize non_var_arg_count = 0;
+    bool has_var_arg = false;
+    for(isize i = 0; i < param_types.count; i++) {
+        if(param_types[i] == easy_type(Type_var_arg_c)) {
+            has_var_arg = true;
+        } else {
+            non_var_arg_count++;
+        }
+    }
+
+    isize arg_count = call_info.arg_insts.count;
+    if(has_var_arg) {
+        if(arg_count < non_var_arg_count) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc,
+                "too few arguments: expected at least {} but got {}",
+                non_var_arg_count, arg_count);
+            Set_ResultError(pc);
+            return;
+        }
+    } else {
+        if(arg_count != param_types.count) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc,
+                "argument count mismatch: expected {} but got {}",
+                param_types.count, arg_count);
+            Set_ResultError(pc);
+            return;
+        }
+    }
+
     TypeRef return_type = called_type->function_info.return_type;
     Set_ResultType(pc, return_type);
 
@@ -916,6 +897,10 @@ void Interpreter::analyze_call() {
 }
 
 void Interpreter::analyze_get_or_init_struct() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->get_or_init_struct_info;
 
     std::optional<xpString> struct_name = std::nullopt;
@@ -937,14 +922,12 @@ void Interpreter::analyze_get_or_init_struct() {
 
     Set_ResultType(pc, v.type);
 
-    if(!has_result_val(pc)) {
-        Set_ResultValue(pc, v);
+    Set_ResultValue(pc, v);
 
-        // 壳子创建后立即绑定符号，使字段内的 *Self 能查到
-        if(info.symbol != nullptr) {
-            info.symbol->val(v);
-            info.symbol->state = SymbolState::Solved;
-        }
+    // 壳子创建后立即绑定符号，使字段内的 *Self 能查到
+    if(info.symbol != nullptr) {
+        info.symbol->val(v);
+        info.symbol->state = SymbolState::Solved;
     }
 
 }
@@ -1068,6 +1051,10 @@ void Interpreter::analyze_union_decl() {
 
 // 表达式
 void Interpreter::analyze_binary() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& binary_info = pkg->inst(pc)->binary_info;
 
     auto op = binary_info.op;
@@ -1156,9 +1143,11 @@ void Interpreter::analyze_binary() {
         }
 
         if(is_struct_type(left_type) || is_array_type(left_type)) {
-            context()->reporter.report_error(pkg->inst(pc)->src_loc, "binary operators are not supported for struct or array types");
-            Set_ResultError(pc);
-            return;
+            if(!is_equal_compare_operator(op)) {
+                context()->reporter.report_error(pkg->inst(pc)->src_loc, "only equality comparison is allowed for struct and array types");
+                Set_ResultError(pc);
+                return;
+            }
         }
 
         if(is_enum_type(left_type)) {
@@ -1207,6 +1196,10 @@ void Interpreter::analyze_binary() {
 }
 
 void Interpreter::analyze_unary() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& unary_info = pkg->inst(pc)->unary_info;
 
     auto op = unary_info.op;
@@ -1267,6 +1260,10 @@ void Interpreter::analyze_unary() {
 }
 
 void Interpreter::analyze_cast() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& cast_info = pkg->inst(pc)->cast_info;
 
     auto expr_inst = cast_info.expr_inst;
@@ -1307,6 +1304,12 @@ void Interpreter::analyze_cast() {
 
 
 void Interpreter::analyze_field_access() {
+
+    if(has_result_val(pc)) {
+        // 已经分析过了，避免重复分析
+        return;
+    }
+
     auto& info = pkg->inst(pc)->field_access_info;
     CIRInstructionRef parent_inst = info.parent_inst;
 
@@ -1427,6 +1430,10 @@ void Interpreter::analyze_field_ptr() {
 }
 
 void Interpreter::analyze_struct_init() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->struct_init_info;
 
     if(propagate_error({info.struct_type_inst})) return;
@@ -1471,6 +1478,10 @@ void Interpreter::analyze_struct_init() {
 }
 
 void Interpreter::analyze_array_init() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->array_init_info;
 
     if(propagate_error(info.element_insts)) return;
@@ -1503,6 +1514,10 @@ void Interpreter::analyze_array_init() {
 }
 
 void Interpreter::analyze_index() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->index_info;
     CIRInstructionRef array_inst = info.array_inst;
     CIRInstructionRef index_inst = info.index_inst;
@@ -1589,31 +1604,6 @@ void Interpreter::analyze_index_ptr() {
     set_lvalue(pc);
 }
 
-void Interpreter::analyze_deref() {
-    auto& info = pkg->inst(pc)->deref_info;
-    CIRInstructionRef ptr_val_inst = info.ptr_val_inst;
-
-    if(propagate_error({ptr_val_inst})) return;
-
-    if(is_lvalue(ptr_val_inst)) {
-        context()->reporter.report_error(pkg->inst(pc)->src_loc, "cannot dereference an lvalue, expected a pointer value");
-        Set_ResultError(pc);
-        return;
-    }
-
-    TypeRef ptr_type = ResultType(ptr_val_inst);
-
-    if(!is_pointer_type(ptr_type)) {
-        context()->reporter.report_error(pkg->inst(pc)->src_loc, "cannot dereference a non-pointer type");
-        Set_ResultError(pc);
-        return;
-    }
-
-    Set_ResultType(pc, ptr_type->pointed_type);
-    set_lvalue(pc);
-
-}
-
 void Interpreter::analyze_addr_of() {
     auto& info = pkg->inst(pc)->addr_of_info;
     CIRInstructionRef lval_inst = info.lval_inst;
@@ -1642,17 +1632,18 @@ void Interpreter::analyze_load() {
 
     if(propagate_error({ptr_inst})) return;
 
-    if(!is_lvalue(ptr_inst)) {
-        context()->reporter.report_error(pkg->inst(pc)->src_loc, "cannot load from non-lvalue expression");
-        Set_ResultError(pc);
-        return;
+    if(is_lvalue(ptr_inst)) {
+        TypeRef loaded_type = ResultType(ptr_inst);
+        Set_ResultType(pc, loaded_type);
+    } else {
+        TypeRef ptr_type = ResultType(ptr_inst);
+        if(!is_pointer_type(ptr_type)) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc, "cannot load from a non-pointer value");
+            Set_ResultError(pc);
+            return;
+        }
+        Set_ResultType(pc, ptr_type->pointed_type);
     }
-
-    TypeRef pointed_type = ResultType(ptr_inst);
-
-    Set_ResultType(pc, pointed_type);
-
-    // TODO: 编译期 Load 同样需要专门的变量存储空间，不能直接从 SymbolInfo 读值
 
 }
 
@@ -1707,6 +1698,11 @@ void Interpreter::analyze_ident_ref() {
 }
 
 void Interpreter::analyze_ident_val() {
+    
+    if(has_result_val(pc)) {
+        return;
+    }
+    
     xpString ident = pkg->inst(pc)->ident;
     SymbolInfo *info = find_symbol_until_global(curr_scope, ident);
 
@@ -1745,20 +1741,26 @@ void Interpreter::analyze_store() {
 
     if(propagate_error({var_inst, value_inst})) return;
 
-    if(!is_lvalue(var_inst)) {
-        context()->reporter.report_error(pkg->inst(pc)->src_loc, "you can only assign to variables, fields, array elements, or dereferenced pointers");
-        Set_ResultError(pc);
-        return;
+    TypeRef target_type;
+    if(is_lvalue(var_inst)) {
+        target_type = ResultType(var_inst);
+    } else {
+        TypeRef ptr_type = ResultType(var_inst);
+        if(!is_pointer_type(ptr_type)) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc, "you can only assign to variables, fields, array elements, or dereferenced pointers");
+            Set_ResultError(pc);
+            return;
+        }
+        target_type = ptr_type->pointed_type;
     }
 
-    TypeRef existing = ResultType(var_inst);
-    if(existing == undefined_type()) {
+    if(target_type == undefined_type()) {
         TypeRef inferred = ResultType(store_info.value_inst);
         Set_ResultType(var_inst, inferred);
     } else {
         TypeRef value_type = ResultType(store_info.value_inst);
-        if(value_type != existing) {
-            context()->reporter.report_error(pkg->inst(pc)->src_loc, "stored value type does not match variable's declared type");
+        if(value_type != target_type) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc, "stored value type does not match target type");
             Set_ResultError(pc);
             return;
         }
@@ -1821,6 +1823,10 @@ void Interpreter::analyze_constant_value() {
 
 // 类型构造
 void Interpreter::analyze_pointer_type() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto pointed_inst = pkg->inst(pc)->pointer_type_info.pointed_type_inst;
 
     if(propagate_error({pointed_inst})) return;
@@ -1841,6 +1847,10 @@ void Interpreter::analyze_pointer_type() {
 }
 
 void Interpreter::analyze_array_type() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->array_type_info;
 
     if(propagate_error({info.element_type_inst, info.count_inst})) return;
@@ -1861,6 +1871,10 @@ void Interpreter::analyze_array_type() {
 }
 
 void Interpreter::analyze_slice_type() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->slice_type_info;
 
     if(propagate_error({info.element_type_inst})) return;
@@ -1881,9 +1895,7 @@ void Interpreter::analyze_slice_type() {
 
 
 void Interpreter::analyze_type_of_inst_result() {
-    
-    // TODO: EXPAND
-    if(has_result_type(pc)) {
+    if(has_result_val(pc)) {
         return;
     }
 
@@ -1900,6 +1912,10 @@ void Interpreter::analyze_type_of_inst_result() {
 }
 
 void Interpreter::analyze_field_type_of_struct() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
     auto& info = pkg->inst(pc)->field_type_of_struct_info;
 
     if(propagate_error({info.struct_type_inst})) return;
@@ -1917,7 +1933,53 @@ void Interpreter::analyze_field_type_of_struct() {
 
     Value result = make_value(meta);
     Set_ResultTypeAndValue(pc, result);
+}
 
+
+void Interpreter::analyze_func_param_type() {
+    if(has_result_val(pc)) {
+        return;
+    }
+
+    auto& info = pkg->inst(pc)->func_param_type_info;
+
+    if(propagate_error({info.type_of_func_type_inst})) return;
+
+    TypeRef func_type = extract_type_from_val_as_type(ResultValue(info.type_of_func_type_inst));
+
+    if(!is_function_type(func_type)) {
+        context()->reporter.report_error(pkg->inst(pc)->src_loc,
+            "cannot get parameter type from a non-function type");
+        Set_ResultError(pc);
+        return;
+    }
+
+    auto& param_types = func_type->function_info.param_types;
+
+    TypeRef param_type;
+    if(info.param_index < param_types.count) {
+        param_type = param_types[info.param_index];
+    } else {
+        // 越界: 只有变参函数才允许，视为 var_arg
+        bool any_var_arg = false;
+        for(isize i = 0; i < param_types.count; i++) {
+            if(param_types[i] == easy_type(Type_var_arg_c)) {
+                any_var_arg = true;
+                break;
+            }
+        }
+        if(!any_var_arg) {
+            context()->reporter.report_error(pkg->inst(pc)->src_loc,
+                "parameter index {} out of bounds (function has {} parameters)",
+                info.param_index, param_types.count);
+            Set_ResultError(pc);
+            return;
+        }
+        param_type = easy_type(Type_var_arg_c);
+    }
+    TypeRef meta = type_type(param_type);
+    Value result = make_value(meta);
+    Set_ResultTypeAndValue(pc, result);
 }
 
 
@@ -1950,12 +2012,38 @@ void Interpreter::analyze_determine_type() {
 
 
     bool check_overflow = false;
-    TypeRef expected_type = nullptr;
+    TypeRef expected_type = determined_type;
+
+    if(has_val) {
+        if(is_untyped_type(determined_type)) {
+            expected_type = get_compliable_const_type(result_val);
+        }
+    } else {
+        if(determined_type == easy_type(Type_untyped_int)) {
+            expected_type = easy_type(Type_i32);
+        } else if(determined_type == easy_type(Type_untyped_float)) {
+            expected_type = easy_type(Type_f64);
+        }
+    }
+
+    // TODO: 统一路径
+    Set_ResultType(determined_inst, expected_type);
+
     if(expected_type_inst.has_value()) {
         // @EXPLAIN: 如果有参数, 表示有目标类型
         expected_type = extract_type_from_val_as_type(ResultValue(info.type_inst.value()));
 
+        XP_ASSERT_DEFAULT(!is_untyped_type(expected_type)); // 目标类型不应该是 untyped
+
+        // var_arg: 不约束类型，任何实参都接受
+        if(expected_type == easy_type(Type_var_arg_c)) {
+            set_result_state(pc, CIRResultType::DontHave);
+            return;
+        }
+
         bool ok = false;
+        bool is_implicit_cast = false;
+
         if(has_val) {
             if(result_val.is_null) {
                 if(is_pointer_type(expected_type)) {
@@ -1969,6 +2057,7 @@ void Interpreter::analyze_determine_type() {
         } else if(is_array_type(determined_type) && is_slice_struct_type(expected_type)) {
             if(expected_type->struct_info.struct_fields[0].type->pointed_type == determined_type->array_info.element_type) {
                 // TODO: 标记隐式转化: 数组转为切片
+                is_implicit_cast = true;
 
                 ok = true;
             }
@@ -1988,8 +2077,9 @@ void Interpreter::analyze_determine_type() {
             return;
         }
 
-        // TODO: 统一路径
-        Set_ResultType(determined_inst, expected_type);
+        if(!is_implicit_cast) {
+            Set_ResultType(determined_inst, expected_type);
+        }
 
         if(has_val) {
             result_val = ResultValue(determined_inst);
@@ -2005,20 +2095,7 @@ void Interpreter::analyze_determine_type() {
         // 无参数 = 强制消除 untyped，把源指令的类型具体化
         expected_type = determined_type;
 
-        if(has_val) {
-            if(is_untyped_type(determined_type)) {
-                expected_type = get_compliable_const_type(result_val);
-            }
-        } else {
-            if(determined_type == easy_type(Type_untyped_int)) {
-                expected_type = easy_type(Type_i32);
-            } else if(determined_type == easy_type(Type_untyped_float)) {
-                expected_type = easy_type(Type_f64);
-            }
-        }
-
-        // TODO: 统一路径
-        Set_ResultType(determined_inst, expected_type);
+       
     }
 
 
