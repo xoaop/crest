@@ -125,25 +125,24 @@ xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code) {
         }
     }
 
-    #ifdef DEBUG_PRINT 
-    printf("===== TOKEN LIST START =====\n");
+    #ifdef CREST_DEBUG
+    std::println(stderr, "===== TOKEN LIST START =====");
     for(isize i = 0; i < t.token_array.count; i++) {
         Token *token = &t.token_array[i];
 
         auto start = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.start);
         auto end = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.end);
-        printf("Token[%3lld]: Type: %-20s Str: %-15.*s Span: [%lld:%lld - %lld:%lld] BytePos[%lld - %lld]\n",
+        std::println(stderr, "Token[{:3}]: Type: {:<20} Str: {:15} Span: [{}:{} - {}:{}] BytePos[{} - {}]",
             i,
             get_token_str(token->type),
-            cast(int)token->token_str.length, token->token_str.c_str,
+            std::string_view(token->token_str.c_str, token->token_str.length),
             start.first, start.second,
             end.first, end.second,
             token->src_loc.span.start, token->src_loc.span.end
         );
-        
     }
-    printf("===== TOKEN LIST END =====\n");
-    #endif // DEBUG_PRINT
+    std::println(stderr, "===== TOKEN LIST END =====");
+    #endif
 
 
     return xp_make_pair(t.source_code, t.token_array);

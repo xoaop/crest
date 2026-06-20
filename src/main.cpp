@@ -42,7 +42,15 @@ int main(int argc, char** argv) {
 
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
-    auto end_time = start_time;
+
+    auto mark_phase = [&](const char* name) {
+        auto now = std::chrono::high_resolution_clock::now();
+        using Sec = std::chrono::duration<double>;
+        auto total = std::chrono::duration_cast<Sec>(now - start_time).count();
+        auto since_last = std::chrono::duration_cast<Sec>(now - last_time).count();
+        std::println(stderr, "[phase] {:>10.6f}s (+{:>10.6f}s) {}", total, since_last, name);
+        last_time = now;
+    };
     
     
     char const *main_path = NULL;
@@ -136,7 +144,8 @@ int main(int argc, char** argv) {
 
 
     context()->all_packages = resolve_dependencies(xp_string_c(main_path));
-    std::reverse(context()->all_packages.begin(), context()->all_packages.end()); // 反转包的顺序, 让被依赖的包在前面, 这样后续分析的时候就不需要担心包的依赖顺序了
+    std::reverse(context()->all_packages.begin(), context()->all_packages.end());
+    mark_phase("resolve dependencies");
 
 
     if(context()->reporter.error_count > 0) {
@@ -145,24 +154,29 @@ int main(int argc, char** argv) {
     }
 
     resolve_ast_all_packages(&context()->all_packages);
-
+    mark_phase("tokenize + parse");
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
         return 0;
     }
 
+    #ifdef CREST_DEBUG
     print_scope_tree(&context()->global_blank_package.package_scope);
+    #endif
 
 
     for(auto& pkg : context()->all_packages) {
-        CIRBuilder builder = {};
+        CIRBuilder builder{stage_allocator()};
         pkg.cir_package = builder.build_cir_package(&pkg);
     }
+    mark_phase("build CIR");
 
+    #ifdef CREST_DEBUG
     for(auto& pkg : context()->all_packages) {
         dump_cir_package(&pkg.cir_package);
     }
+    #endif
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -172,6 +186,7 @@ int main(int argc, char** argv) {
     for(auto& pkg : context()->all_packages) {
         analyze_package(&pkg);
     }
+    mark_phase("analyze CIR");
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -182,6 +197,7 @@ int main(int argc, char** argv) {
 
     LLVMIRGenerateConfig llvm_config = {};
     Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
+    mark_phase("generate LLVM IR");
 
     return 0;
 }

@@ -86,7 +86,7 @@ AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
         array_push_back(&p.f.top_levels, parse_stmt(&p));
     }
 
-    #ifdef DEBUG_PRINT
+    #ifdef CREST_DEBUG
     print_ast(p.f.top_levels);
     #endif
 
@@ -1002,11 +1002,18 @@ Ast *parse_expr_factor(Parser *p) {
             break;
 
         // 关键字常量
-        case TokenType::KW_null:
+        case TokenType::KW_null: {
             a = ast_alloc(AstType_Constant);
+
+            Value null_val = make_value(pointer_type(easy_type(Type_void)));
+            null_val.is_null = true;
+
+            a->Constant.value = null_val;
+
             a->token = expect(p, curr.type);
             a->src_loc = a->token.src_loc;
-            break;
+
+        } break;
         
         // (expr)
         case TokenType::LeftBracket:
