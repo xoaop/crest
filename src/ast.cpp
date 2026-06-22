@@ -142,7 +142,9 @@ bool is_return_bool_operator(TokenType t) {
     return is_compare_operator(t) || is_logic_operator(t);
 }
 
-
+const char *ast_string(AstType type) {
+    return ast_strs[static_cast<i32>(type)];
+}
 
 #include <print>
 
@@ -357,6 +359,15 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             print_ast(a->ArrayType.count_expr, depth + 2, true);
             break;
         }
+
+        case AstType_FunctionType: {
+            print_line(depth + 1, false, "param_types:");
+            print_ast(a->FunctionType.param_types, depth + 2, false);
+            print_line(depth + 1, true, "return_type:");
+            print_ast(a->FunctionType.return_type_ast, depth + 2, true);
+            break;
+        }
+
         case AstType_Ident: {
             print_line(depth + 1, true, "name: {}", a->Ident.name.c_str);
             break;

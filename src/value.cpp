@@ -8,16 +8,14 @@ Value::Value() {
 }
 
 Value::Value(const Value& other) {
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(Value));
+    memcpy((void*)this, &other, sizeof(Value));
 }
 
 Value& Value::operator=(const Value& other) {
     if (this == &other) return *this;
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(Value));
+    memcpy((void*)this, &other, sizeof(Value));
     return *this;
 }
-
-
 
 Value Value::set_type(TypeRef new_type) {
     type = new_type;
@@ -126,7 +124,7 @@ Value Value::struct_field_val(xpString field_name) const {
             return struct_field_val(i);
         }
     }
-    
+
     XP_ASSERT_MSG(false, "struct field not found");
     return Value();
 }
@@ -149,22 +147,6 @@ FuncValue Value::func_val() const {
     XP_ASSERT_DEFAULT(is_function_type(type));
     return func_value;
 }
-
-
-// Value clone_value(Value& v, xpAllocator allocator) {
-//     Value new_value = v;
-
-//     if(is_string_struct_type(v.type)) {
-//         new_value.string_value = v.string_value;
-//     } else if(is_struct_type(v.type) && !is_string_struct_type(v.type)) {
-//         new_value.struct_field_values = array_copy(&v.struct_field_values, allocator);
-//     } else if(is_array_type(v.type)) {
-//         new_value.array_element_values = array_copy(&v.array_element_values, allocator);
-//     }
-
-//     return new_value;
-// }
-
 
 
 TypeRef extract_type_from_val_as_type(Value v) {

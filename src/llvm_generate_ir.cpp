@@ -16,6 +16,88 @@
 
 
 
+/*
+============================================================================
+LLVM IR 生成 —— 核心概念语义定义
+============================================================================
+
+【Region】
+  拥有自己 mapper 的 CIR 指令：Block、Loop。
+  特征：有 mapper（fragments + exit_blk）、有 body（CIR 子指令流）、
+  占多个 CIR slot（gen_ir_inst 返回 1 + body_len）。
+
+【Mapper (LLVMBasicBlockMapper)】
+  Region 拥有的 BB 集合，两部分：
+    fragments  — add_frag_blk() 添加的运行时可达 BB 序列
+    exit_block — 构造时预创建的独立 BB，不在 fragments 里，是 Region 的"统一出口"
+  创建时机：get_or_create_mapper(ref) 首次调用时。
+
+【exit_blk】
+  Region 的统一出口 BB。不变量：
+  - 任何离开 Region 的控制流（Break、自然落出）都经过 exit_blk
+  - exit_blk 不含业务代码，只做跳转中转
+  - 父级（CondBr 或 Block 自连接）负责把 exit_blk 接线到父 mapper 的 merge_bb
+
+【connect_to_parent】
+  gen_ir_block_in_func_block(ref, connect_to_parent) 的第二参数：
+    true  — Block 自己衔接父 BB：parent_bb → br first_bb，exit_blk → br 父.merge。
+            由 gen_ir_inst Block case 调用（父迭代器路径）。
+    false — Block 不处理外部衔接，调用者负责。由 CondBr 调用（then/else 路径）。
+
+【curr_blk】
+  当前正在生成代码的 Region 的 CIR 指令引用。
+  用途：CondBr / Block 自连接通过 get_or_create_mapper(curr_blk) 找到父 mapper，
+  把 merge_bb 加入其中。
+  生命周期：gen_ir_block_in_func_block / Loop 入口 save → set → defer restore。
+
+【Block (gen_ir_block_in_func_block)】
+  1. 保存 parent_bb，创建/获取 mapper，添加 first_bb
+  2. (connect_to_parent) parent_bb 未终止 → br first_bb
+  3. position 到 first_bb，遍历 body 指令
+  4. 落出：last_bb 未终止 → br exit_blk（func_body → ret void）
+  5. (connect_to_parent 且非 func_body) exit_blk 未终止 → br 父.block.merge，position 过去
+  6. (!connect_to_parent) 恢复 builder 到 parent_bb
+
+【Loop】
+  1. 保存 parent_bb，创建 mapper，添加 first_bb，position 到 first_bb
+  2. 遍历 body
+  3. 回边：last_bb 未终止 → br first_bb
+  4. 入口接线：parent_bb 未终止 → br first_bb
+  5. position 到 exit_blk（break 目标）
+  Loop 的衔接是内建的，无开关——Loop 总是自己接线。
+
+【CondBr】
+  不是 Region，没有 mapper。语义：
+  1. 取 cond_val；若 cond 是 Block 且其 exit_blk 未终止 → position 过去
+  2. 直接调 gen_ir_block_in_func_block(then, false)、gen_ir_block_in_func_block(else, false)
+  3. 在当前位置建 condbr cond_val ? then.first_bb : else.first_bb
+  4. 在父 mapper (curr_blk) 建 condbr.merge
+  5. 接线：then.exit_blk → merge、else.exit_blk → merge
+  6. position 到 merge
+
+【Break】
+  跳转到 target_block 的 exit_blk。
+  target == func_body → ret；否则 → br target.exit_blk。
+  Break 后在当前 mapper 建 after_break BB（死代码隔离），position 过去。
+
+【父迭代器（while body_pc < body_end）】
+  调用 gen_ir_inst(body_pc)，用返回值 skip 推进 body_pc。
+  不感知子指令是否是 Region——统一用 skip 跳过。
+  Region 通过自连接/回边/入口接线自己管理 BB 衔接。
+
+【关联关系】
+  父迭代器 ──gen_ir_inst(skip)──→ 子指令
+
+  子是 Block(connect=true): 父不知 Block 存在，Block 自己 parent→br first, exit→br parent.merge
+  子是 Loop:              父不知 Loop 存在，Loop 自己 parent→br first, 回边→br first
+  子是 CondBr:            CondBr 自己 gen then/else(connect=false)，建 condbr+parent.merge
+  子是 Break:             br target.exit_blk，由 target 父级把 exit_blk 接到 merge
+
+  核心原则：父迭代器不穿透抽象。Region 自己管理 BB 衔接。CondBr 作为 then/else
+  的"所有者"，显式管理它们的衔接。
+============================================================================
+*/
+
 struct LLVMGenerator;
 
 
@@ -68,6 +150,7 @@ struct LLVMBasicBlockMapper {
     LLVMBasicBlockRef first_frag_blk();
     LLVMBasicBlockRef last_frag_blk();
     LLVMBasicBlockRef exit_blk();
+    void create_exit(LLVMContextRef ctx, LLVMValueRef func);
     LLVMBasicBlockRef frag_at(isize i);
     isize frag_count();
 
@@ -106,6 +189,12 @@ LLVMBasicBlockRef LLVMBasicBlockMapper::exit_blk() {
     return exit_block;
 }
 
+void LLVMBasicBlockMapper::create_exit(LLVMContextRef ctx, LLVMValueRef func) {
+    if(!exit_block) {
+        exit_block = LLVMAppendBasicBlockInContext(ctx, func, "block.exit");
+    }
+}
+
 LLVMBasicBlockRef LLVMBasicBlockMapper::frag_at(isize i) {
     XP_ASSERT_MSG(i >= 0 && i < fragments.count, "frag_at index out of range");
     return fragments[i];
@@ -128,7 +217,7 @@ struct LLVMGenerator {
     LLVMTypeRef get_llvm_type_from_type(TypeRef type);
     void gen_ir_function(CIRInstruction *func_inst);
     isize gen_ir_inst(CIRInstructionRef ref);
-    isize gen_ir_block_in_func_block(CIRInstructionRef ref);
+    isize gen_ir_block_in_func_block(CIRInstructionRef ref, bool connect_to_parent = false);
     void gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* inst);
     void gen_ir_binary_expr(CIRInstructionRef inst);
     void gen_ir_unary(CIRInstructionRef inst);
@@ -150,9 +239,10 @@ struct LLVMGenerator {
 
 
     LLVMBasicBlockMapper& add_mapper_for_block(CIRInstructionRef blk, bool create_exit = true);
-    LLVMBasicBlockMapper* get_mapper(CIRInstructionRef blk);
+    LLVMBasicBlockMapper* mapper(CIRInstructionRef blk);
     LLVMBasicBlockMapper& get_or_create_mapper(CIRInstructionRef blk);
 
+    LLVMBasicBlockRef curr_bb();
 public:
     LLVMContextRef ctx;
     LLVMModuleRef module;
@@ -184,6 +274,7 @@ public:
     LLVMState curr_state;
 
     CIRInstructionRef curr_blk;
+
 };
 
 
@@ -289,7 +380,7 @@ LLVMBasicBlockMapper& LLVMGenerator::add_mapper_for_block(CIRInstructionRef blk,
 }
 
 
-LLVMBasicBlockMapper* LLVMGenerator::get_mapper(CIRInstructionRef blk) {
+LLVMBasicBlockMapper* LLVMGenerator::mapper(CIRInstructionRef blk) {
     auto m = xp_hash_map_get(inst_to_bbs, blk);
     XP_ASSERT_DEFAULT(m != nullptr);
 
@@ -300,6 +391,10 @@ LLVMBasicBlockMapper& LLVMGenerator::get_or_create_mapper(CIRInstructionRef blk)
     auto* m = xp_hash_map_get(inst_to_bbs, blk);
     if(m) return *m;
     return add_mapper_for_block(blk);
+}
+
+LLVMBasicBlockRef LLVMGenerator::curr_bb() {
+    return mapper(curr_blk)->last_frag_blk();
 }
 
 
@@ -313,10 +408,12 @@ int LLVMGenerator::size_of_type(TypeRef type) {
 
 
 LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type) {
-    LLVMBasicBlockRef curr_block = LLVMGetInsertBlock(builder);
+    LLVMBasicBlockRef curr_block = curr_bb();
     
 
-    LLVMPositionBuilderAtEnd(builder, target_block);
+    LLVMPositionBuilderAtEnd(builder,target_block);
+
+    // 如果有末尾指令且还是分支指令，就把 builder 定位到它前面，保证新 alloca 在分支指令前面
     LLVMValueRef last_instr = LLVMGetLastInstruction(target_block);
     if (last_instr && LLVMIsABranchInst(last_instr)) {
         LLVMPositionBuilderBefore(builder, last_instr);
@@ -327,20 +424,22 @@ LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasic
     LLVMValueRef alloca = LLVMBuildAlloca(builder, type, var_name);
     DEBUG_LOG("BuildAlloca OK");
 
-    LLVMPositionBuilderAtEnd(builder, curr_block);
+    LLVMPositionBuilderAtEnd(builder,curr_block);
 
     return alloca;
 }
 
 // bool is_curr_basic_block_has_terminator(LLVMGenerator *gen) {
-//     LLVMBasicBlockRef curr_block = LLVMGetInsertBlock(builder);
+//     LLVMBasicBlockRef curr_block = curr_bb();
 //     return LLVMGetBasicBlockTerminator(curr_block) != nullptr;
 // }
 
 void LLVMGenerator::llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBlockRef to) {
+    LLVMPositionBuilderAtEnd(builder, from);
     if(!LLVMGetBasicBlockTerminator(from)) {
         LLVMBuildBr(builder, to);
     }
+    LLVMPositionBuilderAtEnd(builder, curr_bb());
 }
 
 
@@ -391,7 +490,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     // 否则, 需要先把值存到内存中, 再返回地址
     if(allow_alloc_value_to_get_ptr) {
         LLVMTypeRef value_type = LLVMTypeOf(value);
-        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(LLVMGetInsertBlock(builder), "temp", value_type);
+        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_bb(), "temp", value_type);
         LLVMBuildStore(builder, value, temp_alloca);
         return temp_alloca;
     } else {
@@ -573,15 +672,17 @@ xpString LLVMGenerator::gen_ir_package(Package *pkg, LLVMIRGenerateConfig config
         CIRInstruction *func_inst = cir_pkg.inst(func_ref);
         curr_scope = scope;
 
+        DEBUG_LOG("gen_ir_package: calling gen_ir_function for '{}'", func_inst->func_decl.name.c_str);
         gen_ir_function(func_inst);
+        DEBUG_LOG("gen_ir_package: gen_ir_function for '{}' returned", func_inst->func_decl.name.c_str);
     }
 
 
     // 输出 .ll 文件
     char *error = nullptr;
     std::string file_name = to_path(pkg->path).generic_string();
-    std::ranges::replace(file_name, '/', '_');
-    std::ranges::replace(file_name, ':', '_');
+    std::replace(file_name.begin(), file_name.end(), '/', '_');
+    std::replace(file_name.begin(), file_name.end(), ':', '_');
 
     std::filesystem::path &output_path = context()->output_path;
 
@@ -597,7 +698,7 @@ xpString LLVMGenerator::gen_ir_package(Package *pkg, LLVMIRGenerateConfig config
     if(LLVMVerifyModule(module, LLVMReturnStatusAction, &error)) {
         std::println(stderr, "Module verification failed: {}", error);
         LLVMDisposeMessage(error);
-        XP_ASSERT_DEFAULT(0);
+        // XP_ASSERT_DEFAULT(0);
     }
 
     // 优化
@@ -967,9 +1068,11 @@ void LLVMGenerator::gen_ir_function(CIRInstruction *func_inst) {
     DEBUG_LOG("gen_ir_function: '{}', func={}", func_inst->func_decl.name.c_str, (void*)func);
 
     // 唯一的特殊照顾：提前为函数体 Block 创建 mapper 并添加 entry 片段供 alloca 插入
-    auto& mapper = add_mapper_for_block(func_inst->func_decl.body_inst, false);
-    LLVMBasicBlockRef entry = mapper.add_frag_blk(ctx, func, "entry");
-    LLVMPositionBuilderAtEnd(builder, entry);
+    curr_state.curr_function = func;  // 必须在 add_mapper_for_block 之前设置，否则 exit_block 会创建在错误的函数上下文中
+    auto& body_mapper = add_mapper_for_block(func_inst->func_decl.body_inst, false);
+    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(ctx, func, "entry");
+    body_mapper.create_exit(ctx, func);  // 在 entry 之后创建，避免 exit 成为函数入口点
+    LLVMPositionBuilderAtEnd(builder,entry);
 
     curr_state = {func, entry};
     curr_func_info = func_inst->func_decl;
@@ -977,16 +1080,22 @@ void LLVMGenerator::gen_ir_function(CIRInstruction *func_inst) {
     curr_blk = func_inst->func_decl.body_inst;
     gen_ir_inst(curr_func_info.body_inst);
 
-    // gen_ir_block_in_func_block 已处理 body fallthrough（ret void），
-    // 且 builder 已恢复至 entry。只需连接 entry → body_bb。
-    LLVMBasicBlockRef body_bb = mapper.frag_at(1);
-    LLVMPositionBuilderAtEnd(builder, entry);
-    LLVMBuildBr(builder, body_bb);
 
+    // NOTE: 封口
+    // 重新从 hashmap 查找 mapper，因为 gen_ir_inst 期间插入新条目可能触发 rehash 导致引用失效
+    {
+        auto* mapper_ptr = mapper(func_inst->func_decl.body_inst);
+        LLVMBasicBlockRef merge_bb = mapper_ptr->last_frag_blk();
+        LLVMPositionBuilderAtEnd(builder, merge_bb);
+        if(!LLVMGetBasicBlockTerminator(merge_bb))
+            LLVMBuildUnreachable(builder);
+    }
+
+    DEBUG_LOG("gen_ir_function DONE: '{}'", func_inst->func_decl.name.c_str);
 }
 
 
-isize LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef ref) {
+isize LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef ref, bool connect_to_parent) {
     CIRInstruction *inst = pkg->cir_package.inst(ref);
     XP_ASSERT_DEFAULT(inst->op == CIROperator::Block);
 
@@ -997,33 +1106,35 @@ isize LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef ref) {
     auto old_curr_blk = curr_blk;
     defer(curr_blk = old_curr_blk);
 
-    LLVMBasicBlockRef parent_bb = LLVMGetInsertBlock(builder);
+    LLVMBasicBlockRef parent_bb = curr_bb();
 
-    auto& mapper = get_or_create_mapper(ref);
-    auto first_bb = mapper.add_frag_blk(ctx, curr_state.curr_function, "block");
+    auto& blk_mapper = get_or_create_mapper(ref);
+    auto first_bb = blk_mapper.add_frag_blk(ctx, curr_state.curr_function, "block");
 
-    LLVMPositionBuilderAtEnd(builder, first_bb);
+    if(connect_to_parent) llvm_build_br_when_no_br(parent_bb, first_bb);
+
+    LLVMPositionBuilderAtEnd(builder,first_bb);
     curr_blk = ref;
 
     CIRInstructionRef body_start = ref + 1;
     CIRInstructionRef body_end = body_start + inst->block_info.body_len;
     CIRInstructionRef body_pc = body_start;
     while(body_pc < body_end) {
-        body_pc += gen_ir_inst(body_pc);
+        isize skip = gen_ir_inst(body_pc);
+        body_pc += skip;
     }
 
-    // body fallthrough：无 terminator 则落入 exit_block（函数体则 ret void）
-    LLVMBasicBlockRef last_bb = LLVMGetInsertBlock(builder);
-    if(!LLVMGetBasicBlockTerminator(last_bb)) {
-        if(ref == curr_func_info.body_inst) {
-            LLVMBuildRetVoid(builder);
-        } else {
-            LLVMBuildBr(builder, mapper.exit_blk());
-        }
-    }
+    LLVMBasicBlockRef last_bb = curr_bb();
+    llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
 
-    // 恢复 builder 到父 basic block，不连接、不移到 exit_block
-    LLVMPositionBuilderAtEnd(builder, parent_bb);
+    if(connect_to_parent) {
+        auto& parent_mapper = get_or_create_mapper(old_curr_blk);
+        auto merge_bb = parent_mapper.add_frag_blk(ctx, curr_state.curr_function, "block.merge");
+        llvm_build_br_when_no_br(blk_mapper.exit_blk(), merge_bb);
+        LLVMPositionBuilderAtEnd(builder,merge_bb);
+    } else {
+        LLVMPositionBuilderAtEnd(builder,parent_bb);
+    }
 
     return 1 + inst->block_info.body_len;
 }
@@ -1056,7 +1167,7 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::Block: {
-            return gen_ir_block_in_func_block(ref);
+            return gen_ir_block_in_func_block(ref, true);
         } break;
         
         
@@ -1304,23 +1415,43 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 xp_hash_map_insert(&func_decls, fk, llvm_func);
             }
 
+            
+            
+            
+            
             TypeRef func_type = called_val.type;
-
-
-
-
             Array<LLVMValueRef> args = make_array_len<LLVMValueRef>(stage_allocator(), info.arg_insts.count);
             for(isize i = 0; i < info.arg_insts.count; i++) {
                 LLVMValueRef arg_val = get_llvm_value_from_inst_ref(info.arg_insts[i]);
 
+               
 
-                if(func_type && is_function_type(func_type) && i < func_type->function_info.param_types.count) {
-                    TypeRef from_type = pkg->cir_package.result_of(info.arg_insts[i]).val.type;
-                    TypeRef to_type   = func_type->function_info.param_types[i];
 
-                    // TODO: 统一数组→切片隐式转换的调用点
-                    if(from_type && to_type && is_array_type(from_type) && is_slice_struct_type(to_type)) {
-                        arg_val = gen_ir_cast(from_type, to_type, arg_val);
+                TypeRef arg_type = pkg->cir_package.result_of(info.arg_insts[i]).val.type;
+                TypeRef param_type = i < func_type->function_info.param_types.count ? func_type->function_info.param_types[i] : nullptr;
+                // TODO: 统一数组→切片隐式转换的调用点
+                if(is_array_type(arg_type) && is_slice_struct_type(param_type)) {
+                    arg_val = gen_ir_cast(arg_type, param_type, arg_val);
+                }
+
+                
+                
+                
+                if(is_var_arg_function(func_type) && i >= get_fixed_param_count(func_type)) {
+                    // 可变参数, 需要进行类型提升
+
+                    if(arg_type == easy_type(Type_f32)) {
+                        // float提升到double
+                        
+                        arg_val = gen_ir_cast(arg_type, easy_type(Type_f64), arg_val);
+                    } else if(
+                       arg_type == easy_type(Type_i8) || 
+                       arg_type == easy_type(Type_u8) || 
+                       arg_type == easy_type(Type_bool)
+                    ) {
+                        // i8/u8/i16/u16/bool提升到i32
+                                
+                        arg_val = gen_ir_cast(arg_type, easy_type(Type_i32), arg_val);
                     }
                 }
 
@@ -1361,49 +1492,35 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto old_curr_blk = curr_blk;
             defer(curr_blk = old_curr_blk);
 
-            LLVMBasicBlockRef parent_bb = LLVMGetInsertBlock(builder);
+            LLVMBasicBlockRef parent_bb = curr_bb();
 
-            auto& mapper = get_or_create_mapper(ref);
-            auto first_bb = mapper.add_frag_blk(ctx, curr_state.curr_function, "loop");
+            auto& loop_mapper = get_or_create_mapper(ref);
+            auto first_bb = loop_mapper.add_frag_blk(ctx, curr_state.curr_function, "loop");
 
-            LLVMPositionBuilderAtEnd(builder, first_bb);
+            LLVMPositionBuilderAtEnd(builder,first_bb);
             curr_blk = ref;
 
             isize body_start = ref + 1;
             isize body_end = body_start + info.body_len;
             isize body_pc = body_start;
             while(body_pc < body_end) {
-                body_pc += gen_ir_inst(body_pc);
+                CIRInstructionRef inst_ref = body_pc;
+                isize skip = gen_ir_inst(inst_ref);
+                body_pc += skip;
             }
 
-            // 第一个 body 指令是 Block，其 first_bb 是真正的循环头
-            CIRInstruction *first_inst = pkg->cir_package.inst(body_start);
-            LLVMBasicBlockRef loop_header = first_inst->op == CIROperator::Block
-                ? get_mapper(body_start)->first_frag_blk() : first_bb;
+            LLVMBasicBlockRef last_bb = curr_bb();
 
-            // 保存 body 末尾的 BB（回边起点），必须在 trampoline 之前保存
-            LLVMBasicBlockRef last_bb = LLVMGetInsertBlock(builder);
+            llvm_build_br_when_no_br(last_bb, first_bb);
+            llvm_build_br_when_no_br(parent_bb, first_bb);
 
-            // trampoline：loop 的 first_bb → loop_header
-            if(loop_header != first_bb && !LLVMGetBasicBlockTerminator(first_bb)) {
-                LLVMPositionBuilderAtEnd(builder, first_bb);
-                LLVMBuildBr(builder, loop_header);
-            }
-
-            // 回边：body 末尾 → first_bb（通过 trampoline 进入 loop_header）
-            if(!LLVMGetBasicBlockTerminator(last_bb)) {
-                LLVMPositionBuilderAtEnd(builder, last_bb);
-                LLVMBuildBr(builder, first_bb);
-            }
-
-            // 入口：父 → first_bb
-            if(!LLVMGetBasicBlockTerminator(parent_bb)) {
-                LLVMPositionBuilderAtEnd(builder, parent_bb);
-                LLVMBuildBr(builder, first_bb);
-            }
-
-            // 在 exit_block 继续（break 目标）
-            LLVMPositionBuilderAtEnd(builder, mapper.exit_blk());
+            auto cont_bb = loop_mapper.add_frag_blk(ctx, curr_state.curr_function, "loop.cont");
+            llvm_build_br_when_no_br(loop_mapper.exit_blk(), cont_bb);
+            auto* parent_mapper = mapper(old_curr_blk);
+            auto loop_merge = parent_mapper->add_frag_blk(ctx, curr_state.curr_function, "loop.merge");
+            LLVMPositionBuilderAtEnd(builder,cont_bb);
+            LLVMBuildBr(builder, loop_merge);
+            LLVMPositionBuilderAtEnd(builder,loop_merge);
 
             return 1 + info.body_len;
         } break;
@@ -1413,18 +1530,14 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             LLVMValueRef cond_val = get_llvm_value_from_inst_ref(info.condition_inst);
 
-            auto* true_mapper = get_mapper(info.true_block_inst);
-            auto* false_mapper = get_mapper(info.false_block_inst);
+            isize skip = 1 + gen_ir_block_in_func_block(info.true_block_inst, false)
+                         + gen_ir_block_in_func_block(info.false_block_inst, false);
+
+            auto* true_mapper = mapper(info.true_block_inst);
+            auto* false_mapper = mapper(info.false_block_inst);
 
             LLVMBasicBlockRef true_bb = true_mapper->first_frag_blk();
             LLVMBasicBlockRef false_bb = false_mapper->first_frag_blk();
-
-            // 如果 condition_inst 是 Block，cond 值在其 exit_block 才可用
-            CIRInstruction *cond_inst = pkg->cir_package.inst(info.condition_inst);
-            if(cond_inst->op == CIROperator::Block) {
-                auto* cond_mapper = get_mapper(info.condition_inst);
-                LLVMPositionBuilderAtEnd(builder, cond_mapper->exit_blk());
-            }
 
             LLVMBuildCondBr(builder, cond_val, true_bb, false_bb);
 
@@ -1432,18 +1545,14 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto merge_bb = parent_mapper.add_frag_blk(ctx, curr_state.curr_function, "condbr.merge");
 
             LLVMBasicBlockRef true_exit = true_mapper->exit_blk();
-            if(!LLVMGetBasicBlockTerminator(true_exit)) {
-                LLVMPositionBuilderAtEnd(builder, true_exit);
-                LLVMBuildBr(builder, merge_bb);
-            }
+            llvm_build_br_when_no_br(true_exit, merge_bb);
 
             LLVMBasicBlockRef false_exit = false_mapper->exit_blk();
-            if(!LLVMGetBasicBlockTerminator(false_exit)) {
-                LLVMPositionBuilderAtEnd(builder, false_exit);
-                LLVMBuildBr(builder, merge_bb);
-            }
+            llvm_build_br_when_no_br(false_exit, merge_bb);
 
-            LLVMPositionBuilderAtEnd(builder, merge_bb);
+            LLVMPositionBuilderAtEnd(builder,merge_bb);
+
+            return skip;
         } break;
 
         case CIROperator::Break: {
@@ -1452,7 +1561,7 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto target_block = info.break_block;
             auto break_val_ref = info.break_value_inst;
 
-            auto target_block_mapper = get_mapper(target_block);
+            auto target_block_mapper = mapper(target_block);
             LLVMBasicBlockRef target_block_exit = target_block_mapper->exit_blk();
 
             if(target_block == curr_func_info.body_inst) {
@@ -1473,9 +1582,9 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 }
                 LLVMBuildBr(builder, target_block_exit);
 
-                auto curr_mapper = get_mapper(curr_blk);
+                auto curr_mapper = mapper(curr_blk);
                 auto new_frag_blk = curr_mapper->add_frag_blk(ctx, curr_state.curr_function, "after_break");
-                LLVMPositionBuilderAtEnd(builder, new_frag_blk);
+                LLVMPositionBuilderAtEnd(builder,new_frag_blk);
             }
         } break;
 
@@ -1635,7 +1744,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
         
 //         LLVMBuildBr(builder, cond_block);
         
-//         LLVMPositionBuilderAtEnd(builder, cond_block);
+//         LLVMPositionBuilderAtEnd(builder,cond_block);
 //         state.curr_block = cond_block;
 //         LLVMValueRef cond_val = gen_ir_expr(gen, stmt->IfStmt.condition, state);
 
@@ -1644,23 +1753,23 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
         
 
 //         //  then 分支
-//         LLVMPositionBuilderAtEnd(builder, then_block);
+//         LLVMPositionBuilderAtEnd(builder,then_block);
 //         state.curr_block = then_block;
 //         gen_ir_block(gen, stmt->IfStmt.then_block, state);
         
 //         // LLVMBuildBr(builder, merge_block);
-//         llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(builder), merge_block);
+//         llvm_build_br_when_no_br(gen, curr_bb, merge_block);
 
 //         //  else 分支
-//         LLVMPositionBuilderAtEnd(builder, else_block);
+//         LLVMPositionBuilderAtEnd(builder,else_block);
 //         state.curr_block = else_block;
 //         if (stmt->IfStmt.else_block) {
 //             gen_ir_block(gen, stmt->IfStmt.else_block, state);
 //         }
-//         llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(builder), merge_block);
+//         llvm_build_br_when_no_br(gen, curr_bb, merge_block);
 
 //         //  设置插入点到 merge
-//         LLVMPositionBuilderAtEnd(builder, merge_block);
+//         LLVMPositionBuilderAtEnd(builder,merge_block);
 
 //         state.curr_block = merge_block;
 
@@ -1698,7 +1807,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
 
 //         // 2. 初始化表达式
 //         LLVMBuildBr(builder, init_block);
-//         LLVMPositionBuilderAtEnd(builder, init_block);
+//         LLVMPositionBuilderAtEnd(builder,init_block);
 //         state.curr_block = init_block;
 
 //         if(stmt->ForStmt.init != nullptr) {
@@ -1710,7 +1819,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
 
 
 //         // 4. 条件判断
-//         LLVMPositionBuilderAtEnd(builder, cond_block);
+//         LLVMPositionBuilderAtEnd(builder,cond_block);
 
 //         if(stmt->ForStmt.condition != nullptr) {
 //             // 有条件循环
@@ -1723,15 +1832,15 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
         
         
 //         // 5. 循环体
-//         LLVMPositionBuilderAtEnd(builder, body_block);
+//         LLVMPositionBuilderAtEnd(builder,body_block);
 //         state.curr_block = body_block;
 
 //         gen_ir_block(gen, stmt->ForStmt.body, state, false);
 //         // LLVMBuildBr(builder, post_block);
-//         llvm_build_br_when_no_br(gen, LLVMGetInsertBlock(builder), post_block);
+//         llvm_build_br_when_no_br(gen, curr_bb, post_block);
 
 //         // 6. 后置表达式
-//         LLVMPositionBuilderAtEnd(builder, post_block);
+//         LLVMPositionBuilderAtEnd(builder,post_block);
 //         state.curr_block = post_block;
 
 //         if(stmt->ForStmt.post != nullptr) {
@@ -1741,7 +1850,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
 //         LLVMBuildBr(builder, cond_block);
 
 //         // 7. 合并块
-//         LLVMPositionBuilderAtEnd(builder, merge_block);
+//         LLVMPositionBuilderAtEnd(builder,merge_block);
 //         state.curr_block = merge_block;
 
 //     } break;

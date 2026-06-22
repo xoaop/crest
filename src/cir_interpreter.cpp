@@ -701,6 +701,7 @@ void Interpreter::analyze_condbr() {
     auto cond_info = pkg->inst(cond_inst);
     auto true_info = pkg->inst(true_blk);
     auto false_info = pkg->inst(false_blk);
+    XP_ASSERT_DEFAULT(cond_info->op != CIROperator::Block);
     XP_ASSERT_DEFAULT(true_info->op == CIROperator::Block);
     XP_ASSERT_DEFAULT(false_info->op == CIROperator::Block);
 
@@ -728,6 +729,8 @@ void Interpreter::analyze_condbr() {
 
         analyze_block();
         recover_pc_flow();
+
+        propagate_error({true_blk, false_blk});
     }
 }
 
@@ -743,6 +746,13 @@ void Interpreter::analyze_loop() {
         analyze_instruction();
     }
     pc = end_pc - 1; // FullEval 提前退出时跳过剩余指令
+
+    for(isize i = loop_inst_ref + 1; i < end_pc; i++) {
+        if(has_error(i)) {
+            Set_ResultError(loop_inst_ref);
+            break;
+        }
+    }
 
     if(curr_eval_mode() == EvalMode::FullEval) {
         XP_TODO(); // TODO: 目前不支持编译时循环
@@ -770,6 +780,7 @@ void Interpreter::analyze_const_decl() {
     pc += 1;
 
     if(sym->state == SymbolState::Solved) {
+        XP_ASSERT_DEFAULT(pkg->inst(value_inst)->op == CIROperator::Block);
         isize next_inst_count = pkg->inst(value_inst)->block_info.body_len + 1;
         pc += next_inst_count - 1; // 跳过整个 const 声明和初始化过程
         return;
@@ -1106,6 +1117,7 @@ void Interpreter::analyze_binary() {
         if(!is_equal_compare_operator(op)) {
             context()->reporter.report_error(pkg->inst(pc)->src_loc, "only equality comparison is allowed between pointer types");
             Set_ResultError(pc);
+            return;
         }
 
         if(left_type != right_type) {
@@ -1121,6 +1133,7 @@ void Interpreter::analyze_binary() {
         if(!is_add_sub_operator(op)) {
             context()->reporter.report_error(pkg->inst(pc)->src_loc, "only + and - operators are allowed for pointer arithmetic");
             Set_ResultError(pc);
+            return;
         }
 
         if(get_innermost_type_of_pointer(ptr) == easy_type(Type_void)) {

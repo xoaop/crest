@@ -161,10 +161,14 @@ struct CIRInstruction {
         new (&imm_val) Value();
     }
 
-    CIRInstruction(const CIRInstruction& other);
-    CIRInstruction(CIRInstruction&& other);
-    CIRInstruction& operator=(const CIRInstruction& other);
-    CIRInstruction& operator=(CIRInstruction&& other);
+    CIRInstruction(const CIRInstruction& other) {
+        memcpy((void*)this, &other, sizeof(CIRInstruction));
+    }
+    CIRInstruction& operator=(const CIRInstruction& other) {
+        if (this == &other) return *this;
+        memcpy((void*)this, &other, sizeof(CIRInstruction));
+        return *this;
+    }
 
     union {
         Value       imm_val;
@@ -282,7 +286,6 @@ struct CIRInstruction {
         struct {
             CIRInstructionRef determining_inst;
             std::optional<CIRInstructionRef> type_inst;
-            bool implicit_cast = false;  // array→slice, ptr→*void, etc.
         } determine_type_info;
 
         struct {

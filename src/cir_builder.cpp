@@ -74,25 +74,25 @@ CIRInstructionRef CIRPackage::get_first_inst_ref_in_block(CIRInstructionRef ref)
 
 
 
-CIRInstruction::CIRInstruction(const CIRInstruction& other) {
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
-}
+// CIRInstruction::CIRInstruction(const CIRInstruction& other) {
+//     memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
+// }
 
-CIRInstruction::CIRInstruction(CIRInstruction&& other) {
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
-}
+// CIRInstruction::CIRInstruction(CIRInstruction&& other) {
+//     memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
+// }
 
-CIRInstruction& CIRInstruction::operator=(const CIRInstruction& other) {
-    if (this == &other) return *this;
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
-    return *this;
-}
+// CIRInstruction& CIRInstruction::operator=(const CIRInstruction& other) {
+//     if (this == &other) return *this;
+//     memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
+//     return *this;
+// }
 
-CIRInstruction& CIRInstruction::operator=(CIRInstruction&& other) {
-    if (this == &other) return *this;
-    memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
-    return *this;
-}
+// CIRInstruction& CIRInstruction::operator=(CIRInstruction&& other) {
+//     if (this == &other) return *this;
+//     memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
+//     return *this;
+// }
 
 CIRBuilder::CIRBuilder(xpAllocator allocator) {
     loop_body_block_stack = make_array<CIRInstructionRef>(allocator);
@@ -341,12 +341,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
 
         case AstType_IfStmt: {
             auto& if_stmt = stmt->IfStmt;
-            
+
             auto cond_inst = build_inst_for_expr(if_stmt.condition);
-            
-            
+
+            // CondBr 先占位，then/else 紧跟其后作为 body
+            auto condbr_inst = New_Instruction(CIROperator::CondBr, stmt);
+
             auto then_inst = build_inst_for_ast_block(if_stmt.then_block, true);
-            
+
 
             auto else_inst = INVALID_INST;
             if(if_stmt.else_block != nullptr) {
@@ -358,8 +360,6 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
                 End_Block(else_inst);
             }
 
-            
-            auto condbr_inst = New_Instruction(CIROperator::CondBr, stmt);
             Instruction(condbr_inst).condbr_info = {
                 .condition_inst    = cond_inst,
                 .true_block_inst   = then_inst,
@@ -377,20 +377,21 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
             
             auto loop_inst = Begin_Loop(stmt);
             
-            auto cond_blk = INVALID_INST;
+            auto cond = INVALID_INST;
             if(stmt->ForStmt.condition != nullptr) {
-                cond_blk = build_block_inst_for_expr(stmt->ForStmt.condition, false);
+                cond = build_inst_for_expr(stmt->ForStmt.condition);
             } else {
-                // 无条件 for：Block { ConstantValue(true); Break(block, true_val); }
-                cond_blk = Begin_Block(false, stmt);
-                auto true_val_inst = New_Instruction(CIROperator::ConstantValue, stmt);
-                auto true_val = make_value();
-                true_val.set_type(easy_type(Type_bool));
+                // 无条件循环, 构造一个永真条件
+                
+                auto true_val = make_value(easy_type(Type_bool));
                 true_val.bool_val(true);
-                Instruction(true_val_inst).imm_val = true_val;
-                New_Break(cond_blk, true_val_inst, stmt);
-                End_Block(cond_blk);
+                
+                cond = New_Instruction(CIROperator::ConstantValue, stmt);
+                Instruction(cond).imm_val = true_val;
             }
+
+            // CondBr 先占位，then/else 紧跟其后作为 body
+            auto condbr_for_loop = New_Instruction(CIROperator::CondBr, stmt);
 
             auto then = INVALID_INST;
             {
@@ -415,13 +416,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
                 New_Break(loop_inst, INVALID_INST, stmt); // TODO: 妥善处理无返回值的Break
             }
 
-            auto condbr_for_loop = New_Instruction(CIROperator::CondBr, stmt);
             Instruction(condbr_for_loop).condbr_info = {
-                .condition_inst = cond_blk,
+                .condition_inst = cond,
                 .true_block_inst = then,
                 .false_block_inst = else_blk,
             };
-
 
             if(stmt->ForStmt.post != nullptr) {
                 build_inst_for_stmt(stmt->ForStmt.post);
@@ -950,6 +949,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             XP_TODO();
         } break;
         default: {
+
+            DEBUG_LOG("Unsupported AST type for CIR generation: {}", ast_string(expr->type));
             UNREACHABLE();
         } break;
     }

@@ -718,6 +718,14 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
             resolve_expr(expr_ast->SliceType.element_type_ast, analyser);
         } break;
 
+        case AstType_FunctionType: {
+            for(isize i = 0; i < expr_ast->FunctionType.param_types.count; i++) {
+                resolve_expr(expr_ast->FunctionType.param_types[i], analyser);
+            }
+
+            resolve_expr(expr_ast->FunctionType.return_type_ast, analyser);
+        } break;
+
         case AstType_UnionDecl: {
             context()->reporter.report_error(
                 expr_ast->src_loc,
@@ -734,6 +742,8 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
     } break;
 
     default: {
+        DEBUG_LOG("unhandled expr type: {}", ast_string(expr_ast->type));
+
         UNREACHABLE();
     } break;
     

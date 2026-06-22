@@ -37,6 +37,10 @@ struct Ast;
     AST_INFO(SliceType, "slice type", struct {                              \
         Ast *element_type_ast;                                              \
     })                                                                      \
+    AST_INFO(FunctionType, "function type", struct {                        \
+        Array<Ast *> param_types;                                           \
+        Ast *return_type_ast;                                               \
+    })                                                                      \
     AST_INFO(Ident, "ident", struct {                                       \
         xpString name;                                                      \
     })                                                                      \
@@ -223,6 +227,7 @@ bool is_operator_for_bool(TokenType t);
 bool is_logic_operator(TokenType t);
 bool is_return_bool_operator(TokenType t);
 
+const char *ast_string(AstType type);
 
 void print_ast(Array<Ast*> a_arr, i32 depth = 0, bool is_last = true);
 
