@@ -39,8 +39,11 @@ enum class ActualValueType {
     Function,
 };
 
+
+
 struct Value {
 public:
+
     Value();
     Value(const Value& other);
     Value& operator=(const Value& other);

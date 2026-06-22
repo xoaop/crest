@@ -296,7 +296,7 @@ template<typename T>
 Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {
     XP_ASSERT_DEFAULT(start < array->count);
 
-    Array<T> new_array = make_array(allocator);
+    Array<T> new_array = make_array<T>(allocator);
 
     for(isize i = start; i < array->count; i++) {
         array_push_back(&new_array, array->data[i]);

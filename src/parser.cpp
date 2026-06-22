@@ -59,9 +59,6 @@ Ast *parse_array_init_expr(Parser *p);
 
 
 Ast *parse_type(Parser *p);
-Ast *parse_pointer_type(Parser *p);
-Ast *parse_array_type(Parser *p);
-Ast *parse_basic_and_ident_type(Parser *p);
 
 Ast *parse_ident(Parser *p);
 Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p);
@@ -94,86 +91,8 @@ AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
 }
 
 
-Ast *parse_pointer_type(Parser *p) {
-    Ast *a = ast_alloc(AstType_PointerType, expect(p, TokenType::Star));
-
-
-    Ast *pointed_type_ast = parse_type(p);
-
-    a->PointerType.pointed_type_ast = pointed_type_ast;
-
-    a->src_loc = merge(a->token.src_loc, pointed_type_ast->src_loc);
-
-    return a;
-}
-
-Ast *parse_array_type(Parser *p) {
-    Ast *a = ast_alloc(AstType_ArrayType, expect(p, TokenType::LeftSquareBracket));
-
-    Ast *count_expr = NULL;
-    count_expr = parse_expr(p, 0);
-    a->ArrayType.count_expr = count_expr;
-
-    expect(p, TokenType::RightSquareBracket);
-
-    Ast *element_type_ast = parse_type(p);
-    a->ArrayType.element_type_ast = element_type_ast;
-
-    a->src_loc = merge(a->token.src_loc, element_type_ast->src_loc);
-
-    return a;
-}
-
-Ast *parse_basic_and_ident_type(Parser *p) {
-    Ast *a = NULL;
-
-    Token curr = curr_token(p);
-    
-    switch(curr.type) {
-        case TokenType::Ident: {
-            // 对于类型, 只能是要么单标识符, 如  a: my_type
-            // 要么是 package.type_name 形式, 如 a: foo.my_type
-            a = parse_single_ident_or_field_access_with_pure_ident(p);
-        } break;
-
-        default: {
-            report_unexpected(p, "type");
-            a = ast_alloc(AstType_BadType, curr);
-            a->src_loc = curr.src_loc;
-
-            advance_token(p); // 跳过错误token
-        } break;
-    }
-
-    return a;
-}
-
 Ast *parse_type(Parser *p) {
-    if(curr_token(p).type == TokenType::Star) {
-        return parse_pointer_type(p);
-    } else if(curr_token(p).type == TokenType::LeftSquareBracket) {
-
-        if(next_token(p).type == TokenType::RightSquareBracket) {
-            // Slice Type
-
-            Ast *a = ast_alloc(AstType_SliceType, curr_token(p));
-
-            expect(p, TokenType::LeftSquareBracket);
-            expect(p, TokenType::RightSquareBracket);
-
-            Ast *element_type_ast = parse_type(p);
-            a->SliceType.element_type_ast = element_type_ast;
-
-            a->src_loc = merge(a->token.src_loc, element_type_ast->src_loc);
-
-            return a;
-        } else {
-            // Array Type
-            return parse_array_type(p);
-        }
-    } else {
-        return parse_basic_and_ident_type(p);
-    }
+    return parse_expr(p, 0);
 }
 
 
@@ -1015,20 +934,67 @@ Ast *parse_expr_factor(Parser *p) {
 
         } break;
         
-        // (expr)
-        case TokenType::LeftBracket:
-            expect(p, TokenType::LeftBracket);
-            a = parse_expr(p, 0);
-            expect(p, TokenType::RightBracket);
-            
-            break;
+        // (expr) or (params) -> ret
+        case TokenType::LeftBracket: {
+            Token lb = expect(p, TokenType::LeftBracket);
+            Array<Ast *> items = make_array<Ast *>(stage_allocator());
+
+            if (curr_token(p).type != TokenType::RightBracket) {
+                for (;;) {
+                    array_push_back(&items, parse_expr(p, 0));
+                    if (curr_token(p).type == TokenType::RightBracket) break;
+                    expect(p, TokenType::Comma);
+                }
+            }
+            Token rb = expect(p, TokenType::RightBracket);
+
+            if (curr_token(p).type == TokenType::Arrow) {
+                // Function type
+                expect(p, TokenType::Arrow);
+                Ast *ret = parse_expr(p, 0);
+                a = ast_alloc(AstType_FunctionType, lb);
+                a->FunctionType.param_types = array_copy(&items, ast_allocator());
+                a->FunctionType.return_type_ast = ret;
+                a->src_loc = merge(lb.src_loc, ret->src_loc);
+            } else if (items.count == 1) {
+                a = items[0];   // parenthesized expr
+            } else {
+                // () or (a, b) without -> — error
+                report_unexpected(p, "-> (function type) or single expression");
+                a = ast_alloc(AstType_BadExpr, rb);
+                a->src_loc = rb.src_loc;
+            }
+        } break;
         
         
 
-        // 这里只会遇到数组/切片类型和指针类型, 其他类型的标识符会在parse_ident里处理
-        case TokenType::Star:
+        // 指针类型 / 数组类型 / 切片类型
+        case TokenType::Star: {
+            a = ast_alloc(AstType_PointerType, expect(p, TokenType::Star));
+            Ast *pointed = parse_expr(p, 0);
+            a->PointerType.pointed_type_ast = pointed;
+            a->src_loc = merge(a->token.src_loc, pointed->src_loc);
+        } break;
+
         case TokenType::LeftSquareBracket: {
-            a = parse_type(p);
+            if (next_token(p).type == TokenType::RightSquareBracket) {
+                // Slice type
+                a = ast_alloc(AstType_SliceType, curr_token(p));
+                expect(p, TokenType::LeftSquareBracket);
+                expect(p, TokenType::RightSquareBracket);
+                Ast *elem = parse_expr(p, 0);
+                a->SliceType.element_type_ast = elem;
+                a->src_loc = merge(a->token.src_loc, elem->src_loc);
+            } else {
+                // Array type
+                a = ast_alloc(AstType_ArrayType, expect(p, TokenType::LeftSquareBracket));
+                Ast *count = parse_expr(p, 0);
+                a->ArrayType.count_expr = count;
+                expect(p, TokenType::RightSquareBracket);
+                Ast *elem = parse_expr(p, 0);
+                a->ArrayType.element_type_ast = elem;
+                a->src_loc = merge(a->token.src_loc, elem->src_loc);
+            }
         } break;
 
         case TokenType::Ident: {

@@ -1,3 +1,5 @@
+#include <cfloat>
+
 #include "type.hpp"
 
 #include "symbol.hpp"
