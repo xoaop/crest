@@ -11,9 +11,7 @@
 
 #include "analyser.hpp"
 
-
 #include "evaluator.hpp"
-
 
 #include "resolve_depend.hpp"
 
@@ -29,10 +27,8 @@
 #include "value_ops.hpp"
 
 
-
-Analyser make_analyser(AstFile *curr_ast_file, Package *pkg, Array<Package> *all_packages) {
+Analyser make_analyser(AstFile *curr_ast_file, Package *pkg) {
     Analyser analyser = {};
-    analyser.all_packages = all_packages;
     analyser.pkg = pkg;
     analyser.current_scope = &curr_ast_file->file_scope;
     analyser.curr_ast_file = curr_ast_file;
@@ -42,7 +38,6 @@ Analyser make_analyser(AstFile *curr_ast_file, Package *pkg, Array<Package> *all
 }
 
 Analyser make_analyser(Scope *curr_scope, Package *pkg) {
-    // without all_packages
     Analyser analyser = {};
     analyser.current_scope = curr_scope;
     analyser.pkg = pkg;
@@ -57,27 +52,6 @@ Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg) {
     analyser.pkg = pkg;
 
     return analyser;
-}
-
-
-Analyser Analyser::set_pkg(Package *pkg) {
-    this->pkg = pkg;
-    return *this;
-}
-
-Analyser Analyser::set_current_scope(Scope *current_scope) {
-    this->current_scope = current_scope;
-    return *this;
-}
-
-Analyser Analyser::set_curr_ast_file(AstFile *curr_ast_file) {
-    this->curr_ast_file = curr_ast_file;
-    return *this;
-}
-
-Analyser Analyser::set_curr_func(Ast *curr_func) {
-    this->curr_func = curr_func;
-    return *this;
 }
 
 
@@ -98,6 +72,8 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
+
+void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
 SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser);
 SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
@@ -126,9 +102,7 @@ xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
 // 总流程
 //
 
-void resolve_ast_package(Package *pkg, Array<Package> *all_packages);
-
-static void init_global_symbols() {
+void init_global_symbols() {
 
     // basic types
     {
@@ -188,6 +162,8 @@ static void init_global_symbols() {
 }
 
 
+void resolve_ast_package(Package *pkg);
+
 // 语义分析的入口函数
 void resolve_ast_all_packages(Array<Package> *all_packages) {
     defer(xp_arena_allocator_clear(stage_allocator()));
@@ -199,17 +175,17 @@ void resolve_ast_all_packages(Array<Package> *all_packages) {
     for(isize i = 0; i < all_packages->count; i++) {
         Package *pkg = &(*all_packages)[i];
 
-        collect_top_level_symbols_in_package(pkg, all_packages);
+        collect_top_level_symbols_in_package(pkg);
 
-        resolve_ast_package(pkg, all_packages);
+        resolve_ast_package(pkg);
     }
 }
 
-void resolve_ast_package(Package *pkg, Array<Package> *all_packages) {
+void resolve_ast_package(Package *pkg) {
     for(isize j = 0; j < pkg->ast_files.count; j++) {
         AstFile *ast_file = &pkg->ast_files[j];
         
-        resolve_ast_file(ast_file, make_analyser(ast_file, pkg, all_packages));
+        resolve_ast_file(ast_file, make_analyser(ast_file, pkg));
     }
 }
 
@@ -801,13 +777,12 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     if(is_package_type(parent_type)) {
         Package *pkg = parent_value.type->package_info;
 
-        SymbolInfo *field_sym = resolve_string_as_ident(
-            field_name,
-            analyser
-            .set_current_scope(&pkg->package_scope)
-            .set_curr_ast_file(parent_symbol_info->file)
-            .set_pkg(parent_symbol_info->package)
-        );
+        Analyser pkg_analyser = analyser;
+        pkg_analyser.current_scope = &pkg->package_scope;
+        pkg_analyser.curr_ast_file = parent_symbol_info->file;
+        pkg_analyser.pkg = parent_symbol_info->package;
+
+        SymbolInfo *field_sym = resolve_string_as_ident(field_name, pkg_analyser);
 
         if(field_sym == NULL) {
             context()->reporter.report_error(

@@ -2,18 +2,16 @@
 
 #include "analyser.hpp"
 
+#include "ast_file.hpp"
 
-void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_packages);
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages);
+
+void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg);
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
-
-
 
 
 void eval_unsolved_in_symbol_table(SymbolInfo *unsolved_symbol, Analyser analyser);
 void eval_unsolved_const_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
 void eval_unsolved_var_decl(SymbolInfo *unsolved_symbol, Analyser analyser);
-
 
 
 Value eval_import_decl(Ast *import_ast, Analyser analyser);

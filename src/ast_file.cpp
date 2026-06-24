@@ -1,9 +1,10 @@
 #include "ast_file.hpp"
 
 
-AstFile ast_file_make() {
-    AstFile f = {};
-    f.top_levels = make_array<Ast *>(ast_allocator());
+AstFile make_ast_file(Array<Ast *> top_levels, SourceCode src_code) {
+    AstFile f;
+    f.top_levels = top_levels;
+    f.source_code = src_code;
 
     return f;
 }

@@ -2,48 +2,29 @@
 #define CREST_ANALYSER_HPP
 
 #include "xoaop.h"
+#include "array.hpp"
 
-#include "parser.hpp"
-
-#include "symbol.hpp"
-
-#include "ast_file.hpp"
-
+#include "ast.hpp"
 #include "scope.hpp"
-#include "package.hpp"
 
-struct Analyser {    
 
-    Array<Package> *all_packages;
-    
+struct Package;
+struct AstFile;
+
+struct Analyser {
     Package *pkg;
     Scope *current_scope;
-    
     AstFile *curr_ast_file;
     Ast *curr_func;
-    
-    
-    
-    Analyser set_pkg(Package *pkg);
-    Analyser set_current_scope(Scope *current_scope);
-    Analyser set_curr_ast_file(AstFile *curr_ast_file);
-    Analyser set_curr_func(Ast *curr_func);
 };
 
+Analyser make_analyser(AstFile *curr_ast_file, Package *pkg);
+Analyser make_analyser(Scope *curr_scope, Package *pkg);
+Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg);
 
-
-Analyser make_analyser(AstFile *curr_ast_file, Package *pkg, Array<Package> *all_packages);
-
-
-
-
+void collect_top_level_symbols_in_package(Package *pkg);
+void resolve_ast_package(Package *pkg);
 void resolve_ast_all_packages(Array<Package> *all_packages);
 
 
-
-// NOTE: for evaluator.hpp/cpp
-void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
-
-
-
-#endif // CREST_ANALYSIS_HPP
+#endif // CREST_ANALYSER_HPP

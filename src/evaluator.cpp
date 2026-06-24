@@ -4,10 +4,13 @@
 #include "value_ops.hpp"
 #include "resolve_depend.hpp"
 
-// 
+// 前向声明
+void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg);
+
+//
 // 1. Symbol Collect
 //
-void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_packages) {
+void collect_top_level_symbols_in_package(Package *pkg) {
     
     // NOTE: 别忘了创建package scope
     pkg->package_scope = make_scope(&context()->global_blank_package.package_scope, ScopeType::Package, permanent_allocator());
@@ -15,27 +18,27 @@ void collect_top_level_symbols_in_package(Package *pkg, Array<Package> *all_pack
 
     for(isize i = 0; i < pkg->ast_files.count; i++) {
         AstFile *ast_file = &pkg->ast_files[i];
-        collect_top_level_symbols_in_file(ast_file, pkg, all_packages);
+        collect_top_level_symbols_in_file(ast_file, pkg);
     }    
 }
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg, Array<Package> *all_packages) {
+void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg) {
 
     ast_file->file_scope = make_scope(&curr_pkg->package_scope, ScopeType::File, permanent_allocator());
     add_sub_scope(&curr_pkg->package_scope, &ast_file->file_scope);
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
         Ast *top_level = ast_file->top_levels[i];
 
-        Analyser analyser = make_analyser(ast_file, curr_pkg, all_packages);
+        Analyser analyser = make_analyser(ast_file, curr_pkg);
         switch(top_level->type) {
         case AstType_ConstDecl: {
-            collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg, all_packages));
+            collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
         } break;    
         
         // case AstType_VariableDecl: {
-        //     collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg, all_packages));
+        //     collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
         // } break;    
 
         default:
@@ -91,7 +94,7 @@ Value eval_import_decl(Ast *import_ast, Analyser analyser) {
     // 查找被import的package
     xpOption<Package *> imported_package_opt = get_package_by_import(
         import_ast->Import.path,
-        analyser.all_packages
+        &context()->all_packages
     );
 
     if(imported_package_opt.is_none()) {

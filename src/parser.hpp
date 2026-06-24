@@ -4,74 +4,13 @@
 #include "xoaop.h"
 #include "tokenizer.hpp"
 #include "array.hpp"
-#include "common.hpp"
 
 #include "ast.hpp"
-#include "ast_file.hpp"
 
 #include "source_code.hpp"
 
 
-
-//NOTE(xoaop): 越大 优先级越高
-xp_internal isize precedence(TokenType op, bool is_unary_op = false) {
-
-    //NOTE: 13 - 13 = 0
-    isize prec = 13;
-
-    //NOTE(xoaop): 越小, 优先级越高
-    switch (op) {
-    case TokenType::Star:              // *
-    case TokenType::ForwardSlash:      // /
-    case TokenType::Percent:           // %
-        prec = 3;
-        break;
-    case TokenType::Add:               // +
-    case TokenType::Minus:             // - 
-        prec = 4;
-        break;
-    case TokenType::GreaterThan:       // >
-    case TokenType::GreaterEqual:      // >=
-    case TokenType::LessThan:          // <
-    case TokenType::LessEqual:         // <=
-        prec = 6;
-        break;
-    case TokenType::DoubleEqual:       // ==
-    case TokenType::ExclamationEqual:  // !=
-        prec = 7;
-        break;
-    case TokenType::DoubleAnd:         // &&
-        prec = 11;
-        break;
-    case TokenType::DoubleOr:          // ||
-        prec = 12;
-        break;
-    default:
-        XP_ASSERT_MSG(0, "Unknown operator precedence for %s\n", token_strings[cast(i32) op]);
-    }
-
-    //NOTE: 13 - 13 = 0
-    return 13 - prec;
-}
-
-
-
-
-struct Parser {
-    isize curr_token_index;
-    Array<Token> tokens;
-    AstFile f;
-};
-
-
-
-Parser parser_make(Array<Token> tokens);
-void parser_init(Parser *parser, Array<Token> tokens);
-
-AstFile parse_file(Array<Token> tokens, SourceCode src_code);
-
-
-
+Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code);
 
 
 #endif

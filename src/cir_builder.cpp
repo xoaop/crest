@@ -161,18 +161,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     auto const_decl = New_Instruction(CIROperator::ConstDecl, const_decl_ast);
 
     auto value_ast = const_decl_ast->ConstDecl.value_ast;
-    CIRInstructionRef value_inst = INVALID_INST;
-    if(value_ast->type == AstType_FunctionDeclValue) {
-        auto saved_curr_func = curr_func;
-        auto saved_curr_func_body_block = curr_func_body_block;
-        value_inst = build_func_decl(const_decl_ast->ConstDecl.name, value_ast);
-        curr_func = saved_curr_func;
-        curr_func_body_block = saved_curr_func_body_block;
-    } else {
-        curr_const_sym = sym;
-        value_inst = build_block_inst_for_expr(value_ast, true);
-        curr_const_sym = nullptr;
-    }
+    curr_const_sym = sym;
+    CIRInstructionRef value_inst = build_block_inst_for_expr(value_ast, true);
+    curr_const_sym = nullptr;
     
     Instruction(const_decl).const_decl = {
         .ident = const_decl_ast->ConstDecl.name,
@@ -195,6 +186,13 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
 CIRInstructionRef CIRBuilder::build_func_decl(xpString name, Ast *fd) {
     XP_ASSERT_DEFAULT(fd->type == AstType_FunctionDeclValue);
 
+    auto saved_curr_func = curr_func;
+    auto saved_curr_func_body_block = curr_func_body_block;
+    defer({
+        curr_func = saved_curr_func;
+        curr_func_body_block = saved_curr_func_body_block;
+    });
+
     auto define_func_block = Begin_Block(true, fd);
 
     CIRFunction func = {};
@@ -207,7 +205,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, Ast *fd) {
 
 
     curr_func = &func;
-    defer(curr_func = nullptr);
 
     
 
@@ -948,6 +945,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             result = decl_init;
         } break;
 
+
+        case AstType_FunctionDeclValue: {
+            XP_ASSERT_DEFAULT(curr_const_sym != nullptr);
+            result = build_func_decl(curr_const_sym->name, expr);
+        } break;
 
         case AstType_UnionDecl: {
             XP_TODO();
