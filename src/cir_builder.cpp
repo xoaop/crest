@@ -45,7 +45,7 @@ CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) {
     return &instructions[ref];
 }
 
-CIRInstResult CIRPackage::result_of(CIRInstructionRef ref) {
+CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref) {
     return inst(ref)->result;
 }
 
@@ -163,7 +163,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     auto value_ast = const_decl_ast->ConstDecl.value_ast;
     CIRInstructionRef value_inst = INVALID_INST;
     if(value_ast->type == AstType_FunctionDeclValue) {
+        auto saved_curr_func = curr_func;
+        auto saved_curr_func_body_block = curr_func_body_block;
         value_inst = build_func_decl(const_decl_ast->ConstDecl.name, value_ast);
+        curr_func = saved_curr_func;
+        curr_func_body_block = saved_curr_func_body_block;
     } else {
         curr_const_sym = sym;
         value_inst = build_block_inst_for_expr(value_ast, true);
@@ -490,7 +494,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(Ast *var_decl_ast) {
         
         auto determine_type = New_Instruction(CIROperator::DetermineType, vd_ast.expr);
         
-        std::optional<CIRInstructionRef> type_inst = std::nullopt;
+        CIRInstructionRef type_inst = INVALID_INST;
         if(type_block_inst != INVALID_INST) {
             type_inst = type_block_inst;
         }
@@ -588,7 +592,7 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
             auto determine_type = New_Instruction(CIROperator::DetermineType, expr);
             Instruction(determine_type).determine_type_info = {
                 .determining_inst = index_inst,
-                .type_inst = std::nullopt,
+                .type_inst = INVALID_INST,
             };
 
             auto idx = New_Instruction(CIROperator::IndexPtr, expr);
@@ -797,7 +801,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto determine_type = New_Instruction(CIROperator::DetermineType, expr);
             Instruction(determine_type).determine_type_info = {
                 .determining_inst = index_inst,
-                .type_inst = std::nullopt,
+                .type_inst = INVALID_INST,
             };
 
             auto idx = New_Instruction(CIROperator::Index, expr);
@@ -948,6 +952,22 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_UnionDecl: {
             XP_TODO();
         } break;
+
+        case AstType_FunctionType: {
+            Array<CIRInstructionRef> param_type_insts = make_array<CIRInstructionRef>(stage_allocator());
+            for(Ast *param_type: expr->FunctionType.param_types) {
+                param_type_insts.push_back(build_inst_for_expr(param_type));
+            }
+
+            CIRInstructionRef return_type_inst = build_inst_for_expr(expr->FunctionType.return_type_ast);
+
+            result = New_Instruction(CIROperator::FuncType, expr);
+            Instruction(result).func_type_info = {
+                .param_type_insts = array_copy(&param_type_insts, permanent_allocator()),
+                .return_type_inst = return_type_inst,
+            };
+        } break;
+
         default: {
 
             DEBUG_LOG("Unsupported AST type for CIR generation: {}", ast_string(expr->type));
@@ -1245,8 +1265,8 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
         break;
     case CIROperator::DetermineType:
         std::print("DetermineType(%{}", inst.determine_type_info.determining_inst);
-        if(inst.determine_type_info.type_inst.has_value()) {
-            std::print(", %{}", inst.determine_type_info.type_inst.value());
+        if(inst.determine_type_info.type_inst != INVALID_INST) {
+            std::print(", %{}", inst.determine_type_info.type_inst);
         }
         std::print(")");
         break;

@@ -48,6 +48,21 @@ enum TypeKind: int {
 
 TypeKind string_to_type_kind(xpString str);
 
+template<>
+struct std::formatter <TypeKind> : std::formatter<std::string_view> {
+    auto format(TypeKind kind, std::format_context& ctx) const {
+        #define TYPE_KIND(name) case Type_##name: return std::formatter<std::string_view>::format(#name, ctx);
+        switch(kind) {
+            TYPE_KINDS
+            default:
+                return std::formatter<std::string_view>::format("UnknownTypeKind", ctx);
+        }
+        #undef TYPE_KIND
+    }
+};
+
+
+
 // 前向声明
 struct Type;
 typedef Type *TypeRef;
@@ -221,6 +236,8 @@ xpString get_type_name(TypeRef type, bool is_pure_type_name = false);
 xpString get_type_kind_str(TypeKind kind);
 xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name = false);
 
+
+const char *to_string(TypeKind kind);
 
 void print_type(TypeRef type);
 

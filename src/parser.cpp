@@ -30,6 +30,7 @@ bool reach_end(Parser *p);
 Token curr_token(Parser *p);
 Token next_token(Parser *p);
 void advance_token(Parser *p);
+Token peek_token(Parser *p, isize offset);
 Token expect(Parser *p, TokenType type);
 xpPair<Token, bool> expect2(Parser *p, TokenType type);
 Token expect_assert(Parser *p, TokenType type);
@@ -39,7 +40,7 @@ void advance_to_next_top_level(Parser *p);
 
 
 
-Ast *parse_function_value(Parser *p);
+Ast *parse_function_value_or_type(Parser *p);
 Ast *parse_block(Parser *p);
 
 
@@ -57,6 +58,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 
 Ast *parse_array_init_expr(Parser *p);
 
+void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_ast, bool &out_must_be_c_fn, bool &out_has_named_params, Token &out_rb);
 
 Ast *parse_type(Parser *p);
 
@@ -109,22 +111,8 @@ Ast *parse_import(Parser *p) {
     raw_path.c_str = raw_path.c_str + 1;  // 去掉开头的引号
     raw_path.length -= 2;                 // 去掉结尾的引号
 
-
-    isize colon_index = xp_string_find_char(raw_path, ':');
-    xpOption<xpString> search_prefix = xpOption<xpString>::none();
-    xpString path = xp_make_string_zero();
-    if(colon_index != -1) {
-        xpString search_path_str = xp_make_string_count(ast_allocator(), raw_path.c_str, colon_index);
-        search_prefix = xpOption<xpString>::some(search_path_str);
-        path = xp_make_string_count(stage_allocator(), raw_path.c_str + colon_index + 1, raw_path.length - colon_index - 1);
-    } else {
-        path = raw_path;
-    }
-
-
     Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.src_loc, path_succ.first.src_loc));
-    a->Import.path = normalize_path(path, ast_allocator());
-    a->Import.search_prefix = search_prefix;
+    a->Import.path = normalize_path(raw_path, ast_allocator());
     
 
     return a;
@@ -248,114 +236,136 @@ Ast *parse_struct_decl(Parser *p) {
 }
 
 
-Ast *parse_function_value(Parser *p) {
+void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_ast, bool &out_must_be_c_fn, bool &out_has_named_params, Token &out_rb) {
     expect(p, TokenType::LeftBracket);
 
-    Array<Ast *> params = make_array<Ast *>(ast_allocator());
-    
-    
-    bool must_be_c_fn = false;
+    bool has_named_params = false;
+    if(curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
+        if(curr_token(p).type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
+            has_named_params = true;
+        }
+    }
+
+    out_params = make_array<Ast *>(ast_allocator());
+    out_must_be_c_fn = false;
+
     while(!reach_end(p)) {
         if(curr_token(p).type == TokenType::RightBracket) {
             break;
         }
 
-        // 表示必须是extern C函数, 因为目前只有extern C函数支持可变参数, 其他函数如果出现...就报错
-
-        // @CleanUp: 代码略重复
-        // 特殊处理 ... (可变参数)
         if(curr_token(p).type == TokenType::ThreeDots) {
             Token dots_token = expect(p, TokenType::ThreeDots);
             Ast *param_ast = ast_alloc(AstType_ParamDecl, dots_token);
             param_ast->ParamDecl.name = dots_token.token_str;
             param_ast->ParamDecl.type_ast = nullptr;
             param_ast->ParamDecl.is_var_arg = true;
-
-
-            
-            array_push_back(&params, param_ast);
-
-            // 目前可变参数限制在extern_c函数中
-            must_be_c_fn = true;
-
-            // 可变参数必须是最后一个参数, 所以直接跳出循环
+            array_push_back(&out_params, param_ast);
+            out_must_be_c_fn = true;
             break;
         }
 
+        if(has_named_params) {
+            Token param_name_token = expect(p, TokenType::Ident);
+            expect(p, TokenType::Colon);
+            Ast *param_type_ast = parse_type(p);
 
+            Ast *param_ast = ast_alloc(AstType_ParamDecl, param_name_token);
+            param_ast->ParamDecl.name = param_name_token.token_str;
+            param_ast->ParamDecl.type_ast = param_type_ast;
+            param_ast->ParamDecl.is_var_arg = false;
+            param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
 
-        Token param_name_token = expect(p, TokenType::Ident);
-        expect(p, TokenType::Colon);
-        Ast *param_type_ast = parse_type(p);
+            array_push_back(&out_params, param_ast);
+        } else {
+            Ast *param_type_ast = parse_type(p);
 
-        // TODO: VariableDecl换成ParameterDecl更合适
-        // Ast *param_ast = ast_alloc(AstType_VariableDecl, param_name_token);
-        // param_ast->VariableDecl.var_name = param_name_token.token_str;
-        // param_ast->VariableDecl.type_ast = param_type_ast;
-        // param_ast->span = merge(param_name_token.span, param_type_ast->span);
-        Ast *param_ast = ast_alloc(AstType_ParamDecl, param_name_token);
-        param_ast->ParamDecl.name = param_name_token.token_str;
-        param_ast->ParamDecl.type_ast = param_type_ast;
-        param_ast->ParamDecl.is_var_arg = false;
-        param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
-
-
-        array_push_back(&params, param_ast);
+            array_push_back(&out_params, param_type_ast);
+        }
 
         if(curr_token(p).type != TokenType::RightBracket) {
             expect(p, TokenType::Comma);
         }
     }
 
-    Token rb = expect(p, TokenType::RightBracket);
+    out_rb = expect(p, TokenType::RightBracket);
 
-    Ast *return_type_ast = NULL;
+    out_has_named_params = has_named_params;
+
     if(curr_token(p).type == TokenType::Arrow) {
-        // 有返回值类型
         expect(p, TokenType::Arrow);
-        return_type_ast = parse_type(p);
+        out_return_type_ast = parse_type(p);
     } else {
-        Ast *void_ast = ast_alloc(AstType_EasyType, rb);
-        void_ast->EasyType.kind = Type_void;
-        void_ast->src_loc = rb.src_loc;
+        out_return_type_ast = nullptr;
+    }
+}
 
-        return_type_ast = void_ast;
+Ast *parse_function_value_or_type(Parser *p) {
+    Array<Ast*> params;
+    Ast *return_type_ast;
+    bool must_be_c_fn, has_named_params;
+    Token rb;
+    parse_func_type(p, params, return_type_ast, must_be_c_fn, has_named_params, rb);
+
+    if(return_type_ast == nullptr) {
+        return_type_ast = ast_alloc(AstType_EasyType, rb);
+        return_type_ast->EasyType.kind = Type_void;
+        return_type_ast->src_loc = rb.src_loc;
+    }
+
+    if(!has_named_params) {
+        for(isize i = 0; i < params.count; i++) {
+            Ast *param_ast = ast_alloc(AstType_ParamDecl, rb);
+            param_ast->ParamDecl.name = xp_string_c("");
+            param_ast->ParamDecl.type_ast = params[i];
+            param_ast->ParamDecl.is_var_arg = false;
+            param_ast->src_loc = params[i]->src_loc;
+            params[i] = param_ast;
+        }
     }
 
     bool is_extern_c = false;
     if(curr_token(p).type == TokenType::KW_extern_C) {
         is_extern_c = true;
         advance_token(p);
-    } 
-    
-    Ast *block_ast = NULL;
-    SourceLocation loc;
-    if(is_extern_c) {
-        // extern C函数没有函数体
-
-        block_ast = NULL;
-        loc = merge(rb.src_loc, return_type_ast->src_loc); // TODO: 这里的span不太好, 因为extern C函数没有函数体, 没有左大括号, 只能以返回值类型的结束位置作为函数声明的结束位置了, 这样span就不能完全覆盖整个函数声明了, 先暂时这样吧
-    } else {
-        block_ast = parse_block(p);
-        block_ast->Block.is_function_body = true; // 标记这是一个函数体, 方便后面类型检查时区分普通块和函数体
-        loc = merge(rb.src_loc, block_ast->src_loc);
     }
 
     if(must_be_c_fn && !is_extern_c) {
         context()->reporter.report_error(
-            loc,
+            merge(rb.src_loc, return_type_ast->src_loc),
             "functions with variable arguments must be declared as extern C"
         );
     }
-    
 
+    if(is_extern_c || curr_token(p).type == TokenType::LeftCurlyBracket) {
+        Ast *block_ast = NULL;
+        SourceLocation loc;
+        if(is_extern_c) {
+            loc = merge(rb.src_loc, return_type_ast->src_loc);
+        } else {
+            block_ast = parse_block(p);
+            block_ast->Block.is_function_body = true;
+            loc = merge(rb.src_loc, block_ast->src_loc);
+        }
 
+        Ast *a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
+        a->FunctionDeclValue.params = params;
+        a->FunctionDeclValue.block = block_ast;
+        a->FunctionDeclValue.return_type_ast = return_type_ast;
+        a->FunctionDeclValue.is_extern_c = is_extern_c;
 
-    Ast *a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
-    a->FunctionDeclValue.params = params;
-    a->FunctionDeclValue.block = block_ast;
-    a->FunctionDeclValue.return_type_ast = return_type_ast;
-    a->FunctionDeclValue.is_extern_c = is_extern_c;
+        return a;
+    }
+
+    Array<Ast *> param_types = make_array<Ast *>(ast_allocator());
+    for(isize i = 0; i < params.count; i++) {
+        array_push_back(&param_types, params[i]->ParamDecl.type_ast);
+    }
+
+    SourceLocation loc = merge(rb.src_loc, return_type_ast->src_loc);
+    Ast *a = ast_alloc(AstType_FunctionType, rb, loc);
+    a->FunctionType.param_types = param_types;
+    a->FunctionType.return_type_ast = return_type_ast;
 
     return a;
 }
@@ -402,7 +412,7 @@ Ast *parse_const_decl(Parser *p) {
         value_ast = parse_struct_decl(p);
         break;
     case TokenType::LeftBracket: 
-        value_ast = parse_function_value(p);
+        value_ast = parse_function_value_or_type(p);
         break;
     case TokenType::KW_import:
         value_ast = parse_import(p);
@@ -936,30 +946,25 @@ Ast *parse_expr_factor(Parser *p) {
         
         // (expr) or (params) -> ret
         case TokenType::LeftBracket: {
-            Token lb = expect(p, TokenType::LeftBracket);
-            Array<Ast *> items = make_array<Ast *>(stage_allocator());
+            Token lb = curr_token(p);
+            Array<Ast*> params;
+            Ast *return_type_ast;
+            bool must_be_c_fn, has_named_params;
+            Token rb;
+            parse_func_type(p, params, return_type_ast, must_be_c_fn, has_named_params, rb);
 
-            if (curr_token(p).type != TokenType::RightBracket) {
-                for (;;) {
-                    array_push_back(&items, parse_expr(p, 0));
-                    if (curr_token(p).type == TokenType::RightBracket) break;
-                    expect(p, TokenType::Comma);
-                }
+            if(has_named_params) {
+                context()->reporter.report_error(lb.src_loc, "unexpected parameter name in function type");
             }
-            Token rb = expect(p, TokenType::RightBracket);
 
-            if (curr_token(p).type == TokenType::Arrow) {
-                // Function type
-                expect(p, TokenType::Arrow);
-                Ast *ret = parse_expr(p, 0);
+            if(return_type_ast != nullptr) {
                 a = ast_alloc(AstType_FunctionType, lb);
-                a->FunctionType.param_types = array_copy(&items, ast_allocator());
-                a->FunctionType.return_type_ast = ret;
-                a->src_loc = merge(lb.src_loc, ret->src_loc);
-            } else if (items.count == 1) {
-                a = items[0];   // parenthesized expr
+                a->FunctionType.param_types = params;
+                a->FunctionType.return_type_ast = return_type_ast;
+                a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
+            } else if(params.count == 1 && !must_be_c_fn) {
+                a = params[0];   // parenthesized expr
             } else {
-                // () or (a, b) without -> — error
                 report_unexpected(p, "-> (function type) or single expression");
                 a = ast_alloc(AstType_BadExpr, rb);
                 a->src_loc = rb.src_loc;

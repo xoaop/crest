@@ -114,6 +114,7 @@ struct CIRBlock {
     X(FieldTypeOfStruct) \
     X(FuncParamType) \
     X(TypeOfInstResult) \
+    X(FuncType) \
 
 /**/
 
@@ -150,6 +151,9 @@ struct CIRInstResult {
     CIRResultType type = CIRResultType::NothingYet;
     CIRValueKind value_kind = CIRValueKind::RValue;
     Value val;
+
+
+    std::optional<TypeRef> implicit_type = std::nullopt;
 };
 
 
@@ -168,6 +172,10 @@ struct CIRInstruction {
         if (this == &other) return *this;
         memcpy((void*)this, &other, sizeof(CIRInstruction));
         return *this;
+    }
+
+    const char *to_string() const {
+        return string(op);
     }
 
     union {
@@ -285,7 +293,7 @@ struct CIRInstruction {
 
         struct {
             CIRInstructionRef determining_inst;
-            std::optional<CIRInstructionRef> type_inst;
+            CIRInstructionRef type_inst;  // INVALID_INST 表示"无值"
         } determine_type_info;
 
         struct {
@@ -309,6 +317,11 @@ struct CIRInstruction {
         struct {
             CIRInstructionRef target_inst;  // 要提取类型的指令
         } type_of_inst_result_info;
+
+        struct {
+            Array<CIRInstructionRef> param_type_insts;
+            CIRInstructionRef return_type_inst;
+        } func_type_info;
     };
 
 
@@ -338,7 +351,7 @@ struct CIRPackage {
 
 
     CIRInstruction* inst(CIRInstructionRef ref);
-    CIRInstResult result_of(CIRInstructionRef ref);
+    CIRInstResult& result_of(CIRInstructionRef ref);
     Scope *scope_for_pc(CIRInstructionRef pc) const;
 
     CIRInstructionRef get_first_inst_ref_in_block(CIRInstructionRef ref);

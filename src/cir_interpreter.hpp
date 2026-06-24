@@ -11,13 +11,14 @@ struct CIRPackage;
 void analyze_package(Package *pkg);
 
 
-enum class EvalMode { 
-    FullEval, 
-    TypeOnly 
+enum class EvalMode {
+    FullEval,
+    TypeOnly
 };
 
-
-
+struct AnalyzeParams {
+    std::optional<EvalMode> block_eval_mode = std::nullopt;
+};
 
 struct Interpreter {
     Interpreter(xpAllocator allocator);
@@ -25,7 +26,7 @@ struct Interpreter {
 
     void analyze_cir_package(CIRPackage* cir_package);
 
-    void analyze_instruction();
+    void analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
 
     void set_scope(Scope *scope);
 
@@ -52,6 +53,7 @@ struct Interpreter {
     void analyze_pointer_type();
     void analyze_array_type();
     void analyze_slice_type();
+    void analyze_func_type();
     void analyze_block(std::optional<EvalMode> force_eval_mode = std::nullopt);
     void analyze_loop();
     void analyze_condbr();
@@ -67,6 +69,9 @@ struct Interpreter {
     void analyze_type_of_inst_result();
     void analyze_field_type_of_struct();
     void analyze_func_param_type();
+
+
+    
 
     CIRResultType result_state(CIRInstructionRef ref);
     void set_result_state(CIRInstructionRef ref, CIRResultType state);

@@ -1003,15 +1003,15 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
                 xp_string_append(&func_str, comma_str);
             }
 
-            xpString rb_arrow_str = xp_string_c(") -> ");
-            xp_string_append(&func_str, rb_arrow_str);
-
-            xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name);
-            xp_string_append(&func_str, return_type_str);
-
-            return func_str;
+            
         }
+        
+        xpString rb_arrow_str = xp_string_c(") -> ");
+        xp_string_append(&func_str, rb_arrow_str);
 
+        xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name);
+        xp_string_append(&func_str, return_type_str);
+        return func_str;
     } else if(is_type_type(type)) {
 
         xpString type_str = xp_make_string(allocator, "type(");
@@ -1029,7 +1029,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
     }
     
     // Unreachable
-    UNREACHABLE();
+    DEBUG_PANIC("unhandled type kind in get_or_make_type_str: {}", type->kind);
 
     return {};
 }
@@ -1037,7 +1037,14 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
 
 
 
-
+const char *to_string(TypeKind kind) {
+    #define TYPE_KIND(name) case Type_##name: return #name;
+    switch(kind) {
+        TYPE_KINDS
+        default:
+            return "UnknownTypeKind";
+    }
+}
 
 
 
