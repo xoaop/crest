@@ -360,8 +360,13 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             advance_one_character(t);
             break;
 
-        case ',': 
+        case ',':
             token.type = TokenType::Comma;
+            advance_one_character(t);
+            break;
+
+        case '$':
+            token.type = TokenType::Dollar;
             advance_one_character(t);
             break;
 

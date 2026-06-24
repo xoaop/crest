@@ -243,7 +243,10 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
 
     bool has_named_params = false;
     if(curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
-        if(curr_token(p).type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
+        Token curr = curr_token(p);
+        if(curr.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
+            has_named_params = true;
+        } else if(curr.type == TokenType::Dollar && peek_token(p, 1).type == TokenType::Ident && peek_token(p, 2).type == TokenType::Colon) {
             has_named_params = true;
         }
     }
@@ -268,6 +271,12 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
         }
 
         if(has_named_params) {
+            bool is_comptime = false;
+            if(curr_token(p).type == TokenType::Dollar) {
+                advance_token(p);
+                is_comptime = true;
+            }
+
             Token param_name_token = expect(p, TokenType::Ident);
             expect(p, TokenType::Colon);
             Ast *param_type_ast = parse_type(p);
@@ -276,6 +285,7 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
             param_ast->ParamDecl.name = param_name_token.token_str;
             param_ast->ParamDecl.type_ast = param_type_ast;
             param_ast->ParamDecl.is_var_arg = false;
+            param_ast->ParamDecl.is_comptime = is_comptime;
             param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
 
             array_push_back(&out_params, param_ast);
@@ -356,6 +366,14 @@ Ast *parse_function_value_or_type(Parser *p) {
         a->FunctionDeclValue.return_type_ast = return_type_ast;
         a->FunctionDeclValue.is_extern_c = is_extern_c;
 
+        // 任意参数有 is_comptime 则整个函数为编译期函数
+        for(isize i = 0; i < params.count; i++) {
+            if(params[i]->ParamDecl.is_comptime) {
+                a->FunctionDeclValue.is_comptime = true;
+                break;
+            }
+        }
+
         return a;
     }
 
@@ -410,20 +428,11 @@ Ast *parse_const_decl(Parser *p) {
     Ast *value_ast = NULL;
     Token curr = curr_token(p);
     switch(curr_token(p).type) {
-    case TokenType::KW_struct: 
-        value_ast = parse_struct_decl(p);
-        break;
-    case TokenType::LeftBracket: 
+    case TokenType::LeftBracket:
         value_ast = parse_function_value_or_type(p);
         break;
     case TokenType::KW_import:
         value_ast = parse_import(p);
-        break;
-    case TokenType::KW_enum:
-        value_ast = parse_enum_decl(p);
-        break;
-    case TokenType::KW_union:
-        value_ast = parse_union_decl(p);
         break;
     default:
         value_ast = parse_expr(p, 0);
@@ -1038,6 +1047,16 @@ Ast *parse_expr_factor(Parser *p) {
             a = parse_string_literal(p);
 
         } break;
+
+        case TokenType::KW_struct:
+            a = parse_struct_decl(p);
+            break;
+        case TokenType::KW_enum:
+            a = parse_enum_decl(p);
+            break;
+        case TokenType::KW_union:
+            a = parse_union_decl(p);
+            break;
 
         default:
             report_unexpected(p, "factor (literal, ident, (expr), etc.)");

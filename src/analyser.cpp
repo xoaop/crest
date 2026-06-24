@@ -71,6 +71,7 @@ void resolve_enum_decl(Ast *decl, Analyser analyser);
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
+void resolve_expr2(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
@@ -158,6 +159,19 @@ void init_global_symbols() {
             nullptr
         );
         add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
+    }
+
+    {
+        xpString type_string = xp_string_c("type");
+        TypeRef type_type_ref = type_type(undefined_type());
+        SymbolInfo type_symbol = make_symbol(
+            type_string, 
+            make_value(type_type_ref),
+            &context()->global_blank_package,
+            nullptr,
+            nullptr
+        );
+        add_symbol_to_scope(&context()->global_blank_package.package_scope, type_string, type_symbol);
     }
 }
 
@@ -305,17 +319,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             resolve_function_decl(const_decl_ast, analyser);
         } break;
 
-        case AstType_StructDeclValue: {
-            resolve_struct_decl(const_decl_ast, analyser);
-        } break;
-
-        case AstType_EnumDecl: {
-            resolve_enum_decl(const_decl_ast, analyser);
-        } break;
-
-
         default: {
-            resolve_expr(val_ast, analyser);
+            resolve_expr2(val_ast, analyser);
         } break;
 
     }
@@ -359,7 +364,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
 }
 
 void resolve_struct_decl(Ast *decl, Analyser analyser) {
-    Ast *value_ast = decl->ConstDecl.value_ast;
+    Ast *value_ast = decl;
     XP_ASSERT_DEFAULT(value_ast->type == AstType_StructDeclValue);
 
     Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, value_ast);
@@ -383,7 +388,7 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
 }
 
 void resolve_enum_decl(Ast *decl, Analyser analyser) {
-    Ast *value_ast = decl->ConstDecl.value_ast;
+    Ast *value_ast = decl;
     XP_ASSERT_DEFAULT(value_ast->type == AstType_EnumDecl);
 
     Analyser enum_analyser = new_scope(analyser, ScopeType::EnumBlock, value_ast);
@@ -590,7 +595,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 }
 
 
-void resolve_expr(Ast *expr_ast, Analyser analyser) {
+void resolve_expr2(Ast *expr_ast, Analyser analyser) {
     if(expr_ast == NULL) {
         return;
     }
@@ -603,10 +608,10 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         case AstType_FunctionCallExpr: {
             
             // 检查函数标识符符号是否存在
-            resolve_expr(expr_ast->FunctionCallExpr.func_ident, analyser);
+            resolve_expr2(expr_ast->FunctionCallExpr.func_ident, analyser);
 
             for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
-                resolve_expr(expr_ast->FunctionCallExpr.args[i], analyser);
+                resolve_expr2(expr_ast->FunctionCallExpr.args[i], analyser);
             }
 
 
@@ -620,18 +625,18 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_BinaryExpr: {
-            resolve_expr(expr_ast->BinaryExpr.left, analyser);
-            resolve_expr(expr_ast->BinaryExpr.right, analyser);
+            resolve_expr2(expr_ast->BinaryExpr.left, analyser);
+            resolve_expr2(expr_ast->BinaryExpr.right, analyser);
 
         } break;
 
         case AstType_UnaryExpr: {
-            resolve_expr(expr_ast->UnaryExpr.operand, analyser);
+            resolve_expr2(expr_ast->UnaryExpr.operand, analyser);
         } break;
 
         case AstType_CastExpr: {
-            resolve_expr(expr_ast->CastExpr.expr, analyser);
-            resolve_expr(expr_ast->CastExpr.target_type_ast, analyser);
+            resolve_expr2(expr_ast->CastExpr.expr, analyser);
+            resolve_expr2(expr_ast->CastExpr.target_type_ast, analyser);
         } break;
 
         case AstType_Constant: {
@@ -639,7 +644,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_StructInitExpr: {
-            resolve_expr(expr_ast->StructInitExpr.struct_type_ident, analyser);
+            resolve_expr2(expr_ast->StructInitExpr.struct_type_ident, analyser);
 
             SymbolInfo *symbol = expr_ast->StructInitExpr.struct_type_ident->ast_symbol;
 
@@ -653,7 +658,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
             }
 
             for(isize i = 0; i < expr_ast->StructInitExpr.field_inits.count; i++) {
-                resolve_expr(expr_ast->StructInitExpr.field_inits[i], analyser);
+                resolve_expr2(expr_ast->StructInitExpr.field_inits[i], analyser);
             }
         } break;
 
@@ -663,13 +668,13 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
         case AstType_ArrayInitExpr: {
             for(isize i = 0; i < expr_ast->ArrayInitExpr.elements.count; i++) {
-                resolve_expr(expr_ast->ArrayInitExpr.elements[i], analyser);
+                resolve_expr2(expr_ast->ArrayInitExpr.elements[i], analyser);
             }
         } break;
 
         case AstType_IndexExpr: {
-            resolve_expr(expr_ast->IndexExpr.array_var_expr, analyser);
-            resolve_expr(expr_ast->IndexExpr.index_expr, analyser);
+            resolve_expr2(expr_ast->IndexExpr.array_var_expr, analyser);
+            resolve_expr2(expr_ast->IndexExpr.index_expr, analyser);
         } break;
 
 
@@ -683,32 +688,25 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_PointerType: {
-            resolve_expr(expr_ast->PointerType.pointed_type_ast, analyser);
+            resolve_expr2(expr_ast->PointerType.pointed_type_ast, analyser);
         } break;
 
         // TODO: 统一类型和表达式的解析, 类型也是表达式
         case AstType_ArrayType: {
-            resolve_expr(expr_ast->ArrayType.element_type_ast, analyser);
-            resolve_expr(expr_ast->ArrayType.count_expr, analyser);
+            resolve_expr2(expr_ast->ArrayType.element_type_ast, analyser);
+            resolve_expr2(expr_ast->ArrayType.count_expr, analyser);
         } break;
 
         case AstType_SliceType: {
-            resolve_expr(expr_ast->SliceType.element_type_ast, analyser);
+            resolve_expr2(expr_ast->SliceType.element_type_ast, analyser);
         } break;
 
         case AstType_FunctionType: {
             for(isize i = 0; i < expr_ast->FunctionType.param_types.count; i++) {
-                resolve_expr(expr_ast->FunctionType.param_types[i], analyser);
+                resolve_expr2(expr_ast->FunctionType.param_types[i], analyser);
             }
 
-            resolve_expr(expr_ast->FunctionType.return_type_ast, analyser);
-        } break;
-
-        case AstType_UnionDecl: {
-            context()->reporter.report_error(
-                expr_ast->src_loc,
-                "union type is not supported yet"
-            );
+            resolve_expr2(expr_ast->FunctionType.return_type_ast, analyser);
         } break;
 
     case AstType_BadExpr: {
@@ -729,7 +727,26 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 }
 
 
+void resolve_expr(Ast *expr_ast, Analyser analyser) {
+    switch (expr_ast->type) {
+        case AstType_StructDeclValue: {
+            resolve_struct_decl(expr_ast, analyser);
+        } break;
+        case AstType_EnumDecl: {
+            resolve_enum_decl(expr_ast, analyser);
+        } break;
+        case AstType_UnionDecl: {
+            context()->reporter.report_error(
+                expr_ast->src_loc,
+                "union type is not supported yet"
+            );
+        } break;
 
+        default: {
+            resolve_expr2(expr_ast, analyser);
+        } break;
+    }
+}
 
 
 SymbolInfo *resolve_string_as_ident(xpString str, Analyser analyser) {
@@ -763,7 +780,7 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Ast *parent_ast = field_access_ast->FieldAccess.parent;
     xpString field_name = field_access_ast->FieldAccess.field_name;
 
-    resolve_expr(parent_ast, analyser);
+    resolve_expr2(parent_ast, analyser);
 
 
     SymbolInfo *parent_symbol_info = parent_ast->ast_symbol;
