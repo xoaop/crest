@@ -6,18 +6,12 @@
 #include "context.hpp"
 
 
-void parser_init(Parser *parser, Array<Token> tokens) {
-    parser->curr_token_index = 0;
-    parser->tokens = tokens;
-    parser->f = ast_file_make();
-    return;
-}
-
-Parser parser_make(Array<Token> tokens) {
-    Parser p;
-    parser_init(&p, tokens);
-    return p;
-}
+struct Parser {
+    isize curr_token_index;
+    Array<Token> tokens;
+    Array<Ast *> top_levels;
+    SourceCode *src_code;
+};
 
 
 void report_unexpected(Parser *p, const char *expected_string);
@@ -70,26 +64,34 @@ Ast *parse_stmt(Parser *p);
 Ast *parse_const_decl(Parser *p);
 
 
-AstFile parse_file(Array<Token> tokens, SourceCode src_code) {
+Parser parser_make(Array<Token> tokens) {
+    Parser p;
+    p.curr_token_index = 0;
+    p.tokens = tokens;
+    p.top_levels = make_array<Ast *>(ast_allocator());
+    p.src_code = NULL;
+    return p;
+}
+
+Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
     defer(xp_arena_allocator_clear(stage_allocator()));
 
     Parser p = parser_make(tokens);
-    p.f.source_code = src_code;
+    p.src_code = src_code;
 
     for(;;) {
         if(reach_end(&p)) {
             break;
         }
-        
-        // array_push_back<Ast *>(&p.f.top_levels, parse_top_level(&p));
-        array_push_back(&p.f.top_levels, parse_stmt(&p));
+
+        array_push_back(&p.top_levels, parse_stmt(&p));
     }
 
     #ifdef CREST_DEBUG
-    print_ast(p.f.top_levels);
+    print_ast(p.top_levels);
     #endif
 
-    return p.f;
+    return p.top_levels;
 }
 
 
@@ -866,7 +868,7 @@ Ast *parse_string_literal(Parser *p) {
                 default:
                     context()->reporter.report(
                         ErrorLevel::Error,
-                        SourceLocation(p->f.source_code, Span{str_token.src_loc.span.start + 1 + curr_index, 1}),
+                        SourceLocation(*p->src_code, Span{str_token.src_loc.span.start + 1 + curr_index, 1}),
                         "invalid escape sequence in string literal: unrecognized escape character"
                     );
             }
@@ -1051,6 +1053,42 @@ Ast *parse_expr_factor(Parser *p) {
     }
 
     return a;
+}
+
+isize precedence(TokenType op, bool is_unary_op = false) {
+    isize prec = 13;
+
+    switch (op) {
+    case TokenType::Star:
+    case TokenType::ForwardSlash:
+    case TokenType::Percent:
+        prec = 3;
+        break;
+    case TokenType::Add:
+    case TokenType::Minus:
+        prec = 4;
+        break;
+    case TokenType::GreaterThan:
+    case TokenType::GreaterEqual:
+    case TokenType::LessThan:
+    case TokenType::LessEqual:
+        prec = 6;
+        break;
+    case TokenType::DoubleEqual:
+    case TokenType::ExclamationEqual:
+        prec = 7;
+        break;
+    case TokenType::DoubleAnd:
+        prec = 11;
+        break;
+    case TokenType::DoubleOr:
+        prec = 12;
+        break;
+    default:
+        XP_ASSERT_MSG(0, "Unknown operator precedence for %s\n", token_strings[cast(i32) op]);
+    }
+
+    return 13 - prec;
 }
 
 Ast *parse_expr(Parser *p, isize min_prec) {

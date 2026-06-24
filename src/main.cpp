@@ -146,7 +146,6 @@ int main(int argc, char** argv) {
     defer(free_type_table(context()));
 
 
-
     context()->all_packages = resolve_dependencies(xp_string_c(main_path));
     std::reverse(context()->all_packages.begin(), context()->all_packages.end());
     mark_phase("resolve dependencies");

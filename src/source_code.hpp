@@ -11,6 +11,7 @@ struct SourceCode {
     xpString file_path;
     xpString code_string;
     Array<BytePos> line_start_indices;
+    isize line_offset;  // 代码片段在原文件中的起始行偏移（0-indexed），正常文件为0
 };
 
 SourceCode make_source_code(xpString file_path, xpString code_string, Array<BytePos> line_start_indices);

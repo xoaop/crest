@@ -4,6 +4,7 @@
 #include <print>
 
 #include "ast.hpp"
+#include "file.hpp"
 #include "tokenizer.hpp"
 #include "parser.hpp"
 
@@ -24,7 +25,7 @@ enum class PackageState {
 
 
 void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages);
-AstFile tokenize_and_parse_file(const char *path, Scope *parent);
+AstFile tokenize_and_parse_file(const char *path);
 Array<Package> resolve_dependencies(xpString main_dir_path);
 Package tokenize_and_parse_package(const char *path_of_package_dir);
 bool check_directory_legel(xpString path);
@@ -39,16 +40,12 @@ bool check_file_legal(xpString path);
 // 
 // 输入文件路径, 把源文件tokenize并parse为AstFile
 //
-AstFile tokenize_and_parse_file(const char *path, Scope *parent) {
+AstFile tokenize_and_parse_file(const char *path) {
     xpString code_str = file_to_string(path, permanent_allocator());
-    
-    xpPair<SourceCode, Array<Token>> src_code_and_tokens = tokenize(xp_make_string(permanent_allocator(), path), code_str);
-    SourceCode src_code = src_code_and_tokens.first;
-    Array<Token> tokens = src_code_and_tokens.second;
+    SourceCode src_code = make_source_code(xp_make_string(permanent_allocator(), path), code_str, permanent_allocator());
+    Array<Token> tokens = tokenize(&src_code);
 
-    AstFile f = parse_file(tokens, src_code);
-
-    return f;
+    return make_ast_file(parse(tokens, &src_code), src_code);
 }
 
 
@@ -200,7 +197,7 @@ Array<Package> resolve_dependencies(xpString main_path) {
         context()->main_src_dir_path = parent_dir_path;
         
         main_package = make_package(parent_dir_path, permanent_allocator());
-        AstFile main_file = tokenize_and_parse_file(main_path.c_str, &main_package.package_scope);
+        AstFile main_file = tokenize_and_parse_file(main_path.c_str);
         array_push_back(&main_package.ast_files, main_file);
     }
 
@@ -232,7 +229,7 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
     Package package = make_package(package_dir_path, permanent_allocator());
     for(isize i = 0; i < crest_files.count; i++) {
         xpString crest_file_path = crest_files[i];
-        AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str, &package.package_scope);
+        AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
 
         array_push_back(&package.ast_files, ast_file);
     }

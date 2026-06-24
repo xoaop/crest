@@ -17,6 +17,6 @@ struct AstFile {
 };
 
 
-AstFile ast_file_make();
+AstFile make_ast_file(Array<Ast *> top_levels, SourceCode src_code);
 
 #endif

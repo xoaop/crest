@@ -9,7 +9,7 @@
 #include "span.hpp"
 #include "source_code.hpp"
 
-// NOTE: Keyword是可以直接加在TOKEN_INFO不用修改别的地方的
+// NOTE: Keyword可以直接加在TOKEN_INFO不用修改别的地方的
 // 而别的Token需要在tokenizer加上处理逻辑
 #define TOKEN_INFOS                                             \
     TOKEN_INFO(DoubleForwardSlash, "//"),                       \
@@ -77,11 +77,11 @@
     TOKEN_INFO(KW_extern_C, "extern_C"),                        \
     TOKEN_INFO(__END__OF__KEYWORD__, ""),                       \
     TOKEN_INFO(EndOfTokens, "end of tokens")                    \
-/**/                                  
+/**/
 
 
 extern const char* token_strings[];
-    
+
 enum TokenType: u8 {
     #define TOKEN_INFO(type, str) type
     TOKEN_INFOS
@@ -101,7 +101,7 @@ struct Token {
         } number_info;
 
     };
-    
+
     xpString file_path;
     isize line_index;
     isize column_index;
@@ -110,49 +110,11 @@ struct Token {
 };
 
 
-struct Tokenizer {
-    isize curr_character_index;
+Array<Token> tokenize(SourceCode *src_code);
 
-    Array<Token> token_array;
-
-    SourceCode source_code;
-};
-
-xpPair<SourceCode, Array<Token>> tokenize(xpString file_path, xpString code);
-xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t);
-char tokenizer_curr_character(Tokenizer *t);
-b32 tokenizer_end(Tokenizer *t);
-isize tokenizer_move_until_next_space(Tokenizer *t);
-isize tokenizer_skip_space(Tokenizer *t);
-void tokenizer_scan_integer(Tokenizer *t);
-void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index);
 
 void init_keyword_map();
 void test_keyword_map();
 
-
-xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
-    FILE *file = NULL;
-    
-    if(fopen_s(&file, path, "rb")) {
-        printf("Read File Failed: %s\n", path);
-    }
-
-    fseek(file, 0, SEEK_END);
-    isize size = ftell(file);
-    rewind(file);
-
-    xpString str = xp_make_string_capacity(allocator, NULL, size);
-    fread(str.c_str, 1, size, file);
-
-    str.length = xp_strlen_c(str.c_str);
-
-    // DEBUG
-    // printf("\n\n%*s\n\n", cast(int)str.length, str.c_str);
-
-    fclose(file);
-
-    return str;
-}
 
 #endif

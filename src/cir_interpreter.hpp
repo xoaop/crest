@@ -20,6 +20,22 @@ struct AnalyzeParams {
     std::optional<EvalMode> block_eval_mode = std::nullopt;
 };
 
+
+struct ComptimePointer {
+    isize addr;
+};
+
+struct ComptimeExecFrame {
+    Array<Value> local_vars;
+
+};
+
+struct ComptimeExecContext {
+    Array<ComptimeExecFrame> frames;
+};
+
+
+
 struct Interpreter {
     Interpreter(xpAllocator allocator);
     ~Interpreter();

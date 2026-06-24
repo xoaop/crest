@@ -5,6 +5,7 @@ SourceCode make_source_code(xpString file_path, xpString code_string, Array<isiz
     source_code.file_path = file_path;
     source_code.code_string = code_string;
     source_code.line_start_indices = line_start_indices;
+    source_code.line_offset = 0;
 
     return source_code;
 }
@@ -12,7 +13,7 @@ SourceCode make_source_code(xpString file_path, xpString code_string, Array<isiz
 
 SourceCode make_source_code(xpString file_path, xpString code_string, xpAllocator allocator) {
     SourceCode source_code = make_source_code(file_path, code_string, make_array<BytePos>(allocator));
-    
+
     // 计算行起始位置
     BytePos count = cast(BytePos) code_string.length;
     array_push_back(&source_code.line_start_indices, cast(BytePos)0); // 第一行起始位置是0
@@ -60,7 +61,9 @@ xpPair<BytePos, BytePos> cal_line_column_idx(Array<BytePos> line_start_indices, 
 
 
 xpPair<BytePos, BytePos> cal_line_column_index_of_byte_pos(SourceCode src_code, BytePos byte_pos) {
-    return cal_line_column_idx(src_code.line_start_indices, byte_pos);
+    auto result = cal_line_column_idx(src_code.line_start_indices, byte_pos);
+    result.first += src_code.line_offset;
+    return result;
 }
 
 xpString get_line_str_of_pos(SourceCode code, BytePos pos, xpAllocator allocator) {
