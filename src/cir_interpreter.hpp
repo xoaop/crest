@@ -119,8 +119,10 @@ public:
     };
 
     CIRPackage *pkg;
-    Scope *curr_scope;
-    CIRInstructionRef pc;
+
+    AnalyzeFlowState& curr_state() { return pc_stack.back(); }
+    CIRInstructionRef& pc()          { return curr_state().pc; }
+    Scope*&             scope()      { return curr_state().scope; }
 
     Array<AnalyzeFlowState> pc_stack;
 

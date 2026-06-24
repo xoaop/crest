@@ -85,6 +85,7 @@ struct Ast;
         xpString name;                                                      \
         Ast *type_ast;                                                      \
         bool is_var_arg;                                                    \
+        bool is_comptime;                                                   \
     })                                                                      \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \
@@ -126,6 +127,7 @@ struct Ast;
         Ast *block;                                                         \
         Ast *return_type_ast;                                               \
         bool is_extern_c;                                                   \
+        bool is_comptime;                                                   \
     })                                                                      \
     AST_INFO(StructDeclValue, "struct decl value", struct {                 \
         Array<Ast *> fields;                                                \

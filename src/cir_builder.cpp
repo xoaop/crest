@@ -199,6 +199,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, Ast *fd) {
     func.name = name;
     func.return_count = 1;
     func.is_extern_c = fd->FunctionDeclValue.is_extern_c;
+    func.is_comptime = fd->FunctionDeclValue.is_comptime;
     func.args = make_array<CIRVariableDecl>(permanent_allocator());
     func.arg_type_insts = make_array<CIRInstructionRef>(permanent_allocator());
 
@@ -229,6 +230,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, Ast *fd) {
         var.name = param->ParamDecl.name;
         var.slot = i;                       // 参数槽位: 0, 1, 2, ...
         var.is_var_arg = param->ParamDecl.is_var_arg;
+        var.is_comptime = param->ParamDecl.is_comptime;
         func.args.push_back(var);
         func.arg_type_insts.push_back(param_type);
     }
@@ -1176,13 +1178,14 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
         break;
     case CIROperator::FunctionDecl: {
         auto& f = inst.func_decl;
-        std::print("FunctionDecl({}, return_type=%{}, return_count={}, slot_count={}, is_extern_c={}",
-            f.name, f.return_type_inst, f.return_count, f.slot_count, f.is_extern_c);
+        std::print("FunctionDecl({}, return_type=%{}, return_count={}, slot_count={}, is_extern_c={}, is_comptime={}",
+            f.name, f.return_type_inst, f.return_count, f.slot_count, f.is_extern_c, f.is_comptime);
         if(f.args.count > 0) {
             std::print(", params=[");
             for (isize i = 0; i < f.args.count; i++) {
                 if(i > 0) std::print(", ");
                 std::print("{} slot={} type=%{}", f.args[i].name, f.args[i].slot, f.arg_type_insts[i]);
+                if(f.args[i].is_comptime) std::print(" comptime");
             }
             std::print("]");
         }

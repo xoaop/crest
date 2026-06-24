@@ -31,6 +31,7 @@ struct CIRVariableDecl {
     xpString name;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
+    bool is_comptime;             // 是否是编译期参数
 
     bool no_zero_init;
 };
@@ -52,6 +53,7 @@ struct CIRFunction {
     Array<CIRInstructionRef> arg_type_insts; // 每个参数的类型 block 引用（与 args 平行，var_arg 为 INVALID_INST）
     isize return_count;                    // 返回值数量
     bool is_extern_c;                      // 是否是 extern "C" 函数
+    bool is_comptime;                      // 是否是编译期函数
 
 
     isize slot_count;               // 局部变量数量（包括参数）

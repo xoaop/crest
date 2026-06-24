@@ -46,6 +46,7 @@
     TOKEN_INFO(LeftCurlyBracket, "{"),                          \
     TOKEN_INFO(RightCurlyBracket, "}"),                         \
     TOKEN_INFO(Comma, ","),                                     \
+    TOKEN_INFO(Dollar, "$"),                                    \
     TOKEN_INFO(Arrow, "->"),                                    \
     TOKEN_INFO(Dot, "."),                                       \
     TOKEN_INFO(Caret, "^"),                                     \
