@@ -517,6 +517,10 @@ Interpreter::~Interpreter() {
     array_free(&eval_mode_stack);
 }
 
+Interpreter::AnalyzeFlowState& Interpreter::curr_state() { return pc_stack.back(); }
+CIRInstructionRef&               Interpreter::pc()        { return curr_state().pc; }
+Scope*&                           Interpreter::scope()    { return curr_state().scope; }
+
 
 
 
