@@ -69,32 +69,40 @@ ErrorReporter make_error_reporter(xpAllocator allocator);
     #include <source_location>
 
     template <typename... Args>
-    inline void debug_log_impl(
+    inline void debug_impl(
+        const char *tag,
         std::source_location loc,
         std::format_string<Args...> fmt, Args&&... args
     ) {
-        std::println(stderr, "[DEBUG] {}:{}: {}",
-            loc.file_name(), loc.line(),
-            std::format(fmt, std::forward<Args>(args)...));
-    }
-
-    template <typename... Args>
-    inline void debug_trace_impl(
-        std::source_location loc,
-        std::format_string<Args...> fmt, Args&&... args
-    ) {
-        std::println(stderr, "[TRACE] {}:{}: {}",
-            loc.file_name(), loc.line(),
+        std::println(stderr, "[{}] {}:{}: {}",
+            tag, loc.file_name(), loc.line(),
             std::format(fmt, std::forward<Args>(args)...));
     }
 
     #define DEBUG_LOG(fmt, ...)  \
-        ::debug_log_impl(std::source_location::current(), fmt, ##__VA_ARGS__)
+        ::debug_impl("DEBUG", std::source_location::current(), fmt, ##__VA_ARGS__)
     #define DEBUG_TRACE(fmt, ...) \
-        ::debug_trace_impl(std::source_location::current(), fmt, ##__VA_ARGS__)
+        ::debug_impl("TRACE", std::source_location::current(), fmt, ##__VA_ARGS__)
+
+    #define DEBUG_PANIC(fmt, ...) \
+        do { \
+            ::debug_impl("PANIC", std::source_location::current(), fmt, ##__VA_ARGS__); \
+            std::abort(); \
+        } while(0)
+
+    #define ASSERT(cond, fmt, ...) \
+        do { \
+            if (!(cond)) { \
+                ::debug_impl("ASSERT", std::source_location::current(), fmt, ##__VA_ARGS__); \
+                std::abort(); \
+            } \
+        } while(0)
+
 #else
     #define DEBUG_LOG(...)    ((void)0)
     #define DEBUG_TRACE(...)  ((void)0)
+    #define DEBUG_PANIC(...)  ((void)0)
+    #define ASSERT(cond, fmt, ...) ((void)0)
 #endif
 
 

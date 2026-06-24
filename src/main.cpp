@@ -130,6 +130,10 @@ int main(int argc, char** argv) {
     std::println("Compiler path: {}", context()->compiler_path.string());
     std::println("Current working directory: {}", context()->current_working_directory.string());
 
+    // 初始化package搜索路径
+    context()->package_search_paths = make_array<xpString>(permanent_allocator());
+    array_push_back(&context()->package_search_paths, xp_make_string(permanent_allocator(), context()->compiler_path.string().c_str()));
+
 
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
     context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());

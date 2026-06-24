@@ -65,36 +65,31 @@ void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_pa
 }
 
 
-xpString import_path_to_package_path(xpOption<xpString> search_prefix, xpString import_path, xpAllocator allocator) {
-    xpString abs_import_path = xp_make_string_zero();
-    
-    if(search_prefix.has_value()) {
-        xpString prefix = search_prefix.unwrap();
+xpOption<xpString> resolve_package_path(xpString import_path) {
+    Array<xpString>& search_paths = context()->package_search_paths;
 
-        if(xp_string_equal(prefix, xp_string_c("std"))) {
-            std::filesystem::path std_lib_path = context()->compiler_path / "std";
-            xpString std_lib_path_str = xp_make_string(stage_allocator(), std_lib_path.string().c_str());
-            
-            abs_import_path = concat_path(std_lib_path_str, import_path, stage_allocator());
-            
-        } else {
-            // TODO ERROR: 不支持的import搜索前缀
-            UNREACHABLE();
+    for (isize i = 0; i < search_paths.count; i++) {
+        xpString base = search_paths[i];
+        xpString candidate = concat_path(base, import_path, stage_allocator());
+
+        if (check_directory_legel(candidate)) {
+            return xpOption<xpString>::some(candidate);
         }
-
-    } else {
-        xpString default_base_path = context()->main_src_dir_path;
-        abs_import_path = concat_path(default_base_path, import_path, stage_allocator());
     }
 
-    return abs_import_path;
+    return xpOption<xpString>::none();
 }
 
-xpOption<Package *> get_package_by_import(xpOption<xpString> search_prefix, xpString import_path, Array<Package> *all_packages) {
-    xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
+xpOption<Package *> get_package_by_import(xpString import_path, Array<Package> *all_packages) {
+    auto resolved = resolve_package_path(import_path);
 
-    for(isize i = 0; i < all_packages->count; i++) {
-        if(xp_string_equal((*all_packages)[i].path, abs_import_path)) {
+    if (resolved.is_none()) {
+        return xpOption<Package *>::none();
+    }
+
+    xpString abs_path = resolved.unwrap();
+    for (isize i = 0; i < all_packages->count; i++) {
+        if (xp_string_equal((*all_packages)[i].path, abs_path)) {
             return xpOption<Package *>::some(&(*all_packages)[i]);
         }
     }
@@ -115,14 +110,22 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
         collect_all_imports_in_ast_file(ast_file, &import_asts);
 
 
-        // 处理搜索路径
+        // 解析每个 import 的模块路径
         Array<xpString> abs_paths = make_array<xpString>(stage_allocator());
         for(Ast *import: import_asts) {
-            xpOption<xpString> search_prefix = import->Import.search_prefix;
             xpString import_path = import->Import.path;
-            xpString abs_import_path = import_path_to_package_path(search_prefix, import_path, stage_allocator());
+            auto resolved = resolve_package_path(import_path);
 
-            array_push_back(&abs_paths, abs_import_path);
+            if (resolved.is_none()) {
+                context()->reporter.report_error(
+                    SourceLocation(ast_file.source_code, import->src_loc.span),
+                    "package '{}' not found in search paths",
+                    import_path
+                );
+                continue;
+            }
+
+            array_push_back(&abs_paths, resolved.unwrap());
         }
 
 

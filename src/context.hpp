@@ -16,6 +16,9 @@ struct Context {
 
     xpString main_src_dir_path;
 
+    // Package搜索路径 — 按优先级排列
+    Array<xpString> package_search_paths;
+
     Package global_blank_package;
 
 

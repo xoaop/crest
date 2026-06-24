@@ -225,9 +225,9 @@ void resolve_ast_package(Package *pkg, Array<Package> *all_packages) {
 
 
 
-Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast) {
+Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast, std::optional<Scope *> parent_scope = std::nullopt) {
     Scope *new_scope = alloc_scope(
-        old_state.current_scope,
+        parent_scope.has_value() ? parent_scope.value() : old_state.current_scope,
         type,
         permanent_allocator(),
         related_ast
@@ -360,8 +360,10 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
     Ast *value_ast = decl->ConstDecl.value_ast;
     XP_ASSERT_DEFAULT(value_ast->type == AstType_FunctionDeclValue);
 
+    // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
+    Scope *parent_scope = get_upper_scope_with_type(analyser.current_scope, ScopeType::File);
 
-    Analyser new_sc = new_scope(analyser, ScopeType::Function, value_ast);
+    Analyser new_sc = new_scope(analyser, ScopeType::Function, value_ast, parent_scope);
     new_sc.curr_func = decl;
 
     void resolve_fn_param_list(Array<Ast *> params, Analyser analyser);

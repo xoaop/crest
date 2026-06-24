@@ -90,7 +90,6 @@ Value eval_import_decl(Ast *import_ast, Analyser analyser) {
 
     // 查找被import的package
     xpOption<Package *> imported_package_opt = get_package_by_import(
-        import_ast->Import.search_prefix,
         import_ast->Import.path,
         analyser.all_packages
     );
