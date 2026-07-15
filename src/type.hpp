@@ -86,9 +86,10 @@ struct TypeHashKey {
     bool operator==(const TypeHashKey& other) const;
 
     TypeHashKey clone(xpAllocator allocator) const;
-    
+
     Ast *decl_ast; // 结构体/枚举/联合体的声明AST节点
     std::optional<xpString> name;
+    u64 unique_id = 0; // 用于让 add_type 总能插入成功，0 表示由 get_or_add_type 去重
 };
 
 
@@ -266,16 +267,24 @@ TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
 TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields);
-TypeRef type_type(TypeRef self_type_info);
+TypeRef type_type();
 TypeRef package_type(Package *package_info);
 TypeRef undefined_type();
 TypeRef error_type();
+
+TypeRef add_type_unique(Type type);
 
 TypeRef unfinished_anonymous_struct_type(Ast *decl);
 TypeRef unfinished_struct_type(Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
 TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Scope *scope);
+
+isize type_size_of(TypeRef type);
+isize type_align_of(TypeRef type);
+isize type_stride_of(TypeRef type);
+isize field_offset_in_struct(TypeRef struct_type, isize index);
+isize align_up(isize value, isize alignment);
 
 TypeRef slice_type_as_struct(TypeRef elem_type);
 TypeRef string_type_as_struct();

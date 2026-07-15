@@ -74,8 +74,6 @@ Parser parser_make(Array<Token> tokens) {
 }
 
 Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
-    defer(xp_arena_allocator_clear(stage_allocator()));
-
     Parser p = parser_make(tokens);
     p.src_code = src_code;
 
@@ -88,7 +86,7 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
     }
 
     #ifdef CREST_DEBUG
-    print_ast(p.top_levels);
+    // print_ast(p.top_levels);
     #endif
 
     return p.top_levels;

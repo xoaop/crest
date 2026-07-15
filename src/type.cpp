@@ -1,6 +1,8 @@
 #include <cfloat>
+#include <atomic>
 
 #include "type.hpp"
+#include "value.hpp"
 
 #include "symbol.hpp"
 
@@ -34,11 +36,16 @@ u64 TypeHashKey::hash() const {
         hash = xp_hash_combine_u64(hash, xp_hash_func<xpString>(const_cast<xpString*>(&name.value())));
     }
 
+    hash = xp_hash_combine_u64(hash, unique_id);
+
     return hash;
 }
 
 
 bool TypeHashKey::operator==(const TypeHashKey& other) const {
+    if(unique_id != other.unique_id) {
+        return false;
+    }
     bool same_decl = decl_ast == other.decl_ast;
     bool same_name_or_no_name = true;
 
@@ -766,9 +773,7 @@ TypeRef unfinished_anonymous_struct_type(Ast *decl) {
     t.kind = Type_struct;
     t.struct_info.hash_key = TypeHashKey{ decl };
 
-    TypeRef type_ref = get_or_add_type(t);
-
-    return type_ref;
+    return add_type_unique(t);
 }
 
 TypeRef unfinished_struct_type(Ast *decl, xpString ident) {
@@ -776,9 +781,7 @@ TypeRef unfinished_struct_type(Ast *decl, xpString ident) {
     t.kind = Type_struct;
     t.struct_info.hash_key = TypeHashKey{ decl, ident };
 
-    TypeRef type_ref = get_or_add_type(t);
-
-    return type_ref;
+    return add_type_unique(t);
 }
 
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
@@ -801,7 +804,7 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
     t.enum_info.element_type = elem_type;
     t.enum_info.enum_scope = scope;
 
-    return get_or_add_type(t);
+    return add_type_unique(t);
 }
 
 
@@ -811,6 +814,10 @@ TypeRef type_type(TypeRef self_type_info) {
     t.self_type_info = self_type_info;
 
     return get_or_add_type(t);
+}
+
+TypeRef type_type() {
+    return type_type(undefined_type());
 }
 
 TypeRef package_type(Package *package_info) {
@@ -841,6 +848,27 @@ TypeRef error_type() {
 }
 
 
+static std::atomic<u64> g_type_unique_id{1};
+
+// TODO: 吧这个unqueid实现到任意类型, 而不是
+TypeRef add_type_unique(Type type) {
+    switch(type.kind) {
+    case Type_struct:
+        type.struct_info.hash_key.unique_id = g_type_unique_id.fetch_add(1, std::memory_order_relaxed);
+        break;
+    case Type_enum:
+        type.enum_info.hash_key.unique_id = g_type_unique_id.fetch_add(1, std::memory_order_relaxed);
+        break;
+    default:
+        break;
+    }
+    Type copy = copy_type(&type);
+    TypeRef type_ref = xp_interning_table_insert(&global_type_table.type_interning_table, copy);
+    ASSERT_MSG(type_ref != nullptr, "add_type_unique: insert failed");
+    return type_ref;
+}
+
+
 TypeRef get_or_add_type(Type type) {
     TypeRef type_ref = get_type(type);
     if(type_ref != NULL) {
@@ -859,6 +887,9 @@ TypeRef get_type(Type type) {
 TypeRef add_type(Type type) {
     Type copy = copy_type(&type);
     TypeRef type_ref = xp_interning_table_insert(&global_type_table.type_interning_table, copy);
+
+    ASSERT_MSG(type_ref != nullptr, "Failed to add type to interning table");
+
     return type_ref;
 }
 
@@ -1171,4 +1202,83 @@ usize xp_hash_func(Type *type) {
 
 xpAllocator type_allocator() {
     return permanent_allocator();
+}
+
+
+// ============================================================
+// 类型布局函数
+// ============================================================
+
+static isize basic_type_size(TypeKind kind) {
+    switch(kind) {
+        case Type_i8:  case Type_u8:  case Type_bool:  return 1;
+        case Type_i32: case Type_u32: case Type_f32:    return 4;
+        case Type_i64: case Type_u64: case Type_f64:    return 8;
+        case Type_untyped_int:  case Type_untyped_float: return 8;
+        case Type_void:                                  return 0;
+        case Type_pointer:                               return 16; // 必须与 Pointer::SERIALIZED_SIZE 一致
+        default:                                         return 8; // type/function/package/etc.
+    }
+}
+
+static isize basic_type_align(TypeKind kind) {
+    if (kind == Type_pointer) return 8;  // Pointer::mem+offset 只需 8 字节对齐
+    return basic_type_size(kind); // 自然对齐：对齐 == 大小
+}
+
+isize type_size_of(TypeRef type) {
+    switch(type->kind) {
+        case Type_array:
+            return (isize)type->array_info.count * type_size_of(type->array_info.element_type);
+        case Type_struct: {
+            if(type->struct_info.struct_fields.count == 0) return 0;
+            auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
+            return field_offset_in_struct(type, type->struct_info.struct_fields.count - 1)
+                 + type_size_of(last.type);
+        }
+        default:
+            return basic_type_size(type->kind);
+    }
+}
+
+isize type_align_of(TypeRef type) {
+    switch(type->kind) {
+        case Type_struct: {
+            isize max_align = 1;
+            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+                isize a = type_align_of(type->struct_info.struct_fields[i].type);
+                if(a > max_align) max_align = a;
+            }
+            return max_align;
+        }
+        case Type_array:
+            return type_align_of(type->array_info.element_type);
+        default:
+            return basic_type_align(type->kind);
+    }
+}
+
+isize type_stride_of(TypeRef type) {
+    return type_size_of(type);
+}
+
+isize field_offset_in_struct(TypeRef struct_type, isize index) {
+    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+    isize offset = 0;
+    for(isize i = 0; i < index; i++) {
+        TypeRef ft = struct_type->struct_info.struct_fields[i].type;
+        isize align = type_align_of(ft);
+        offset = align_up(offset, align);
+        offset += type_size_of(ft);
+    }
+    // 对齐当前字段
+    if(index < struct_type->struct_info.struct_fields.count) {
+        TypeRef ft = struct_type->struct_info.struct_fields[index].type;
+        offset = align_up(offset, type_align_of(ft));
+    }
+    return offset;
+}
+
+isize align_up(isize value, isize alignment) {
+    return xp_align_up_isize(value, alignment);
 }

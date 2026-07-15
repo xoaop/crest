@@ -1,4 +1,5 @@
 #include "scope.hpp"
+#include "cir_builder.hpp"
 #include "type.hpp"
 
 struct Ast;
@@ -143,6 +144,17 @@ SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident) {
 }
 
 
+SymbolInfoRef find_symbol_until_global_ref(Scope *scope, xpString symbol_ident) {
+    Scope *s = scope;
+    while (s != nullptr) {
+        SymbolInfo *info = find_symbol(&s->symbols, symbol_ident);
+        if (info != nullptr) {
+            return SymbolInfoRef{&s->symbols, symbol_ident};
+        }
+        s = s->parent;
+    }
+    return SymbolInfoRef{};
+}
 
 
 
@@ -155,7 +167,7 @@ SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKin
         return NULL;
     }
 
-    if(info->val().type->kind != type_kind) {
+    if(info->result().type()->kind != type_kind) {
         return NULL;
     }
 
@@ -172,7 +184,7 @@ SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpS
         return NULL;
     }
 
-    if(info->val().type->kind != type_kind) {
+    if(info->result().type()->kind != type_kind) {
         return NULL;
     }
 

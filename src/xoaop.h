@@ -130,8 +130,9 @@ bool xp_check_f64_is_inf(f64 value);
 
 #define XP_ASSERT_MSG(exp, format, ...) do {                    \
     if(!(exp)) {                                                \
-        printf("\nAssert FAILED at %s:%d: ", __FILE__, __LINE__); \
-        printf(format, ##__VA_ARGS__);                            \
+        fprintf(stderr, "\nAssert FAILED at %s:%d: ", __FILE__, __LINE__); \
+        fprintf(stderr, format, ##__VA_ARGS__);                   \
+        fflush(stderr);                                           \
         XP_TRAP();                                              \
     }                                                           \
 } while(0)

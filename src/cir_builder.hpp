@@ -24,11 +24,13 @@ constexpr CIRInstructionRef INVALID_INST = -1;
 
 struct CIRConstDecl {
     xpString ident;
+    SymbolInfoRef symbol;
     CIRInstructionRef value_inst; // 常量值的指令引用
 };
 
 struct CIRVariableDecl {
     xpString name;
+    SymbolInfoRef symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
     bool is_comptime;             // 是否是编译期参数
@@ -46,17 +48,20 @@ struct CIRInstruction;
 
 struct CIRFunction {
     xpString name;                      // 函数名（symbol_find / call 目标）
+    SymbolInfoRef symbol;
 
     CIRInstructionRef body_inst;
     CIRInstructionRef return_type_inst;    // 返回类型 block 引用（void 时为 INVALID_INST）
-    Array<CIRVariableDecl> args;           // 参数名 + slot + is_var_arg
+    // Array<CIRVariableDecl> args;           // 参数名 + slot + is_var_arg
     Array<CIRInstructionRef> arg_type_insts; // 每个参数的类型 block 引用（与 args 平行，var_arg 为 INVALID_INST）
+    Array<CIRInstructionRef> arg_decl_insts; // 每个参数的 VariableDecl 指令引用
     isize return_count;                    // 返回值数量
     bool is_extern_c;                      // 是否是 extern "C" 函数
     bool is_comptime;                      // 是否是编译期函数
 
 
     isize slot_count;               // 局部变量数量（包括参数）
+    isize stack_byte_size;
 };
 
 
@@ -72,6 +77,7 @@ struct CIRCondBr {
 
 struct CIRBlock {
     bool is_comptime;             // 是否是编译时执行的 block
+    bool immediate_eval;          // 是否立即求值
     isize body_len;               // Block 内指令数量
 };
 
@@ -111,7 +117,6 @@ struct CIRBlock {
     X(StructField) \
     X(FinishStruct) \
     X(EnumDeclInit) \
-    X(SizeOf) \
     X(AddrOf) \
     X(FieldTypeOfStruct) \
     X(FuncParamType) \
@@ -136,9 +141,8 @@ inline const char *string(CIROperator op) {
     }
 }
 
-enum class CIRResultType: u32 {
+enum class CIRResultState: u32 {
     NothingYet,  // 还没有计算结果
-    DontHave,    // 这个指令没有结果（如 Store）
     OnlyType,   // 仅仅只有类型推导
     WholeValue,  // 计算出实际值了
     Error        // 本指令分析出错，结果不可用，下游应跳过
@@ -150,17 +154,30 @@ enum class CIRValueKind : u8 {
 };
 
 struct CIRInstResult {
-    CIRResultType type = CIRResultType::NothingYet;
+    CIRResultState state = CIRResultState::NothingYet;
     CIRValueKind value_kind = CIRValueKind::RValue;
-    Value val;
-
-
+    
+    
     std::optional<TypeRef> implicit_type = std::nullopt;
+    
+    
+    TypeRef type() const;
+    TypeRef actual_type() const;
+    Value actual_val() const;
+    
+    void set_type(TypeRef new_type);
+    void set_actual_type(TypeRef new_type);
+    void set_val(Value new_val);
+    
+private:
+    Value val;
+    TypeRef outstanding_type = nullptr;
 };
 
 
 struct CIRInstruction {
     CIROperator       op;
+    SymbolInfoRef     symbol;
 
     CIRInstruction() {
         op = {};
@@ -179,6 +196,8 @@ struct CIRInstruction {
     const char *to_string() const {
         return string(op);
     }
+
+    isize len() const;
 
     union {
         Value       imm_val;
@@ -268,7 +287,8 @@ struct CIRInstruction {
 
         struct {
             Ast *decl_ast;
-            SymbolInfo *symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
+            SymbolInfoRef symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
+            SymbolInfo *self_sym;   // Self 符号，壳子创建后立即绑定
         } get_or_init_struct_info;
 
         struct {
@@ -284,7 +304,7 @@ struct CIRInstruction {
         struct {
             CIRInstructionRef tag_type_inst;
             Ast *decl_ast;
-            SymbolInfo *symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
+            SymbolInfoRef symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
             Scope *scope;
             Array<EnumFieldInit> fields;
         } enum_decl_init_info;
@@ -297,10 +317,6 @@ struct CIRInstruction {
             CIRInstructionRef determining_inst;
             CIRInstructionRef type_inst;  // INVALID_INST 表示"无值"
         } determine_type_info;
-
-        struct {
-            CIRInstructionRef type_inst;
-        } sizeof_info;
 
         struct {
             CIRInstructionRef lval_inst;  // 左值指令（LValue of T）
@@ -330,9 +346,6 @@ struct CIRInstruction {
     //
     // 指令结果, 由Interpreter来提供
     //
-    CIRInstResult result;
-    
-
     SourceLocation src_loc;
 };
 
@@ -342,21 +355,36 @@ struct CIRFileRange {
     Scope *file_scope;
 };
 
+struct CIRResultInstance {
+    xpHashMap<CIRInstructionRef, CIRInstResult> results;
+};
+
 struct CIRPackage {
     Array<CIRInstruction>     instructions;   // 全局指令数组
-
+    
     Array<CIRInstructionRef>  top_level_insts;
-
+    
     Array<CIRFileRange>       file_ranges;  // 按 start 升序，文件级 scope 切换点
-
+    
+    Array<xpString>           string_literals;
+    
     Array<std::tuple<CIRInstructionRef, SymbolInfo*, Scope*>> all_func_inst_sym_scopes; // 所有函数实例对应的符号和作用域，供llvmcodegen使用
+    
+
+    // xpHashMap<FuncCallKey, Value> comptime_cache;
+    Array<CIRInstResult>      results;
+    xpHashMap<FuncCallKey, CIRResultInstance> result_instances;
 
 
     CIRInstruction* inst(CIRInstructionRef ref);
+    const CIRInstruction* inst(CIRInstructionRef ref) const;
     CIRInstResult& result_of(CIRInstructionRef ref);
     Scope *scope_for_pc(CIRInstructionRef pc) const;
 
     CIRInstructionRef get_first_inst_ref_in_block(CIRInstructionRef ref);
+
+    CIRResultInstance *get_result_instance(FuncCallKey key);
+
 };
 
 CIRPackage make_cir_package(xpAllocator allocator);
@@ -387,14 +415,14 @@ struct CIRBuilder {
     ~CIRBuilder();
 
 
-    CIRPackage build_cir_package(Package *pkg);
+    void build_cir_package(Package *pkg);
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
-    CIRInstructionRef build_func_decl(xpString name, Ast *fd);
+    CIRInstructionRef build_func_decl(xpString name, SymbolInfoRef func_sym, Ast *fd);
     CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block);
     CIRInstructionRef build_inst_for_stmt(Ast *stmt);
     CIRInstructionRef build_inst_for_expr(Ast *expr);
-    CIRInstructionRef build_block_inst_for_expr(Ast *expr, bool is_comptime_block);
+    CIRInstructionRef build_block_inst_for_expr(Ast *expr, bool is_comptime_block, bool immediate_eval);
     CIRInstructionRef build_ptr_inst_for_expr(Ast *expr);
 
     CIRInstructionRef build_inst_for_var_decl(Ast *var_decl_ast);
@@ -406,7 +434,7 @@ struct CIRBuilder {
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 
-    CIRInstructionRef Begin_Block(bool is_comptime, Ast *ast);
+    CIRInstructionRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);
     void End_Block(CIRInstructionRef block_inst);
     CIRInstructionRef Begin_Loop(Ast *ast);
     void End_Loop(CIRInstructionRef loop_inst);
@@ -429,7 +457,7 @@ public:
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;
     Scope *curr_scope;
-    SymbolInfo *curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
+    SymbolInfoRef curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
 
 
     // cirbuilder所有的状态, 需要分配

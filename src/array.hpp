@@ -46,6 +46,22 @@ struct Array {
         array_pop_back(this);
     }
 
+    void resize(isize new_count) {
+        if(new_count > count) {
+            if(new_count > capacity) {
+                array_resize(this, new_count);
+            }
+            for(isize i = count; i < new_count; i++) {
+                new (&data[i]) T();
+            }
+        } else {
+            for(isize i = new_count; i < count; i++) {
+                data[i].~T();
+            }
+        }
+        count = new_count;
+    }
+
 
     void clear() {
         array_clear(this);
@@ -57,6 +73,14 @@ struct Array {
     }
 
     T *end() {
+        return data + count;
+    }
+
+    const T *begin() const {
+        return data;
+    }
+
+    const T *end() const {
         return data + count;
     }
 
@@ -89,22 +113,27 @@ Array<T> make_array(xpAllocator allocator) {
 }
 
 template<typename T>
-Array<T> make_array_len(xpAllocator allocator, isize len) {
+Array<T> make_array_count(xpAllocator allocator, isize len) {
     Array<T> array = make_array<T>(allocator);
 
     array.data = (T*)xp_alloc(allocator, len * sizeof(T));
-    array.count = 0;
+    array.count = len;
     array.capacity = len;
 
     return array;
 }
 
 template<typename T>
-Array<T> make_array_reserved(xpAllocator allocator, isize count) {
-    Array<T> array = make_array_len<T>(allocator, count);
-    array.count = count;
+Array<T> make_array_capacity(xpAllocator allocator, isize capacity) {
+    Array<T> array = make_array<T>(allocator);
+
+    array.data = (T*)xp_alloc(allocator, capacity * sizeof(T));
+    array.count = 0;
+    array.capacity = capacity;
+
     return array;
 }
+
 
 template<typename T>
 void array_free(Array<T>* array) {
@@ -314,7 +343,7 @@ Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {
 // 注意：仅适用于平凡可构造类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 Array<T> make_array_as_buffer(xpAllocator allocator, isize len) {
-    Array<T> array = make_array_len<T>(allocator, len);
+    Array<T> array = make_array_count<T>(allocator, len);
     array.count = len;
 
     return array;

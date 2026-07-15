@@ -1,6 +1,8 @@
 #ifndef CREST_SYMBOL_HPP
 #define CREST_SYMBOL_HPP
 
+#include <optional>
+
 #include "xoaop.h"
 #include "common.hpp"
 #include "cir_key.hpp"
@@ -57,7 +59,7 @@ public:
     SymbolInfo& operator=(const SymbolInfo& other);
 
     CIRInstUniqueKey val_as_inst_key() const;
-    Value val() const;
+    CIRInstResult result(std::optional<FuncCallKey> key = {}) const;
     void val(Value new_val);
     void val(CIRInstUniqueKey new_key);
 
@@ -87,6 +89,21 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name);
 
 
 
+struct SymbolInfoRef {
+    SymbolTable *table;
+    xpString name;
+
+
+    SymbolInfo* operator()() const {
+        if(table == nullptr) {
+            return nullptr;
+        }
+        
+        return find_symbol(table, name);
+    }
+};
+
+
 
 
 // formatter
@@ -98,10 +115,9 @@ struct std::formatter<SymbolInfo> {
 
     template<typename FormatContext>
     auto format(const SymbolInfo& symbol_info, FormatContext& ctx) const {
-        return std::format_to(ctx.out(), "SymbolInfo {{ name: '{}', state '{}', value: {} }}",
+        return std::format_to(ctx.out(), "SymbolInfo {{ name: '{}', state '{}' }}",
             symbol_info.name,
-            to_string(symbol_info.state), 
-            symbol_info.val()
+            to_string(symbol_info.state)
         );
     }
 };

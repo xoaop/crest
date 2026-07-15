@@ -90,10 +90,18 @@ ErrorReporter make_error_reporter(xpAllocator allocator);
             std::abort(); \
         } while(0)
 
-    #define ASSERT(cond, fmt, ...) \
+    #define ASSERT_MSG(cond, fmt, ...) \
         do { \
             if (!(cond)) { \
-                ::debug_impl("ASSERT", std::source_location::current(), fmt, ##__VA_ARGS__); \
+                ::debug_impl("ASSERT_MSG", std::source_location::current(), fmt, ##__VA_ARGS__); \
+                std::abort(); \
+            } \
+        } while(0)
+
+    #define ASSERT(cond) \
+        do { \
+            if (!(cond)) { \
+                ::debug_impl("ASSERT", std::source_location::current(), "Assertion failed: {}", #cond); \
                 std::abort(); \
             } \
         } while(0)
@@ -102,7 +110,8 @@ ErrorReporter make_error_reporter(xpAllocator allocator);
     #define DEBUG_LOG(...)    ((void)0)
     #define DEBUG_TRACE(...)  ((void)0)
     #define DEBUG_PANIC(...)  ((void)0)
-    #define ASSERT(cond, fmt, ...) ((void)0)
+    #define ASSERT_MSG(cond, fmt, ...) ((void)0)
+    #define ASSERT(cond) ((void)0)
 #endif
 
 
