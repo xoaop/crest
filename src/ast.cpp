@@ -12,6 +12,7 @@ const char *ast_strs[] = {
 };
 
 Ast::Ast() {
+    memset((void*)this, 0, sizeof(*this));
 }
 
 Ast::Ast(const Ast& other) {
@@ -29,7 +30,7 @@ Ast& Ast::operator=(const Ast& other) {
 Ast ast_make(AstType type) {
     Ast ast = {};
     
-    ast.ast_symbol = nullptr;
+    ast.ast_symbol = {};
     ast.is_const_expr = false;
     ast.is_lvalue = false;
     ast.is_null = false;

@@ -62,12 +62,12 @@ void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_pa
 }
 
 
-xpOption<xpString> resolve_package_path(xpString import_path) {
+xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator allocator) {
     Array<xpString>& search_paths = context()->package_search_paths;
 
     for (isize i = 0; i < search_paths.count; i++) {
         xpString base = search_paths[i];
-        xpString candidate = concat_path(base, import_path, stage_allocator());
+        xpString candidate = concat_path(base, import_path, allocator);
 
         if (check_directory_legel(candidate)) {
             return xpOption<xpString>::some(candidate);
@@ -78,7 +78,7 @@ xpOption<xpString> resolve_package_path(xpString import_path) {
 }
 
 xpOption<Package *> get_package_by_import(xpString import_path, Array<Package> *all_packages) {
-    auto resolved = resolve_package_path(import_path);
+    auto resolved = resolve_package_path(import_path, stage_allocator());
 
     if (resolved.is_none()) {
         return xpOption<Package *>::none();
@@ -108,10 +108,10 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
 
 
         // 解析每个 import 的模块路径
-        Array<xpString> abs_paths = make_array<xpString>(stage_allocator());
+        Array<xpString> abs_paths = make_array<xpString>(permanent_allocator());
         for(Ast *import: import_asts) {
             xpString import_path = import->Import.path;
-            auto resolved = resolve_package_path(import_path);
+            auto resolved = resolve_package_path(import_path, permanent_allocator());
 
             if (resolved.is_none()) {
                 context()->reporter.report_error(
@@ -129,6 +129,9 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
         // 递归处理每个imported package paths
         for(isize k = 0; k < abs_paths.count; k++) {
             xpString abs_import_path = abs_paths[k];
+
+            DEBUG_TRACE("正在解析import: {}, 当前package: {}, 当前文件: {}", abs_import_path, curr_pkg.path, ast_file.source_code.file_path);
+
             if(!check_directory_legel(abs_import_path)) {
                 continue;
             }
@@ -136,12 +139,16 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
             // 检查该package是否 已经解析过 或 正在解析中
             PackageState *state_of_imported_package = xp_hash_map_get(package_states, abs_import_path);
             if(state_of_imported_package == nullptr) {
+
+                DEBUG_TRACE("imported package {} 还没有解析过, 开始解析", abs_import_path);
+
                 Package imported_package = tokenize_and_parse_package(abs_import_path.c_str);
 
-                array_push_back(&all_packages, imported_package);
+                // 后序DFS：先标记已见，递归处理子包，最后再加入列表
+                // 保证被依赖的包总是出现在依赖它的包之前
                 xp_hash_map_insert(&package_states, imported_package.path, PackageState::Unresolved);
-
                 resolve_packages_from_imports(imported_package, package_states, all_packages);
+                array_push_back(&all_packages, imported_package);
             } else {
                 PackageState state = *state_of_imported_package;
                 
@@ -167,11 +174,9 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
 
 
 Array<Package> resolve_dependencies(xpString main_path) {
-    defer(xp_arena_allocator_clear(stage_allocator()));
-
     // 所有package所在
     Array<Package> packages = make_array<Package>(permanent_allocator());
-    xpHashMap<xpString, PackageState> package_state_map = xp_hash_map_make<xpString, PackageState>(stage_allocator());
+    xpHashMap<xpString, PackageState> package_state_map = xp_hash_map_make<xpString, PackageState>(permanent_allocator());
 
 
     if(!check_directory_legel(main_path) && !check_file_legal(main_path)) {
@@ -202,11 +207,12 @@ Array<Package> resolve_dependencies(xpString main_path) {
     }
 
 
-    array_push_back(&packages, main_package);
     xp_hash_map_insert(&package_state_map, main_package.path, PackageState::Unresolved);
 
+    array_push_back(&context()->package_search_paths, main_package.path);
 
     resolve_packages_from_imports(main_package, package_state_map, packages);
+    array_push_back(&packages, main_package);  // 后序：所有依赖包处理完后再加入
 
 
     return packages;

@@ -5,6 +5,7 @@
 
 struct CIRPackage;
 struct Package;
+struct CIRInstResult;
 using CIRInstructionRef = isize;
 
 // 定位唯一的 CIR 指令定义，用于跨包引用
@@ -29,6 +30,27 @@ struct CIRInstUniqueKey {
 
 template<>
 inline usize xp_hash_func(CIRInstUniqueKey *key) {
+    return key->hash();
+}
+
+struct FuncCallKey {
+    CIRInstructionRef func_decl_pc;
+    u64               arg_hash;
+
+    u64 hash() const {
+        u64 h = (u64)(usize)func_decl_pc;
+        h = xp_hash_combine_u64(h, arg_hash);
+        return h;
+    }
+
+    bool operator==(const FuncCallKey& other) const {
+        return func_decl_pc == other.func_decl_pc
+            && arg_hash == other.arg_hash;
+    }
+};
+
+template<>
+inline usize xp_hash_func(FuncCallKey *key) {
     return key->hash();
 }
 

@@ -31,6 +31,7 @@ static void crest_helper() {
     printf("Usage: crest <command> [options]\n");
     printf("Commands:\n");
     printf("  build <path>   Build the project at the specified path\n");
+    printf("  crest <path>   Same as 'crest build <path>'\n");
     printf("  help           Show this help message\n");
 }
 
@@ -94,7 +95,9 @@ int main(int argc, char** argv) {
             context()->output_path = std::filesystem::path(argv[i]);
         }
         
-        else {
+        else if(main_path == NULL) {
+            main_path = argv[i];
+        } else {
             crest_helper();
             return 0;
         }
@@ -147,8 +150,16 @@ int main(int argc, char** argv) {
 
 
     context()->all_packages = resolve_dependencies(xp_string_c(main_path));
-    std::reverse(context()->all_packages.begin(), context()->all_packages.end());
+
+
+    DEBUG_TRACE("All packages resolved:");
+    for(auto& pkg : context()->all_packages) {
+        DEBUG_TRACE("Package: {}, ast_files: {}", pkg.path, pkg.ast_files.count);
+    }
+
+    
     mark_phase("resolve dependencies");
+    xp_arena_allocator_clear(stage_allocator());
 
 
     if(context()->reporter.error_count > 0) {
@@ -158,6 +169,7 @@ int main(int argc, char** argv) {
 
     resolve_ast_all_packages(&context()->all_packages);
     mark_phase("tokenize + parse");
+    xp_arena_allocator_clear(stage_allocator());
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -169,11 +181,13 @@ int main(int argc, char** argv) {
     #endif
 
 
+    context()->static_mem.init(MemoryKind::Heap, permanent_allocator());
     for(auto& pkg : context()->all_packages) {
         CIRBuilder builder{stage_allocator()};
-        pkg.cir_package = builder.build_cir_package(&pkg);
+        builder.build_cir_package(&pkg);
     }
     mark_phase("build CIR");
+    xp_arena_allocator_clear(stage_allocator());
 
     #ifdef CREST_DEBUG
     for(auto& pkg : context()->all_packages) {
@@ -190,6 +204,7 @@ int main(int argc, char** argv) {
         analyze_package(&pkg);
     }
     mark_phase("analyze CIR");
+    xp_arena_allocator_clear(stage_allocator());
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -201,6 +216,7 @@ int main(int argc, char** argv) {
     LLVMIRGenerateConfig llvm_config = {};
     Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
     mark_phase("generate LLVM IR");
+    xp_arena_allocator_clear(stage_allocator());
 
     return 0;
 }

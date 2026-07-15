@@ -137,22 +137,22 @@ Array<Token> tokenize(SourceCode *src_code) {
     }
 
     #ifdef CREST_DEBUG
-    std::println(stderr, "===== TOKEN LIST START =====");
-    for(isize i = 0; i < t.token_array.count; i++) {
-        Token *token = &t.token_array[i];
+    // std::println(stderr, "===== TOKEN LIST START =====");
+    // for(isize i = 0; i < t.token_array.count; i++) {
+    //     Token *token = &t.token_array[i];
 
-        auto start = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.start);
-        auto end = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.end);
-        std::println(stderr, "Token[{:3}]: Type: {:<20} Str: {:15} Span: [{}:{} - {}:{}] BytePos[{} - {}]",
-            i,
-            get_token_str(token->type),
-            std::string_view(token->token_str.c_str, token->token_str.length),
-            start.first, start.second,
-            end.first, end.second,
-            token->src_loc.span.start, token->src_loc.span.end
-        );
-    }
-    std::println(stderr, "===== TOKEN LIST END =====");
+    //     auto start = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.start);
+    //     auto end = cal_line_column_index_of_byte_pos(token->src_loc.src_code, token->src_loc.span.end);
+    //     std::println(stderr, "Token[{:3}]: Type: {:<20} Str: {:15} Span: [{}:{} - {}:{}] BytePos[{} - {}]",
+    //         i,
+    //         get_token_str(token->type),
+    //         std::string_view(token->token_str.c_str, token->token_str.length),
+    //         start.first, start.second,
+    //         end.first, end.second,
+    //         token->src_loc.span.start, token->src_loc.span.end
+    //     );
+    // }
+    // std::println(stderr, "===== TOKEN LIST END =====");
     #endif
 
 

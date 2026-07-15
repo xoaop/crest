@@ -6,6 +6,8 @@
 
 #include <cstring>
 
+#include "error_msg.hpp"
+
 //
 // SymbolInfo, etc.
 //
@@ -25,16 +27,28 @@ SymbolInfo& SymbolInfo::operator=(const SymbolInfo& other) {
     return *this;
 }
 
-Value SymbolInfo::val() const {
+CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     if(value_store_type == ValueStoreType::InSymbolInfo) {
-        return value;
-    } else if(value_store_type == ValueStoreType::InCIRInstruction) {
-        CIRInstruction *inst = inst_key.cir_package->inst(inst_key.defining_inst);
-        XP_ASSERT_DEFAULT(inst->result.type == CIRResultType::OnlyType || inst->result.type == CIRResultType::WholeValue);
-        return inst->result.val;
+        CIRInstResult r;
+        r.set_type(value.type);
+        r.set_val(value);
+        return r;
+    }
+    if(value_store_type == ValueStoreType::InCIRInstruction) {
+
+        if(key.has_value()) {
+            auto *instance = xp_hash_map_get(inst_key.cir_package->result_instances, key.value());
+            if(instance) {
+                auto *res = xp_hash_map_get(instance->results, inst_key.defining_inst);
+                if(res) {
+                    return *res;
+                }
+            }
+        }
+        return inst_key.cir_package->results[inst_key.defining_inst];
     }
 
-    return make_value();
+    return CIRInstResult{};
 }
 
 CIRInstUniqueKey SymbolInfo::val_as_inst_key() const {

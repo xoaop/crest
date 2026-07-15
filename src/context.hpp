@@ -6,6 +6,8 @@
 #include "package.hpp"
 #include "error_msg.hpp"
 
+#include "cir_builder.hpp"
+
 struct ThreadPool;
 
 struct Context {
@@ -29,6 +31,8 @@ struct Context {
 
     Array<Package> all_packages;
 
+
+    ValueMemory static_mem;
 
     ThreadPool *thread_pool;
 };

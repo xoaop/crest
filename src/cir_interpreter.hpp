@@ -13,7 +13,7 @@ void analyze_package(Package *pkg);
 
 enum class EvalMode {
     FullEval,
-    TypeOnly
+    TypeOnly,
 };
 
 struct AnalyzeParams {
@@ -21,17 +21,24 @@ struct AnalyzeParams {
 };
 
 
-struct ComptimePointer {
-    isize addr;
-};
 
-struct ComptimeExecFrame {
-    Array<Value> local_vars;
 
-};
+// 求值实例 — 每次编译期函数调用创建一个
+struct EvalInstance {
 
-struct ComptimeExecContext {
-    Array<ComptimeExecFrame> frames;
+    static EvalInstance make(CIRPackage *callee_pkg, CIRInstructionRef func_decl_pc, isize var_count, xpAllocator allocator);
+
+    static void free(EvalInstance *inst);
+
+
+    CIRPackage *callee_pkg = nullptr;  // 被调函数所在包
+    CIRInstructionRef func_decl_pc = 0;
+    CIRResultInstance *result_instance = nullptr; // 被调函数的结果实例
+    Array<Pointer> var_ptrs;        // 变量存储位置指针，按 func_decl 的参数顺序排列
+
+    FuncCallKey cache_key = {};
+
+    isize frame_base = 0; // 栈帧基址（stack_mem 中的偏移）
 };
 
 
@@ -46,63 +53,70 @@ struct Interpreter {
 
     void set_scope(Scope *scope);
 
-    void analyze_const_decl();
-    void analyze_function_decl();
-    void analyze_get_or_init_struct();
-    void analyze_struct_field();
-    void analyze_finish_struct();
-    void analyze_enum_decl_init();
-    void analyze_union_decl();
-    void analyze_variable_decl();
-    void analyze_binary();
-    void analyze_unary();
-    void analyze_field_access();
-    void analyze_field_ptr();
-    void analyze_call();
-    void analyze_constant_value();
-    void analyze_cast();
-    void analyze_struct_init();
-    void analyze_array_init();
-    void analyze_index();
-    void analyze_index_ptr();
-    void analyze_addr_of();
-    void analyze_pointer_type();
-    void analyze_array_type();
-    void analyze_slice_type();
-    void analyze_func_type();
-    void analyze_block(std::optional<EvalMode> force_eval_mode = std::nullopt);
-    void analyze_loop();
-    void analyze_condbr();
-    void analyze_break();
-    void analyze_load();
-    void analyze_store();
-    void analyze_type_ascribe();
-    void analyze_ident_ref();
-    void analyze_ident_val();
-    void analyze_enter_scope();
-    void analyze_exit_scope();
-    void analyze_determine_type();
-    void analyze_type_of_inst_result();
-    void analyze_field_type_of_struct();
-    void analyze_func_param_type();
+    void analyze_ConstDecl();
+    void analyze_FunctionDecl();
+    void analyze_GetOrInitStruct();
+    void analyze_StructField();
+    void analyze_FinishStruct();
+    void analyze_EnumDeclInit();
+    void analyze_UnionDecl();
+    void analyze_VariableDecl();
+    void analyze_Binary();
+    void analyze_Unary();
+    void analyze_FieldAccess();
+    void analyze_FieldPtr();
+    void analyze_Call();
+    void analyze_ConstantValue();
+    void analyze_Cast();
+    void analyze_StructInit();
+    void analyze_ArrayInit();
+    void analyze_Index();
+    void analyze_IndexPtr();
+    void analyze_AddrOf();
+    void analyze_PointerType();
+    void analyze_ArrayType();
+    void analyze_SliceType();
+    void analyze_FuncType();
+    void analyze_Block(std::optional<EvalMode> force_eval_mode = std::nullopt);
+    void analyze_Loop();
+    void analyze_CondBr();
+    void analyze_Break();
+    void analyze_Load();
+    void analyze_Store();
+    void analyze_TypeAscribe();
+    void analyze_IdentRef();
+    void analyze_IdentVal();
+    void analyze_EnterScope();
+    void analyze_ExitScope();
+    void analyze_DetermineType();
+    void analyze_TypeOfInstResult();
+    void analyze_FieldTypeOfStruct();
+    void analyze_FuncParamType();
 
 
-    
+    Value eval_GetOrInitStruct(CIRInstructionRef ref);
 
-    CIRResultType result_state(CIRInstructionRef ref);
-    void set_result_state(CIRInstructionRef ref, CIRResultType state);
+    CIRInstResult& result_for(CIRInstructionRef ref);
+
+    CIRResultState result_state(CIRInstructionRef ref);
+    void set_result_state(CIRInstructionRef ref, CIRResultState state);
     TypeRef ResultType(CIRInstructionRef ref);
     Value ResultValue(CIRInstructionRef ref);
     void Set_ResultType(CIRInstructionRef ref, TypeRef type);
     void Set_ResultValue(CIRInstructionRef ref, Value val);
     void Set_ResultTypeAndValue(CIRInstructionRef ref, Value val);
     bool has_result_val(CIRInstructionRef ref);
+    bool has_result_val(std::initializer_list<CIRInstructionRef> refs);
+    bool has_result_val(Array<CIRInstructionRef>& refs);
     bool has_result_type(CIRInstructionRef ref);
     bool has_error(CIRInstructionRef ref);
     void Set_ResultError(CIRInstructionRef ref);
     bool propagate_error(std::initializer_list<CIRInstructionRef> refs);
     bool propagate_error(Array<CIRInstructionRef>& refs);
 
+    bool should_eval(std::initializer_list<CIRInstructionRef> refs = {});
+    bool should_eval_for_lazy_eval(std::initializer_list<CIRInstructionRef> refs);
+    bool should_eval_for_lazy_eval(Array<CIRInstructionRef>& refs);
     bool is_lvalue(CIRInstructionRef ref);
     void set_lvalue(CIRInstructionRef ref);
 
@@ -110,6 +124,17 @@ struct Interpreter {
     void recover_pc_flow();
 
     EvalMode curr_eval_mode() const;
+
+    bool has_instance() const { return instance_stack.count > 0; }
+
+    std::optional<FuncCallKey> curr_cache_key() const {
+        if(instance_stack.count > 0) {
+            return instance_stack.back().cache_key;
+        }
+        return std::nullopt;
+    }
+
+    bool is_pure_comptime_func(CIRFunction& func);
 
 public:
 
@@ -123,9 +148,19 @@ public:
     AnalyzeFlowState& curr_state();
     CIRInstructionRef& pc();
     Scope*&             scope();
+    EvalInstance* curr_instance() {
+        return instance_stack.count > 0 ? &instance_stack.back() : nullptr;
+    }
+
+    // 嵌套调用栈
+    Array<EvalInstance> instance_stack;
+
+    // 当前求值实例（null = 使用包级 store）
 
     Array<AnalyzeFlowState> pc_stack;
 
     Array<EvalMode> eval_mode_stack;
     Array<CIRInstructionRef> loop_stack;  // 当前嵌套的 Loop 指令栈
+
+    ValueMemory stack_mem;
 };
