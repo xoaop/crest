@@ -425,17 +425,8 @@ Ast *parse_const_decl(Parser *p) {
 
     Ast *value_ast = NULL;
     Token curr = curr_token(p);
-    switch(curr_token(p).type) {
-    case TokenType::LeftBracket:
-        value_ast = parse_function_value_or_type(p);
-        break;
-    case TokenType::KW_import:
-        value_ast = parse_import(p);
-        break;
-    default:
-        value_ast = parse_expr(p, 0);
-        break;
-    }
+
+    value_ast = parse_expr(p, 0);
 
 
     Ast *const_decl = ast_alloc(AstType_ConstDecl, name_token);
@@ -953,31 +944,155 @@ Ast *parse_expr_factor(Parser *p) {
 
         } break;
         
-        // (expr) or (params) -> ret
-        case TokenType::LeftBracket: {
-            Token lb = curr_token(p);
-            Array<Ast*> params;
-            Ast *return_type_ast;
-            bool must_be_c_fn, has_named_params;
-            Token rb;
-            parse_func_type(p, params, return_type_ast, must_be_c_fn, has_named_params, rb);
 
-            if(has_named_params) {
-                context()->reporter.report_error(lb.src_loc, "unexpected parameter name in function type");
+        // TODO: CLEAN 
+        // (expr)
+        // (ident, ...) -> ident
+        // (<$> ident: ident, ...) -> ident/? { ...(body) }
+        case TokenType::LeftBracket: {
+            Token lb = expect(p, TokenType::LeftBracket);
+
+            bool is_named = false;
+            if (curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
+                Token first = curr_token(p);
+                if (first.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
+                    is_named = true;
+                } else if (first.type == TokenType::Dollar && peek_token(p, 1).type == TokenType::Ident && peek_token(p, 2).type == TokenType::Colon) {
+                    is_named = true;
+                }
             }
 
-            if(return_type_ast != nullptr) {
-                a = ast_alloc(AstType_FunctionType, lb);
-                a->FunctionType.param_types = params;
-                a->FunctionType.return_type_ast = return_type_ast;
-                a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
-            } else if(params.count == 1 && !must_be_c_fn) {
-                a = params[0];   // parenthesized expr
+            Array<Ast*> params = make_array<Ast*>(ast_allocator());
+            bool must_be_c_fn = false;
+
+            while (!reach_end(p) && curr_token(p).type != TokenType::RightBracket) {
+                if (curr_token(p).type == TokenType::ThreeDots) {
+                    Token dots = expect(p, TokenType::ThreeDots);
+                    Ast *param = ast_alloc(AstType_ParamDecl, dots);
+                    param->ParamDecl.name = dots.token_str;
+                    param->ParamDecl.type_ast = nullptr;
+                    param->ParamDecl.is_var_arg = true;
+                    params.push_back(param);
+                    must_be_c_fn = true;
+                    break;
+                }
+
+                if (is_named) {
+                    bool is_comptime = false;
+                    if (curr_token(p).type == TokenType::Dollar) {
+                        advance_token(p);
+                        is_comptime = true;
+                    }
+
+                    Token name = expect(p, TokenType::Ident);
+                    expect(p, TokenType::Colon);
+                    Ast *type_ast = parse_type(p);
+
+                    Ast *param = ast_alloc(AstType_ParamDecl, name);
+                    param->ParamDecl.name = name.token_str;
+                    param->ParamDecl.type_ast = type_ast;
+                    param->ParamDecl.is_comptime = is_comptime;
+                    param->src_loc = merge(name.src_loc, type_ast->src_loc);
+                    params.push_back(param);
+                } else {
+                    params.push_back(parse_type(p));
+                }
+
+                if (curr_token(p).type != TokenType::RightBracket) {
+                    expect(p, TokenType::Comma);
+                }
+            }
+
+            Token rb = expect(p, TokenType::RightBracket);
+
+            if (curr_token(p).type == TokenType::Arrow) {
+                advance_token(p);
+
+                Ast *return_type_ast;
+                if (is_named && curr_token(p).type == TokenType::Question) {
+                    Token q = expect(p, TokenType::Question);
+                    return_type_ast = ast_alloc(AstType_EasyType, q);
+                    return_type_ast->EasyType.kind = Type_void;
+                    return_type_ast->src_loc = q.src_loc;
+                } else {
+                    return_type_ast = parse_type(p);
+                }
+
+                bool is_extern_c = false;
+                if (curr_token(p).type == TokenType::KW_extern_C) {
+                    is_extern_c = true;
+                    advance_token(p);
+                }
+
+                if (must_be_c_fn && !is_extern_c) {
+                    context()->reporter.report_error(
+                        merge(rb.src_loc, return_type_ast->src_loc),
+                        "functions with variable arguments must be declared as extern C"
+                    );
+                }
+
+                if (is_extern_c || curr_token(p).type == TokenType::LeftCurlyBracket) {
+                    if (!is_named) {
+                        for (isize i = 0; i < params.count; i++) {
+                            if (params[i]->type != AstType_ParamDecl) {
+                                Ast *pd = ast_alloc(AstType_ParamDecl, rb);
+                                pd->ParamDecl.name = xp_string_c("");
+                                pd->ParamDecl.type_ast = params[i];
+                                pd->ParamDecl.is_var_arg = false;
+                                pd->src_loc = params[i]->src_loc;
+                                params[i] = pd;
+                            }
+                        }
+                    }
+
+                    Ast *body = nullptr;
+                    SourceLocation loc;
+                    if (is_extern_c) {
+                        loc = merge(lb.src_loc, return_type_ast->src_loc);
+                    } else {
+                        body = parse_block(p);
+                        body->Block.is_function_body = true;
+                        loc = merge(lb.src_loc, body->src_loc);
+                    }
+
+                    a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
+                    a->FunctionDeclValue.params = params;
+                    a->FunctionDeclValue.block = body;
+                    a->FunctionDeclValue.return_type_ast = return_type_ast;
+                    a->FunctionDeclValue.is_extern_c = is_extern_c;
+
+                    for (isize i = 0; i < params.count; i++) {
+                        if (params[i]->ParamDecl.is_comptime) {
+                            a->FunctionDeclValue.is_comptime = true;
+                            break;
+                        }
+                    }
+                } else {
+                    Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
+                    if (is_named) {
+                        for (isize i = 0; i < params.count; i++) {
+                            param_types.push_back(params[i]->ParamDecl.type_ast);
+                        }
+                    } else {
+                        param_types = params;
+                    }
+
+                    a = ast_alloc(AstType_FunctionType, lb);
+                    a->FunctionType.param_types = param_types;
+                    a->FunctionType.return_type_ast = return_type_ast;
+                    a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
+                }
+            } else if (params.count == 1 && !must_be_c_fn && !is_named) {
+                a = params[0];  // (expr)
             } else {
                 report_unexpected(p, "-> (function type) or single expression");
                 a = ast_alloc(AstType_BadExpr, rb);
                 a->src_loc = rb.src_loc;
             }
+        } break;
+
+        case TokenType::KW_import: {
+            a = parse_import(p);
         } break;
         
         

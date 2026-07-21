@@ -55,6 +55,7 @@
     TOKEN_INFO(Float, "float"),                                 \
     TOKEN_INFO(Ident, "ident"),                                 \
     TOKEN_INFO(StringLiteral, "string literal"),                \
+    TOKEN_INFO(Question, "?"),                                  \
     TOKEN_INFO(ThreeDots, "..."),                               \
     TOKEN_INFO(__START__OF__KEYWORD__, ""),                     \
     TOKEN_INFO(KW_struct, "struct"),                            \
