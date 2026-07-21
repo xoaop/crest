@@ -2,10 +2,13 @@
 #define CREST_CIR_KEY_HPP
 
 #include "xoaop.h"
+#include "array.hpp"
+#include <optional>
 
 struct CIRPackage;
 struct Package;
 struct CIRInstResult;
+struct CIRResultInstance;
 using CIRInstructionRef = isize;
 
 // 定位唯一的 CIR 指令定义，用于跨包引用
@@ -33,20 +36,28 @@ inline usize xp_hash_func(CIRInstUniqueKey *key) {
     return key->hash();
 }
 
+// 引用 CIRPackage 中某个指令的结果值
+// result_instance == nullptr → 值在 cir_package->results[inst_ref] 中
+// result_instance != nullptr → 值在 result_instance->results[inst_ref] 中
+struct CIRInstResultRef {
+    CIRPackage*                            cir_package;
+    CIRInstructionRef                      inst_ref;
+    std::optional<CIRResultInstance*>      result_instance;
+
+    // 工厂：从 (pkg, inst_ref, 可选 result_instance) 创建
+    static CIRInstResultRef make(CIRPackage* pkg, CIRInstructionRef ref,
+                                  std::optional<CIRResultInstance*> ri = std::nullopt);
+
+    // 访问：从指定位置读取结果值
+    const CIRInstResult* get_result() const;
+};
+
 struct FuncCallKey {
-    CIRInstructionRef func_decl_pc;
-    u64               arg_hash;
+    CIRInstructionRef         func_decl_pc;
+    Array<CIRInstResultRef>   comptime_arg_refs;
 
-    u64 hash() const {
-        u64 h = (u64)(usize)func_decl_pc;
-        h = xp_hash_combine_u64(h, arg_hash);
-        return h;
-    }
-
-    bool operator==(const FuncCallKey& other) const {
-        return func_decl_pc == other.func_decl_pc
-            && arg_hash == other.arg_hash;
-    }
+    u64 hash() const;
+    bool operator==(const FuncCallKey& other) const;
 };
 
 template<>

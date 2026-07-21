@@ -85,9 +85,10 @@ void Value::array_element_values(Array<Value> elem_values) {
     struct_or_array_fields = elem_values;
 }
 
-void Value::func_val(xpString func_name) {
+void Value::func_val(xpString func_name, CIRInstUniqueKey func_key) {
     actual_value_type = ActualValueType::Function;
     this->func_value.name = func_name;
+    this->func_value.func_key = func_key;
 }
 
 void Value::func_val_key(CIRInstUniqueKey key) {
@@ -205,8 +206,7 @@ Value clone_value(const Value& v, xpAllocator allocator) {
         case ActualValueType::Type:     copy.type_val(v.type_val()); break;
         case ActualValueType::Package:  copy.package_val(v.package_val()); break;
         case ActualValueType::Function: {
-            copy.func_val(v.func_val().name);
-            copy.func_val_key(v.func_val().func_key);
+            copy.func_val(v.func_val().name, v.func_val().func_key);
         } break;
         case ActualValueType::Struct: {
             Array<Value> fields = make_array<Value>(allocator);
@@ -448,10 +448,7 @@ void ValueMemory::free() {
 Pointer ValueMemory::alloc_bytes(isize size, isize align) {
     isize addr = align_up(bytes.count, align);
     isize new_count = addr + size;
-    if (new_count > bytes.capacity) {
-        array_resize(&bytes, new_count);
-    }
-    bytes.count = new_count;
+    bytes.resize(new_count);
 
     Pointer p = Pointer::make(this, addr);
 

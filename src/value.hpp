@@ -110,7 +110,12 @@ public:
     void bool_val(bool bool_val);
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
-    void func_val(xpString func_name);
+    void func_val(xpString func_name, CIRInstUniqueKey func_key);
+    void func_val_key(CIRInstUniqueKey key);
+    void pointer_val(Pointer ptr);
+    void type_val(TypeRef type_ref);
+    void package_val(Package* pkg);
+
 
     i128 integer_val() const;
     float float_val() const;
@@ -120,14 +125,11 @@ public:
     Value struct_field_val(xpString field_name) const;
     Array<Value> array_element_values() const;
     Value array_element_val(isize index) const;
-    void func_val_key(CIRInstUniqueKey key);
-    void pointer_val(Pointer ptr);
     Pointer pointer_val() const;
-    void type_val(TypeRef type_ref);
     TypeRef type_val() const;
-    void package_val(Package* pkg);
     Package* package_val() const;
-
+    FuncValue func_val() const;
+    
 
 
 
@@ -152,9 +154,6 @@ private:
     };
 
 public:
-    FuncValue func_val() const;
-
-
     friend Value clone_value(const Value& v, xpAllocator allocator);
 
     // 提供任意类型的 "零值"

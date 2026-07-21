@@ -37,8 +37,8 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     cir_package.file_ranges = make_array<CIRFileRange>(allocator);
     cir_package.string_literals = make_array<xpString>(allocator);
     cir_package.results = make_array<CIRInstResult>(allocator);
-    cir_package.result_instances = xp_hash_map_make<FuncCallKey, CIRResultInstance>(allocator);
-
+    cir_package.result_instances = xp_hash_map_make<FuncCallKey, CIRResultInstance*>(allocator);
+    cir_package.generic_instance_keys = make_array<FuncCallKey>(allocator);
     return cir_package;
 }
 
@@ -82,19 +82,56 @@ CIRInstructionRef CIRPackage::get_first_inst_ref_in_block(CIRInstructionRef ref)
 CIRResultInstance *CIRPackage::get_result_instance(FuncCallKey key) {
     auto res = xp_hash_map_get(result_instances, key);
     if(res != nullptr) {
-        return res;
+        return *res;
     }
 
-    CIRResultInstance instance = {
+    auto *instance = (CIRResultInstance *)xp_alloc(permanent_allocator(), sizeof(CIRResultInstance));
+    new (instance) CIRResultInstance{
         .results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(permanent_allocator()) // TODO: allocator hardcode
     };
 
-    res = xp_hash_map_insert(&result_instances, key, instance);
-    ASSERT(res != nullptr);
-    
-    return res;
+    xp_hash_map_insert(&result_instances, key, instance);
+
+    return instance;
 }
 
+CIRInstResultRef CIRInstResultRef::make(CIRPackage* pkg, CIRInstructionRef ref,
+                                        std::optional<CIRResultInstance*> ri) {
+    return {pkg, ref, ri};
+}
+
+const CIRInstResult* CIRInstResultRef::get_result() const {
+    if(result_instance.has_value() && result_instance.value()) {
+        return xp_hash_map_get(result_instance.value()->results, inst_ref);
+    }
+    return &cir_package->result_of(inst_ref);
+}
+
+u64 FuncCallKey::hash() const {
+    u64 h = (u64)(usize)func_decl_pc;
+    for(isize i = 0; i < comptime_arg_refs.count; i++) {
+        auto* res = comptime_arg_refs[i].get_result();
+        if(res && res->state >= CIRResultState::WholeValue) {
+            Value v = res->actual_val();
+            if(is_type_type(v.type))
+                h = xp_hash_combine_u64(h, reinterpret_cast<u64>(v.type_val()));
+        }
+    }
+    return h;
+}
+
+bool FuncCallKey::operator==(const FuncCallKey& other) const {
+    if(func_decl_pc != other.func_decl_pc) return false;
+    if(comptime_arg_refs.count != other.comptime_arg_refs.count) return false;
+    for(isize i = 0; i < comptime_arg_refs.count; i++) {
+        auto* ra = comptime_arg_refs[i].get_result();
+        auto* rb = other.comptime_arg_refs[i].get_result();
+        if(!ra || !rb) return false;
+        if(ra->state < CIRResultState::WholeValue || rb->state < CIRResultState::WholeValue) return false;
+        if(ra->actual_val().type_val() != rb->actual_val().type_val()) return false;
+    }
+    return true;
+}
 
 // CIRInstruction::CIRInstruction(const CIRInstruction& other) {
 //     memcpy(static_cast<void*>(this), static_cast<const void*>(&other), sizeof(CIRInstruction));
@@ -238,13 +275,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
 
 
 
-    // 0. 返回类型
-    if(fd->FunctionDeclValue.return_type_ast != nullptr) {
-        func.return_type_inst = build_block_inst_for_expr(fd->FunctionDeclValue.return_type_ast, true, true);
-    } else {
-        func.return_type_inst = INVALID_INST; // void
-    }
-
     // 1. 每个参数：类型 block + 分配 slot
     auto param_decls = make_array<CIRVariableDecl>(stage_allocator());
     for(isize i = 0; i < fd->FunctionDeclValue.params.count; i++) {
@@ -271,6 +301,25 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
     func.body_inst = INVALID_INST;
     auto func_inst = New_Instruction(CIROperator::FunctionDecl, fd);
     Instruction(func_inst).func_decl = func;
+
+    // 0. 返回类型（在 FunctionDecl 之后，so analyze_FunctionDecl can control its evaluation）
+    if(fd->FunctionDeclValue.return_type_ast != nullptr) {
+        func.return_type_inst = build_block_inst_for_expr(fd->FunctionDeclValue.return_type_ast, true, true);
+    } else {
+        auto rt_block = Begin_Block(fd, true, true);
+
+        auto void_const = New_Instruction(CIROperator::ConstantValue, fd);
+        auto val = make_value(type_type());
+        val.type_val(easy_type(Type_void));
+        Instruction(void_const).imm_val = val;
+        
+        New_Break(rt_block, void_const, fd);
+
+        End_Block(rt_block);
+
+        func.return_type_inst = rt_block;
+    }
+    Instruction(func_inst).func_decl.return_type_inst = func.return_type_inst;
 
 
     // TODO: externC特殊处理, 后面完善些, 现在太丑
@@ -652,9 +701,12 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_UnaryExpr: {
-            // ^ptr 左值: 指针值就是地址
+            // ^ptr 左值: 取指针值作为地址，产生左值
             if(expr->UnaryExpr.op == TokenType::Caret) {
-                return build_inst_for_expr(expr->UnaryExpr.operand);
+                auto ptr_val = build_ptr_inst_for_expr(expr->UnaryExpr.operand);
+                auto deref = New_Instruction(CIROperator::Deref, expr);
+                Instruction(deref).deref_info.operand_inst = ptr_val;
+                return deref;
             }
             return build_inst_for_expr(expr);
         } break;
@@ -720,7 +772,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 auto call_inst = New_Instruction(CIROperator::Call, expr);
                 Instruction(call_inst).call_info = {
                     .called_thing = called_thing_inst,
-                    .arg_insts = array_copy(&arg_insts, permanent_allocator()),
+                    .arg_insts = arg_insts.copy(permanent_allocator()),
                 };
 
                 result = call_inst;
@@ -752,8 +804,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // ^ptr: 对指针值 Load
             if(op == TokenType::Caret) {
                 auto ptr_val_inst = build_inst_for_expr(expr->UnaryExpr.operand);
-                auto load = New_Instruction(CIROperator::Load, expr);
-                Instruction(load).load_info.ptr_inst = ptr_val_inst;
+                auto load = New_Instruction(CIROperator::Deref, expr);
+                Instruction(load).deref_info.operand_inst = ptr_val_inst;
                 result = load; break;
             }
 
@@ -813,7 +865,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto init = New_Instruction(CIROperator::StructInit, expr);
             Instruction(init).struct_init_info = {
                 .struct_type_inst = struct_type_inst,
-                .field_init_insts = array_copy(&field_insts, permanent_allocator()),
+                .field_init_insts = field_insts.copy(permanent_allocator()),
             };
             result = init;
         } break;
@@ -836,7 +888,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             auto init = New_Instruction(CIROperator::ArrayInit, expr);
             Instruction(init).array_init_info = {
-                .element_insts = array_copy(&element_insts, permanent_allocator()),
+                .element_insts = element_insts.copy(permanent_allocator()),
             };
             result = init;
         } break;
@@ -952,7 +1004,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto finish = New_Instruction(CIROperator::FinishStruct, expr);
             Instruction(finish).finish_struct_info = {
                 .struct_decl_inst = decl_init,
-                .field_insts = array_copy(&field_insts, permanent_allocator()),
+                .field_insts = field_insts.copy(permanent_allocator()),
             };
             New_Break(struct_decl_block, finish, expr);
             End_Block(struct_decl_block);
@@ -1035,7 +1087,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             result = New_Instruction(CIROperator::FuncType, expr);
             Instruction(result).func_type_info = {
-                .param_type_insts = array_copy(&param_type_insts, permanent_allocator()),
+                .param_type_insts = param_type_insts.copy(permanent_allocator()),
                 .return_type_inst = return_type_inst,
             };
         } break;
@@ -1192,6 +1244,20 @@ bool is_cir_binary_op(TokenType type) {
 bool is_cir_unary_op(TokenType type) {
     // NOTE: 排除解引用和取地址, 因为有专门指令
     return is_unary_op(type) && type != TokenType::Caret && type != TokenType::And;
+}
+
+bool is_pure_comptime_func(CIRFunction& func, CIRPackage& pkg, CIRResultInstance* instance) {
+    CIRInstResult* res;
+    if (instance) {
+        res = xp_hash_map_get(instance->results, func.return_type_inst);
+        if (!res) return false;
+    } else {
+        res = &pkg.results[func.return_type_inst];
+    }
+    if (res->state == CIRResultState::WholeValue) {
+        return res->actual_val().type_val() == type_type();
+    }
+    return false;
 }
 
 

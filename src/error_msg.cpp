@@ -1,4 +1,4 @@
-#include <print>
+﻿#include <print>
 
 #include "error_msg.hpp"
 
@@ -10,7 +10,7 @@ void ErrorReporter::add_error_msg(ErrorLevel level, Span highlight_span, SourceC
     msg.src_code = src_code;
     msg.msg = std::move(formatted_msg); // 直接转移，零拷贝
 
-    array_push_back(&error_msgs, msg);
+    error_msgs.push_back(msg);
 
     if(level == ErrorLevel::Error) {
         error_count += 1;
