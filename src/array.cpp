@@ -18,7 +18,7 @@ void array_push_back_str(Array<u32> *array, const char32_t *str) {
 
     isize i = 0;
     while(str[i] != U'\0') {
-        array_push_back(array, (u32)(str[i++]));
+        array->push_back((u32)(str[i++]));
     }
 }
 

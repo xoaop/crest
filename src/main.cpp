@@ -1,4 +1,4 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <print>
 #include <format>
 #include <chrono>
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 
     // 初始化package搜索路径
     context()->package_search_paths = make_array<xpString>(permanent_allocator());
-    array_push_back(&context()->package_search_paths, xp_make_string(permanent_allocator(), context()->compiler_path.string().c_str()));
+    context()->package_search_paths.push_back(xp_make_string(permanent_allocator(), context()->compiler_path.string().c_str()));
 
 
     context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());

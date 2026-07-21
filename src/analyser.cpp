@@ -140,11 +140,11 @@ void init_global_symbols() {
         Array<StructField> fields = make_array<StructField>(temp_allocator());
         defer(xp_arena_allocator_clear(temp_allocator()));
 
-        array_push_back(&fields, StructField { 
+        fields.push_back(StructField { 
             xp_string_c("data"), 
             pointer_type(easy_type(Type_u8)) 
         });    
-        array_push_back(&fields, StructField { 
+        fields.push_back(StructField { 
             xp_string_c("count"), 
             easy_type(Type_i64) // TODO 考虑改成isize
         });    
@@ -692,18 +692,7 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_StructInitExpr: {
-            resolve_expr2(expr_ast->StructInitExpr.struct_type_ident, analyser);
-
-            SymbolInfo *symbol = (expr_ast->StructInitExpr.struct_type_ident->ast_symbol)();
-
-            if(symbol == NULL) {
-                context()->reporter.report_error(
-                    expr_ast->src_loc,
-                    "try to initialize undefined struct type '{}'",
-                    get_ident_or_fieldaccess_string(expr_ast->StructInitExpr.struct_type_ident, temp_allocator())
-                );
-                break;
-            }
+            resolve_expr(expr_ast->StructInitExpr.struct_type_ident, analyser);
 
             for(isize i = 0; i < expr_ast->StructInitExpr.field_inits.count; i++) {
                 resolve_expr2(expr_ast->StructInitExpr.field_inits[i], analyser);
@@ -784,6 +773,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         case AstType_StructDeclValue: {
             resolve_struct_decl(expr_ast, analyser);
         } break;
+
         case AstType_EnumDecl: {
             resolve_enum_decl(expr_ast, analyser);
         } break;

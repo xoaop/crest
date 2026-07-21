@@ -10,6 +10,7 @@ struct CIRPackage;
 
 void analyze_package(Package *pkg);
 
+using AnalyzeResult = std::tuple<CIRInstResult, CIRInstructionRef>;
 
 enum class EvalMode {
     FullEval,
@@ -54,7 +55,7 @@ struct Interpreter {
     void set_scope(Scope *scope);
 
     void analyze_ConstDecl();
-    void analyze_FunctionDecl();
+    void analyze_FunctionDecl(bool try_to_instantiate = false);
     void analyze_GetOrInitStruct();
     void analyze_StructField();
     void analyze_FinishStruct();
@@ -92,6 +93,7 @@ struct Interpreter {
     void analyze_TypeOfInstResult();
     void analyze_FieldTypeOfStruct();
     void analyze_FuncParamType();
+    void analyze_Deref();
 
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
@@ -134,7 +136,19 @@ struct Interpreter {
         return std::nullopt;
     }
 
-    bool is_pure_comptime_func(CIRFunction& func);
+    bool is_generic_func(CIRPackage *fpkg, CIRFunction& func);
+
+    // === 函数式重构 — 新基础设施 (WIP) ===
+
+    void apply_result(CIRInstructionRef target, const CIRInstResult& result);
+
+    // 新 handler 原型（接受 inst + pc_ref，不依赖 pc() 可变状态）
+    // 返回 AnalyzeResult = (result, target) → dispatch 自动 apply + pc++
+    // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
+    std::optional<AnalyzeResult> handler_ConstantValue(CIRInstruction* inst, CIRInstructionRef pc_ref);
+    std::optional<AnalyzeResult> handler_PointerType(CIRInstruction* inst, CIRInstructionRef pc_ref);
+    std::optional<AnalyzeResult> handler_Load(CIRInstruction* inst, CIRInstructionRef pc_ref);
+    std::optional<AnalyzeResult> handler_Deref(CIRInstruction* inst, CIRInstructionRef pc_ref);
 
 public:
 

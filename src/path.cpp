@@ -1,4 +1,4 @@
-#include "path.hpp"
+﻿#include "path.hpp"
 
 #include <filesystem>
 
@@ -23,7 +23,7 @@ Array<xpString> scan_crest_files(const char *dir_path, xpAllocator allocator) {
     for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
         if (entry.is_regular_file() && entry.path().extension() == ".cst") {
             xpString file_path = xp_make_string_capacity(allocator, entry.path().string().c_str(), (isize)entry.path().string().length());
-            array_push_back(&crest_files, file_path);
+            crest_files.push_back(file_path);
         }
     }
 

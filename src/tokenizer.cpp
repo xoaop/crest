@@ -1,4 +1,4 @@
-///
+﻿///
 // TODO: UTF-8: 目前还不支持utf-8中非ascii字符当作一个character, 
 // 会导致中文后面的token的位置信息不正确(中文占不止一个character, 但编辑器里是当作一个位置的), 
 // eg: 
@@ -116,7 +116,7 @@ Array<Token> tokenize(SourceCode *src_code) {
             if(token.type == TokenType::CommentLine) {
                 // 注释行不加入token数组
             } else {
-                array_push_back(&t.token_array, token);
+                t.token_array.push_back(token);
             }
             
         }
@@ -131,7 +131,7 @@ Array<Token> tokenize(SourceCode *src_code) {
             end.src_loc = SourceLocation(*t.source_code, make_span(t.source_code->code_string.length, t.source_code->code_string.length));
 
 
-            array_push_back(&t.token_array, end);
+            t.token_array.push_back(end);
             break;
         }
     }

@@ -1,4 +1,4 @@
-#include <cfloat>
+﻿#include <cfloat>
 #include <atomic>
 
 #include "type.hpp"
@@ -117,14 +117,14 @@ Type copy_type(Type *src) {
 
     switch(src->kind) {
     case Type_function: {
-        t.function_info.param_types = array_copy(&src->function_info.param_types, type_allocator());
+        t.function_info.param_types = src->function_info.param_types.copy(type_allocator());
         t.function_info.return_type = src->function_info.return_type;
     } break;
     case Type_pointer: {
         t.pointed_type = src->pointed_type;
     } break;
     case Type_struct: {
-        t.struct_info.struct_fields = array_copy(&src->struct_info.struct_fields, type_allocator());
+        t.struct_info.struct_fields = src->struct_info.struct_fields.copy(type_allocator());
         t.struct_info.hash_key = src->struct_info.hash_key.clone(type_allocator());
     } break;
 
@@ -918,11 +918,11 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
 
 
 
-    array_push_back(&fields, StructField { 
+    fields.push_back(StructField { 
         xp_make_string(type_allocator(), "data"), 
         pointer_type(elem_type) 
     });
-    array_push_back(&fields, StructField { 
+    fields.push_back(StructField { 
         xp_make_string(type_allocator(), "count"), 
         easy_type(Type_i64) 
     });

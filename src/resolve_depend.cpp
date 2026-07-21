@@ -1,4 +1,4 @@
-#include "resolve_depend.hpp"
+﻿#include "resolve_depend.hpp"
 
 #include <filesystem>
 #include <print>
@@ -56,7 +56,7 @@ AstFile tokenize_and_parse_file(const char *path) {
 void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages) {
     for(Ast *top_level: ast_file.top_levels) {
         if(top_level->type == AstType_ConstDecl && top_level->ConstDecl.value_ast->type == AstType_Import) {
-            array_push_back(imported_packages, top_level->ConstDecl.value_ast);
+            imported_packages->push_back(top_level->ConstDecl.value_ast);
         }
     }
 }
@@ -122,7 +122,7 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
                 continue;
             }
 
-            array_push_back(&abs_paths, resolved.unwrap());
+            abs_paths.push_back(resolved.unwrap());
         }
 
 
@@ -148,7 +148,7 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
                 // 保证被依赖的包总是出现在依赖它的包之前
                 xp_hash_map_insert(&package_states, imported_package.path, PackageState::Unresolved);
                 resolve_packages_from_imports(imported_package, package_states, all_packages);
-                array_push_back(&all_packages, imported_package);
+                all_packages.push_back(imported_package);
             } else {
                 PackageState state = *state_of_imported_package;
                 
@@ -203,16 +203,16 @@ Array<Package> resolve_dependencies(xpString main_path) {
         
         main_package = make_package(parent_dir_path, permanent_allocator());
         AstFile main_file = tokenize_and_parse_file(main_path.c_str);
-        array_push_back(&main_package.ast_files, main_file);
+        main_package.ast_files.push_back(main_file);
     }
 
 
     xp_hash_map_insert(&package_state_map, main_package.path, PackageState::Unresolved);
 
-    array_push_back(&context()->package_search_paths, main_package.path);
+    context()->package_search_paths.push_back(main_package.path);
 
     resolve_packages_from_imports(main_package, package_state_map, packages);
-    array_push_back(&packages, main_package);  // 后序：所有依赖包处理完后再加入
+    packages.push_back(main_package);  // 后序：所有依赖包处理完后再加入
 
 
     return packages;
@@ -237,7 +237,7 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
         xpString crest_file_path = crest_files[i];
         AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
 
-        array_push_back(&package.ast_files, ast_file);
+        package.ast_files.push_back(ast_file);
     }
 
     return package;
@@ -253,7 +253,7 @@ Array<xpString> from_relative_to_absolute_import_paths(xpString base_path, Array
     for(isize i = 0; i < relative_import_paths.count; i++) {
         xpString relative_path = relative_import_paths[i];
         xpString absolute_path = concat_path(base_path, relative_path, permanent_allocator());
-        array_push_back(&absolute_import_paths, absolute_path);
+        absolute_import_paths.push_back(absolute_path);
     }
 
     return absolute_import_paths;

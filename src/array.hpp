@@ -2,10 +2,64 @@
 #define XOAOP_ARRAY_H
 
 #include "xoaop.h"
+#include <type_traits>
 #include <utility>
 
-#define ARRAY_NEW_CAPACITY(old) (cast(isize) (old + old / 2 + 1))
 
+
+
+template<typename T>
+struct ArrayRef {
+    T *data;
+    isize count;
+
+    T& operator[](isize index) {
+        XP_ASSERT(index >= 0 && index < count);
+        return data[index];
+    }
+
+    const T& operator[](isize index) const {
+        XP_ASSERT(index >= 0 && index < count);
+        return data[index];
+    }
+
+    T *begin() { 
+        return data; 
+    }
+
+    T *end() { 
+        return data + count; 
+    }
+
+    const T *begin() const { 
+        return data; 
+    }
+    
+    const T *end() const { 
+        return data + count; 
+    }
+
+    ArrayRef<T> slice(isize start) const {
+        XP_ASSERT(start >= 0 && start <= count);
+        return {data + start, count - start};
+    }
+
+    ArrayRef<T> slice(isize start, isize n) const {
+        XP_ASSERT(start >= 0 && start + n <= count);
+        return {data + start, n};
+    }
+};
+
+
+template<typename T>
+ArrayRef<T> array_ref(T *data, isize count) {
+    return {data, count};
+}
+
+template<typename T>
+ArrayRef<const T> array_ref(const T *data, isize count) {
+    return {data, count};
+}
 
 /*
     Array
@@ -38,33 +92,143 @@ struct Array {
 
 
 
-    void push_back(T elem) {
-        array_push_back(this, elem);
+    template<typename... Args>
+    T *emplace_back(Args&&... args) {
+        resize(count + 1);
+        data[count - 1].~T();
+        new (&data[count - 1]) T(std::forward<Args>(args)...);
+        return &data[count - 1];
     }
 
-    void pop_back() {
-        array_pop_back(this);
+    T *push_back(T elem) {
+        resize(count + 1);
+        data[count - 1] = std::move(elem);
+        return &data[count - 1];
+    }
+
+    ArrayRef<T> push_back(T *elems, isize n) {
+        for(isize i = 0; i < n; i++) {
+            push_back(elems[i]);
+        }
+        return {data + count - n, n};
+    }
+
+    T pop_back() {
+        XP_ASSERT_DEFAULT(count > 0);
+        T p = std::move(data[count - 1]);
+        data[count - 1].~T();
+        count -= 1;
+        return p;
     }
 
     void resize(isize new_count) {
-        if(new_count > count) {
-            if(new_count > capacity) {
-                array_resize(this, new_count);
+        // 扩容
+        if(new_count > capacity) {
+            T* nd = cast(T*)xp_alloc(allocator, new_count * sizeof(T));
+            if(data != NULL) {
+                for(isize i = 0; i < count; i++) {
+                    new(&nd[i]) T(std::move(data[i]));
+                    data[i].~T();
+                }
+                xp_free(allocator, data);
             }
+            data = nd;
+            capacity = new_count;
+        }
+
+        // 缩容：析构多余元素
+        for(isize i = new_count; i < count; i++) {
+            data[i].~T();
+        }
+
+        // 扩增：默认构造新元素
+        if constexpr (std::is_default_constructible_v<T>) {
             for(isize i = count; i < new_count; i++) {
                 new (&data[i]) T();
             }
-        } else {
-            for(isize i = new_count; i < count; i++) {
-                data[i].~T();
-            }
         }
+
         count = new_count;
     }
 
 
     void clear() {
-        array_clear(this);
+        for (isize i = 0; i < count; i++) {
+            data[i].~T();
+        }
+        count = 0;
+    }
+
+    Array<T>* insert(isize index, T elem) {
+        XP_ASSERT_DEFAULT(index >= 0 && index <= count);
+        resize(count + 1);
+        for (isize i = count - 1; i > index; i--) {
+            data[i] = std::move(data[i-1]);
+        }
+        data[index] = std::move(elem);
+        return this;
+    }
+
+    Array<T>* insert(isize index, T *elems, isize n) {
+        isize old_count = count;
+        resize(old_count + n);
+        for (isize i = old_count - 1; i >= index; i--) {
+            data[i + n] = std::move(data[i]);
+        }
+        for (isize i = 0; i < n; i++) {
+            data[index + i] = elems[i];
+        }
+        return this;
+    }
+
+    T rm(isize index) {
+        XP_ASSERT_DEFAULT(index >= 0 && index < count);
+        T r = std::move(data[index]);
+        data[index].~T();
+        for (isize i = index; i < count - 1; i++) {
+            new (&data[i]) T(std::move(data[i+1]));
+            data[i+1].~T();
+        }
+        count -= 1;
+        return r;
+    }
+
+    T rm_f(isize index) {
+        XP_ASSERT_DEFAULT(index >= 0 && index < count);
+        T r = std::move(data[index]);
+        data[index].~T();
+        if(count > 1 && index != count - 1) {
+            new (&data[index]) T(std::move(data[count - 1]));
+            data[count - 1].~T();
+        }
+        count -= 1;
+        return r;
+    }
+
+    isize find_next_index(T elem) {
+        for(isize i = 0; i < count; i++) {
+            if(data[i] == elem) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    Array<T> copy(xpAllocator allocator) const {
+        Array<T> new_array = make_array<T>(allocator);
+        for(isize i = 0; i < count; i++) {
+            new_array.push_back(data[i]);
+        }
+        return new_array;
+    }
+
+    Array<T> cut(xpAllocator allocator, isize start) const {
+        XP_ASSERT_DEFAULT(start < count);
+        Array<T> new_array = make_array<T>(allocator);
+        for(isize i = start; i < count; i++) {
+            new_array.push_back(data[i]);
+        }
+        return new_array;
     }
 
 
@@ -100,6 +264,17 @@ struct Array {
 };
 
 
+template<typename T>
+ArrayRef<T> array_ref(Array<T> &array) {
+    return {array.data, array.count};
+}
+
+template<typename T>
+ArrayRef<const T> array_ref(const Array<T> &array) {
+    return {array.data, array.count};
+}
+
+
 
 template<typename T>
 Array<T> make_array(xpAllocator allocator) {
@@ -115,11 +290,7 @@ Array<T> make_array(xpAllocator allocator) {
 template<typename T>
 Array<T> make_array_count(xpAllocator allocator, isize len) {
     Array<T> array = make_array<T>(allocator);
-
-    array.data = (T*)xp_alloc(allocator, len * sizeof(T));
-    array.count = len;
-    array.capacity = len;
-
+    array.resize(len);
     return array;
 }
 
@@ -137,203 +308,13 @@ Array<T> make_array_capacity(xpAllocator allocator, isize capacity) {
 
 template<typename T>
 void array_free(Array<T>* array) {
-    array_clear(array); // 先析构所有元素
+    array->clear();
     xp_free(array->allocator, array->data);
 
     array->data = NULL;
     array->count = 0;
     array->capacity = 0;
 }
-
-
-template<typename T>
-Array<T> array_copy(Array<T>* src, xpAllocator allocator) {
-    Array<T> new_array = make_array<T>(allocator);
-
-    for(isize i = 0; i < src->count; i++) {
-        array_push_back(&new_array, src->data[i]);
-    }
-
-    return new_array;
-}
-
-
-template<typename T>
-Array<T>* array_resize(Array<T>* array, isize new_capacity) {
-    if(array->capacity >= new_capacity) {
-        // 缩容时析构多余元素
-        if(new_capacity < array->count) {
-            for (isize i = new_capacity; i < array->count; i++) {
-                array->data[i].~T();
-            }
-            array->count = new_capacity;
-        }
-        return array;
-    }
-
-    T* new_data = cast(T*)xp_alloc(array->allocator, new_capacity * sizeof(T));
-
-    // 移动原有元素到新内存
-    if(array->data != NULL) {
-        for (isize i = 0; i < array->count; i++) {
-            new (&new_data[i]) T(std::move(array->data[i]));
-            array->data[i].~T();
-        }
-        xp_free(array->allocator, array->data);
-    }
-
-    array->data = new_data;
-    array->capacity = new_capacity;
-
-    return array;
-}
-
-template<typename T>
-T *array_push_back(Array<T> *array, T elem) {
-    if(array->count == array->capacity) {
-        array_resize(array, ARRAY_NEW_CAPACITY(array->capacity));
-    }
-
-    new (&array->data[array->count]) T(std::move(elem)); // 构造元素
-    array->count += 1;
-
-    return &array->data[array->count - 1];
-}
-
-template<typename T>
-T array_pop_back(Array<T> *array) {
-    XP_ASSERT_DEFAULT(array->count > 0);
-
-    T p = std::move(array->data[array->count - 1]); // 移动元素
-    array->data[array->count - 1].~T(); // 析构原位置
-    array->count -= 1;
-    return p;
-}
-
-
-template<typename T>
-Array<T>* array_push_back(Array<T> *array, T *elems, isize count) {
-    for(isize i = 0; i < count; i++) {
-        array_push_back(array, elems[i]);
-    }
-
-    return array;
-}
-
-
-template<typename T>
-Array<T>* array_insert(Array<T> *array, isize index, T elem) {
-    XP_ASSERT_DEFAULT(index >= 0 && index <= array->count);
-
-    if(array->count == array->capacity) {
-        array_resize(array, ARRAY_NEW_CAPACITY(array->capacity));
-    }
-
-    // 从后往前移动元素，避免覆盖
-    for (isize i = array->count; i > index; i--) {
-        new (&array->data[i]) T(std::move(array->data[i-1]));
-        array->data[i-1].~T();
-    }
-
-    new (&array->data[index]) T(std::move(elem)); // 构造新元素
-    array->count += 1;
-    return array;
-}
-
-// !TEST
-template<typename T>
-Array<T>* array_insert(Array<T> *array, isize index, T *elems, isize count) {
-    if(array->count + count > array->capacity) { // 修复：容量不足时才扩容
-        array_resize(array, ARRAY_NEW_CAPACITY(array->capacity) + count); // NOTE: + count 防止新容量不够大
-    }
-
-    // 先移动后面的元素腾出空间
-    for (isize i = array->count + count - 1; i >= index + count; i--) {
-        new (&array->data[i]) T(std::move(array->data[i - count]));
-        array->data[i - count].~T();
-    }
-
-    // 逐个构造新元素
-    for (isize i = 0; i < count; i++) {
-        new (&array->data[index + i]) T(elems[i]);
-    }
-
-    array->count += count;
-
-    return array;
-}
-
-
-template<typename T>
-T array_rm(Array<T> *array, isize index) {
-    XP_ASSERT_DEFAULT(index >= 0 && index < array->count);
-
-    T rm = std::move(array->data[index]); // 移动要返回的元素
-    array->data[index].~T(); // 析构被删除的元素
-
-    // 往前移动后面的元素
-    for (isize i = index; i < array->count - 1; i++) {
-        new (&array->data[i]) T(std::move(array->data[i+1]));
-        array->data[i+1].~T();
-    }
-
-    array->count -= 1;
-    return rm;
-}
-
-
-// NOTE(xoaop): 这个不考虑元素顺序
-template<typename T>
-T array_rm_f(Array<T> *array, isize index) {
-    XP_ASSERT_DEFAULT(index >= 0 && index < array->count);
-
-    T rm = std::move(array->data[index]); // 移动要返回的元素
-    array->data[index].~T(); // 析构被删除的元素
-
-    // 如果不是最后一个元素，把最后一个元素移过来
-    if(array->count > 1 && index != array->count - 1) {
-        new (&array->data[index]) T(std::move(array->data[array->count - 1]));
-        array->data[array->count - 1].~T();
-    }
-
-    array->count -= 1;
-    return rm;
-}
-
-template<typename T>
-void array_clear(Array<T> *array) {
-    for (isize i = 0; i < array->count; i++) {
-        array->data[i].~T();
-    }
-    array->count = 0;
-    return;
-}
-
-template<typename T>
-isize array_find_next_index(Array<T> *array, T elem) {
-    for(isize i = 0; i < array->count; i++) {
-        if(array->data[i] == elem) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-
-template<typename T>
-Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {
-    XP_ASSERT_DEFAULT(start < array->count);
-
-    Array<T> new_array = make_array<T>(allocator);
-
-    for(isize i = start; i < array->count; i++) {
-        array_push_back(&new_array, array->data[i]);
-    }
-
-    return new_array;
-}
-
 
 
 //
@@ -343,9 +324,12 @@ Array<T> array_cut(xpAllocator allocator, Array<T> *array, isize start) {
 // 注意：仅适用于平凡可构造类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 Array<T> make_array_as_buffer(xpAllocator allocator, isize len) {
-    Array<T> array = make_array_count<T>(allocator, len);
+    static_assert(std::is_trivially_default_constructible_v<T>,
+                  "make_array_as_buffer only supports trivially default-constructible types (POD)");
+    Array<T> array = make_array<T>(allocator);
+    array.data = (T*)xp_alloc(allocator, len * sizeof(T));
     array.count = len;
-
+    array.capacity = len;
     return array;
 }
 

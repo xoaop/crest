@@ -1,4 +1,4 @@
-
+﻿
 #include "parser.hpp"
 
 #include "path.hpp"
@@ -82,7 +82,7 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
             break;
         }
 
-        array_push_back(&p.top_levels, parse_stmt(&p));
+        p.top_levels.push_back(parse_stmt(&p));
     }
 
     #ifdef CREST_DEBUG
@@ -149,7 +149,7 @@ Ast *parse_enum_decl(Parser *p) {
             field = parse_ident(p);
         }
         
-        array_push_back(&fields, field);
+        fields.push_back(field);
         expect(p, TokenType::Semicolon);
     }
 
@@ -185,7 +185,7 @@ Ast *parse_union_decl(Parser *p) {
         field_ast->StructField.name = field_name_token.token_str;
         field_ast->StructField.type_ast = type_ast;
         field_ast->src_loc = merge(field_name_token.src_loc, type_ast->src_loc);
-        array_push_back(&field_types, field_ast);
+        field_types.push_back(field_ast);
 
         expect(p, TokenType::Semicolon);
     }
@@ -220,7 +220,7 @@ Ast *parse_struct_decl(Parser *p) {
         field_ast->StructField.name = field_name_token.token_str;
         field_ast->StructField.type_ast = type_ast;
         field_ast->src_loc = merge(field_name_token.src_loc, type_ast->src_loc);
-        array_push_back(&field_types, field_ast);
+        field_types.push_back(field_ast);
 
         expect(p, TokenType::Semicolon);
     }
@@ -263,7 +263,7 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
             param_ast->ParamDecl.name = dots_token.token_str;
             param_ast->ParamDecl.type_ast = nullptr;
             param_ast->ParamDecl.is_var_arg = true;
-            array_push_back(&out_params, param_ast);
+            out_params.push_back(param_ast);
             out_must_be_c_fn = true;
             break;
         }
@@ -286,11 +286,11 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
             param_ast->ParamDecl.is_comptime = is_comptime;
             param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
 
-            array_push_back(&out_params, param_ast);
+            out_params.push_back(param_ast);
         } else {
             Ast *param_type_ast = parse_type(p);
 
-            array_push_back(&out_params, param_type_ast);
+            out_params.push_back(param_type_ast);
         }
 
         if(curr_token(p).type != TokenType::RightBracket) {
@@ -377,7 +377,7 @@ Ast *parse_function_value_or_type(Parser *p) {
 
     Array<Ast *> param_types = make_array<Ast *>(ast_allocator());
     for(isize i = 0; i < params.count; i++) {
-        array_push_back(&param_types, params[i]->ParamDecl.type_ast);
+        param_types.push_back(params[i]->ParamDecl.type_ast);
     }
 
     SourceLocation loc = merge(rb.src_loc, return_type_ast->src_loc);
@@ -640,7 +640,7 @@ Ast *parse_block(Parser *p) {
 
 
     while (curr_token(p).type != TokenType::RightCurlyBracket && !reach_end(p)) {
-        array_push_back(&stmts, parse_stmt(p));
+        stmts.push_back(parse_stmt(p));
     }
     a->Block.statements = stmts;
     a->Block.is_function_body = false; // NOTE: 默认不是函数体, 函数部分需要单独设置
@@ -668,7 +668,7 @@ Ast *parse_if(Parser *p) {
         if(curr_token(p).type == TokenType::KW_if) {
             a->IfStmt.else_block = ast_alloc(AstType_Block, curr_token(p)); // 虚拟的Block节点, 只是为了else if的情况, 让else if的条件和then块都成为这个Block节点的子节点, 这样就能统一else if和else的处理了
             a->IfStmt.else_block->Block.statements = make_array<Ast *>(ast_allocator());
-            array_push_back(&a->IfStmt.else_block->Block.statements, parse_if(p));
+            a->IfStmt.else_block->Block.statements.push_back(parse_if(p));
 
             a->IfStmt.else_block->src_loc = a->IfStmt.else_block->Block.statements[0]->src_loc;
         } else {
@@ -1145,7 +1145,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
                 }
 
                 Ast *arg = parse_expr(p, 0);
-                array_push_back(&a->FunctionCallExpr.args, arg);
+                a->FunctionCallExpr.args.push_back(arg);
 
                 if(curr_token(p).type != TokenType::RightBracket) {
                     expect(p, TokenType::Comma);
@@ -1180,7 +1180,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
 
                     Ast *field_init_expr = parse_expr(p, 0);
                     
-                    array_push_back(&a->StructInitExpr.field_inits, field_init_expr);
+                    a->StructInitExpr.field_inits.push_back(field_init_expr);
 
                     if(curr_token(p).type != TokenType::RightCurlyBracket) {
                         expect(p, TokenType::Comma);
@@ -1427,7 +1427,7 @@ Ast *parse_array_init_expr(Parser *p) {
 
         Ast *element_expr = parse_expr(p, 0);
 
-        array_push_back(&a->ArrayInitExpr.elements, element_expr);
+        a->ArrayInitExpr.elements.push_back(element_expr);
 
         if(curr_token(p).type != TokenType::RightCurlyBracket) {
             expect(p, TokenType::Comma);

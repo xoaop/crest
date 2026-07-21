@@ -1,4 +1,4 @@
-#include "source_code.hpp"
+﻿#include "source_code.hpp"
 
 SourceCode make_source_code(xpString file_path, xpString code_string, Array<isize> line_start_indices) {
     SourceCode source_code;
@@ -16,10 +16,10 @@ SourceCode make_source_code(xpString file_path, xpString code_string, xpAllocato
 
     // 计算行起始位置
     BytePos count = cast(BytePos) code_string.length;
-    array_push_back(&source_code.line_start_indices, cast(BytePos)0); // 第一行起始位置是0
+    source_code.line_start_indices.push_back(cast(BytePos)0); // 第一行起始位置是0
     for(BytePos i = 0; i < count; i++) {
         if(code_string.c_str[i] == '\n') {
-            array_push_back(&source_code.line_start_indices, i + 1); // 下一行的起始位置是当前字符的下一个位置
+            source_code.line_start_indices.push_back(i + 1); // 下一行的起始位置是当前字符的下一个位置
         }
     }
 

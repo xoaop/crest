@@ -1,4 +1,4 @@
-#include "scope.hpp"
+﻿#include "scope.hpp"
 #include "cir_builder.hpp"
 #include "type.hpp"
 
@@ -67,7 +67,7 @@ void add_sub_scope(Scope *parent, Scope *child, Ast *owner_ast) {
         xp_hash_map_insert(&parent->ast_to_scope, owner_ast, child);
     }
 
-    array_push_back(&parent->children, child);
+    parent->children.push_back(child);
 }
 
 void free_scope(Scope *scope) {

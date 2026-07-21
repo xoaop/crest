@@ -108,6 +108,7 @@ struct CIRBlock {
     X(CondBr) \
     X(Break) \
     X(Load) \
+    X(Deref) \
     X(Store) \
     X(IdentRef) \
     X(IdentVal) \
@@ -156,19 +157,50 @@ enum class CIRValueKind : u8 {
 struct CIRInstResult {
     CIRResultState state = CIRResultState::NothingYet;
     CIRValueKind value_kind = CIRValueKind::RValue;
-    
-    
+
+
     std::optional<TypeRef> implicit_type = std::nullopt;
+
+    static CIRInstResult make_value(TypeRef t, Value v, CIRValueKind vk = CIRValueKind::RValue) {
+        CIRInstResult r;
+        r.state = CIRResultState::WholeValue;
+        r.outstanding_type = t;
+        r.val = v;
+        r.value_kind = vk;
+        return r;
+    }
+
+    static CIRInstResult make_value(Value v) {
+        CIRInstResult r;
+        r.state = CIRResultState::WholeValue;
+        r.outstanding_type = v.type;
+        r.val = v;
+        r.value_kind = CIRValueKind::RValue;
+        return r;
+    }
+
+    static CIRInstResult make_type_only(TypeRef t) {
+        CIRInstResult r;
+        r.state = CIRResultState::OnlyType;
+        r.outstanding_type = t;
+        return r;
+    }
+
     
-    
+    static CIRInstResult make_error() {
+        CIRInstResult r;
+        r.state = CIRResultState::Error;
+        return r;
+    }
+
     TypeRef type() const;
     TypeRef actual_type() const;
     Value actual_val() const;
-    
+
     void set_type(TypeRef new_type);
     void set_actual_type(TypeRef new_type);
     void set_val(Value new_val);
-    
+
 private:
     Value val;
     TypeRef outstanding_type = nullptr;
@@ -340,6 +372,10 @@ struct CIRInstruction {
             Array<CIRInstructionRef> param_type_insts;
             CIRInstructionRef return_type_inst;
         } func_type_info;
+
+        struct {
+            CIRInstructionRef operand_inst;
+        } deref_info;
     };
 
 
@@ -368,12 +404,12 @@ struct CIRPackage {
     
     Array<xpString>           string_literals;
     
-    Array<std::tuple<CIRInstructionRef, SymbolInfo*, Scope*>> all_func_inst_sym_scopes; // 所有函数实例对应的符号和作用域，供llvmcodegen使用
-    
 
     // xpHashMap<FuncCallKey, Value> comptime_cache;
     Array<CIRInstResult>      results;
-    xpHashMap<FuncCallKey, CIRResultInstance> result_instances;
+    // 存指针：EvalInstance 会跨嵌套调用持有 CIRResultInstance*，map 扩容 rehash 不能使其失效
+    xpHashMap<FuncCallKey, CIRResultInstance*> result_instances;
+    Array<FuncCallKey> generic_instance_keys;
 
 
     CIRInstruction* inst(CIRInstructionRef ref);
@@ -469,5 +505,6 @@ public:
 bool is_cir_binary_op(TokenType type);
 bool is_cir_unary_op(TokenType type);
 
+bool is_pure_comptime_func(CIRFunction& func, CIRPackage& pkg, CIRResultInstance* instance = nullptr);
 
 void dump_cir_package(CIRPackage *file);
