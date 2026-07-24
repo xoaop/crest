@@ -68,6 +68,8 @@ ErrorReporter make_error_reporter(xpAllocator allocator);
     #include <print>
     #include <source_location>
 
+    inline bool g_trace_enabled = false;
+
     template <typename... Args>
     inline void debug_impl(
         const char *tag,
@@ -80,9 +82,9 @@ ErrorReporter make_error_reporter(xpAllocator allocator);
     }
 
     #define DEBUG_LOG(fmt, ...)  \
-        ::debug_impl("DEBUG", std::source_location::current(), fmt, ##__VA_ARGS__)
+        do { if(::g_trace_enabled) ::debug_impl("DEBUG", std::source_location::current(), fmt, ##__VA_ARGS__); } while(0)
     #define DEBUG_TRACE(fmt, ...) \
-        ::debug_impl("TRACE", std::source_location::current(), fmt, ##__VA_ARGS__)
+        do { if(::g_trace_enabled) ::debug_impl("TRACE", std::source_location::current(), fmt, ##__VA_ARGS__); } while(0)
 
     #define DEBUG_PANIC(fmt, ...) \
         do { \

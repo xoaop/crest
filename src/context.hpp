@@ -14,6 +14,8 @@ struct Context {
     std::filesystem::path compiler_path;
     std::filesystem::path current_working_directory;
     std::filesystem::path output_path;
+    bool cir_dump = false;
+    bool scope_dump = false;
 
 
     xpString main_src_dir_path;

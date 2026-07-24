@@ -47,11 +47,11 @@ struct CIRInstruction;
 
 
 struct CIRFunction {
-    xpString name;                      // 函数名（symbol_find / call 目标）
-    SymbolInfoRef symbol;
+    // xpString name;                      // 函数名（symbol_find / call 目标）
+    // SymbolInfoRef symbol;
 
     CIRInstructionRef body_inst;
-    CIRInstructionRef return_type_inst;    // 返回类型 block 引用（void 时为 INVALID_INST）
+    CIRInstructionRef return_type_inst; // 返回类型 block 引用, nullopt 表示返回类型由返回值推导
     // Array<CIRVariableDecl> args;           // 参数名 + slot + is_var_arg
     Array<CIRInstructionRef> arg_type_insts; // 每个参数的类型 block 引用（与 args 平行，var_arg 为 INVALID_INST）
     Array<CIRInstructionRef> arg_decl_insts; // 每个参数的 VariableDecl 指令引用
@@ -61,7 +61,6 @@ struct CIRFunction {
 
 
     isize slot_count;               // 局部变量数量（包括参数）
-    isize stack_byte_size;
 };
 
 
@@ -319,8 +318,6 @@ struct CIRInstruction {
 
         struct {
             Ast *decl_ast;
-            SymbolInfoRef symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
-            SymbolInfo *self_sym;   // Self 符号，壳子创建后立即绑定
         } get_or_init_struct_info;
 
         struct {
@@ -391,6 +388,8 @@ struct CIRFileRange {
     Scope *file_scope;
 };
 
+
+// TODO: 把指针换成更清晰的引用处理结构
 struct CIRResultInstance {
     xpHashMap<CIRInstructionRef, CIRInstResult> results;
 };
@@ -405,22 +404,18 @@ struct CIRPackage {
     Array<xpString>           string_literals;
     
 
-    // xpHashMap<FuncCallKey, Value> comptime_cache;
     Array<CIRInstResult>      results;
-    // 存指针：EvalInstance 会跨嵌套调用持有 CIRResultInstance*，map 扩容 rehash 不能使其失效
     xpHashMap<FuncCallKey, CIRResultInstance*> result_instances;
-    Array<FuncCallKey> generic_instance_keys;
+    Array<FuncCallKey> comptime_func_calls;
 
 
     CIRInstruction* inst(CIRInstructionRef ref);
     const CIRInstruction* inst(CIRInstructionRef ref) const;
-    CIRInstResult& result_of(CIRInstructionRef ref);
     Scope *scope_for_pc(CIRInstructionRef pc) const;
-
-    CIRInstructionRef get_first_inst_ref_in_block(CIRInstructionRef ref);
 
     CIRResultInstance *get_result_instance(FuncCallKey key);
 
+    CIRInstResult& result_of(CIRInstructionRef ref, std::optional<CIRResultInstance*> instance = std::nullopt);
 };
 
 CIRPackage make_cir_package(xpAllocator allocator);
@@ -428,7 +423,27 @@ CIRPackage make_cir_package(xpAllocator allocator);
 
 
 
+struct CIRResultContext {
+public:
+    static CIRResultContext create(CIRPackage *pkg);
 
+    CIRPackage *pkg() const { return _pkg; }
+    void set_pkg(CIRPackage *new_pkg) { _pkg = new_pkg; }
+
+    void enter_call(FuncCallKey key);
+    void enter_call_instance(CIRResultInstance *instance);
+    void exit_call();
+    bool in_call() const { return _call_instance != nullptr; }
+    CIRResultInstance *call_instance() const { return _call_instance; }
+    const FuncCallKey &call_key() const;
+
+    CIRInstResult &result_of(CIRInstructionRef ref) const;
+
+private:
+    CIRPackage *_pkg = nullptr;
+    CIRResultInstance *_call_instance = nullptr;
+    std::optional<FuncCallKey> _call_key;
+};
 
 
 
@@ -454,7 +469,7 @@ struct CIRBuilder {
     void build_cir_package(Package *pkg);
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
-    CIRInstructionRef build_func_decl(xpString name, SymbolInfoRef func_sym, Ast *fd);
+    CIRInstructionRef build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym);
     CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block);
     CIRInstructionRef build_inst_for_stmt(Ast *stmt);
     CIRInstructionRef build_inst_for_expr(Ast *expr);
@@ -505,6 +520,6 @@ public:
 bool is_cir_binary_op(TokenType type);
 bool is_cir_unary_op(TokenType type);
 
-bool is_pure_comptime_func(CIRFunction& func, CIRPackage& pkg, CIRResultInstance* instance = nullptr);
+bool is_pure_comptime_func(CIRFunction& func, const CIRResultContext& ctx);
 
 void dump_cir_package(CIRPackage *file);
