@@ -264,6 +264,8 @@ bool is_basic_type_kind(TypeKind kind) {
     case Type_u8:
     case Type_u32:
     case Type_u64:
+    case Type_isize:
+    case Type_usize:
     case Type_f32:
     case Type_f64:
     case Type_bool:
@@ -307,6 +309,8 @@ bool is_integer_type(TypeRef type) {
     case Type_u8:
     case Type_u32:
     case Type_u64:
+    case Type_isize:
+    case Type_usize:
         return true;
     default:
         return false;
@@ -328,6 +332,7 @@ bool is_signed_type(TypeRef type) {
     case Type_i8:
     case Type_i32:
     case Type_i64:
+    case Type_isize:
         return true;
     default:
         return false;
@@ -340,6 +345,7 @@ bool is_signed_or_bool_type(TypeRef type) {
     case Type_i8:
     case Type_i32:
     case Type_i64:
+    case Type_isize:
     case Type_bool:
         return true;
     default:
@@ -353,6 +359,7 @@ bool is_unsigned_type(TypeRef type) {
     case Type_u8:
     case Type_u32:
     case Type_u64:
+    case Type_usize:
 
         return true;
     default:
@@ -374,9 +381,11 @@ bool is_certain_type(TypeRef type) {
         case Type_i8: 
         case Type_i32:
         case Type_i64:
+        case Type_isize:
         case Type_u8:
         case Type_u32:
         case Type_u64:
+        case Type_usize:
         case Type_f32:
         case Type_f64:
         case Type_bool:
@@ -503,6 +512,9 @@ int get_type_rank(TypeRef t) {
         case Type_i64: case Type_u64: return 64;
         case Type_f32: return 32;
         case Type_f64: return 64;
+
+        case Type_isize:
+        case Type_usize: return (int)(sizeof(void*) * 8);
         default: 
             UNREACHABLE();
             return 0;
@@ -554,6 +566,12 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
         case Type_u64:
             overflowed = (result < 0 || result > UINT64_MAX);
             break;
+        case Type_isize:
+            overflowed = (result < INTPTR_MIN || result > INTPTR_MAX);
+            break;
+        case Type_usize:
+            overflowed = (result < 0 || result > (i128)UINTPTR_MAX);
+            break;
         case Type_f32:
             overflowed = (dresult < -FLT_MAX || dresult > FLT_MAX);
             break;
@@ -589,6 +607,10 @@ bool check_integer_overflow(i128 val, TypeRef type) {
             return (val < 0 || val > UINT32_MAX);
         case Type_u64:
             return (val < 0 || val > UINT64_MAX);
+        case Type_isize:
+            return (val < INTPTR_MIN || val > INTPTR_MAX);
+        case Type_usize:
+            return (val < 0 || val > (i128)UINTPTR_MAX);
         default:
             UNREACHABLE();
             return false;
@@ -639,6 +661,12 @@ void print_type(TypeRef type) {
         break;
     case Type_u64:
         printf("u64");
+        break;
+    case Type_isize:
+        printf("isize");
+        break;
+    case Type_usize:
+        printf("usize");
         break;
     case Type_f32:
         printf("f32");
@@ -1108,12 +1136,14 @@ usize xp_hash_func(Type *type) {
         case Type_u8:
         case Type_u32:
         case Type_u64:
+        case Type_isize:
+        case Type_usize:
         case Type_f32:
         case Type_f64:
         case Type_bool:
         case Type_void:
         case Type_untyped_int:
-        case Type_untyped_float: 
+        case Type_untyped_float:
         case Type_var_arg_c: {
             return cast(usize)(type->kind);
         } break;
@@ -1217,12 +1247,14 @@ static isize basic_type_size(TypeKind kind) {
         case Type_untyped_int:  case Type_untyped_float: return 8;
         case Type_void:                                  return 0;
         case Type_pointer:                               return 16; // 必须与 Pointer::SERIALIZED_SIZE 一致
+        case Type_isize:  case Type_usize:              return sizeof(void*);
         default:                                         return 8; // type/function/package/etc.
     }
 }
 
 static isize basic_type_align(TypeKind kind) {
     if (kind == Type_pointer) return 8;  // Pointer::mem+offset 只需 8 字节对齐
+    if (kind == Type_isize || kind == Type_usize) return sizeof(void*);
     return basic_type_size(kind); // 自然对齐：对齐 == 大小
 }
 

@@ -532,6 +532,11 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             return LLVMFloatTypeInContext(ctx);
         case Type_f64:
             return LLVMDoubleTypeInContext(ctx);
+            
+        case Type_isize:
+        case Type_usize:
+            return LLVMIntPtrTypeForASInContext(ctx, target_data, 0);
+
         case Type_pointer: {
             LLVMTypeRef pointed_type = get_llvm_type_from_type(type->pointed_type);
             return LLVMPointerType(pointed_type, 0);
@@ -891,6 +896,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
         case Type_u32:
         case Type_i64:
         case Type_u64:
+        case Type_isize:
+        case Type_usize:
             llvm_val = LLVMConstInt(get_llvm_type_from_type(value.type), cast(unsigned long long)value.integer_val(), is_signed_or_bool_type(value.type));
             break;
         case Type_bool:

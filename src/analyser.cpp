@@ -131,6 +131,8 @@ void init_global_symbols() {
         insert_basic_type(Type_u64);
         insert_basic_type(Type_f32);
         insert_basic_type(Type_f64);
+        insert_basic_type(Type_isize);
+        insert_basic_type(Type_usize);
     }
 
 

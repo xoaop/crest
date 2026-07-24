@@ -12,9 +12,11 @@
     TYPE_KIND(i8)                                 \
     TYPE_KIND(i32)                               \
     TYPE_KIND(i64)                               \
+    TYPE_KIND(isize)                           \
     TYPE_KIND(u8)                                 \
     TYPE_KIND(u32)                               \
     TYPE_KIND(u64)                               \
+    TYPE_KIND(usize)                             \
     TYPE_KIND(f32)                               \
     TYPE_KIND(f64)                               \
     TYPE_KIND(bool)                             \

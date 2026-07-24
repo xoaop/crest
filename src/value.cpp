@@ -366,7 +366,8 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
 
     switch (type->kind) {
         case Type_i8: case Type_u8: case Type_i32: case Type_u32:
-        case Type_i64: case Type_u64: case Type_untyped_int: {
+        case Type_i64: case Type_u64: case Type_isize: case Type_usize:
+        case Type_untyped_int: {
             i128 val = 0;
             memcpy(&val, &bytes[offset], (size_t)size);
             if (is_signed_type(type) && size < 16) {
