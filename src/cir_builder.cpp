@@ -38,7 +38,7 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     cir_package.string_literals = make_array<xpString>(allocator);
     cir_package.results = make_array<CIRInstResult>(allocator);
     cir_package.result_instances = xp_hash_map_make<FuncCallKey, CIRResultInstance*>(allocator);
-    cir_package.generic_instance_keys = make_array<FuncCallKey>(allocator);
+    cir_package.comptime_func_calls = make_array<FuncCallKey>(allocator);
     return cir_package;
 }
 
@@ -53,9 +53,9 @@ const CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) const {
     return &instructions[ref];
 }
 
-CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref) {
-    return results[ref];
-}
+// CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref) {
+//     return results[ref];
+// }
 
 Scope *CIRPackage::scope_for_pc(CIRInstructionRef pc) const {
     XP_ASSERT(file_ranges.count > 0);
@@ -73,12 +73,6 @@ Scope *CIRPackage::scope_for_pc(CIRInstructionRef pc) const {
 }
 
 
-CIRInstructionRef CIRPackage::get_first_inst_ref_in_block(CIRInstructionRef ref) {
-    XP_ASSERT_DEFAULT(inst(ref)->op == CIROperator::Block);
-
-    return ref + 1; // Block指令的下一个指令就是第一个Block内指
-}
-
 CIRResultInstance *CIRPackage::get_result_instance(FuncCallKey key) {
     auto res = xp_hash_map_get(result_instances, key);
     if(res != nullptr) {
@@ -95,6 +89,28 @@ CIRResultInstance *CIRPackage::get_result_instance(FuncCallKey key) {
     return instance;
 }
 
+
+CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, std::optional<CIRResultInstance*> instance) {
+    if(instance.has_value()) {
+        auto results = &instance.value()->results;
+
+        CIRInstResult* res = xp_hash_map_get(*results, ref);
+        if(res == nullptr) {
+            res = xp_hash_map_insert(results, ref, result_of(ref));
+        }
+
+        return *res;
+    }
+
+
+    return results[ref];
+}
+
+
+
+
+
+
 CIRInstResultRef CIRInstResultRef::make(CIRPackage* pkg, CIRInstructionRef ref,
                                         std::optional<CIRResultInstance*> ri) {
     return {pkg, ref, ri};
@@ -107,14 +123,22 @@ const CIRInstResult* CIRInstResultRef::get_result() const {
     return &cir_package->result_of(inst_ref);
 }
 
+const CIRInstruction* CIRInstResultRef::inst() const {
+    return cir_package->inst(inst_ref);
+}
+
 u64 FuncCallKey::hash() const {
     u64 h = (u64)(usize)func_decl_pc;
+    h = xp_hash_combine_u64(h, (u64)(usize)(func_instance ? *func_instance : nullptr));
     for(isize i = 0; i < comptime_arg_refs.count; i++) {
         auto* res = comptime_arg_refs[i].get_result();
         if(res && res->state >= CIRResultState::WholeValue) {
             Value v = res->actual_val();
-            if(is_type_type(v.type))
+            if(is_type_type(v.type)) {
                 h = xp_hash_combine_u64(h, reinterpret_cast<u64>(v.type_val()));
+            } else {
+                h = xp_hash_combine_u64(h, std::hash<CIRInstResultRef>{}(comptime_arg_refs[i]));
+            }
         }
     }
     return h;
@@ -122,13 +146,21 @@ u64 FuncCallKey::hash() const {
 
 bool FuncCallKey::operator==(const FuncCallKey& other) const {
     if(func_decl_pc != other.func_decl_pc) return false;
+    if(func_instance.has_value() != other.func_instance.has_value()) return false;
+    if(func_instance.has_value() && func_instance.value() != other.func_instance.value()) return false;
     if(comptime_arg_refs.count != other.comptime_arg_refs.count) return false;
     for(isize i = 0; i < comptime_arg_refs.count; i++) {
         auto* ra = comptime_arg_refs[i].get_result();
         auto* rb = other.comptime_arg_refs[i].get_result();
         if(!ra || !rb) return false;
         if(ra->state < CIRResultState::WholeValue || rb->state < CIRResultState::WholeValue) return false;
-        if(ra->actual_val().type_val() != rb->actual_val().type_val()) return false;
+        Value va = ra->actual_val();
+        Value vb = rb->actual_val();
+        if(is_type_type(va.type) && is_type_type(vb.type)) {
+            if(va.type_val() != vb.type_val()) return false;
+        } else {
+            if(!(comptime_arg_refs[i] == other.comptime_arg_refs[i])) return false;
+        }
     }
     return true;
 }
@@ -237,8 +269,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
 
     sym->val({
         .cir_package = curr_pkg,
-        .package = sym->package,
-        .defining_inst = const_decl,
+        .inst_ref = const_decl,
     });
 
     return const_decl;
@@ -247,7 +278,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
 
 
 
-CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_sym, Ast *fd) {
+CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym) {
     XP_ASSERT_DEFAULT(fd->type == AstType_FunctionDeclValue);
 
     auto saved_curr_func = curr_func;
@@ -260,8 +291,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
     auto define_func_block = Begin_Block(fd, true, true);
 
     CIRFunction func = {};
-    func.name = name;
-    func.symbol = func_sym;
     func.return_count = 1;
     func.is_extern_c = fd->FunctionDeclValue.is_extern_c;
     func.is_comptime = fd->FunctionDeclValue.is_comptime;
@@ -297,13 +326,11 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
         func.arg_type_insts.push_back(param_type);
     }
 
-    // 先发射 FunctionDecl（entry_inst 占位），关闭 define_func_block
-    func.body_inst = INVALID_INST;
-    auto func_inst = New_Instruction(CIROperator::FunctionDecl, fd);
-    Instruction(func_inst).func_decl = func;
 
-    // 0. 返回类型（在 FunctionDecl 之后，so analyze_FunctionDecl can control its evaluation）
-    if(fd->FunctionDeclValue.return_type_ast != nullptr) {
+    // 返回类型 block
+    if(fd->FunctionDeclValue.infer_return_type) {
+        func.return_type_inst = INVALID_INST;
+    } else if(fd->FunctionDeclValue.return_type_ast != nullptr) {
         func.return_type_inst = build_block_inst_for_expr(fd->FunctionDeclValue.return_type_ast, true, true);
     } else {
         auto rt_block = Begin_Block(fd, true, true);
@@ -319,7 +346,19 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
 
         func.return_type_inst = rt_block;
     }
+    
+    
+    
+    
+    func.body_inst = INVALID_INST;
+    auto func_inst = New_Instruction(CIROperator::FunctionDecl, fd);
+    
+    Instruction(func_inst).symbol = func_sym.value_or(SymbolInfoRef{});
     Instruction(func_inst).func_decl.return_type_inst = func.return_type_inst;
+
+    Instruction(func_inst).func_decl = func;
+
+
 
 
     // TODO: externC特殊处理, 后面完善些, 现在太丑
@@ -357,7 +396,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(xpString name, SymbolInfoRef func_
         // 补齐 FunctionDecl 中之前占位的字段
         Instruction(func_inst).func_decl.body_inst = body_inst;
         Instruction(func_inst).func_decl.slot_count = func.slot_count;
-        Instruction(func_inst).func_decl.stack_byte_size = func.slot_count;  // [NEW] 暂用 slot_count 作为初始字节数
         Instruction(func_inst).func_decl.arg_decl_insts = func.arg_decl_insts;
     }
 
@@ -622,7 +660,7 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
         auto determine_type = New_Instruction(CIROperator::DetermineType, return_stmt_ast);
         Instruction(determine_type).determine_type_info = {
             .determining_inst = value_inst,
-            .type_inst = curr_func->return_type_inst
+            .type_inst = curr_func->return_type_inst,
         };
 
     } else {
@@ -639,7 +677,7 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
         auto determine_type = New_Instruction(CIROperator::DetermineType, return_stmt_ast);
         Instruction(determine_type).determine_type_info = {
             .determining_inst = void_type_inst,
-            .type_inst = curr_func->return_type_inst
+            .type_inst = curr_func->return_type_inst,
         };
 
     }
@@ -979,10 +1017,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto decl_init = New_Instruction(CIROperator::GetOrInitStruct, expr);
             Instruction(decl_init).get_or_init_struct_info = {
                 .decl_ast = expr,
-                .symbol = curr_const_sym,
-                .self_sym = find_symbol_curr(curr_scope, xp_string_c("Self")),
             };
-            curr_const_sym = {};
 
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
@@ -1067,10 +1102,13 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
         case AstType_FunctionDeclValue: {
-            XP_ASSERT_DEFAULT(curr_const_sym.table != nullptr);
-            SymbolInfoRef func_sym = curr_const_sym;
-            curr_const_sym = {};
-            result = build_func_decl(func_sym()->name, func_sym, expr);
+            if(curr_const_sym.table != nullptr) {
+                SymbolInfoRef func_sym = curr_const_sym;
+                curr_const_sym = {};
+                result = build_func_decl(expr, func_sym);
+            } else {
+                result = build_func_decl(expr, std::nullopt);
+            }
         } break;
 
         case AstType_UnionDecl: {
@@ -1246,17 +1284,72 @@ bool is_cir_unary_op(TokenType type) {
     return is_unary_op(type) && type != TokenType::Caret && type != TokenType::And;
 }
 
-bool is_pure_comptime_func(CIRFunction& func, CIRPackage& pkg, CIRResultInstance* instance) {
-    CIRInstResult* res;
-    if (instance) {
-        res = xp_hash_map_get(instance->results, func.return_type_inst);
-        if (!res) return false;
-    } else {
-        res = &pkg.results[func.return_type_inst];
+// ─── CIRResultContext ──────────────────────────────────────────────
+
+CIRResultContext CIRResultContext::create(CIRPackage *pkg) {
+    CIRResultContext ctx;
+    ctx._pkg = pkg;
+    return ctx;
+}
+
+void CIRResultContext::enter_call(FuncCallKey key) {
+    _call_key = key;
+    _call_instance = _pkg->get_result_instance(key);
+}
+
+void CIRResultContext::enter_call_instance(CIRResultInstance *instance) {
+    _call_key = std::nullopt;
+    _call_instance = instance;
+}
+
+void CIRResultContext::exit_call() {
+    _call_key = std::nullopt;
+    _call_instance = nullptr;
+}
+
+const FuncCallKey &CIRResultContext::call_key() const {
+    XP_ASSERT(in_call());
+    return _call_key.value();
+}
+
+CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
+    if (_call_instance) {
+        return _pkg->result_of(ref, _call_instance);
     }
-    if (res->state == CIRResultState::WholeValue) {
-        return res->actual_val().type_val() == type_type();
+    return _pkg->result_of(ref);
+}
+
+
+// ─── is_pure_comptime_func ────────────────────────────────────────
+
+bool is_pure_comptime_func(CIRFunction& func, const CIRResultContext& ctx) {
+    if(func.is_comptime) {
+        return true;
     }
+
+    auto *cir_pkg = ctx.pkg();
+
+    for(auto& arg_inst_ref: func.arg_decl_insts) {
+        auto& var_info = cir_pkg->inst(arg_inst_ref)->var_decl;
+        if(var_info.is_comptime) {
+            return true;
+        }
+    }
+
+    if(func.return_type_inst == INVALID_INST) {
+        return true;
+    }
+
+    auto& res = ctx.result_of(func.return_type_inst);
+    if(res.state != CIRResultState::WholeValue) {
+        return false;
+    }
+
+    TypeRef return_type = res.actual_val().type_val();
+    if(is_type_type(return_type)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -1286,244 +1379,244 @@ static void dump_result(CIRInstResult& res) {
         case CIRResultState::NothingYet:
             break;
         case CIRResultState::OnlyType:
-            std::print(" -> {}", get_type_kind_str(res.type()->kind));
+            std::print(stderr," -> {}", get_type_kind_str(res.type()->kind));
             break;
         case CIRResultState::WholeValue:
-            std::print(" -> {} = {}", get_type_kind_str(res.type()->kind), res.actual_val());
+            std::print(stderr," -> {} = {}", get_type_kind_str(res.type()->kind), res.actual_val());
             break;
         case CIRResultState::Error:
-            std::print(" -> <error>");
+            std::print(stderr," -> <error>");
             break;
     }
     if(res.value_kind == CIRValueKind::LValue) {
-        std::print(" [lvalue]");
+        std::print(stderr," [lvalue]");
     }
 }
 
 static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_result) {
     auto& inst = pkg->instructions[ref];
-    std::print("  %{} = ", ref);
+    std::print(stderr,"  %{} = ", ref);
 
     switch (inst.op) {
     case CIROperator::VariableDecl:
-        std::print("VariableDecl({}, slot={})", inst.var_decl.name, inst.var_decl.slot);
+        std::print(stderr,"VariableDecl({}, slot={})", inst.var_decl.name, inst.var_decl.slot);
         break;
     case CIROperator::ConstDecl:
-        std::print("ConstDecl({}, value=%{})", inst.const_decl.ident, inst.const_decl.value_inst);
+        std::print(stderr,"ConstDecl({}, value=%{})", inst.const_decl.ident, inst.const_decl.value_inst);
         break;
     case CIROperator::FunctionDecl: {
         auto& f = inst.func_decl;
-        std::print("FunctionDecl({}, return_type=%{}, return_count={}, slot_count={}, is_extern_c={}, is_comptime={}",
-            f.name, f.return_type_inst, f.return_count, f.slot_count, f.is_extern_c, f.is_comptime);
+        std::print(stderr,"FunctionDecl(return_type=%{}, return_count={}, slot_count={}, is_extern_c={}, is_comptime={}",
+            f.return_type_inst, f.return_count, f.slot_count, f.is_extern_c, f.is_comptime);
         if(f.arg_decl_insts.count > 0) {
-            std::print(", params=[");
+            std::print(stderr,", params=[");
             for (isize i = 0; i < f.arg_decl_insts.count; i++) {
                 auto& var = pkg->inst(f.arg_decl_insts[i])->var_decl;
-                if(i > 0) std::print(", ");
-                std::print("{} slot={} type=%{}", var.name, var.slot, f.arg_type_insts[i]);
-                if(var.is_comptime) std::print(" comptime");
+                if(i > 0) std::print(stderr,", ");
+                std::print(stderr,"{} slot={} type=%{}", var.name, var.slot, f.arg_type_insts[i]);
+                if(var.is_comptime) std::print(stderr," comptime");
             }
-            std::print("]");
+            std::print(stderr,"]");
         }
-        std::print(", body=%{})", f.body_inst);
+        std::print(stderr,", body=%{})", f.body_inst);
         break;
     }
     case CIROperator::Block:
-        std::print("Block(body_len={}, from {} to {}, comptime={}, immediate_eval={})",
+        std::print(stderr,"Block(body_len={}, from {} to {}, comptime={}, immediate_eval={})",
             inst.block_info.body_len, ref + 1, ref + inst.block_info.body_len, inst.block_info.is_comptime, inst.block_info.immediate_eval);
         break;
     case CIROperator::Break:
         if(inst.break_info.break_value_inst != INVALID_INST) {
-            std::print("Break(%{}, %{})", inst.break_info.break_block, inst.break_info.break_value_inst);
+            std::print(stderr,"Break(%{}, %{})", inst.break_info.break_block, inst.break_info.break_value_inst);
         } else {
-            std::print("Break(%{}, void)", inst.break_info.break_block);
+            std::print(stderr,"Break(%{}, void)", inst.break_info.break_block);
         }
         break;
     case CIROperator::Store:
-        std::print("Store(%{}, %{})", inst.store_info.var_inst, inst.store_info.value_inst);
+        std::print(stderr,"Store(%{}, %{})", inst.store_info.var_inst, inst.store_info.value_inst);
         break;
     case CIROperator::Load:
-        std::print("Load(%{})", inst.load_info.ptr_inst);
+        std::print(stderr,"Load(%{})", inst.load_info.ptr_inst);
         break;
     case CIROperator::TypeAscribe:
-        std::print("TypeAscribe(%{}, %{})", inst.type_ascribe_info.var_inst, inst.type_ascribe_info.type_inst);
+        std::print(stderr,"TypeAscribe(%{}, %{})", inst.type_ascribe_info.var_inst, inst.type_ascribe_info.type_inst);
         break;
     case CIROperator::Binary:
-        std::print("Binary({}, %{}, %{})",
+        std::print(stderr,"Binary({}, %{}, %{})",
             token_strings[(int)inst.binary_info.op],
             inst.binary_info.left_inst, inst.binary_info.right_inst);
         break;
     case CIROperator::Unary:
-        std::print("Unary({}, %{})", token_strings[(int)inst.unary_info.op], inst.unary_info.operand_inst);
+        std::print(stderr,"Unary({}, %{})", token_strings[(int)inst.unary_info.op], inst.unary_info.operand_inst);
         break;
     case CIROperator::Call:
-        std::print("Call(%{}, [", inst.call_info.called_thing);
+        std::print(stderr,"Call(%{}, [", inst.call_info.called_thing);
         for (isize i = 0; i < inst.call_info.arg_insts.count; i++) {
-            if(i > 0) std::print(", ");
-            std::print("%{}", inst.call_info.arg_insts[i]);
+            if(i > 0) std::print(stderr,", ");
+            std::print(stderr,"%{}", inst.call_info.arg_insts[i]);
         }
-        std::print("])");
+        std::print(stderr,"])");
         break;
     case CIROperator::Cast:
-        std::print("Cast(%{}, %{})", inst.cast_info.expr_inst, inst.cast_info.target_type_inst);
+        std::print(stderr,"Cast(%{}, %{})", inst.cast_info.expr_inst, inst.cast_info.target_type_inst);
         break;
     case CIROperator::FieldAccess:
-        std::print("FieldAccess({}, %{})", inst.field_access_info.field_name, inst.field_access_info.parent_inst);
+        std::print(stderr,"FieldAccess({}, %{})", inst.field_access_info.field_name, inst.field_access_info.parent_inst);
         break;
     case CIROperator::FieldPtr:
-        std::print("FieldPtr({}, %{})", inst.field_access_info.field_name, inst.field_access_info.parent_inst);
+        std::print(stderr,"FieldPtr({}, %{})", inst.field_access_info.field_name, inst.field_access_info.parent_inst);
         break;
     case CIROperator::Index:
-        std::print("Index(%{}, %{})", inst.index_info.array_inst, inst.index_info.index_inst);
+        std::print(stderr,"Index(%{}, %{})", inst.index_info.array_inst, inst.index_info.index_inst);
         break;
     case CIROperator::IndexPtr:
-        std::print("IndexPtr(%{}, %{})", inst.index_info.array_inst, inst.index_info.index_inst);
+        std::print(stderr,"IndexPtr(%{}, %{})", inst.index_info.array_inst, inst.index_info.index_inst);
         break;
     case CIROperator::StructInit:
-        std::print("StructInit(%{}, [", inst.struct_init_info.struct_type_inst);
+        std::print(stderr,"StructInit(%{}, [", inst.struct_init_info.struct_type_inst);
         for (isize i = 0; i < inst.struct_init_info.field_init_insts.count; i++) {
-            if(i > 0) std::print(", ");
-            std::print("%{}", inst.struct_init_info.field_init_insts[i]);
+            if(i > 0) std::print(stderr,", ");
+            std::print(stderr,"%{}", inst.struct_init_info.field_init_insts[i]);
         }
-        std::print("])");
+        std::print(stderr,"])");
         break;
     case CIROperator::ArrayInit:
-        std::print("ArrayInit([");
+        std::print(stderr,"ArrayInit([");
         for (isize i = 0; i < inst.array_init_info.element_insts.count; i++) {
-            if(i > 0) std::print(", ");
-            std::print("%{}", inst.array_init_info.element_insts[i]);
+            if(i > 0) std::print(stderr,", ");
+            std::print(stderr,"%{}", inst.array_init_info.element_insts[i]);
         }
-        std::print("])");
+        std::print(stderr,"])");
         break;
     case CIROperator::ConstantValue:
-        std::print("Const({})", inst.imm_val);
+        std::print(stderr,"Const({})", inst.imm_val);
         break;
     case CIROperator::IdentRef: {
         SymbolInfo *sym = (inst.symbol)();
-        std::print("IdentRef({})", sym ? sym->name : xpString{});
+        std::print(stderr,"IdentRef({})", sym ? sym->name : xpString{});
         break;
     }
     case CIROperator::IdentVal: {
         SymbolInfo *sym = (inst.symbol)();
-        std::print("IdentVal({})", sym ? sym->name : xpString{});
+        std::print(stderr,"IdentVal({})", sym ? sym->name : xpString{});
     }
         break;
     case CIROperator::DetermineType:
-        std::print("DetermineType(%{}", inst.determine_type_info.determining_inst);
+        std::print(stderr,"DetermineType(%{}", inst.determine_type_info.determining_inst);
         if(inst.determine_type_info.type_inst != INVALID_INST) {
-            std::print(", %{}", inst.determine_type_info.type_inst);
+            std::print(stderr,", %{}", inst.determine_type_info.type_inst);
         }
-        std::print(")");
+        std::print(stderr,")");
         break;
     case CIROperator::PointerType:
-        std::print("PointerType(%{})", inst.pointer_type_info.pointed_type_inst);
+        std::print(stderr,"PointerType(%{})", inst.pointer_type_info.pointed_type_inst);
         break;
     case CIROperator::ArrayType:
-        std::print("ArrayType(%{}, %{})", inst.array_type_info.element_type_inst, inst.array_type_info.count_inst);
+        std::print(stderr,"ArrayType(%{}, %{})", inst.array_type_info.element_type_inst, inst.array_type_info.count_inst);
         break;
     case CIROperator::SliceType:
-        std::print("SliceType(%{})", inst.slice_type_info.element_type_inst);
+        std::print(stderr,"SliceType(%{})", inst.slice_type_info.element_type_inst);
         break;
     case CIROperator::GetOrInitStruct:
-        std::print("GetOrInitStruct");
+        std::print(stderr,"GetOrInitStruct");
         break;
     case CIROperator::StructField:
-        std::print("StructField({}, type=%{})", inst.struct_field_info.name, inst.struct_field_info.type_block_inst);
+        std::print(stderr,"StructField({}, type=%{})", inst.struct_field_info.name, inst.struct_field_info.type_block_inst);
         break;
     case CIROperator::FinishStruct: {
         auto& fs = inst.finish_struct_info;
-        std::print("FinishStruct(struct=%{}, fields=[", fs.struct_decl_inst);
+        std::print(stderr,"FinishStruct(struct=%{}, fields=[", fs.struct_decl_inst);
         for (isize i = 0; i < fs.field_insts.count; i++) {
-            if (i > 0) std::print(", ");
-            std::print("%{}", fs.field_insts[i]);
+            if (i > 0) std::print(stderr,", ");
+            std::print(stderr,"%{}", fs.field_insts[i]);
         }
-        std::print("])");
+        std::print(stderr,"])");
         break;
     }
     case CIROperator::EnumDeclInit: {
         auto& ed = inst.enum_decl_init_info;
-        std::print("EnumDeclInit(tag=%{}, fields=[", ed.tag_type_inst);
+        std::print(stderr,"EnumDeclInit(tag=%{}, fields=[", ed.tag_type_inst);
         for (isize i = 0; i < ed.fields.count; i++) {
-            if(i > 0) std::print(", ");
+            if(i > 0) std::print(stderr,", ");
             auto& ef = ed.fields[i];
             if(ef.value_inst != INVALID_INST)
-                std::print("{}: %{}", ef.name, ef.value_inst);
+                std::print(stderr,"{}: %{}", ef.name, ef.value_inst);
             else
-                std::print("{}: auto", ef.name);
+                std::print(stderr,"{}: auto", ef.name);
         }
-        std::print("])");
+        std::print(stderr,"])");
         break;
     }
     case CIROperator::UnionDecl:
-        std::print("UnionDecl");
+        std::print(stderr,"UnionDecl");
         break;
     case CIROperator::AddrOf:
-        std::print("AddrOf(%{})", inst.addr_of_info.lval_inst);
+        std::print(stderr,"AddrOf(%{})", inst.addr_of_info.lval_inst);
         break;
     case CIROperator::TypeOfInstResult:
-        std::print("TypeOfInstResult(%{})", inst.type_of_inst_result_info.target_inst);
+        std::print(stderr,"TypeOfInstResult(%{})", inst.type_of_inst_result_info.target_inst);
         break;
     case CIROperator::FieldTypeOfStruct:
-        std::print("FieldTypeOfStruct(struct=%{}, field={})",
+        std::print(stderr,"FieldTypeOfStruct(struct=%{}, field={})",
             inst.field_type_of_struct_info.struct_type_inst,
             inst.field_type_of_struct_info.field_index);
         break;
     case CIROperator::FuncParamType:
-        std::print("FuncParamType(type_func=%{}, param_index={})",
+        std::print(stderr,"FuncParamType(type_func=%{}, param_index={})",
             inst.func_param_type_info.type_of_func_type_inst,
             inst.func_param_type_info.param_index);
         break;
     case CIROperator::CondBr:
-        std::print("CondBr(cond=%{}, then=%{}, else={})",
+        std::print(stderr,"CondBr(cond=%{}, then=%{}, else={})",
             inst.condbr_info.condition_inst, inst.condbr_info.true_block_inst,
             inst.condbr_info.false_block_inst == INVALID_INST ? "none" : std::format("%{}", inst.condbr_info.false_block_inst));
         break;
     case CIROperator::Loop:
-        std::print("Loop(body_len={})",
+        std::print(stderr,"Loop(body_len={})",
             inst.loop_info.body_len);
         break;
     case CIROperator::EnterScope:
-        std::print("EnterScope {}", to_string(inst.scope_info.scope->scope_type));
+        std::print(stderr,"EnterScope {}", to_string(inst.scope_info.scope->scope_type));
         break;
     case CIROperator::ExitScope:
-        std::print("ExitScope {}", to_string(inst.scope_info.scope->scope_type));
+        std::print(stderr,"ExitScope {}", to_string(inst.scope_info.scope->scope_type));
         break;
     default:
-        std::print("{}", string(inst.op));
+        std::print(stderr,"{}", string(inst.op));
         break;
     }
 
     if(show_result && ref < pkg->results.count) {
         dump_result(pkg->results[ref]);
     }
-    std::println("");
+    std::println(stderr,"");
 }
 
 void dump_cir_package(CIRPackage *pkg) {
-    std::println("CIRPackage {{");
+    std::println(stderr,"CIRPackage {{");
     for(isize i = 0; i < pkg->instructions.count; i++) {
         dump_inst_compact(pkg, i, true);
     }
-    std::println("}}");
+    std::println(stderr,"}}");
 
-    std::println("\n--- total instructions: {} ---", pkg->instructions.count);
+    std::println(stderr,"\n--- total instructions: {} ---", pkg->instructions.count);
 
     // file ranges
     if(pkg->file_ranges.count > 0) {
-        std::println("\n--- file ranges ---");
+        std::println(stderr,"\n--- file ranges ---");
         for (isize i = 0; i < pkg->file_ranges.count; i++) {
             auto& fr = pkg->file_ranges[i];
-            std::println("  [{}] start=%{} scope={}", i, fr.start, to_string(fr.file_scope->scope_type));
+            std::println(stderr,"  [{}] start=%{} scope={}", i, fr.start, to_string(fr.file_scope->scope_type));
         }
     }
 
     // top-level 指令列表
     if(pkg->top_level_insts.count > 0) {
-        std::println("\n--- top-level insts ---");
+        std::println(stderr,"\n--- top-level insts ---");
         for (isize i = 0; i < pkg->top_level_insts.count; i++) {
             auto ref = pkg->top_level_insts[i];
             auto& inst = pkg->instructions[ref];
-            std::println("  [{}] %{} = ConstDecl({})", i, ref, inst.const_decl.ident);
+            std::println(stderr,"  [{}] %{} = ConstDecl({})", i, ref, inst.const_decl.ident);
         }
     }
 

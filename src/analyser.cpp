@@ -32,7 +32,7 @@ Analyser make_analyser(AstFile *curr_ast_file, Package *pkg) {
     analyser.pkg = pkg;
     analyser.current_scope = &curr_ast_file->file_scope;
     analyser.curr_ast_file = curr_ast_file;
-    analyser.curr_func = NULL;
+
 
     return analyser;
 }
@@ -326,10 +326,6 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             );
         } break;
 
-        case AstType_FunctionDeclValue: {
-            resolve_function_decl(const_decl_ast, analyser);
-        } break;
-
         default: {
             resolve_expr(val_ast, analyser);
         } break;
@@ -352,29 +348,31 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
 
 
 void resolve_function_decl(Ast *decl, Analyser analyser) {
+    XP_ASSERT_DEFAULT(decl->type == AstType_FunctionDeclValue);
 
-    Ast *value_ast = decl->ConstDecl.value_ast;
-    XP_ASSERT_DEFAULT(value_ast->type == AstType_FunctionDeclValue);
 
-    // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
-    Scope *parent_scope = get_upper_scope_with_type(analyser.current_scope, ScopeType::File);
-
-    Analyser new_sc = new_scope(analyser, ScopeType::Function, value_ast, parent_scope);
-    new_sc.curr_func = decl;
-
-    void resolve_fn_param_list(Array<Ast *> params, Analyser analyser);
-    resolve_fn_param_list(value_ast->FunctionDeclValue.params, new_sc);
-
-    if(value_ast->FunctionDeclValue.return_type_ast != nullptr) {
-        resolve_expr(value_ast->FunctionDeclValue.return_type_ast, new_sc);
+    // 先在当前作用域解析函数的返回类型和参数类型
+    if(decl->FunctionDeclValue.return_type_ast != nullptr) {
+        resolve_expr(decl->FunctionDeclValue.return_type_ast, analyser);
     }
+    
+    // // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
+    Scope *parent_scope = analyser.current_scope;
 
-    if(value_ast->FunctionDeclValue.block != NULL) {
-        resolve_block(value_ast->FunctionDeclValue.block, new_sc, true);
+    Analyser new_sc = new_scope(analyser, ScopeType::Function, decl, parent_scope);
+    
+    void resolve_fn_param_list(Array<Ast *>, Analyser);
+    
+    // 再在函数作用域内解析参数列表
+    resolve_fn_param_list(decl->FunctionDeclValue.params, new_sc);
 
-        if(may_fall_through(value_ast->FunctionDeclValue.block)) {
+
+    if(decl->FunctionDeclValue.block != NULL) {
+        resolve_block(decl->FunctionDeclValue.block, new_sc, true);
+
+        if(may_fall_through(decl->FunctionDeclValue.block)) {
             context()->reporter.report_error(
-                value_ast->FunctionDeclValue.block->src_loc,
+                decl->FunctionDeclValue.block->src_loc,
                 "function body may fall through without returning"
             );
         }
@@ -388,9 +386,6 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
 
     Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, value_ast);
 
-    // 在struct作用域内插入 Self 符号，使字段类型中可引用 *Self
-    SymbolInfo self_symbol = make_symbol(xp_string_c("Self"), analyser.pkg, analyser.curr_ast_file, value_ast);
-    add_symbol_to_scope(struct_analyser.current_scope, xp_string_c("Self"), self_symbol);
 
     for(isize i = 0; i < value_ast->StructDeclValue.fields.count; i++) {
         auto field = value_ast->StructDeclValue.fields[i];
@@ -770,6 +765,10 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
     }
 
     switch (expr_ast->type) {
+        case AstType_FunctionDeclValue: {
+            resolve_function_decl(expr_ast, analyser);
+        } break;
+
         case AstType_StructDeclValue: {
             resolve_struct_decl(expr_ast, analyser);
         } break;
@@ -777,6 +776,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         case AstType_EnumDecl: {
             resolve_enum_decl(expr_ast, analyser);
         } break;
+
         case AstType_UnionDecl: {
             context()->reporter.report_error(
                 expr_ast->src_loc,

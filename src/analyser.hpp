@@ -15,7 +15,6 @@ struct Analyser {
     Package *pkg;
     Scope *current_scope;
     AstFile *curr_ast_file;
-    Ast *curr_func;
 };
 
 Analyser make_analyser(AstFile *curr_ast_file, Package *pkg);

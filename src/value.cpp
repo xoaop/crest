@@ -85,14 +85,23 @@ void Value::array_element_values(Array<Value> elem_values) {
     struct_or_array_fields = elem_values;
 }
 
-void Value::func_val(xpString func_name, CIRInstUniqueKey func_key) {
+void Value::func_val(CIRInstResultRef func_key) {
     actual_value_type = ActualValueType::Function;
-    this->func_value.name = func_name;
     this->func_value.func_key = func_key;
 }
 
-void Value::func_val_key(CIRInstUniqueKey key) {
+void Value::func_val_key(CIRInstResultRef key) {
     this->func_value.func_key = key;
+}
+
+Value* Value::ref_val() const {
+    ASSERT(actual_value_type == ActualValueType::Reference);
+    return ref_value;
+}
+
+void Value::ref_val(Value* ref) {
+    actual_value_type = ActualValueType::Reference;
+    ref_value = ref;
 }
 
 
@@ -154,6 +163,7 @@ Value Value::array_element_val(isize index) const {
     return struct_or_array_fields[index];
 }
 
+// TODO: 重构
 FuncValue Value::func_val() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
     XP_ASSERT_DEFAULT(is_function_type(type));
@@ -206,7 +216,8 @@ Value clone_value(const Value& v, xpAllocator allocator) {
         case ActualValueType::Type:     copy.type_val(v.type_val()); break;
         case ActualValueType::Package:  copy.package_val(v.package_val()); break;
         case ActualValueType::Function: {
-            copy.func_val(v.func_val().name, v.func_val().func_key);
+            // copy.func_val(v.func_val().name, v.func_val().func_key);
+            copy.func_val(v.func_val().func_key);
         } break;
         case ActualValueType::Struct: {
             Array<Value> fields = make_array<Value>(allocator);
@@ -225,6 +236,7 @@ Value clone_value(const Value& v, xpAllocator allocator) {
             copy.array_element_values(elems);
         } break;
         case ActualValueType::Nothing: break;
+        case ActualValueType::Reference: ASSERT(false && "Reference not implemented"); break;
     }
     return copy;
 }
@@ -335,14 +347,17 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             break;
         }
         case ActualValueType::Function: {
-            CIRInstUniqueKey key = v.func_val().func_key;
-            memcpy(&bytes[offset], &key.defining_inst, (size_t)size);
+            CIRInstResultRef key = v.func_val().func_key;
+            memcpy(&bytes[offset], &key.inst_ref, (size_t)size);
             break;
         }
         case ActualValueType::Nothing: {
             if (size > 0) memset(&bytes[offset], 0, (size_t)size);
             break;
         }
+        case ActualValueType::Reference: {
+            ASSERT(false && "Reference not implemented");
+        } break;
     }
 }
 
@@ -395,11 +410,11 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
             return v;
         }
         case Type_function: {
-            CIRInstructionRef defining_inst;
-            memcpy(&defining_inst, &bytes[offset], (size_t)size);
+            CIRInstructionRef inst_ref;
+            memcpy(&inst_ref, &bytes[offset], (size_t)size);
             Value v = make_value(type);
-            CIRInstUniqueKey key = {};
-            key.defining_inst = defining_inst;
+            CIRInstResultRef key = {};
+            key.inst_ref = inst_ref;
             v.func_val_key(key);
             return v;
         }

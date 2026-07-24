@@ -33,6 +33,11 @@ static void crest_helper() {
     printf("  build <path>   Build the project at the specified path\n");
     printf("  crest <path>   Same as 'crest build <path>'\n");
     printf("  help           Show this help message\n");
+    printf("Options:\n");
+    printf("  -o <path>      Output directory\n");
+    printf("  -trace         Enable debug trace output\n");
+    printf("  -cir_dump      Dump CIR instructions\n");
+    printf("  -scope_dump    Dump scope tree\n");
 }
 
 
@@ -83,6 +88,12 @@ int main(int argc, char** argv) {
             crest_helper();
             return 0;
 
+        } else if(strcmp(argv[i], "-trace") == 0) {
+            g_trace_enabled = true;
+        } else if(strcmp(argv[i], "-cir_dump") == 0) {
+            context()->cir_dump = true;
+        } else if(strcmp(argv[i], "-scope_dump") == 0) {
+            context()->scope_dump = true;
         } else if(strcmp(argv[i], "-o") == 0) {
             // TODO(xoaop): 输出文件路径参数解析
             i += 1; // 跳过 "-o" 参数
@@ -176,9 +187,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    #ifdef CREST_DEBUG
-    print_scope_tree(&context()->global_blank_package.package_scope);
-    #endif
+    if(context()->scope_dump) {
+        print_scope_tree(&context()->global_blank_package.package_scope);
+    }
 
 
     context()->static_mem.init(MemoryKind::Heap, permanent_allocator());
@@ -189,11 +200,11 @@ int main(int argc, char** argv) {
     mark_phase("build CIR");
     xp_arena_allocator_clear(stage_allocator());
 
-    #ifdef CREST_DEBUG
-    for(auto& pkg : context()->all_packages) {
-        dump_cir_package(&pkg.cir_package);
+    if(context()->cir_dump) {
+        for(auto& pkg : context()->all_packages) {
+            dump_cir_package(&pkg.cir_package);
+        }
     }
-    #endif
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -212,6 +223,8 @@ int main(int argc, char** argv) {
     }
 
     init_llvm();
+
+    std::filesystem::create_directories(context()->output_path);
 
     LLVMIRGenerateConfig llvm_config = {};
     Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);

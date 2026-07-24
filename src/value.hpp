@@ -87,9 +87,14 @@ enum class ActualValueType {
     Pointer,   // comptime 指针：Pointer{mem, offset}，type 字段指向 *T
     Type,      // 类型值：TypeRef 存储在 union 中
     Package,   // 包值：Package* 存储在 union 中
+    Reference, // 引用值：Value* 存储在 union 中
 };
 
 
+
+struct FuncValue {
+    CIRInstResultRef   func_key;
+};
 
 struct Value {
 public:
@@ -110,11 +115,12 @@ public:
     void bool_val(bool bool_val);
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
-    void func_val(xpString func_name, CIRInstUniqueKey func_key);
-    void func_val_key(CIRInstUniqueKey key);
+    void func_val(CIRInstResultRef func_key);
+    void func_val_key(CIRInstResultRef key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
     void package_val(Package* pkg);
+    void ref_val(Value* ref);
 
 
     i128 integer_val() const;
@@ -129,6 +135,7 @@ public:
     TypeRef type_val() const;
     Package* package_val() const;
     FuncValue func_val() const;
+    Value* ref_val() const;
     
 
 
@@ -150,7 +157,10 @@ private:
         Pointer pointer_value;        // comptime 指针：{mem, offset}
 
         TypeRef type_value;        // 类型值
+
         Package* package_value;    // 包值
+
+        Value* ref_value;
     };
 
 public:

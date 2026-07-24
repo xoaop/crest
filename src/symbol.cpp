@@ -39,19 +39,19 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
         if(key.has_value()) {
             auto *instance = xp_hash_map_get(inst_key.cir_package->result_instances, key.value());
             if(instance) {
-                auto *res = xp_hash_map_get((*instance)->results, inst_key.defining_inst);
+                auto *res = xp_hash_map_get((*instance)->results, inst_key.inst_ref);
                 if(res) {
                     return *res;
                 }
             }
         }
-        return inst_key.cir_package->results[inst_key.defining_inst];
+        return inst_key.cir_package->results[inst_key.inst_ref];
     }
 
     return CIRInstResult{};
 }
 
-CIRInstUniqueKey SymbolInfo::val_as_inst_key() const {
+CIRInstResultRef SymbolInfo::val_as_inst_key() const {
     XP_ASSERT_DEFAULT(value_store_type == ValueStoreType::InCIRInstruction);
     return inst_key;
 }
@@ -60,7 +60,7 @@ void SymbolInfo::val(Value new_val) {
     value_store_type = ValueStoreType::InSymbolInfo;
     value = new_val;
 }
-void SymbolInfo::val(CIRInstUniqueKey new_key) {
+void SymbolInfo::val(CIRInstResultRef new_key) {
     value_store_type = ValueStoreType::InCIRInstruction;
     inst_key = new_key;
 }

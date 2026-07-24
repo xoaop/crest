@@ -225,11 +225,11 @@ void print_scope_tree(Scope *scope, int indent) {
     if (!scope) return;
 
     auto print_indent = [](int n) {
-        for (int i = 0; i < n; i++) std::print("  ");
+        for (int i = 0; i < n; i++) std::print(stderr, "  ");
     };
 
     print_indent(indent);
-    std::println("{}", *scope);
+    std::println(stderr, "{}", *scope);
 
     for(Scope *sub_scope : scope->children) {
         print_scope_tree(sub_scope, indent + 1);

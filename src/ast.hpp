@@ -128,6 +128,7 @@ struct Ast;
         Ast *return_type_ast;                                               \
         bool is_extern_c;                                                   \
         bool is_comptime;                                                   \
+        bool infer_return_type;                                             \
     })                                                                      \
     AST_INFO(StructDeclValue, "struct decl value", struct {                 \
         Array<Ast *> fields;                                                \

@@ -235,7 +235,7 @@ Ast *parse_struct_decl(Parser *p) {
     return a;
 }
 
-
+// @deprecated
 void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_ast, bool &out_must_be_c_fn, bool &out_has_named_params, Token &out_rb) {
     expect(p, TokenType::LeftBracket);
 
@@ -310,6 +310,7 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
     }
 }
 
+// @deprecated
 Ast *parse_function_value_or_type(Parser *p) {
     Array<Ast*> params;
     Ast *return_type_ast;
@@ -1008,12 +1009,11 @@ Ast *parse_expr_factor(Parser *p) {
             if (curr_token(p).type == TokenType::Arrow) {
                 advance_token(p);
 
-                Ast *return_type_ast;
-                if (is_named && curr_token(p).type == TokenType::Question) {
-                    Token q = expect(p, TokenType::Question);
-                    return_type_ast = ast_alloc(AstType_EasyType, q);
-                    return_type_ast->EasyType.kind = Type_void;
-                    return_type_ast->src_loc = q.src_loc;
+                Ast *return_type_ast = nullptr;
+                bool infer_return_type = false;
+                if(curr_token(p).type == TokenType::Question) {
+                    infer_return_type = true;
+                    advance_token(p);
                 } else {
                     return_type_ast = parse_type(p);
                 }
@@ -1032,6 +1032,12 @@ Ast *parse_expr_factor(Parser *p) {
                 }
 
                 if (is_extern_c || curr_token(p).type == TokenType::LeftCurlyBracket) {
+                    if(infer_return_type && is_extern_c) {
+                        context()->reporter.report_error(rb.src_loc, "extern \"C\" function cannot use '-> ?' to infer return type");
+                        a = ast_alloc(AstType_BadExpr, rb);
+                        a->src_loc = rb.src_loc;
+                        break;
+                    }
                     if (!is_named) {
                         for (isize i = 0; i < params.count; i++) {
                             if (params[i]->type != AstType_ParamDecl) {
@@ -1060,6 +1066,7 @@ Ast *parse_expr_factor(Parser *p) {
                     a->FunctionDeclValue.block = body;
                     a->FunctionDeclValue.return_type_ast = return_type_ast;
                     a->FunctionDeclValue.is_extern_c = is_extern_c;
+                    a->FunctionDeclValue.infer_return_type = infer_return_type;
 
                     for (isize i = 0; i < params.count; i++) {
                         if (params[i]->ParamDecl.is_comptime) {
@@ -1068,19 +1075,25 @@ Ast *parse_expr_factor(Parser *p) {
                         }
                     }
                 } else {
-                    Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
-                    if (is_named) {
-                        for (isize i = 0; i < params.count; i++) {
-                            param_types.push_back(params[i]->ParamDecl.type_ast);
-                        }
+                    if(infer_return_type) {
+                        context()->reporter.report_error(rb.src_loc, "pure function type cannot use '-> ?' to infer return type");
+                        a = ast_alloc(AstType_BadExpr, rb);
+                        a->src_loc = rb.src_loc;
                     } else {
-                        param_types = params;
-                    }
+                        Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
+                        if (is_named) {
+                            for (isize i = 0; i < params.count; i++) {
+                                param_types.push_back(params[i]->ParamDecl.type_ast);
+                            }
+                        } else {
+                            param_types = params;
+                        }
 
-                    a = ast_alloc(AstType_FunctionType, lb);
-                    a->FunctionType.param_types = param_types;
-                    a->FunctionType.return_type_ast = return_type_ast;
-                    a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
+                        a = ast_alloc(AstType_FunctionType, lb);
+                        a->FunctionType.param_types = param_types;
+                        a->FunctionType.return_type_ast = return_type_ast;
+                        a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
+                    }
                 }
             } else if (params.count == 1 && !must_be_c_fn && !is_named) {
                 a = params[0];  // (expr)

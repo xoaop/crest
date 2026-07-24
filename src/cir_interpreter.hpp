@@ -27,19 +27,21 @@ struct AnalyzeParams {
 // 求值实例 — 每次编译期函数调用创建一个
 struct EvalInstance {
 
-    static EvalInstance make(CIRPackage *callee_pkg, CIRInstructionRef func_decl_pc, isize var_count, xpAllocator allocator);
+    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, xpAllocator allocator);
 
     static void free(EvalInstance *inst);
 
-
-    CIRPackage *callee_pkg = nullptr;  // 被调函数所在包
-    CIRInstructionRef func_decl_pc = 0;
-    CIRResultInstance *result_instance = nullptr; // 被调函数的结果实例
-    Array<Pointer> var_ptrs;        // 变量存储位置指针，按 func_decl 的参数顺序排列
-
-    FuncCallKey cache_key = {};
+    CIRResultContext ctx;
+    Array<Pointer> var_ptrs;
 
     isize frame_base = 0; // 栈帧基址（stack_mem 中的偏移）
+
+    // 用于恢复调用者上下文
+    CIRPackage *caller_pkg = nullptr;
+    CIRInstructionRef caller_pc = 0;
+    Scope *saved_scope = nullptr;
+
+    CIRResultContext result_context() const { return ctx; }
 };
 
 
@@ -55,7 +57,7 @@ struct Interpreter {
     void set_scope(Scope *scope);
 
     void analyze_ConstDecl();
-    void analyze_FunctionDecl(bool try_to_instantiate = false);
+    void analyze_FunctionDecl();
     void analyze_GetOrInitStruct();
     void analyze_StructField();
     void analyze_FinishStruct();
@@ -98,8 +100,6 @@ struct Interpreter {
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 
-    CIRInstResult& result_for(CIRInstructionRef ref);
-
     CIRResultState result_state(CIRInstructionRef ref);
     void set_result_state(CIRInstructionRef ref, CIRResultState state);
     TypeRef ResultType(CIRInstructionRef ref);
@@ -127,14 +127,21 @@ struct Interpreter {
 
     EvalMode curr_eval_mode() const;
 
-    bool has_instance() const { return instance_stack.count > 0; }
+    bool has_instance() const { return instance_stack.count > 1; }
 
     std::optional<FuncCallKey> curr_cache_key() const {
-        if(instance_stack.count > 0) {
-            return instance_stack.back().cache_key;
+        if(instance_stack.count > 1) {
+            return instance_stack.back().ctx.call_key();
         }
         return std::nullopt;
     }
+
+    CIRResultContext result_context() const {
+        return instance_stack.back().result_context();
+    }
+
+    void push_call_instance(EvalInstance inst);
+    void pop_call_instance();
 
     bool is_generic_func(CIRPackage *fpkg, CIRFunction& func);
 
@@ -163,7 +170,7 @@ public:
     CIRInstructionRef& pc();
     Scope*&             scope();
     EvalInstance* curr_instance() {
-        return instance_stack.count > 0 ? &instance_stack.back() : nullptr;
+        return instance_stack.count > 1 ? &instance_stack.back() : nullptr;
     }
 
     // 嵌套调用栈
