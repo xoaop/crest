@@ -593,8 +593,8 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     // 解析类型后缀
     isize len = 0;
     const char *postfix[] = {
-        "i8", "i32", "i64",
-        "u8", "u32", "u64",
+        "i8", "i32", "i64", "isize",
+        "u8", "u32", "u64", "usize",
         "f32", "f64"
     };
 
@@ -608,20 +608,20 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     // 浮点数不能用整型的后缀
     if(token_type == TokenType::Float) {
-        if(len > 0 && !(i == 6 || i == 7)) {
+        if(len > 0 && !(i == 8 || i == 9)) {  // f32, f64
             XP_ASSERT_DEFAULT(0);
         }
     }
     // 整型不能用浮点数的后缀
     if(token_type == TokenType::Integer) {
-        if(len > 0 && (i == 6 || i == 7)) {
+        if(len > 0 && (i == 8 || i == 9)) {  // f32, f64
             XP_ASSERT_DEFAULT(0);
         }
     }
     
     
     
-    if(i < 8) {
+    if(i < xp_array_len(postfix)) {
         token->number_info.type_kind_of_number = string_to_type_kind(xp_string_c(postfix[i]));
     } else {
         token->number_info.type_kind_of_number = Type_Undefined;
