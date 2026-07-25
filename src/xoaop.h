@@ -315,13 +315,212 @@ xp_define void xp_arena_allocator_restore(xpAllocator allocator, xpArenaSave sav
 xp_define void xp_arena_allocator_free_to_save(xpAllocator allocator, xpArenaSave save);
 
 
-// TODO: Heap Record Allocator内存分配器
+
+/*
+    平台抽象
+*/
 
 
+#if defined(__cplusplus)
+} // for decl
+#endif
 
 
+// === 子模块 includes ===
+// === begin: xoaop_defer.h ===
 
 
+#if defined(__cplusplus) && __cplusplus >= 201703L
+
+template<typename F>
+struct xpDeferWrapper {
+
+    xpDeferWrapper(F defer_func) : defer_func(defer_func) {
+
+    }
+    ~xpDeferWrapper() {
+        defer_func();
+    }
+    F defer_func;
+};
+
+#define DEFER_1(x, y) x##y
+#define DEFER_2(x, y) DEFER_1(x, y)
+#define DEFER_3(x) DEFER_2(x, __COUNTER__)
+#define defer(code) auto DEFER_3(__deFer__) = xpDeferWrapper([&]() { code; })
+
+#endif // __cplusplus >= 201703L
+
+// === end: xoaop_defer.h ===
+// === begin: xoaop_pair.h ===
+
+
+#if defined(__cplusplus)
+
+template<typename A, typename B>
+struct xpPair {
+    A first;
+    B second;
+};
+
+template<typename A, typename B>
+xpPair<A, B> xp_make_pair(A first, B second) {
+    xpPair<A, B> pair = {};
+    pair.first = first;
+    pair.second = second;
+    return pair;
+}
+
+#endif // __cplusplus
+
+// === end: xoaop_pair.h ===
+// === begin: xoaop_option.h ===
+
+
+#if defined(__cplusplus)
+
+enum class xpOptionEnum {
+    None,
+    Some
+};
+
+template<typename T>
+struct xpOption {
+public:
+
+    static xpOption<T> none() {
+        return xpOption();
+    }
+
+    static xpOption<T> some(T value) {
+        return xpOption(value);
+    }
+
+    xpOption() : kind(xpOptionEnum::None) {}
+    xpOption(T val) : kind(xpOptionEnum::Some), value(val) {}
+
+    bool has_value() {
+        return kind == xpOptionEnum::Some;
+    }
+
+    bool is_none() {
+        return kind == xpOptionEnum::None;
+    }
+
+    T unwrap() {
+        XP_ASSERT_DEFAULT(kind == xpOptionEnum::Some);
+        return value;
+    }
+
+
+    bool operator==(const xpOption<T> &other) const {
+        if (kind != other.kind) {
+            return false;
+        }
+        if (kind == xpOptionEnum::None) {
+            return true; // 两个都是None
+        }
+        return value == other.value; // 比较Some的值
+    }
+
+
+private:
+    xpOptionEnum kind;
+    T value;
+};
+
+#endif // __cplusplus
+
+// === end: xoaop_option.h ===
+// === begin: xoaop_result.h ===
+
+
+#include <concepts>
+
+#if defined(__cplusplus)
+
+template<typename F, typename I>
+concept MatchHandler = requires(F handler, I && input) {
+    { handler(input) } -> std::same_as<void>;
+};
+
+
+enum class xpResultType {
+    Ok,
+    Err
+};
+
+
+template<typename OkType, typename ErrType>
+struct xpResult {
+    static_assert(!std::is_same_v<OkType, ErrType>, "OkType and ErrType must be different types");
+
+
+    static xpResult<OkType, ErrType> ok(OkType value) {
+        return xpResult(value);
+    }
+
+    static xpResult<OkType, ErrType> err(ErrType error) {
+        return xpResult(error);
+    }
+
+    bool is_ok() const {
+        return type == xpResultType::Ok;
+    }
+
+    bool is_err() const {
+        return type == xpResultType::Err;
+    }
+
+    OkType as_ok() const {
+        XP_ASSERT_DEFAULT(is_ok());
+        return ok_val;
+    }
+
+    ErrType as_err() const {
+        XP_ASSERT_DEFAULT(is_err());
+        return err_val;
+    }
+
+
+private:
+
+    xpResult(OkType ok_value) : type(xpResultType::Ok), ok_val(ok_value) {}
+    xpResult(ErrType err_value) : type(xpResultType::Err), err_val(err_value) {}
+
+    xpResultType type;
+    union {
+        OkType ok_val;
+        ErrType err_val;
+    };
+};
+
+template<typename OkType, typename ErrType>
+void match(xpResult<OkType, ErrType> &result, MatchHandler<OkType> auto &&ok_handler, MatchHandler<ErrType> auto &&err_handler) {
+    if (result.is_ok()) {
+        ok_handler(result.as_ok());
+    } else if (result.is_err()) {
+        err_handler(result.as_err());
+    } else {
+        UNREACHABLE();
+    }
+}
+
+#endif // __cplusplus
+
+// === end: xoaop_result.h ===
+// === begin: xoaop_string.h ===
+
+
+#include <string>
+#include <string_view>
+#if __cplusplus >= 202300L
+#include <format>
+#endif
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 /*
     字符串, 切片
@@ -329,11 +528,6 @@ xp_define void xp_arena_allocator_free_to_save(xpAllocator allocator, xpArenaSav
 
 xp_define isize xp_strlen_c(char const *str);
 xp_define char *xp_find_first_non_space(const char *str);
-
-
-
-
-
 
 
 // NOTE(xoaop): ONLY ASCII NOW
@@ -344,6 +538,9 @@ typedef struct xpString {
     char *c_str;
 
 #if defined(__cplusplus)
+        xpString() = default;
+        xpString(const char* str);
+        xpString(xpAllocator allocator, const char* str);
         bool operator== (xpString other) const;
         char operator[] (isize index) const;
         char *as_c_str() const;
@@ -384,23 +581,1338 @@ xp_define xpString xp_string_replace_char(xpString string, char old_char, char n
 xp_define xpSlice xp_slice_make(void *data, isize len);
 xp_define xpSlice xp_slice_make_from_string(xpString string, isize begin, isize len);
 
-
-
-/*
-    哈希映射函数
-*/
-xp_define u32 xp_murmur_hash3_32(const void *data, usize length, usize seed);
-xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
-
-
-/*
-    平台抽象
-*/
+#if defined(__cplusplus)
+}
+#endif
 
 
 #if defined(__cplusplus)
-} // for decl
+
+//
+// xpString CPP 相关操作声明
+//
+
+xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator);
+
+
+#if __cplusplus >= 202300L
+
+template<>
+struct std::formatter<xpString> : std::formatter<std::string_view> {
+    using std::formatter<std::string_view>::parse;
+
+
+    auto format(const xpString& s, std::format_context& ctx) const {
+        return std::formatter<std::string_view>::format(
+            std::string_view(s.c_str, static_cast<size_t>(s.length)),
+            ctx
+        );
+    }
+};
+
+#endif // C++23
+
+#endif // __cplusplus
+
+
+#if defined(XOAOP_IMPLEMENTATION) && !defined(XOAOP_STRING_IMPLEMENTATION_DONE)
+#define XOAOP_STRING_IMPLEMENTATION_DONE
+
+#if defined(__cplusplus)
+extern "C" {
 #endif
+
+
+//
+// 字符串实现
+//
+isize xp_strlen_c(char const *str) {
+    isize len = 0;
+    for (; str[len] != '\0'; len += 1);
+
+    //NOTE: for unknown wrong, maybe unnessery
+    XP_ASSERT(len >= 0);
+    return len;
+}
+
+void xp_strncpy_c(char *dst, const char *src, isize len) {
+    if (len <= 0 || dst == NULL || src == NULL) {
+        return;
+    }
+
+    isize index = 0;
+    for (; index < len && src[index] != '\0'; index += 1) {
+        dst[index] = src[index];
+    }
+
+    //NOTE(xoaop): 兼容c字符串
+    dst[index] = '\0'; // 正确：在实际拷贝结束位置补零，而不是强制在len-1位置
+}
+
+
+char *xp_find_first_non_space(const char *str) {
+    XP_ASSERT_DEFAULT(str != NULL);
+    while (*str && isspace(cast(unsigned char) * str)) {
+        str++;
+    }
+    return cast(char *)str;
+}
+
+
+
+xpString xp_string_c(char const *str) {
+    XP_ASSERT_DEFAULT(str != NULL);
+
+    xpString string;
+    string.allocator = {NULL, NULL};
+    string.length = xp_strlen_c(str);
+    string.capacity = xp_strlen_c(str);
+    string.c_str = cast(char *)str;
+    return string;
+}
+
+
+xpString xp_make_string(xpAllocator allocator, char const *str) {
+    return xp_make_string_capacity(allocator, str, xp_strlen_c(str));
+}
+
+
+xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize capacity) {
+    XP_ASSERT_DEFAULT(capacity >= 0);
+
+
+    xpString string;
+    string.allocator = allocator;
+    string.c_str = cast(char *) xp_alloc(string.allocator, capacity + 1); // NOTE: +1是为了末尾的'\0'
+    string.capacity = capacity;
+
+    // 计算实际长度
+    isize length = 0;
+    if (str != NULL) {
+        length = xp_strlen_c(cast(char const *)str);
+    }
+    if (length > capacity) {
+        length = capacity;
+    }
+    string.length = length;
+
+
+    // 清空空间
+    memset(string.c_str, '\0', string.capacity + 1); // NOTE: +1是为了末尾的'\0'
+    // 复制字符串内容
+    memcpy(string.c_str, str, string.length);
+
+    // 末尾补上'\0'
+    // string.c_str[length] = '\0';
+    return string;
+}
+
+xpString xp_make_string_count(xpAllocator allocator, char const *str, isize count) {
+    XP_ASSERT_DEFAULT(count >= 0);
+
+    xpString string = xp_make_string_zero();
+    string.allocator = allocator;
+
+    // 计算实际长度
+    isize actual_count = 0;
+    if (str != NULL) {
+        actual_count = xp_strlen_c(cast(char const *)str);
+    }
+
+    isize length = 0;
+    if (actual_count < count) {
+        length = actual_count;
+    } else {
+        length = count;
+    }
+    string.length = length;
+
+    string.c_str = cast(char *) xp_alloc(string.allocator, length + 1); // NOTE: +1是为了末尾的'\0'
+    string.capacity = length;
+
+    // 复制字符串内容
+    memcpy(string.c_str, str, string.length);
+
+    // 末尾补上'\0'
+    string.c_str[string.capacity] = '\0';
+
+
+    return string;
+}
+
+xpString xp_make_string_zero() {
+    xpString string;
+    string.allocator = { NULL, NULL };
+    string.c_str = NULL;
+    string.length = 0;
+    string.capacity = 0;
+    return string;
+}
+
+xpString xp_string_to_c_style(xpString string, xpAllocator allocator) {
+    xpString c_style_string = xp_make_string_count(allocator, string.c_str, string.length);
+    return c_style_string;
+}
+
+
+void xp_string_free(xpString string) {
+    if (string.allocator.proc != NULL) {
+        xp_free(string.allocator, string.c_str);
+    }
+}
+
+b32 xp_string_cmp(xpString a, xpString b) {
+    if (a.length > b.length) {
+        return 1;
+    } else if (a.length < b.length) {
+        return -1;
+    }
+
+    for (isize i = 0; i < a.length; i++) {
+        if (a.c_str[i] != b.c_str[i]) {
+            return (a.c_str[i] > b.c_str[i]) ? 1 : -1;
+        }
+    }
+
+    return 0;
+}
+
+b32 xp_string_equal(xpString a, xpString b) {
+    return xp_string_cmp(a, b) == 0;
+}
+
+xpString xp_string_copy(xpAllocator allocator, xpString string) {
+    xpString string_copy;
+
+    string_copy.allocator = allocator;
+    string_copy.length = string.length;
+    string_copy.capacity = string.length;
+
+    string_copy.c_str = cast(char *) xp_alloc(string_copy.allocator, string_copy.capacity + 1);
+    memcpy(string_copy.c_str, string.c_str, string.length);
+
+    string_copy.c_str[string.length] = '\0'; // 末尾补上'\0'
+    return string_copy;
+}
+
+
+xpString *xp_string_extend(xpString *string, isize extended_size) {
+    if (extended_size <= 0) {
+        return string;
+    }
+
+    char *new_c_str = cast(char *)xp_alloc(
+        string->allocator,
+        string->capacity + extended_size + 1 // +1是为了末尾的'\0'
+    );
+    memcpy(new_c_str, string->c_str, string->length);
+    xp_free(string->allocator, string->c_str);
+
+    string->c_str = new_c_str;
+
+    string->capacity = string->capacity + extended_size;
+
+    string->c_str[string->length] = '\0'; // 末尾补上'\0'
+
+
+    return string;
+}
+
+isize xp_string_find_char(xpString str, char c) {
+    for (isize i = 0; i < str.length; i++) {
+        if (str.c_str[i] == c) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str) {
+    XP_ASSERT_DEFAULT(pos >= 0);
+    XP_ASSERT_DEFAULT(pos <= str->length);
+
+    // 1. 扩容，确保插入后长度不会超过 capacity
+    if (str->length + inserted_str.length > str->capacity) {
+        xp_string_extend(str, inserted_str.length + (str->length + inserted_str.length - str->capacity));
+    }
+
+    XP_ASSERT_DEFAULT(str->length + inserted_str.length <= str->capacity);
+
+    // 2. 后移原有数据
+    if (pos < str->length) {
+        isize moved_size = str->length - pos;
+        memmove(str->c_str + pos + inserted_str.length, str->c_str + pos, moved_size);
+    }
+
+    // 3. 插入新字符串
+    memcpy(str->c_str + pos, inserted_str.c_str, inserted_str.length);
+
+    str->length += inserted_str.length;
+
+    XP_ASSERT_DEFAULT(str->length <= str->capacity);
+
+    // 4. 末尾补零
+    str->c_str[str->length] = '\0';
+
+
+    return str;
+}
+
+xpString *xp_string_append_char(xpString *str, char c) {
+    xpString char_str = xp_make_string_zero();
+    char_str.c_str = &c;
+    char_str.length = 1;
+    char_str.capacity = 1;
+
+    return xp_string_append(str, char_str);
+}
+
+xpString *xp_string_append(xpString *str, xpString appended_str) {
+    return xp_string_insert(str->length, str, appended_str);
+}
+
+
+
+xpString xp_isize_to_string(isize value, xpAllocator allocator) {
+    isize len = snprintf(NULL, 0, "%lld", value);
+
+    xpString string = xp_make_string_capacity(allocator, NULL, len);
+    snprintf(string.c_str, string.capacity + 1, "%lld", value);
+
+    string.length = len;
+
+    return string;
+}
+
+xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator) {
+    xpString new_string = xp_string_copy(allocator, string);
+
+    for (isize i = 0; i < new_string.length; i++) {
+        if (new_string.c_str[i] == old_char) {
+            new_string.c_str[i] = new_char;
+        }
+    }
+
+    return new_string;
+}
+
+
+xpString xp_make_string_from_slice(xpAllocator allocator, xpSlice slice) {
+    return xp_make_string_capacity(allocator, slice.data, slice.len);
+}
+
+
+xpSlice xp_slice_make(void *data, isize len) {
+    xpSlice slice;
+    slice.data = data;
+    slice.len = len;
+    return slice;
+}
+
+xpSlice xp_slice_make_from_string(xpString string, isize begin, isize len) {
+    if ((len < 0 || begin < 0) || ((begin + len) > string.length)) {
+        XP_ASSERT(0);
+    }
+
+    xpSlice slice = {};
+    slice.data = string.c_str + begin;
+    slice.len = len;
+
+    return slice;
+}
+
+
+#if defined(__cplusplus)
+}
+#endif
+
+
+#if defined(__cplusplus)
+
+//
+// xpString CPP 部分实现
+//
+
+
+xpString::xpString(const char* str) {
+    *this = xp_string_c(str);
+}
+
+xpString::xpString(xpAllocator allocator, const char* str) {
+    *this = xp_make_string(allocator, str);
+}
+
+bool xpString::operator== (xpString other) const {
+    b32 xp_string_cmp(xpString a, xpString b);
+    return !xp_string_cmp(*this, other);
+}
+
+char xpString::operator[] (isize index) const {
+    XP_ASSERT_DEFAULT(index >= 0 && index < length);
+    return c_str[index];
+}
+
+char *xpString::as_c_str() const {
+    // 目前都是c风格
+    return c_str;
+}
+
+
+
+xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator) {
+    xpString result = xp_string_copy(allocator, a);
+
+    if (middle.has_value()) {
+        xp_string_append(&result, middle.unwrap());
+    }
+
+    xp_string_append(&result, b);
+
+    return result;
+}
+
+#endif // __cplusplus
+
+#endif // XOAOP_IMPLEMENTATION
+
+// === end: xoaop_string.h ===
+// === begin: xoaop_hash.h ===
+
+
+#include <string>
+#include <functional>
+
+/*
+    哈希映射函数 (C API)
+*/
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+xp_define u32 xp_murmur_hash3_32(const void *data, usize length, usize seed);
+xp_define u64 xp_hash_combine_u64(u64 old_hash, u64 new_value);
+
+#if defined(__cplusplus)
+}
+#endif
+
+
+#if defined(__cplusplus)
+
+
+// std::hash<xpString> 特化 — 支持 xpString 作为 HashMap/HashSet 的 key
+namespace std {
+template<>
+struct hash<xpString> {
+    size_t operator()(const xpString& s) const noexcept {
+        return xp_murmur_hash3_32(s.c_str, static_cast<usize>(s.length), 0);
+    }
+};
+}
+
+
+// 哈希表槽位状态
+typedef enum xpHashSlotState {
+    XP_HASH_SLOT_EMPTY = 0,    // 空槽位
+    XP_HASH_SLOT_USED = 1,     // 已使用
+    XP_HASH_SLOT_TOMBSTONE = 2 // 墓碑：已删除，探测时跳过但不终止
+} xpHashSlotState;
+
+
+// 通用线性探测结果（不依赖具体条目类型）
+struct LinearProbeResult {
+    isize found_index = -1;       // 找到的匹配条目的索引（-1表示未找到）
+    isize first_tombstone = -1;   // 第一个遇到的墓碑位置的索引（-1表示没有）
+    isize first_empty = -1;       // 第一个空槽位置的索引（-1表示没有）
+};
+
+
+// 纯算法层面的通用线性探测：不依赖具体数据结构，只需要探测回调
+// 回调函数签名：xpHashSlotState probe_callback(isize index, bool* out_key_match)
+// 返回值：当前索引的槽位状态；out_key_match输出当前索引的key是否匹配目标key
+// 注意: capacity 必须是 2 的幂，使用位运算代替取模
+template<typename ProbeCallback>
+LinearProbeResult linear_probe(usize hash_value, isize capacity, ProbeCallback&& callback) {
+    LinearProbeResult result = {};
+
+    if (capacity <= 0) {
+        return result;
+    }
+
+    usize mask = static_cast<usize>(capacity) - 1;
+    usize index = hash_value & mask;
+    usize original_index = index;
+
+    // 至少执行一次探测
+    for (;;) {
+        bool key_match = false;
+        xpHashSlotState state = callback(static_cast<isize>(index), &key_match);
+
+        if (state == XP_HASH_SLOT_EMPTY) {
+            // 记录第一个空槽位置
+            if (result.first_empty == -1) {
+                result.first_empty = static_cast<isize>(index);
+            }
+
+            // 探测链结束，没有找到匹配
+            break;
+        } else if (state == XP_HASH_SLOT_TOMBSTONE) {
+            // 记录第一个墓碑位置
+            if (result.first_tombstone == -1) {
+                result.first_tombstone = static_cast<isize>(index);
+            }
+
+        } else if (state == XP_HASH_SLOT_USED && key_match) {
+            // 找到匹配的key
+            result.found_index = static_cast<isize>(index);
+            break;
+        }
+
+        index = (index + 1) & mask;
+
+        // 防止无限循环
+        if (index == original_index) {
+            break;
+        }
+    }
+
+    return result;
+}
+
+#define END_OF_HASH_MAP_INDEX -1
+
+#endif // __cplusplus
+
+
+#if defined(XOAOP_IMPLEMENTATION) && !defined(XOAOP_HASH_IMPLEMENTATION_DONE)
+#define XOAOP_HASH_IMPLEMENTATION_DONE
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+//
+// 哈希映射函数实现
+//
+
+
+//NOTE: 可以移到常用函数里
+xp_internal u32 rotate_left(u32 value, i32 shift) {
+    const i32 bits = sizeof(u32) * 8;  // 32 位
+    shift %= bits;  // 确保 shift 在 0 到 31 之间
+    return (value << shift) | (value >> (bits - shift));
+}
+
+u32 xp_murmur_hash3_32(const void *data, usize length, usize seed) {
+    const u8 *key = cast(const u8 *)(data);
+    const usize nblocks = length / 4;
+
+    u32 h1 = seed;
+
+    const u32 c1 = 0xcc9e2d51;
+    const u32 c2 = 0x1b873593;
+
+    // 处理 4 字节块
+    const u32 *blocks = cast(u32 *)key;
+    for (usize i = 0; i < nblocks; ++i) {
+        u32 k1 = blocks[i];
+
+        k1 *= c1;
+        k1 = rotate_left(k1, 15);
+        k1 *= c2;
+
+        h1 ^= k1;
+        h1 = rotate_left(h1, 13);
+        h1 = h1 * 5 + 0xe6546b64;
+    }
+
+    // 处理剩余字节
+    const u8 *tail = key + nblocks * 4;
+    u32 k1 = 0;
+
+    switch (length & 3) {
+    case 3: k1 ^= tail[2] << 16;
+    case 2: k1 ^= tail[1] << 8;
+    case 1: k1 ^= tail[0];
+        k1 *= c1;
+        k1 = rotate_left(k1, 15);
+        k1 *= c2;
+        h1 ^= k1;
+    }
+
+    // 最终混合
+    h1 ^= length;
+    h1 ^= h1 >> 16;
+    h1 *= 0x85ebca6b;
+    h1 ^= h1 >> 13;
+    h1 *= 0xc2b2ae35;
+    h1 ^= h1 >> 16;
+
+    return h1;
+}
+
+// 一个简单的hash combine函数
+u64 xp_hash_combine_u64(u64 old_hash, u64 new_value) {
+    static const u64 HASH_SEED = 0x517cc1b727220a95;
+    static const u64 K = 0x9e3779b97f4a7c15;
+
+    u64 z = new_value + K + (old_hash << 6) + (old_hash >> 2);
+    z ^= (z >> 33);
+    z *= 0xff51afd7ed558ccd;
+    z ^= (z >> 33);
+    z *= 0xc4ceb9fe1a85ec53;
+    z ^= (z >> 33);
+    return old_hash ^ z;
+}
+
+#if defined(__cplusplus)
+}
+#endif
+
+
+#endif // XOAOP_IMPLEMENTATION
+
+// === end: xoaop_hash.h ===
+// === begin: xoaop_hashmap.h ===
+
+
+#if defined(__cplusplus)
+
+template<typename K, typename V>
+struct xpHashMapEntry {
+    xpHashSlotState state;
+    K key;
+    V value;
+};
+
+template<typename K, typename V>
+struct xpHashMapIterator;
+
+template<typename K, typename V>
+struct xpHashMap {
+
+    xpAllocator allocator;
+    xpHashMapEntry<K, V> *entries;
+    isize count;
+    isize capacity;
+
+    // 方法声明 —— 实现在文件末尾 (C API 之后)
+    static xpHashMap make(xpAllocator a);
+    void free();
+    xpHashMap copy(xpAllocator a) const;
+    V *insert(K key, V value);
+    xpHashMapEntry<K, V> *get_entry(K key) const;
+    V& operator[](K key);
+    b32 remove(K key);
+    void clear();
+
+    xpHashMapIterator<K, V> begin() const;
+    xpHashMapIterator<K, V> end() const;
+};
+
+// --- 迭代器 ---
+
+template<typename K, typename V>
+struct xpHashMapIterator {
+    const xpHashMapEntry<K, V>* entries;
+    isize capacity;
+    isize index;
+
+    bool operator!=(const xpHashMapIterator& o) const { return index != o.index; }
+
+    void operator++() {
+        index++;
+        while (index < capacity && entries[index].state != XP_HASH_SLOT_USED)
+            index++;
+    }
+
+    const xpHashMapEntry<K, V>& operator*() const { return entries[index]; }
+    const xpHashMapEntry<K, V>* operator->() const { return &entries[index]; }
+};
+
+// --- 内部: 扩容 ---
+
+template<typename K, typename V>
+void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
+    XP_ASSERT_MSG(new_capacity > map->capacity, "extend: new_capacity must be larger");
+
+    if (map->entries == NULL) {
+        map->entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
+        for (isize i = 0; i < new_capacity; ++i) {
+            map->entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+    } else {
+        xpHashMapEntry<K, V> *new_entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
+        for (isize i = 0; i < new_capacity; ++i) {
+            new_entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+
+        usize mask = static_cast<usize>(new_capacity) - 1;
+        for (isize i = 0; i < map->capacity; ++i) {
+            xpHashMapEntry<K, V> *old_entry = &map->entries[i];
+            if (old_entry->state == XP_HASH_SLOT_USED) {
+                usize hash_value = std::hash<K>{}(old_entry->key);
+                usize index = hash_value & mask;
+                while (new_entries[index].state == XP_HASH_SLOT_USED) {
+                    index = (index + 1) & mask;
+                }
+                new (&new_entries[index].key) K(std::move(old_entry->key));
+                new (&new_entries[index].value) V(std::move(old_entry->value));
+                new_entries[index].state = XP_HASH_SLOT_USED;
+
+                old_entry->key.~K();
+                old_entry->value.~V();
+                old_entry->state = XP_HASH_SLOT_EMPTY;
+            }
+        }
+        xp_free(map->allocator, map->entries);
+        map->entries = new_entries;
+    }
+
+    map->capacity = new_capacity;
+}
+
+// --- 内部: 线性探测 ---
+
+template<typename K, typename V>
+LinearProbeResult xp_hash_map_linear_probe(const xpHashMap<K, V> *map, K key) {
+    if (map->capacity == 0 || map->entries == nullptr) {
+        return {};
+    }
+
+    usize hash_value = std::hash<K>{}(key);
+
+    return linear_probe(hash_value, map->capacity, [&](isize index, bool* out_key_match) {
+        const xpHashMapEntry<K, V>* entry = &map->entries[index];
+        *out_key_match = false;
+        if (entry->state == XP_HASH_SLOT_USED) {
+            *out_key_match = (entry->key == key);
+        }
+        return entry->state;
+    });
+}
+
+// === C API ===
+
+template<typename K, typename V>
+xpHashMap<K, V> xp_hash_map_make(xpAllocator allocator) {
+    xpHashMap<K, V> map = {};
+    map.allocator = allocator;
+    return map;
+}
+
+template<typename K, typename V>
+void xp_hash_map_free(xpHashMap<K, V> map) {
+    if (map.entries != NULL) {
+        for (isize i = 0; i < map.capacity; ++i) {
+            if (map.entries[i].state == XP_HASH_SLOT_USED) {
+                map.entries[i].key.~K();
+                map.entries[i].value.~V();
+            }
+        }
+        xp_free(map.allocator, map.entries);
+    }
+}
+
+template<typename K, typename V>
+xpHashMap<K, V> xp_hash_map_copy(const xpHashMap<K, V> *o, xpAllocator allocator) {
+    xpHashMap<K, V> copy = {};
+    copy.allocator = allocator;
+    copy.count = o->count;
+    copy.capacity = o->capacity;
+
+    if (o->capacity > 0 && o->entries != NULL) {
+        copy.entries = xp_alloc_array<xpHashMapEntry<K, V>>(allocator, copy.capacity);
+        for (isize i = 0; i < copy.capacity; ++i) {
+            copy.entries[i].state = o->entries[i].state;
+            if (o->entries[i].state == XP_HASH_SLOT_USED) {
+                new (&copy.entries[i].key) K(o->entries[i].key);
+                new (&copy.entries[i].value) V(o->entries[i].value);
+            }
+        }
+    }
+
+    return copy;
+}
+
+template<typename K, typename V>
+V *xp_hash_map_insert(xpHashMap<K, V> *map, K key, V value) {
+    if (map->capacity == 0 || (double)map->count / (double)map->capacity >= 0.7) {
+        isize new_cap = map->capacity == 0 ? 8 : map->capacity * 2;
+        xp_hash_map_extend(map, new_cap);
+    }
+
+    auto probe_result = xp_hash_map_linear_probe(map, key);
+
+    if (probe_result.found_index != -1) {
+        map->entries[probe_result.found_index].value = value;
+        return nullptr;
+    }
+
+    isize insert_index = -1;
+    if (probe_result.first_tombstone != -1) {
+        insert_index = probe_result.first_tombstone;
+    } else if (probe_result.first_empty != -1) {
+        insert_index = probe_result.first_empty;
+    }
+
+    XP_ASSERT_MSG(insert_index != -1, "insert: map is full after expansion");
+    if (insert_index == -1) {
+        return nullptr;
+    }
+
+    xpHashMapEntry<K, V>* insert_entry = &map->entries[insert_index];
+    new (&insert_entry->key) K(key);
+    new (&insert_entry->value) V(value);
+    insert_entry->state = XP_HASH_SLOT_USED;
+
+    map->count += 1;
+    return &insert_entry->value;
+}
+
+template<typename K, typename V>
+xpHashMapEntry<K, V> *xp_hash_map_get_entry(xpHashMap<K, V> map, K key) {
+    if (map.count == 0 || map.capacity == 0 || map.entries == nullptr) {
+        return NULL;
+    }
+
+    auto probe_result = xp_hash_map_linear_probe(&map, key);
+    if (probe_result.found_index == -1) {
+        return nullptr;
+    }
+    return &map.entries[probe_result.found_index];
+}
+
+template<typename K, typename V>
+V *xp_hash_map_get(xpHashMap<K, V> map, K key) {
+    xpHashMapEntry<K, V> *entry = xp_hash_map_get_entry(map, key);
+    return entry ? &entry->value : nullptr;
+}
+
+template<typename K, typename V>
+V *xp_hash_map_set(xpHashMap<K, V> *map, K key, V value) {
+    xpHashMapEntry<K, V> *entry = xp_hash_map_get_entry(*map, key);
+    if (entry != NULL) {
+        entry->value = value;
+        return &entry->value;
+    }
+    return NULL;
+}
+
+template<typename K, typename V>
+b32 xp_hash_map_remove(xpHashMap<K, V> *map, K key) {
+    xpHashMapEntry<K, V> *entry = xp_hash_map_get_entry(*map, key);
+    if (entry != NULL) {
+        entry->key.~K();
+        entry->value.~V();
+        entry->state = XP_HASH_SLOT_TOMBSTONE;
+        map->count -= 1;
+        return true;
+    }
+    return false;
+}
+
+template<typename K, typename V>
+void xp_hash_map_clear(xpHashMap<K, V> *map) {
+    if (map->entries == NULL) return;
+
+    for (isize i = 0; i < map->capacity; ++i) {
+        if (map->entries[i].state == XP_HASH_SLOT_USED) {
+            map->entries[i].key.~K();
+            map->entries[i].value.~V();
+            map->entries[i].state = XP_HASH_SLOT_EMPTY;
+        } else if (map->entries[i].state == XP_HASH_SLOT_TOMBSTONE) {
+            map->entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+    }
+
+    map->count = 0;
+}
+
+// --- 方法实现 (调用上面的 C API) ---
+
+template<typename K, typename V>
+xpHashMap<K, V> xpHashMap<K, V>::make(xpAllocator a) {
+    return xp_hash_map_make<K, V>(a);
+}
+
+template<typename K, typename V>
+void xpHashMap<K, V>::free() {
+    xp_hash_map_free(*this);
+}
+
+template<typename K, typename V>
+xpHashMap<K, V> xpHashMap<K, V>::copy(xpAllocator a) const {
+    return xp_hash_map_copy(this, a);
+}
+
+template<typename K, typename V>
+V *xpHashMap<K, V>::insert(K key, V value) {
+    return xp_hash_map_insert(this, key, value);
+}
+
+template<typename K, typename V>
+xpHashMapEntry<K, V> *xpHashMap<K, V>::get_entry(K key) const {
+    return xp_hash_map_get_entry(*this, key);
+}
+
+template<typename K, typename V>
+V& xpHashMap<K, V>::operator[](K key) {
+    V *v = xp_hash_map_get(*this, key);
+    XP_ASSERT_MSG(v != nullptr, "operator[]: key not found");
+    return *v;
+}
+
+template<typename K, typename V>
+b32 xpHashMap<K, V>::remove(K key) {
+    return xp_hash_map_remove(this, key);
+}
+
+template<typename K, typename V>
+void xpHashMap<K, V>::clear() {
+    xp_hash_map_clear(this);
+}
+
+template<typename K, typename V>
+xpHashMapIterator<K, V> xpHashMap<K, V>::begin() const {
+    isize idx = 0;
+    while (idx < capacity && entries[idx].state != XP_HASH_SLOT_USED)
+        idx++;
+    return {entries, capacity, idx};
+}
+
+template<typename K, typename V>
+xpHashMapIterator<K, V> xpHashMap<K, V>::end() const {
+    return {entries, capacity, capacity};
+}
+
+#endif // __cplusplus
+
+// === end: xoaop_hashmap.h ===
+// === begin: xoaop_hashset.h ===
+
+
+#if defined(__cplusplus)
+
+template<typename K>
+struct xpHashSetEntry {
+    xpHashSlotState state;
+    K key;
+};
+
+template<typename K>
+struct xpHashSetIterator;
+
+template<typename K>
+struct xpHashSet {
+    xpAllocator allocator;
+    xpHashSetEntry<K> *entries;
+    isize count;
+    isize capacity;
+
+    // 方法声明 —— 实现在文件末尾 (C API 之后)
+    static xpHashSet make(xpAllocator a);
+    void free();
+    xpHashSet copy(xpAllocator a) const;
+    K *insert(K key);
+    b32 contains(K key) const;
+    const K& operator[](K key) const;
+    b32 remove(K key);
+    void clear();
+
+    xpHashSetIterator<K> begin() const;
+    xpHashSetIterator<K> end() const;
+};
+
+// --- 迭代器 ---
+
+template<typename K>
+struct xpHashSetIterator {
+    const xpHashSetEntry<K>* entries;
+    isize capacity;
+    isize index;
+
+    bool operator!=(const xpHashSetIterator& o) const { return index != o.index; }
+
+    void operator++() {
+        index++;
+        while (index < capacity && entries[index].state != XP_HASH_SLOT_USED)
+            index++;
+    }
+
+    const xpHashSetEntry<K>& operator*() const { return entries[index]; }
+    const xpHashSetEntry<K>* operator->() const { return &entries[index]; }
+};
+
+// --- 内部: 线性探测 ---
+
+template<typename K>
+LinearProbeResult xp_hash_set_linear_probe(const xpHashSet<K> *set, K key) {
+    if (set->capacity == 0 || set->entries == nullptr) {
+        return {};
+    }
+
+    usize hash_value = std::hash<K>{}(key);
+    return linear_probe(hash_value, set->capacity, [&](isize index, bool* out_key_match) {
+        const xpHashSetEntry<K>* entry = &set->entries[index];
+        *out_key_match = false;
+        if (entry->state == XP_HASH_SLOT_USED) {
+            *out_key_match = (entry->key == key);
+        }
+        return entry->state;
+    });
+}
+
+// --- 内部: 扩容 ---
+
+template<typename K>
+void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
+    XP_ASSERT_MSG(new_capacity > set->capacity, "extend: new_capacity must be larger");
+
+    if (set->entries == NULL) {
+        set->entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
+        for (isize i = 0; i < new_capacity; ++i) {
+            set->entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+    } else {
+        xpHashSetEntry<K> *new_entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
+        for (isize i = 0; i < new_capacity; ++i) {
+            new_entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+
+        usize mask = static_cast<usize>(new_capacity) - 1;
+        for (isize i = 0; i < set->capacity; ++i) {
+            xpHashSetEntry<K> *old_entry = &set->entries[i];
+            if (old_entry->state == XP_HASH_SLOT_USED) {
+                usize hash_value = std::hash<K>{}(old_entry->key);
+                usize index = hash_value & mask;
+                while (new_entries[index].state == XP_HASH_SLOT_USED) {
+                    index = (index + 1) & mask;
+                }
+                new (&new_entries[index].key) K(std::move(old_entry->key));
+                new_entries[index].state = XP_HASH_SLOT_USED;
+
+                old_entry->key.~K();
+                old_entry->state = XP_HASH_SLOT_EMPTY;
+            }
+        }
+        xp_free(set->allocator, set->entries);
+        set->entries = new_entries;
+    }
+
+    set->capacity = new_capacity;
+}
+
+// === C API ===
+
+template<typename K>
+xpHashSet<K> xp_hash_set_make(xpAllocator allocator) {
+    xpHashSet<K> hash_set = {};
+    hash_set.allocator = allocator;
+    return hash_set;
+}
+
+template<typename K>
+void xp_hash_set_free(xpHashSet<K> set) {
+    if (set.entries != NULL) {
+        for (isize i = 0; i < set.capacity; ++i) {
+            if (set.entries[i].state == XP_HASH_SLOT_USED) {
+                set.entries[i].key.~K();
+            }
+        }
+        xp_free(set.allocator, set.entries);
+    }
+}
+
+template<typename K>
+xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
+    xpHashSet<K> copy = {};
+    copy.allocator = allocator;
+    copy.count = set->count;
+    copy.capacity = set->capacity;
+
+    if (set->capacity > 0 && set->entries != NULL) {
+        copy.entries = xp_alloc_array<xpHashSetEntry<K>>(allocator, copy.capacity);
+        for (isize i = 0; i < copy.capacity; ++i) {
+            copy.entries[i].state = XP_HASH_SLOT_EMPTY;
+        }
+
+        for (isize i = 0; i < set->capacity; ++i) {
+            const xpHashSetEntry<K> *src_entry = &set->entries[i];
+            xpHashSetEntry<K> *dst_entry = &copy.entries[i];
+
+            dst_entry->state = src_entry->state;
+            if (src_entry->state == XP_HASH_SLOT_USED) {
+                new (&dst_entry->key) K(src_entry->key);
+            }
+        }
+    }
+
+    return copy;
+}
+
+template<typename K>
+K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
+    if (set->capacity == 0 || (double)set->count / (double)set->capacity >= 0.7) {
+        isize new_cap = set->capacity == 0 ? 8 : set->capacity * 2;
+        xp_hash_set_extend(set, new_cap);
+    }
+
+    auto probe_result = xp_hash_set_linear_probe(set, key);
+
+    if (probe_result.found_index != -1) {
+        return nullptr;
+    }
+
+    isize insert_index = -1;
+    if (probe_result.first_tombstone != -1) {
+        insert_index = probe_result.first_tombstone;
+    } else if (probe_result.first_empty != -1) {
+        insert_index = probe_result.first_empty;
+    }
+
+    XP_ASSERT_MSG(insert_index != -1, "insert: set is full after expansion");
+    if (insert_index == -1) {
+        return nullptr;
+    }
+
+    xpHashSetEntry<K>* insert_entry = &set->entries[insert_index];
+    new (&insert_entry->key) K(key);
+    insert_entry->state = XP_HASH_SLOT_USED;
+
+    set->count += 1;
+    return &insert_entry->key;
+}
+
+template<typename K>
+xpHashSetEntry<K> *xp_hash_set_get_entry(xpHashSet<K> *set, K key) {
+    if (set->count == 0 || set->capacity == 0 || set->entries == nullptr) {
+        return NULL;
+    }
+
+    auto probe_result = xp_hash_set_linear_probe(set, key);
+    if (probe_result.found_index == -1) {
+        return nullptr;
+    }
+    return &set->entries[probe_result.found_index];
+}
+
+template<typename K>
+K *xp_hash_set_get(xpHashSet<K> *set, K key) {
+    xpHashSetEntry<K> *entry = xp_hash_set_get_entry(set, key);
+    return entry ? &entry->key : NULL;
+}
+
+template<typename K>
+b32 xp_hash_set_find(xpHashSet<K> *set, K key) {
+    return xp_hash_set_get_entry(set, key) != NULL;
+}
+
+template<typename K>
+b32 xp_hash_set_remove(xpHashSet<K> *set, K key) {
+    xpHashSetEntry<K> *entry = xp_hash_set_get_entry(set, key);
+    if (entry != NULL) {
+        entry->key.~K();
+        entry->state = XP_HASH_SLOT_TOMBSTONE;
+        set->count -= 1;
+        return true;
+    }
+    return false;
+}
+
+template<typename K>
+void xp_hash_set_clear(xpHashSet<K> *set) {
+    if (set->entries == NULL || set->capacity <= 0) {
+        set->count = 0;
+        return;
+    }
+
+    for (isize i = 0; i < set->capacity; ++i) {
+        xpHashSetEntry<K> *entry = &set->entries[i];
+        if (entry->state == XP_HASH_SLOT_USED) {
+            entry->key.~K();
+            entry->state = XP_HASH_SLOT_EMPTY;
+        } else if (entry->state == XP_HASH_SLOT_TOMBSTONE) {
+            entry->state = XP_HASH_SLOT_EMPTY;
+        }
+    }
+
+    set->count = 0;
+}
+
+// --- 方法实现 (调用上面的 C API) ---
+
+template<typename K>
+xpHashSet<K> xpHashSet<K>::make(xpAllocator a) {
+    return xp_hash_set_make<K>(a);
+}
+
+template<typename K>
+void xpHashSet<K>::free() {
+    xp_hash_set_free(*this);
+}
+
+template<typename K>
+xpHashSet<K> xpHashSet<K>::copy(xpAllocator a) const {
+    return xp_hash_set_copy(this, a);
+}
+
+template<typename K>
+K *xpHashSet<K>::insert(K key) {
+    return xp_hash_set_insert(this, key);
+}
+
+template<typename K>
+b32 xpHashSet<K>::contains(K key) const {
+    return xp_hash_set_find(const_cast<xpHashSet<K>*>(this), key);
+}
+
+template<typename K>
+const K& xpHashSet<K>::operator[](K key) const {
+    K *v = xp_hash_set_get(const_cast<xpHashSet<K>*>(this), key);
+    XP_ASSERT_MSG(v != nullptr, "operator[]: key not found in set");
+    return *v;
+}
+
+template<typename K>
+b32 xpHashSet<K>::remove(K key) {
+    return xp_hash_set_remove(this, key);
+}
+
+template<typename K>
+void xpHashSet<K>::clear() {
+    xp_hash_set_clear(this);
+}
+
+template<typename K>
+xpHashSetIterator<K> xpHashSet<K>::begin() const {
+    isize idx = 0;
+    while (idx < capacity && entries[idx].state != XP_HASH_SLOT_USED)
+        idx++;
+    return {entries, capacity, idx};
+}
+
+template<typename K>
+xpHashSetIterator<K> xpHashSet<K>::end() const {
+    return {entries, capacity, capacity};
+}
+
+#endif // __cplusplus
+
+// === end: xoaop_hashset.h ===
+// === begin: xoaop_intern.h ===
+
+
+#if defined(__cplusplus)
+
+template<typename T>
+struct xpInterningEntry {
+    T *key_ptr;
+    b8 used;
+};
+
+
+template<typename T, size_t CAPACITY>
+struct xpInterningTable {
+
+    xpArena arena; // 只能是独立的ArenaAllocator
+    xpAllocator allocator; // 只能是独立的ArenaAllocator
+
+    xpInterningEntry<T> buckets[CAPACITY];
+
+    isize count;
+
+
+    static constexpr size_t capacity = CAPACITY;
+    static_assert((CAPACITY & (CAPACITY - 1)) == 0, "InterningTable CAPACITY must be a power of 2");
+};
+
+template<typename T, size_t CAPACITY>
+void xp_interning_table_init(xpInterningTable<T, CAPACITY> *table) {
+    xp_arena_init_default(&table->arena);
+    table->allocator = xp_arena_allocator(&table->arena);
+
+    for (isize i = 0; i < CAPACITY; ++i) {
+        table->buckets[i].used = false;
+    }
+    table->count = 0;
+}
+
+template<typename T, size_t CAPACITY>
+void xp_interning_table_free(xpInterningTable<T, CAPACITY> *table) {
+    xp_free_all(table->allocator);
+}
+
+
+template<typename T, size_t CAPACITY>
+LinearProbeResult xp_interning_table_linear_probe(xpInterningTable<T, CAPACITY> *table, T key) {
+    usize hash_value = std::hash<T>{}(key);
+    return linear_probe(hash_value, xpInterningTable<T, CAPACITY>::capacity, [&](isize index, bool* out_key_match) {
+        xpInterningEntry<T>* entry = &table->buckets[index];
+        // 只有已使用的条目才能比较key
+        *out_key_match = false;
+        if (entry->used) {
+            *out_key_match = (*(entry->key_ptr) == key);
+        }
+        return entry->used ? XP_HASH_SLOT_USED : XP_HASH_SLOT_EMPTY;
+    });
+}
+
+
+template<typename T, size_t CAPACITY>
+xpInterningEntry<T> *xp_interning_table_get_entry(xpInterningTable<T, CAPACITY> *table, T key) {
+    if(table->count == 0) {
+        return NULL;
+    }
+
+    auto probe_result = xp_interning_table_linear_probe(table, key);
+    if(probe_result.found_index == -1) {
+        return nullptr;
+    }
+
+    return &table->buckets[probe_result.found_index];
+}
+
+
+template<typename T, size_t CAPACITY>
+T *xp_interning_table_get(xpInterningTable<T, CAPACITY> *table, T key) {
+    xpInterningEntry<T> *entry = xp_interning_table_get_entry(table, key);
+    return entry ? entry->key_ptr : NULL;
+}
+
+
+template<typename T, size_t CAPACITY>
+T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
+    if (table->count >= table->capacity) {
+        return NULL; // 满了
+    }
+
+    auto probe_result = xp_interning_table_linear_probe(table, key);
+
+    if(probe_result.found_index == -1){
+        xpInterningEntry<T> *entry = &table->buckets[probe_result.first_empty];
+
+        T *stored_key_ptr = xp_alloc<T>(table->allocator);
+        *stored_key_ptr = key;
+
+        entry->key_ptr = stored_key_ptr;
+        entry->used = true;
+
+        table->count += 1;
+        return stored_key_ptr;
+    } else {
+        return nullptr; // 重复插入当作失败处理
+    }
+
+    //NOTE: FULL MAP
+    XP_ASSERT_DEFAULT(0);
+    return NULL;
+}
+
+#endif // __cplusplus
+
+// === end: xoaop_intern.h ===
 
 
 
@@ -594,33 +2106,6 @@ void xp_zero_array(void *array, isize capacity) {
 }
 
 
-/*
-Defer In CPP
-*/
-
-#if __cplusplus >= 201703L
-
-template<typename F>
-struct xpDeferWrapper {
-
-    xpDeferWrapper(F defer_func) : defer_func(defer_func) {
-
-    }
-    ~xpDeferWrapper() {
-        defer_func();
-    }
-    F defer_func;
-};
-
-#define DEFER_1(x, y) x##y
-#define DEFER_2(x, y) DEFER_1(x, y)
-#define DEFER_3(x) DEFER_2(x, __COUNTER__)
-#define defer(code) auto DEFER_3(__deFer__) = xpDeferWrapper([&]() { code; })
-
-
-
-#endif // __cplusplus >= 201703L
-
 // RAII wrapper for automatic arena state restore when leaving scope
 // 自动恢复arena状态的RAII封装，离开作用域时自动调用恢复函数
 class xpAutoArenaRestore {
@@ -704,943 +2189,11 @@ private:
     bool cancelled_ = false;
 };
 
-/*
-Option
-*/
-enum class xpOptionEnum {
-    None,
-    Some
-};
-
-template<typename T>
-struct xpOption {
-public:
-
-    static xpOption<T> none() {
-        return xpOption();
-    }
-
-    static xpOption<T> some(T value) {
-        return xpOption(value);
-    }
-
-    xpOption() : kind(xpOptionEnum::None) {}
-    xpOption(T val) : kind(xpOptionEnum::Some), value(val) {}
-
-    bool has_value() {
-        return kind == xpOptionEnum::Some;
-    }
-
-    bool is_none() {
-        return kind == xpOptionEnum::None;
-    }
-
-    T unwrap() {
-        XP_ASSERT_DEFAULT(kind == xpOptionEnum::Some);
-        return value;
-    }
-
-
-    bool operator==(const xpOption<T> &other) const {
-        if (kind != other.kind) {
-            return false;
-        }
-        if (kind == xpOptionEnum::None) {
-            return true; // 两个都是None
-        }
-        return value == other.value; // 比较Some的值
-    }
-
-
-private:
-    xpOptionEnum kind;
-    T value;
-};
-
-
-
-
-/*
-Result
-*/
-
-
-template<typename F, typename I>
-concept MatchHandler = requires(F handler, I && input) {
-    { handler(input) } -> std::same_as<void>;
-};
-
-
-enum class xpResultType {
-    Ok,
-    Err
-};
-
-
-template<typename OkType, typename ErrType>
-struct xpResult {
-    static_assert(!std::is_same_v<OkType, ErrType>, "OkType and ErrType must be different types");
-
-
-    static xpResult<OkType, ErrType> ok(OkType value) {
-        return xpResult(value);
-    }
-
-    static xpResult<OkType, ErrType> err(ErrType error) {
-        return xpResult(error);
-    }
-
-    bool is_ok() const {
-        return type == xpResultType::Ok;
-    }
-
-    bool is_err() const {
-        return type == xpResultType::Err;
-    }
-
-    OkType as_ok() const {
-        XP_ASSERT_DEFAULT(is_ok());
-        return ok_val;
-    }
-
-    ErrType as_err() const {
-        XP_ASSERT_DEFAULT(is_err());
-        return err_val;
-    }
-
-
-private:
-
-    xpResult(OkType ok_value) : type(xpResultType::Ok), ok_val(ok_value) {}
-    xpResult(ErrType err_value) : type(xpResultType::Err), err_val(err_value) {}
-
-    xpResultType type;
-    union {
-        OkType ok_val;
-        ErrType err_val;
-    };
-};
-
-template<typename OkType, typename ErrType>
-void match(xpResult<OkType, ErrType> &result, MatchHandler<OkType> auto &&ok_handler, MatchHandler<ErrType> auto &&err_handler) {
-    if (result.is_ok()) {
-        ok_handler(result.as_ok());
-    } else if (result.is_err()) {
-        err_handler(result.as_err());
-    } else {
-        UNREACHABLE();
-    }
-}
-
-
-
-/*
-HashMap
-*/
-
-//hash函数接口定义
-template<typename K>
-usize xp_hash_func(K *key);
-
-template<typename K>
-usize xp_hash_func(const K *key);
-
-template<typename T>
-usize xp_hash_func(T **key) {
-    return reinterpret_cast<usize>(*key);
-}
-
-
-// 哈希表槽位状态
-typedef enum xpHashSlotState {
-    XP_HASH_SLOT_EMPTY = 0,    // 空槽位
-    XP_HASH_SLOT_USED = 1,     // 已使用
-    XP_HASH_SLOT_TOMBSTONE = 2 // 墓碑：已删除，探测时跳过但不终止
-} xpHashSlotState;
-
-template<typename K, typename V>
-struct xpHashMapEntry {
-    K key;
-    V value;
-    xpHashSlotState state;
-};
-
-template<typename K, typename V>
-struct xpHashMap {
-
-    xpAllocator allocator;
-    xpHashMapEntry<K, V> *entries;
-
-    isize count;
-    isize capacity;
-};
-
-
-template<typename K, typename V>
-xpHashMap<K, V> xp_hash_map_make(xpAllocator allocator) {
-    xpHashMap<K, V> hash_map = {};
-    hash_map.allocator = allocator;
-    hash_map.entries = NULL;
-
-    hash_map.count = 0;
-    hash_map.capacity = 0;
-
-    return hash_map;
-}
-
-template<typename K, typename V>
-void xp_hash_map_free(xpHashMap<K, V> map) {
-    if (map.entries != NULL) {
-        // 析构所有正在使用的元素
-        for (isize i = 0; i < map.capacity; ++i) {
-            if (map.entries[i].state == XP_HASH_SLOT_USED) {
-                map.entries[i].key.~K();
-                map.entries[i].value.~V();
-            }
-        }
-        xp_free(map.allocator, map.entries);
-    }
-}
-
-template<typename K, typename V>
-xpHashMap<K, V> xp_hash_map_copy(xpHashMap<K, V> *o, xpAllocator allocator) {
-    xpHashMap<K, V> copy = {};
-    copy.allocator = allocator;
-    copy.count = o->count;
-    copy.capacity = o->capacity;
-
-    if (o->capacity > 0 && o->entries != NULL) {
-        copy.entries = xp_alloc_array<xpHashMapEntry<K, V>>(allocator, copy.capacity);
-        // 只初始化state字段
-        for (isize i = 0; i < copy.capacity; ++i) {
-            copy.entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-
-        // 深拷贝每个元素
-        for (isize i = 0; i < o->capacity; ++i) {
-            const xpHashMapEntry<K, V> *src_entry = &o->entries[i];
-            xpHashMapEntry<K, V> *dst_entry = &copy.entries[i];
-
-            dst_entry->state = src_entry->state;
-            if (src_entry->state == XP_HASH_SLOT_USED) {
-                // 拷贝构造元素
-                new (&dst_entry->key) K(src_entry->key);
-                new (&dst_entry->value) V(src_entry->value);
-            }
-        }
-    }
-
-    return copy;
-}
-
-
-
-template<typename K, typename V>
-void xp_hash_map_extend(xpHashMap<K, V> *map, isize new_capacity) {
-    XP_ASSERT(new_capacity > map->capacity);
-
-    if (map->entries == NULL) {
-        map->entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
-        // 只初始化state字段，不触碰key和value的内存（它们还未构造）
-        for (isize i = 0; i < new_capacity; ++i) {
-            map->entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-    } else {
-        // Rehash
-        xpHashMapEntry<K, V> *new_entries = (xpHashMapEntry<K, V> *) xp_alloc(map->allocator, sizeof(xpHashMapEntry<K, V>) * new_capacity);
-        // 只初始化state字段
-        for (isize i = 0; i < new_capacity; ++i) {
-            new_entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-
-        for (isize i = 0; i < map->capacity; ++i) {
-            xpHashMapEntry<K, V> *old_entry = &map->entries[i];
-            if (old_entry->state == XP_HASH_SLOT_USED) { // 只rehash正在使用的条目，忽略墓碑
-                usize hash_value = xp_hash_func(&old_entry->key);
-                usize index = hash_value % new_capacity;
-                // 线性探测
-                while (new_entries[index].state == XP_HASH_SLOT_USED) {
-                    index = (index + 1) % new_capacity;
-                }
-                // 使用移动构造转移资源所有权
-                new (&new_entries[index].key) K(std::move(old_entry->key));
-                new (&new_entries[index].value) V(std::move(old_entry->value));
-                new_entries[index].state = XP_HASH_SLOT_USED;
-
-                // 析构原位置的元素
-                old_entry->key.~K();
-                old_entry->value.~V();
-                old_entry->state = XP_HASH_SLOT_EMPTY;
-            }
-        }
-        xp_free(map->allocator, map->entries);
-
-        map->entries = new_entries;
-    }
-
-    map->capacity = new_capacity;
-    return;
-}
-
-
-template<typename K, typename V>
-V *xp_hash_map_insert(xpHashMap<K, V> *map, K key, V value) {
-    // 负载因子70%时扩容，避免哈希冲突过多
-    if (map->capacity == 0 || (double)map->count / (double)map->capacity >= 0.7) {
-        xp_hash_map_extend(map, map->capacity + map->capacity / 2 + 1);
-    }
-
-    auto probe_result = xp_hash_map_linear_probe(*map, key);
-
-    // 如果key已经存在，更新值
-    if (probe_result.found_index != -1) {
-        xpHashMapEntry<K, V>* entry = &map->entries[probe_result.found_index];
-        entry->value = value;
-        return nullptr;
-    }
-
-    // 优先使用墓碑位置，其次使用空槽位置
-    isize insert_index = -1;
-    if (probe_result.first_tombstone != -1) {
-        insert_index = probe_result.first_tombstone;
-    } else if (probe_result.first_empty != -1) {
-        insert_index = probe_result.first_empty;
-    }
-
-    // 理论上扩容后不可能没有空槽，这里做防御性检查
-    XP_ASSERT(insert_index != -1 && "Hash map is full after expansion");
-    if (insert_index == -1) {
-        return nullptr;
-    }
-
-    xpHashMapEntry<K, V>* insert_entry = &map->entries[insert_index];
-    // 使用placement new构造新元素
-    new (&insert_entry->key) K(key);
-    new (&insert_entry->value) V(value);
-    insert_entry->state = XP_HASH_SLOT_USED;
-
-    map->count += 1;
-    return &insert_entry->value;
-}
-
-
-
-// 通用线性探测结果（不依赖具体条目类型）
-struct LinearProbeResult {
-    isize found_index = -1;       // 找到的匹配条目的索引（-1表示未找到）
-    isize first_tombstone = -1;   // 第一个遇到的墓碑位置的索引（-1表示没有）
-    isize first_empty = -1;       // 第一个空槽位置的索引（-1表示没有）
-};
-
-
-// 纯算法层面的通用线性探测：不依赖具体数据结构，只需要探测回调
-// 回调函数签名：xpHashSlotState probe_callback(isize index, bool* out_key_match)
-// 返回值：当前索引的槽位状态；out_key_match输出当前索引的key是否匹配目标key
-template<typename ProbeCallback>
-LinearProbeResult linear_probe(usize hash_value, isize capacity, ProbeCallback&& callback) {
-    LinearProbeResult result = {};
-
-    if (capacity <= 0) {
-        return result;
-    }
-
-    usize index = hash_value % static_cast<usize>(capacity);
-    usize original_index = index;
-
-    // 至少执行一次探测
-    for (;;) {
-        bool key_match = false;
-        xpHashSlotState state = callback(static_cast<isize>(index), &key_match);
-
-        if (state == XP_HASH_SLOT_EMPTY) {
-            // 记录第一个空槽位置
-            if (result.first_empty == -1) {
-                result.first_empty = static_cast<isize>(index);
-            }
-
-            // 探测链结束，没有找到匹配
-            break;
-        } else if (state == XP_HASH_SLOT_TOMBSTONE) {
-            // 记录第一个墓碑位置
-            if (result.first_tombstone == -1) {
-                result.first_tombstone = static_cast<isize>(index);
-            }
-
-        } else if (state == XP_HASH_SLOT_USED && key_match) {
-            // 找到匹配的key
-            result.found_index = static_cast<isize>(index);
-            break;
-        }
-
-        index = (index + 1) % static_cast<usize>(capacity);
-
-        // 防止无限循环
-        if (index == original_index) {
-            break;
-        }
-    }
-
-    return result;
-}
-
-
-
-// HashMap专用的线性探测封装
-template<typename K, typename V>
-LinearProbeResult xp_hash_map_linear_probe(xpHashMap<K, V> map, K key) {
-    if (map.capacity == 0 || map.entries == nullptr) {
-        return {};
-    }
-
-    usize hash_value = xp_hash_func(&key);
-
-
-    return linear_probe(hash_value, map.capacity, [&](isize index, bool* out_key_match) {
-        xpHashMapEntry<K, V>* entry = &map.entries[index];
-        // 只有已使用的条目才能比较key
-        *out_key_match = false;
-        if (entry->state == XP_HASH_SLOT_USED) {
-            *out_key_match = (entry->key == key);
-        }
-        return entry->state;
-    });
-}
-
-
-
-template<typename K, typename V>
-xpHashMapEntry<K, V> *xp_hash_map_get_entry(xpHashMap<K, V> map, K key) {
-    if (map.count == 0 || map.capacity == 0 || map.entries == nullptr) {
-        return NULL;
-    }
-
-    auto probe_result = xp_hash_map_linear_probe(map, key);
-    if (probe_result.found_index == -1) {
-        return nullptr;
-    }
-    return &map.entries[probe_result.found_index];
-}
-
-
-
-template<typename K, typename V>
-V *xp_hash_map_get(xpHashMap<K, V> map, K key) {
-    xpHashMapEntry<K, V> *entry = xp_hash_map_get_entry(map, key);
-    return entry ? &entry->value : nullptr;
-}
-
-
-template<typename K, typename V>
-V *xp_hash_map_set(xpHashMap<K, V> *map, K key, V value) {
-    xpHashMapEntry<K, V> *entry;
-    if ((entry = xp_hash_map_get_entry(*map, key)) != NULL) {
-        entry->value = value;
-        return &entry->value;
-    }
-    return NULL;
-}
-
-
-template<typename K, typename V>
-b32 xp_hash_map_remove(xpHashMap<K, V> *map, K key) {
-    xpHashMapEntry<K, V> *entry;
-    if ((entry = xp_hash_map_get_entry(*map, key)) != NULL) {
-        // 显式析构元素资源
-        entry->key.~K();
-        entry->value.~V();
-        entry->state = XP_HASH_SLOT_TOMBSTONE; // 标记为墓碑，而不是直接清空
-        map->count -= 1;
-        return true;
-    }
-    return false;
-}
-
-
-// 清空哈希表所有元素，保留容量
-template<typename K, typename V>
-void xp_hash_map_clear(xpHashMap<K, V> *map) {
-    if (map->entries == NULL) {
-        return;
-    }
-
-    for (isize i = 0; i < map->capacity; ++i) {
-        xpHashMapEntry<K, V> *entry = &map->entries[i];
-        if (entry->state == XP_HASH_SLOT_USED) {
-            entry->key.~K();
-            entry->value.~V();
-            entry->state = XP_HASH_SLOT_EMPTY;
-        } else if (entry->state == XP_HASH_SLOT_TOMBSTONE) {
-            entry->state = XP_HASH_SLOT_EMPTY;
-        }
-    }
-
-    map->count = 0;
-}
-
-#define END_OF_HASH_MAP_INDEX -1
-
-
-template<typename K, typename V>
-isize xp_hash_map_first_entry(xpHashMap<K, V> *map, xpHashMapEntry<K, V> **first_entry) {
-    for (isize i = 0; i < map->capacity; i++) {
-        if (map->entries[i].state == XP_HASH_SLOT_USED) {
-            *first_entry = &map->entries[i];
-            return i;
-        }
-    }
-
-    *first_entry = NULL;
-    return END_OF_HASH_MAP_INDEX;
-}
-
-
-template<typename K, typename V>
-isize xp_hash_map_next_entry(xpHashMap<K, V> *map, isize curr_pos, xpHashMapEntry<K, V> **next_entry) {
-    for (isize i = curr_pos + 1; i < map->capacity; i++) {
-        if (map->entries[i].state == XP_HASH_SLOT_USED) {
-            *next_entry = &map->entries[i];
-            return i;
-        }
-    }
-
-    *next_entry = NULL;
-    return END_OF_HASH_MAP_INDEX;
-}
-
-
-template<typename K, typename V>
-isize xp_hash_map_first_entry(const xpHashMap<K, V> *map, const xpHashMapEntry<K, V> **first_entry) {
-    for (isize i = 0; i < map->capacity; i++) {
-        if (map->entries[i].state == XP_HASH_SLOT_USED) {
-            *first_entry = &map->entries[i];
-            return i;
-        }
-    }
-
-    *first_entry = NULL;
-    return END_OF_HASH_MAP_INDEX;
-}
-
-
-template<typename K, typename V>
-isize xp_hash_map_next_entry(const xpHashMap<K, V> *map, isize curr_pos, const xpHashMapEntry<K, V> **next_entry) {
-    for (isize i = curr_pos + 1; i < map->capacity; i++) {
-        if (map->entries[i].state == XP_HASH_SLOT_USED) {
-            *next_entry = &map->entries[i];
-            return i;
-        }
-    }
-
-    *next_entry = NULL;
-    return END_OF_HASH_MAP_INDEX;
-}
-
-
-
-/*
-HashSet
-*/
-
-template<typename K>
-struct xpHashSetEntry {
-    K key;
-    xpHashSlotState state;
-};
-
-
-template<typename K>
-struct xpHashSet {
-    xpAllocator allocator;
-    xpHashSetEntry<K> *entries;
-
-    isize count;
-    isize capacity;
-};
-
-template<typename K>
-LinearProbeResult xp_hash_set_linear_probe(xpHashSet<K> set, K key) {
-    if (set.capacity == 0 || set.entries == nullptr) {
-        return {};
-    }
-
-    usize hash_value = xp_hash_func(&key);
-    return linear_probe(hash_value, set.capacity, [&](isize index, bool* out_key_match) {
-        xpHashSetEntry<K>* entry = &set.entries[index];
-        // 只有已使用的条目才能比较key
-        *out_key_match = false;
-        if (entry->state == XP_HASH_SLOT_USED) {
-            *out_key_match = (entry->key == key);
-        }
-        return entry->state;
-    });
-}
-
-
-template<typename K>
-xpHashSet<K> xp_hash_set_make(xpAllocator allocator) {
-    xpHashSet<K> hash_set = {};
-    hash_set.allocator = allocator;
-    hash_set.entries = NULL;
-
-    hash_set.count = 0;
-    hash_set.capacity = 0;
-
-    return hash_set;
-}
-
-template<typename K>
-void xp_hash_set_free(xpHashSet<K> set) {
-    if (set.entries != NULL) {
-        // 析构所有正在使用的元素
-        for (isize i = 0; i < set.capacity; ++i) {
-            if (set.entries[i].state == XP_HASH_SLOT_USED) {
-                set.entries[i].key.~K();
-            }
-        }
-        xp_free(set.allocator, set.entries);
-    }
-}
-
-template<typename K>
-void xp_hash_set_clear(xpHashSet<K> *set) {
-    if (set->entries == NULL || set->capacity <= 0) {
-        set->count = 0;
-        return;
-    }
-
-    // 析构所有正在使用的元素
-    for (isize i = 0; i < set->capacity; ++i) {
-        xpHashSetEntry<K> *entry = &set->entries[i];
-        if (entry->state == XP_HASH_SLOT_USED) {
-            entry->key.~K();
-            entry->state = XP_HASH_SLOT_EMPTY;
-        } else if (entry->state == XP_HASH_SLOT_TOMBSTONE) {
-            entry->state = XP_HASH_SLOT_EMPTY;
-        }
-    }
-
-    set->count = 0;
-}
-
-template<typename K>
-xpHashSet<K> xp_hash_set_copy(xpHashSet<K> *set, xpAllocator allocator) {
-    xpHashSet<K> copy = {};
-    copy.allocator = allocator;
-    copy.count = set->count;
-    copy.capacity = set->capacity;
-
-    if (set->capacity > 0 && set->entries != NULL) {
-        copy.entries = xp_alloc_array<xpHashSetEntry<K>>(allocator, copy.capacity);
-        // 只初始化state字段
-        for (isize i = 0; i < copy.capacity; ++i) {
-            copy.entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-
-        // 深拷贝每个元素
-        for (isize i = 0; i < set->capacity; ++i) {
-            const xpHashSetEntry<K> *src_entry = &set->entries[i];
-            xpHashSetEntry<K> *dst_entry = &copy.entries[i];
-
-            dst_entry->state = src_entry->state;
-            if (src_entry->state == XP_HASH_SLOT_USED) {
-                // 拷贝构造元素
-                new (&dst_entry->key) K(src_entry->key);
-            }
-        }
-    }
-
-    return copy;
-}
-
-
-template<typename K>
-void xp_hash_set_extend(xpHashSet<K> *set, isize new_capacity) {
-    XP_ASSERT_DEFAULT(new_capacity > set->capacity);
-
-    if (set->entries == NULL) {
-        set->entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
-        // 只初始化state字段，不触碰key的内存（它们还未构造）
-        for (isize i = 0; i < new_capacity; ++i) {
-            set->entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-    } else {
-        // Rehash
-        xpHashSetEntry<K> *new_entries = (xpHashSetEntry<K> *) xp_alloc(set->allocator, sizeof(xpHashSetEntry<K>) * new_capacity);
-        // 只初始化state字段
-        for (isize i = 0; i < new_capacity; ++i) {
-            new_entries[i].state = XP_HASH_SLOT_EMPTY;
-        }
-
-        for (isize i = 0; i < set->capacity; ++i) {
-            xpHashSetEntry<K> *old_entry = &set->entries[i];
-            if (old_entry->state == XP_HASH_SLOT_USED) { // 只rehash正在使用的条目，忽略墓碑
-                usize hash_value = xp_hash_func(&old_entry->key);
-                usize index = hash_value % new_capacity;
-                // 线性探测
-                while (new_entries[index].state == XP_HASH_SLOT_USED) {
-                    index = (index + 1) % new_capacity;
-                }
-                // 使用移动构造转移资源所有权
-                new (&new_entries[index].key) K(std::move(old_entry->key));
-                new_entries[index].state = XP_HASH_SLOT_USED;
-
-                // 析构原位置的元素
-                old_entry->key.~K();
-                old_entry->state = XP_HASH_SLOT_EMPTY;
-            }
-        }
-        xp_free(set->allocator, set->entries);
-
-        set->entries = new_entries;
-    }
-
-    set->capacity = new_capacity;
-    return;
-}
-
-
-template<typename K>
-K *xp_hash_set_insert(xpHashSet<K> *set, K key) {
-    // 负载因子70%时扩容，避免哈希冲突过多
-    if (set->capacity == 0 || (double)set->count / (double)set->capacity >= 0.7) {
-        xp_hash_set_extend(set, set->capacity + set->capacity / 2 + 1);
-    }
-
-    auto probe_result = xp_hash_set_linear_probe(*set, key);
-
-    // 如果key已经存在，返回nullptr表示插入失败
-    if (probe_result.found_index != -1) {
-        return nullptr;
-    }
-
-    // 优先使用墓碑位置，其次使用空槽位置
-    isize insert_index = -1;
-    if (probe_result.first_tombstone != -1) {
-        insert_index = probe_result.first_tombstone;
-    } else if (probe_result.first_empty != -1) {
-        insert_index = probe_result.first_empty;
-    }
-
-    // 理论上扩容后不可能没有空槽，这里做防御性检查
-    XP_ASSERT_DEFAULT(insert_index != -1 && "Hash set is full after expansion");
-    if (insert_index == -1) {
-        return nullptr;
-    }
-
-    xpHashSetEntry<K>* insert_entry = &set->entries[insert_index];
-    // 使用placement new构造新元素
-    new (&insert_entry->key) K(key);
-    insert_entry->state = XP_HASH_SLOT_USED;
-
-    set->count += 1;
-    return &insert_entry->key;
-}
-
-template<typename K>
-xpHashSetEntry<K> *xp_hash_set_get_entry(xpHashSet<K> *set, K key) {
-    if (set->count == 0 || set->capacity == 0 || set->entries == nullptr) {
-        return NULL;
-    }
-
-    auto probe_result = xp_hash_set_linear_probe(*set, key);
-    if (probe_result.found_index == -1) {
-        return nullptr;
-    }
-    return &set->entries[probe_result.found_index];
-}
-
-template<typename K>
-K *xp_hash_set_get(xpHashSet<K> *set, K key) {
-    xpHashSetEntry<K> *entry = xp_hash_set_get_entry(set, key);
-    return entry ? &entry->key : NULL;
-}
-
-
-template<typename K>
-b32 xp_hash_set_find(xpHashSet<K> *set, K key) {
-    xpHashSetEntry<K> *entry = NULL;
-    if ((entry = xp_hash_set_get_entry(set, key)) != NULL) {
-        return true;
-    }
-
-    return false;
-}
-
-
-template<typename K>
-b32 xp_hash_set_remove(xpHashSet<K> *set, K key) {
-    xpHashSetEntry<K> *entry = NULL;
-    if ((entry = xp_hash_set_get_entry(set, key)) != NULL) {
-        // 显式析构元素资源
-        entry->key.~K();
-        entry->state = XP_HASH_SLOT_TOMBSTONE; // 标记为墓碑，而不是直接清空
-        set->count -= 1;
-        return true;
-    }
-
-    return false;
-}
-
-
-
-
-//
-// xpInterningTable 实现
-//
-// 这个数据结构用于任意类型的唯一化存储, 保证每个值只存储一份, 且指针永不失效
-
-template<typename T>
-struct xpInterningEntry {
-    T *key_ptr;
-    b8 used;
-};
-
-
-template<typename T, size_t CAPACITY>
-struct xpInterningTable {
-
-    xpArena arena; // 只能是独立的ArenaAllocator
-    xpAllocator allocator; // 只能是独立的ArenaAllocator
-
-    xpInterningEntry<T> buckets[CAPACITY];
-
-    isize count;
-
-
-    static constexpr size_t capacity = CAPACITY;
-};
-
-template<typename T, size_t CAPACITY>
-void xp_interning_table_init(xpInterningTable<T, CAPACITY> *table) {
-    xp_arena_init_default(&table->arena);
-    table->allocator = xp_arena_allocator(&table->arena);
-
-    table->count = 0;
-}
-
-template<typename T, size_t CAPACITY>
-void xp_interning_table_free(xpInterningTable<T, CAPACITY> *table) {
-    xp_free_all(table->allocator);
-}
-
-
-template<typename T, size_t CAPACITY>
-LinearProbeResult xp_interning_table_linear_probe(xpInterningTable<T, CAPACITY> *table, T key) {
-    if (table->capacity == 0) {
-        return {};
-    }
-
-    usize hash_value = xp_hash_func(&key);
-    return linear_probe(hash_value, xpInterningTable<T, CAPACITY>::capacity, [&](isize index, bool* out_key_match) {
-        xpInterningEntry<T>* entry = &table->buckets[index];
-        // 只有已使用的条目才能比较key
-        *out_key_match = false;
-        if (entry->used) {
-            *out_key_match = (*(entry->key_ptr) == key);
-        }
-        return entry->used ? XP_HASH_SLOT_USED : XP_HASH_SLOT_EMPTY;
-    });
-}
-
-
-template<typename T, size_t CAPACITY>
-xpInterningEntry<T> *xp_interning_table_get_entry(xpInterningTable<T, CAPACITY> *table, T key) {
-    if(table->count == 0) {
-        return NULL;
-    }
-
-    auto probe_result = xp_interning_table_linear_probe(table, key);
-    if(probe_result.found_index == -1) {
-        return nullptr;
-    }
-
-    return &table->buckets[probe_result.found_index];
-}
-
-
-template<typename T, size_t CAPACITY>
-T *xp_interning_table_get(xpInterningTable<T, CAPACITY> *table, T key) {
-    xpInterningEntry<T> *entry = xp_interning_table_get_entry(table, key);
-    return entry ? entry->key_ptr : NULL;
-}
-
-
-template<typename T, size_t CAPACITY>
-T *xp_interning_table_insert(xpInterningTable<T, CAPACITY> *table, T key) {
-    if (table->count >= table->capacity) {
-        return NULL; // 满了
-    }
-
-    auto probe_result = xp_interning_table_linear_probe(table, key);
-
-    if(probe_result.found_index == -1){
-        xpInterningEntry<T> *entry = &table->buckets[probe_result.first_empty];
-
-        T *stored_key_ptr = xp_alloc<T>(table->allocator);
-        *stored_key_ptr = key;
-    
-        entry->key_ptr = stored_key_ptr;
-        entry->used = true;
-    
-        table->count += 1;
-        return stored_key_ptr;
-    } else {
-        return nullptr; // 重复插入当作失败处理
-    }
-
-    //NOTE: FULL MAP
-    XP_ASSERT_DEFAULT(0);
-    return NULL;
-}
-
-
-
-//
-// Pair
-//
-
-template<typename A, typename B>
-struct xpPair {
-    A first;
-    B second;
-};
-
-template<typename A, typename B>
-xpPair<A, B> xp_make_pair(A first, B second) {
-    xpPair<A, B> pair = {};
-    pair.first = first;
-    pair.second = second;
-    return pair;
-}
-
-
-
-//
-// xpString CPP 相关操作声明
-//
-
-xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator);
-
-
 
 
 
 
 #if __cplusplus >= 202300L
-
-template<>
-struct std::formatter<xpString> : std::formatter<std::string_view> {
-    using std::formatter<std::string_view>::parse;
-
-
-    auto format(const xpString& s, std::format_context& ctx) const {
-        return std::formatter<std::string_view>::format(
-            std::string_view(s.c_str, static_cast<size_t>(s.length)),
-            ctx
-        );
-    }
-};
-
 
 
 #if defined(XOAOP_I128_SUPPORT)
@@ -2289,381 +2842,6 @@ void xp_arena_allocator_free_to_save(xpAllocator allocator, xpArenaSave save) {
 }
 
 
-//
-// 字符串实现
-//
-isize xp_strlen_c(char const *str) {
-    isize len = 0;
-    for (; str[len] != '\0'; len += 1);
-
-    //NOTE: for unknown wrong, maybe unnessery
-    XP_ASSERT(len >= 0);
-    return len;
-}
-
-void xp_strncpy_c(char *dst, const char *src, isize len) {
-    if (len <= 0 || dst == NULL || src == NULL) {
-        return;
-    }
-
-    isize index = 0;
-    for (; index < len && src[index] != '\0'; index += 1) {
-        dst[index] = src[index];
-    }
-
-    //NOTE(xoaop): 兼容c字符串
-    dst[index] = '\0'; // 正确：在实际拷贝结束位置补零，而不是强制在len-1位置
-}
-
-
-char *xp_find_first_non_space(const char *str) {
-    XP_ASSERT_DEFAULT(str != NULL);
-    while (*str && isspace(cast(unsigned char) * str)) {
-        str++;
-    }
-    return cast(char *)str;
-}
-
-
-
-xpString xp_string_c(char const *str) {
-    XP_ASSERT_DEFAULT(str != NULL);
-
-    xpString string = {
-        .allocator = {NULL, NULL},
-        .length = xp_strlen_c(str),
-        .capacity = xp_strlen_c(str),
-        .c_str = cast(char *)str
-    };
-    return string;
-}
-
-
-xpString xp_make_string(xpAllocator allocator, char const *str) {
-    return xp_make_string_capacity(allocator, str, xp_strlen_c(str));
-}
-
-
-xpString xp_make_string_capacity(xpAllocator allocator, void const *str, isize capacity) {
-    XP_ASSERT_DEFAULT(capacity >= 0);
-
-
-    xpString string;
-    string.allocator = allocator;
-    string.c_str = cast(char *) xp_alloc(string.allocator, capacity + 1); // NOTE: +1是为了末尾的'\0'
-    string.capacity = capacity;
-
-    // 计算实际长度
-    isize length = 0;
-    if (str != NULL) {
-        length = xp_strlen_c(cast(char const *)str);
-    }
-    if (length > capacity) {
-        length = capacity;
-    }
-    string.length = length;
-
-
-    // 清空空间
-    memset(string.c_str, '\0', string.capacity + 1); // NOTE: +1是为了末尾的'\0'
-    // 复制字符串内容
-    memcpy(string.c_str, str, string.length);
-
-    // 末尾补上'\0'
-    // string.c_str[length] = '\0';
-    return string;
-}
-
-xpString xp_make_string_count(xpAllocator allocator, char const *str, isize count) {
-    XP_ASSERT_DEFAULT(count >= 0);
-
-    xpString string = xp_make_string_zero();
-    string.allocator = allocator;
-
-    // 计算实际长度
-    isize actual_count = 0;
-    if (str != NULL) {
-        actual_count = xp_strlen_c(cast(char const *)str);
-    }
-
-    isize length = 0;
-    if (actual_count < count) {
-        length = actual_count;
-    } else {
-        length = count;
-    }
-    string.length = length;
-
-    string.c_str = cast(char *) xp_alloc(string.allocator, length + 1); // NOTE: +1是为了末尾的'\0'
-    string.capacity = length;
-
-    // 复制字符串内容
-    memcpy(string.c_str, str, string.length);
-
-    // 末尾补上'\0'
-    string.c_str[string.capacity] = '\0';
-
-
-    return string;
-}
-
-xpString xp_make_string_zero() {
-    xpString string;
-    string.allocator = { NULL, NULL };
-    string.c_str = NULL;
-    string.length = 0;
-    string.capacity = 0;
-    return string;
-}
-
-xpString xp_string_to_c_style(xpString string, xpAllocator allocator) {
-    xpString c_style_string = xp_make_string_count(allocator, string.c_str, string.length);
-    return c_style_string;
-}
-
-
-void xp_string_free(xpString string) {
-    if (string.allocator.proc != NULL) {
-        xp_free(string.allocator, string.c_str);
-    }
-}
-
-b32 xp_string_cmp(xpString a, xpString b) {
-    if (a.length > b.length) {
-        return 1;
-    } else if (a.length < b.length) {
-        return -1;
-    }
-
-    for (isize i = 0; i < a.length; i++) {
-        if (a.c_str[i] != b.c_str[i]) {
-            return (a.c_str[i] > b.c_str[i]) ? 1 : -1;
-        }
-    }
-
-    return 0;
-}
-
-b32 xp_string_equal(xpString a, xpString b) {
-    return xp_string_cmp(a, b) == 0;
-}
-
-xpString xp_string_copy(xpAllocator allocator, xpString string) {
-    xpString string_copy;
-
-    string_copy.allocator = allocator;
-    string_copy.length = string.length;
-    string_copy.capacity = string.length;
-
-    string_copy.c_str = cast(char *) xp_alloc(string_copy.allocator, string_copy.capacity + 1);
-    memcpy(string_copy.c_str, string.c_str, string.length);
-
-    string_copy.c_str[string.length] = '\0'; // 末尾补上'\0'
-    return string_copy;
-}
-
-
-xpString *xp_string_extend(xpString *string, isize extended_size) {
-    if (extended_size <= 0) {
-        return string;
-    }
-
-    char *new_c_str = cast(char *)xp_alloc(
-        string->allocator,
-        string->capacity + extended_size + 1 // +1是为了末尾的'\0'
-    );
-    memcpy(new_c_str, string->c_str, string->length);
-    xp_free(string->allocator, string->c_str);
-
-    string->c_str = new_c_str;
-
-    string->capacity = string->capacity + extended_size;
-
-    string->c_str[string->length] = '\0'; // 末尾补上'\0'
-
-
-    return string;
-}
-
-isize xp_string_find_char(xpString str, char c) {
-    for (isize i = 0; i < str.length; i++) {
-        if (str.c_str[i] == c) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-xpString *xp_string_insert(isize pos, xpString *str, xpString inserted_str) {
-    XP_ASSERT_DEFAULT(pos >= 0);
-    XP_ASSERT_DEFAULT(pos <= str->length);
-
-    // 1. 扩容，确保插入后长度不会超过 capacity
-    if (str->length + inserted_str.length > str->capacity) {
-        xp_string_extend(str, inserted_str.length + (str->length + inserted_str.length - str->capacity));
-    }
-
-    XP_ASSERT_DEFAULT(str->length + inserted_str.length <= str->capacity);
-
-    // 2. 后移原有数据
-    if (pos < str->length) {
-        isize moved_size = str->length - pos;
-        memmove(str->c_str + pos + inserted_str.length, str->c_str + pos, moved_size);
-    }
-
-    // 3. 插入新字符串
-    memcpy(str->c_str + pos, inserted_str.c_str, inserted_str.length);
-
-    str->length += inserted_str.length;
-
-    XP_ASSERT_DEFAULT(str->length <= str->capacity);
-
-    // 4. 末尾补零
-    str->c_str[str->length] = '\0';
-
-
-    return str;
-}
-
-xpString *xp_string_append_char(xpString *str, char c) {
-    xpString char_str = xp_make_string_zero();
-    char_str.c_str = &c;
-    char_str.length = 1;
-    char_str.capacity = 1;
-
-    return xp_string_append(str, char_str);
-}
-
-xpString *xp_string_append(xpString *str, xpString appended_str) {
-    return xp_string_insert(str->length, str, appended_str);
-}
-
-
-
-xpString xp_isize_to_string(isize value, xpAllocator allocator) {
-    isize len = snprintf(NULL, 0, "%lld", value);
-
-    xpString string = xp_make_string_capacity(allocator, NULL, len);
-    snprintf(string.c_str, string.capacity + 1, "%lld", value);
-
-    string.length = len;
-
-    return string;
-}
-
-xpString xp_string_replace_char(xpString string, char old_char, char new_char, xpAllocator allocator) {
-    xpString new_string = xp_string_copy(allocator, string);
-
-    for (isize i = 0; i < new_string.length; i++) {
-        if (new_string.c_str[i] == old_char) {
-            new_string.c_str[i] = new_char;
-        }
-    }
-
-    return new_string;
-}
-
-
-xpString xp_make_string_from_slice(xpAllocator allocator, xpSlice slice) {
-    return xp_make_string_capacity(allocator, slice.data, slice.len);
-}
-
-
-xpSlice xp_slice_make(void *data, isize len) {
-    xpSlice slice = {
-        .data = data,
-        .len = len
-    };
-    return slice;
-}
-
-xpSlice xp_slice_make_from_string(xpString string, isize begin, isize len) {
-    if ((len < 0 || begin < 0) || ((begin + len) > string.length)) {
-        XP_ASSERT(0);
-    }
-
-    xpSlice slice = {};
-    slice.data = string.c_str + begin;
-    slice.len = len;
-
-    return slice;
-}
-
-
-//
-// 哈希映射函数实现
-//
-
-
-//NOTE: 可以移到常用函数里
-xp_internal u32 rotate_left(u32 value, i32 shift) {
-    const i32 bits = sizeof(u32) * 8;  // 32 位
-    shift %= bits;  // 确保 shift 在 0 到 31 之间
-    return (value << shift) | (value >> (bits - shift));
-}
-
-u32 xp_murmur_hash3_32(const void *data, usize length, usize seed) {
-    const u8 *key = cast(const u8 *)(data);
-    const usize nblocks = length / 4;
-
-    u32 h1 = seed;
-
-    const u32 c1 = 0xcc9e2d51;
-    const u32 c2 = 0x1b873593;
-
-    // 处理 4 字节块
-    const u32 *blocks = cast(u32 *)key;
-    for (usize i = 0; i < nblocks; ++i) {
-        u32 k1 = blocks[i];
-
-        k1 *= c1;
-        k1 = rotate_left(k1, 15);
-        k1 *= c2;
-
-        h1 ^= k1;
-        h1 = rotate_left(h1, 13);
-        h1 = h1 * 5 + 0xe6546b64;
-    }
-
-    // 处理剩余字节
-    const u8 *tail = key + nblocks * 4;
-    u32 k1 = 0;
-
-    switch (length & 3) {
-    case 3: k1 ^= tail[2] << 16;
-    case 2: k1 ^= tail[1] << 8;
-    case 1: k1 ^= tail[0];
-        k1 *= c1;
-        k1 = rotate_left(k1, 15);
-        k1 *= c2;
-        h1 ^= k1;
-    }
-
-    // 最终混合
-    h1 ^= length;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-
-    return h1;
-}
-
-// 一个简单的hash combine函数
-u64 xp_hash_combine_u64(u64 old_hash, u64 new_value) {
-    static const u64 HASH_SEED = 0x517cc1b727220a95;
-    static const u64 K = 0x9e3779b97f4a7c15;
-
-    u64 z = new_value + K + (old_hash << 6) + (old_hash >> 2);
-    z ^= (z >> 33);
-    z *= 0xff51afd7ed558ccd;
-    z ^= (z >> 33);
-    z *= 0xc4ceb9fe1a85ec53;
-    z ^= (z >> 33);
-    return old_hash ^ z;
-}
-
 
 
 #if defined(XOAOP_I128_SUPPORT)
@@ -2761,104 +2939,6 @@ bool xp_check_f64_is_inf(f64 value) {
 
 
 #if defined(__cplusplus)
-
-// xpString的CPP部分
-
-bool xpString::operator== (xpString other) const {
-    b32 xp_string_cmp(xpString a, xpString b);
-    return !xp_string_cmp(*this, other);
-}
-
-char xpString::operator[] (isize index) const {
-    XP_ASSERT_DEFAULT(index >= 0 && index < length);
-    return c_str[index];
-}
-
-char *xpString::as_c_str() const {
-    // 目前都是c风格
-    return c_str;
-}
-
-
-
-xpString xp_string_concat_mid(xpString a, xpString b, xpOption<xpString> middle, xpAllocator allocator) {
-    xpString result = xp_string_copy(allocator, a);
-
-    if (middle.has_value()) {
-        xp_string_append(&result, middle.unwrap());
-    }
-
-    xp_string_append(&result, b);
-
-    return result;
-}
-
-
-
-//
-// 常见类型的hash函数实现
-//
-
-template<>
-usize xp_hash_func<i32>(i32 *key) {
-    return xp_murmur_hash3_32(key, sizeof(i32), 0);
-}
-
-template<>
-usize xp_hash_func<i64>(i64 *key) {
-    return xp_murmur_hash3_32(key, sizeof(i64), 0);
-}
-
-template<>
-usize xp_hash_func<u32>(u32 *key) {
-    return xp_murmur_hash3_32(key, sizeof(u32), 0);
-}
-
-template<>
-usize xp_hash_func<u64>(u64 *key) {
-    return xp_murmur_hash3_32(key, sizeof(u64), 0);
-}
-
-template<>
-usize xp_hash_func<f32>(f32 *key) {
-    u32 bits;
-    memcpy(&bits, key, sizeof(f32));
-    return xp_murmur_hash3_32(&bits, sizeof(u32), 0);
-}
-
-template<>
-usize xp_hash_func<f64>(f64 *key) {
-    u64 bits;
-    memcpy(&bits, key, sizeof(f64));
-    return xp_murmur_hash3_32(&bits, sizeof(u64), 0);
-}
-
-template<>
-usize xp_hash_func<char>(char *key) {
-    return cast(usize)(*key);
-}
-
-template<>
-usize xp_hash_func<xpString>(xpString *key) {
-    return xp_murmur_hash3_32(key->c_str, cast(usize) key->length, 0);
-}
-
-template<>
-usize xp_hash_func<const std::string>(const std::string *key) {
-    std::hash<std::string> hasher;
-    return hasher(*key);
-}
-
-template<>
-usize xp_hash_func<std::string>(std::string *key) {
-    std::hash<std::string> hasher;
-    return hasher(*key);
-}
-
-template<>
-usize xp_hash_func<void*>(void** key) {
-    return cast(usize)(*key);
-}
 
 //
 // Heap Record Allocator 实现
@@ -3009,12 +3089,8 @@ XP_ALLOCATOR_PROC(xp_heap_record_allocator_proc) {
 
         case xpFreeAll: {
             // 释放所有记录的内存
-            xpHashMapEntry<void*, xpHeapRecordEntry>* entry = NULL;
-            isize pos = xp_hash_map_first_entry(&record_allocator->records, &entry);
-
-            while (pos != END_OF_HASH_MAP_INDEX) {
-                xp_free(record_allocator->backing_allocator, entry->value.ptr);
-                pos = xp_hash_map_next_entry(&record_allocator->records, pos, &entry);
+            for (const auto& entry : record_allocator->records) {
+                xp_free(record_allocator->backing_allocator, entry.value.ptr);
             }
 
             // 清空记录和统计信息
@@ -3235,23 +3311,19 @@ void xp_heap_record_print_leaks(xpAllocator allocator) {
     printf("Memory leak report: %lld unfreed allocations found\n", record_allocator->stats.current_allocs);
     printf("===================================\n");
 
-    xpHashMapEntry<void*, xpHeapRecordEntry>* entry = NULL;
-    isize pos = xp_hash_map_first_entry(&record_allocator->records, &entry);
     isize index = 0;
 
-    while (pos != END_OF_HASH_MAP_INDEX) {
+    for (const auto& entry : record_allocator->records) {
         char size_str[32];
-        xp_format_bytes(entry->value.size, size_str, sizeof(size_str));
+        xp_format_bytes(entry.value.size, size_str, sizeof(size_str));
 
         printf("Leak #%lld: Address %p, Size: %s (alloc #%lld)",
-               index++, entry->value.ptr, size_str, entry->value.timestamp);
+               index++, entry.value.ptr, size_str, entry.value.timestamp);
 
-        if (entry->value.file != NULL) {
-            printf(" at %s:%lld", entry->value.file, entry->value.line);
+        if (entry.value.file != NULL) {
+            printf(" at %s:%lld", entry.value.file, entry.value.line);
         }
         printf("\n");
-
-        pos = xp_hash_map_next_entry(&record_allocator->records, pos, &entry);
     }
     printf("===================================\n");
 }

@@ -130,9 +130,8 @@ struct std::formatter<SymbolTable> {
 
     template<typename FormatContext>
     auto format(const SymbolTable& symbol_table, FormatContext& ctx) const {
-        const xpHashMapEntry<xpString, SymbolInfo> *entry = nullptr;
-        for (isize i = xp_hash_map_first_entry(&symbol_table.symbols, &entry); entry != nullptr; i = xp_hash_map_next_entry(&symbol_table.symbols, i, &entry)) {
-            std::format_to(ctx.out(), "  '{}': {}\n", entry->key, entry->value);
+        for (const auto& entry : symbol_table.symbols) {
+            std::format_to(ctx.out(), "  '{}': {}\n", entry.key, entry.value);
         }
         return ctx.out();
     }

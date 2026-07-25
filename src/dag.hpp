@@ -159,34 +159,25 @@ struct DAG {
         xpHashMap<K, u32> out_degree = xp_hash_map_make<K, u32>(xp_heap_allocator());
 
         // 出度 = 我还依赖几个节点（debs[node] 的大小）
-        const xpHashMapEntry<K, xpHashSet<K>> *entry;
-        isize pos = xp_hash_map_first_entry(&deps, &entry);
-        while (pos != END_OF_HASH_MAP_INDEX) {
-            K node = entry->key;
-            u32 deg = (u32)entry->value.count;
+        for (const auto& entry : deps) {
+            K node = entry.key;
+            u32 deg = (u32)entry.value.count;
             xp_hash_map_insert(&out_degree, node, deg);
-            pos = xp_hash_map_next_entry(&deps, pos, &entry);
         }
 
         // 确保所有节点都在 out_degree 中（包括只在 dependents 中的）
-        const xpHashMapEntry<K, xpHashSet<K>> *dep_entry;
-        pos = xp_hash_map_first_entry(&dependents, &dep_entry);
-        while(pos != END_OF_HASH_MAP_INDEX) {
-            if(!xp_hash_map_get(out_degree, dep_entry->key)) {
-                xp_hash_map_insert(&out_degree, dep_entry->key, (u32)0);
+        for (const auto& dep_entry : dependents) {
+            if(!xp_hash_map_get(out_degree, dep_entry.key)) {
+                xp_hash_map_insert(&out_degree, dep_entry.key, (u32)0);
             }
-            pos = xp_hash_map_next_entry(&dependents, pos, &dep_entry);
         }
 
         // 收集出度为 0 的节点（不依赖任何人的，可以最先求值）
         Array<K> queue = make_array<K>(xp_heap_allocator());
-        const xpHashMapEntry<K, u32> *deg_entry;
-        pos = xp_hash_map_first_entry(&out_degree, &deg_entry);
-        while(pos != END_OF_HASH_MAP_INDEX) {
-            if(deg_entry->value == 0) {
-                queue.push_back(deg_entry->key);
+        for (const auto& deg_entry : out_degree) {
+            if(deg_entry.value == 0) {
+                queue.push_back(deg_entry.key);
             }
-            pos = xp_hash_map_next_entry(&out_degree, pos, &deg_entry);
         }
 
         while(queue.count > 0) {
@@ -197,14 +188,12 @@ struct DAG {
             // 处理依赖 node 的节点：它们少了一个依赖项
             const xpHashSet<K> *deps_of = get_dependents(node);
             if(deps_of) {
-                for(isize i = 0; i < deps_of->capacity; i++) {
-                    if(deps_of->entries[i].state == XP_HASH_SLOT_USED) {
-                        K depender = deps_of->entries[i].key;
-                        u32 *deg = xp_hash_map_get(out_degree, depender);
-                        if(deg && *deg > 0) {
-                            (*deg)--;
-                            if(*deg == 0) queue.push_back(depender);
-                        }
+                for (const auto& set_entry : *deps_of) {
+                    K depender = set_entry.key;
+                    u32 *deg = xp_hash_map_get(out_degree, depender);
+                    if(deg && *deg > 0) {
+                        (*deg)--;
+                        if(*deg == 0) queue.push_back(depender);
                     }
                 }
             }
@@ -231,16 +220,14 @@ private:
 
             const xpHashSet<K> *children = get_deps(cur);
             if (!children) continue;
-            for (isize i = 0; i < children->capacity; i++) {
-                if (children->entries[i].state == XP_HASH_SLOT_USED) {
-                    K next = children->entries[i].key;
-                    if (next == to) {
-                        array_free(&stack);
-                        xp_hash_set_free(visited);
-                        return true;
-                    }
-                    stack.push_back(next);
+            for (const auto& child_entry : *children) {
+                K next = child_entry.key;
+                if (next == to) {
+                    array_free(&stack);
+                    xp_hash_set_free(visited);
+                    return true;
                 }
+                stack.push_back(next);
             }
         }
 
@@ -252,13 +239,11 @@ private:
     void collect_downstream(K node, xpHashSet<K> *visited, Array<K> &out) const {
         const xpHashSet<K> *deps_of = get_dependents(node);
         if (!deps_of) return;
-        for (isize i = 0; i < deps_of->capacity; i++) {
-            if (deps_of->entries[i].state == XP_HASH_SLOT_USED) {
-                K dep = deps_of->entries[i].key;
-                if (xp_hash_set_insert(visited, dep)) {
-                    out.push_back(dep);
-                    collect_downstream(dep, visited, out);
-                }
+        for (const auto& set_entry : *deps_of) {
+            K dep = set_entry.key;
+            if (xp_hash_set_insert(visited, dep)) {
+                out.push_back(dep);
+                collect_downstream(dep, visited, out);
             }
         }
     }
@@ -266,13 +251,11 @@ private:
     void collect_upstream(K node, xpHashSet<K> *visited, Array<K> &out) const {
         const xpHashSet<K> *deps_of = get_deps(node);
         if (!deps_of) return;
-        for (isize i = 0; i < deps_of->capacity; i++) {
-            if (deps_of->entries[i].state == XP_HASH_SLOT_USED) {
-                K dep = deps_of->entries[i].key;
-                if (xp_hash_set_insert(visited, dep)) {
-                    out.push_back(dep);
-                    collect_upstream(dep, visited, out);
-                }
+        for (const auto& set_entry : *deps_of) {
+            K dep = set_entry.key;
+            if (xp_hash_set_insert(visited, dep)) {
+                out.push_back(dep);
+                collect_upstream(dep, visited, out);
             }
         }
     }
@@ -290,18 +273,14 @@ DAG<K> make_dag(xpAllocator allocator) {
 template<typename K>
 void dag_free(DAG<K> *dag) {
     // 释放 deps 中所有嵌套的 hash set
-    for (isize i = 0; i < dag->deps.capacity; i++) {
-        if (dag->deps.entries[i].state == XP_HASH_SLOT_USED) {
-            xp_hash_set_free(dag->deps.entries[i].value);
-        }
+    for (auto& entry : dag->deps) {
+        xp_hash_set_free(entry.value);
     }
     xp_hash_map_free(dag->deps);
 
     // 释放 dependents 中所有嵌套的 hash set
-    for (isize i = 0; i < dag->dependents.capacity; i++) {
-        if (dag->dependents.entries[i].state == XP_HASH_SLOT_USED) {
-            xp_hash_set_free(dag->dependents.entries[i].value);
-        }
+    for (auto& entry : dag->dependents) {
+        xp_hash_set_free(entry.value);
     }
     xp_hash_map_free(dag->dependents);
 }
