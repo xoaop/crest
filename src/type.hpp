@@ -94,9 +94,12 @@ struct TypeHashKey {
     u64 unique_id = 0; // 用于让 add_type 总能插入成功，0 表示由 get_or_add_type 去重
 };
 
-
 template<>
-usize xp_hash_func(TypeHashKey *key);
+struct std::hash<TypeHashKey> {
+    usize operator()(const TypeHashKey& key) const {
+        return key.hash();
+    }
+};
 
 
 
@@ -295,9 +298,5 @@ TypeRef string_type_as_struct();
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);
 TypeRef add_type(Type type);
-
-template<>
-usize xp_hash_func(Type *type);
-
 
 xpAllocator type_allocator();

@@ -45,11 +45,6 @@ struct std::hash<CIRInstResultRef> {
     }
 };
 
-template<>
-inline usize xp_hash_func(CIRInstResultRef *key) {
-    return std::hash<CIRInstResultRef>{}(*key);
-}
-
 struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
     Array<CIRInstResultRef>                  comptime_arg_refs;
@@ -60,8 +55,10 @@ struct FuncCallKey {
 };
 
 template<>
-inline usize xp_hash_func(FuncCallKey *key) {
-    return key->hash();
-}
+struct std::hash<FuncCallKey> {
+    usize operator()(const FuncCallKey& key) const {
+        return key.hash();
+    }
+};
 
 #endif

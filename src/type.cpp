@@ -33,7 +33,7 @@ u64 TypeHashKey::hash() const {
     auto hash = reinterpret_cast<u64>(decl_ast);
 
     if(name.has_value()) {
-        hash = xp_hash_combine_u64(hash, xp_hash_func<xpString>(const_cast<xpString*>(&name.value())));
+        hash = xp_hash_combine_u64(hash, std::hash<xpString>{}(name.value()));
     }
 
     hash = xp_hash_combine_u64(hash, unique_id);
@@ -68,10 +68,6 @@ TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
     return copy;
 }
 
-template<>
-usize xp_hash_func(TypeHashKey *key) {
-    return key->hash();
-}
 
 
 TypeKind string_to_type_kind(xpString str) {
@@ -1116,14 +1112,9 @@ const char *to_string(TypeKind kind) {
 
 
 template<>
-usize xp_hash_func(Type *type) {
-    if(type == NULL) {
-        XP_ASSERT_MSG(0, "hashing null type");
-        return 0;
-    }
-
-
-    switch(type->kind) {
+struct std::hash<Type> {
+    usize operator()(const Type& type) const {
+        switch(type.kind) {
 
         // 基本类型
         // 由于没有额外类型信息, 直接用kind作为hash值
@@ -1145,16 +1136,16 @@ usize xp_hash_func(Type *type) {
         case Type_untyped_int:
         case Type_untyped_float:
         case Type_var_arg_c: {
-            return cast(usize)(type->kind);
+            return cast(usize)(type.kind);
         } break;
 
         case Type_function: {
             u64 hash_value = Type_function;
-            for(isize i = 0; i < type->function_info.param_types.count; i++) {
-                u64 param_type_hash = cast(u64)(xp_hash_func(type->function_info.param_types[i]));
+            for(isize i = 0; i < type.function_info.param_types.count; i++) {
+                u64 param_type_hash = cast(u64)(std::hash<Type>{}(*type.function_info.param_types[i]));
                 hash_value = xp_hash_combine_u64(hash_value, param_type_hash);
             }
-            u64 return_type_hash = cast(u64)(xp_hash_func(type->function_info.return_type));
+            u64 return_type_hash = cast(u64)(std::hash<Type>{}(*type.function_info.return_type));
             hash_value = xp_hash_combine_u64(hash_value, return_type_hash);
 
             return cast(usize)(hash_value);
@@ -1162,7 +1153,7 @@ usize xp_hash_func(Type *type) {
 
         case Type_pointer: {
             u64 hash_pointer = Type_pointer;
-            u64 hash_pointed_type = cast(u64)(xp_hash_func(type->pointed_type));
+            u64 hash_pointed_type = cast(u64)(std::hash<Type>{}(*type.pointed_type));
             return cast(usize)(xp_hash_combine_u64(hash_pointer, hash_pointed_type));
         } break;
 
@@ -1171,7 +1162,7 @@ usize xp_hash_func(Type *type) {
             u64 hash_struct = Type_struct;
 
             // decl_ast要参与hash, 为了区分不同作用域的同名结构体
-            u64 hash_decl_ast = type->struct_info.hash_key.hash();
+            u64 hash_decl_ast = type.struct_info.hash_key.hash();
             u64 hash_value = xp_hash_combine_u64(hash_struct, hash_decl_ast);
 
             return cast(usize)(hash_value);
@@ -1179,8 +1170,8 @@ usize xp_hash_func(Type *type) {
 
         case Type_array: {
             u64 hash_array = Type_array;
-            u64 hash_element_type = cast(u64)(xp_hash_func(type->array_info.element_type));
-            u64 hash_count = cast(u64)(type->array_info.count);
+            u64 hash_element_type = cast(u64)(std::hash<Type>{}(*type.array_info.element_type));
+            u64 hash_count = cast(u64)(type.array_info.count);
             u64 hash_value = xp_hash_combine_u64(hash_array, hash_element_type);
             hash_value = xp_hash_combine_u64(hash_value, hash_count);
             return cast(usize)(hash_value);
@@ -1189,7 +1180,7 @@ usize xp_hash_func(Type *type) {
 
         case Type_type: {
             u64 hash_type = Type_type;
-            u64 hash_self_type_info = cast(u64)(xp_hash_func(type->self_type_info));
+            u64 hash_self_type_info = cast(u64)(std::hash<Type>{}(*type.self_type_info));
             u64 hash_value = xp_hash_combine_u64(hash_type, hash_self_type_info);
             return cast(usize)(hash_value);
         } break;
@@ -1197,7 +1188,7 @@ usize xp_hash_func(Type *type) {
 
         case Type_package: {
             u64 hash_package = Type_package;
-            u64 hash_package_info = cast(u64)(xp_hash_func(&type->package_info->path));
+            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(type.package_info->path));
             u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
             return cast(usize)(hash_value);
         } break;
@@ -1206,7 +1197,7 @@ usize xp_hash_func(Type *type) {
             u64 hash_enum = Type_enum;
 
             // decl_ast要参与hash, 为了区分不同作用域的同名枚举
-            u64 hash_decl_ast = type->enum_info.hash_key.hash();
+            u64 hash_decl_ast = type.enum_info.hash_key.hash();
 
             u64 hash_value = xp_hash_combine_u64(hash_enum, hash_decl_ast);
 
@@ -1217,14 +1208,12 @@ usize xp_hash_func(Type *type) {
         default: {
             XP_ASSERT_MSG(0, "hashing unhandled type kind");
         } break;
-    
+
     }
 
     return 0;
-}
-
-
-
+    }
+};
 
 
 

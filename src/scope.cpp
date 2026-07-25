@@ -4,32 +4,6 @@
 
 struct Ast;
 
-SymbolInfo& SymbolIterator::operator*() const {
-    return map->entries[pos].value;
-}
-
-SymbolIterator& SymbolIterator::operator++() {
-    xpHashMapEntry<xpString, SymbolInfo> *next = nullptr;
-    pos = xp_hash_map_next_entry(map, pos, &next);
-    return *this;
-}
-
-bool SymbolIterator::operator!=(const SymbolIterator& other) const {
-    return pos != other.pos;
-}
-
-SymbolIterator Scope::begin() {
-    SymbolIterator it;
-    it.map = &symbols.symbols;
-    xpHashMapEntry<xpString, SymbolInfo> *first = nullptr;
-    it.pos = xp_hash_map_first_entry(it.map, &first);
-    return it;
-}
-
-SymbolIterator Scope::end() {
-    return { &symbols.symbols, END_OF_HASH_MAP_INDEX };
-}
-
 SymbolInfo& Scope::operator[](xpString name) {
     SymbolInfo *info = find_symbol_until_global(this, name);
     XP_ASSERT_DEFAULT(info != nullptr);

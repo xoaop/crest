@@ -59,15 +59,6 @@ inline const char* to_string(ScopeType t) {
 }
 
 
-struct SymbolIterator {
-    xpHashMap<xpString, SymbolInfo> *map;
-    isize pos;
-
-    SymbolInfo& operator*() const;
-    SymbolIterator& operator++();
-    bool operator!=(const SymbolIterator& other) const;
-};
-
 struct Scope {
     ScopeType scope_type;
 
@@ -77,8 +68,8 @@ struct Scope {
     xpHashMap<Ast*, Scope*> ast_to_scope;
     Array<Scope *> children;
 
-    SymbolIterator begin();
-    SymbolIterator end();
+    auto begin() { return symbols.symbols.begin(); }
+    auto end()   { return symbols.symbols.end(); }
 
     SymbolInfo& operator[](xpString name);
 };
