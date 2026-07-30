@@ -374,9 +374,14 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             token.type = TokenType::Dot;
             advance_one_character(t);
 
-            if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
-                token.type = TokenType::ThreeDots;
-                advance_characters(t, 2);
+            if(tokenizer_curr_character(t) == '.') {
+                if(tokenizer_next_character(t) == '.') {
+                    token.type = TokenType::ThreeDots;
+                    advance_characters(t, 2);
+                } else {
+                    token.type = TokenType::DotDot;
+                    advance_one_character(t);
+                }
             }
             break;
 
@@ -564,6 +569,9 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
             advance_one_character(t);
             tokenizer_scan_pure_integer_seq(t);
             token_type = TokenType::Integer;
+        } else if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
+            // 0..5 — range syntax, not float
+            token_type = TokenType::Integer;
         } else if(tokenizer_curr_character(t) == '.') {
             advance_one_character(t);
             tokenizer_scan_pure_integer_seq(t);
@@ -577,7 +585,10 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
         tokenizer_scan_pure_integer_seq(t);
 
-        if(tokenizer_curr_character(t) == '.') {
+        if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
+            // 123..5 — range syntax, not float
+            token_type = TokenType::Integer;
+        } else if(tokenizer_curr_character(t) == '.') {
             advance_one_character(t);
             tokenizer_scan_pure_integer_seq(t);
             token_type = TokenType::Float;

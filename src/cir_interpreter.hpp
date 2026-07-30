@@ -145,7 +145,6 @@ struct Interpreter {
     void push_call_instance(EvalInstance inst);
     void pop_call_instance();
 
-    bool is_generic_func(CIRPackage *fpkg, CIRFunction& func);
 
     // === 函数式重构 — 新基础设施 (WIP) ===
 

@@ -49,6 +49,7 @@ struct CIRBuilder {
 
     CIRInstructionRef build_inst_for_var_decl(Ast *var_decl_ast);
     void build_inst_for_return_stmt(Ast *return_stmt_ast);
+    void build_inst_for_for_stmt(Ast *stmt);
 
     CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
     // std::pair<CIRInstructionRef, CIRInstruction&> New_Inst(CIROperator op, Ast *ast);

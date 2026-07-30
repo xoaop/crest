@@ -227,15 +227,6 @@ bool is_pure_comptime_func(CIRFunction& func, const CIRResultContext& ctx) {
         return true;
     }
 
-    auto *cir_pkg = ctx.pkg();
-
-    for(auto& arg_inst_ref: func.arg_decl_insts) {
-        auto& var_info = cir_pkg->inst(arg_inst_ref)->var_decl;
-        if(var_info.is_comptime) {
-            return true;
-        }
-    }
-
     if(func.return_type_inst == INVALID_INST) {
         return true;
     }
@@ -297,7 +288,6 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
                 auto& var = pkg->inst(f.arg_decl_insts[i])->var_decl;
                 if(i > 0) std::print(stderr,", ");
                 std::print(stderr,"{} slot={} type=%{}", var.name, var.slot, f.arg_type_insts[i]);
-                if(var.is_comptime) std::print(stderr," comptime");
             }
             std::print(stderr,"]");
         }

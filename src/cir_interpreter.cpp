@@ -804,7 +804,7 @@ void Interpreter::analyze_CondBr() {
         return;
     }
 
-    if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({cond_inst})) {
+    if(curr_eval_mode() == EvalMode::FullEval) {
         Value cond_val = ResultValue(cond_inst);
         bool cond = cond_val.bool_val();
 
@@ -919,11 +919,11 @@ void Interpreter::analyze_FunctionDecl() {
     }
 
     for(isize i = 0; i < func.arg_decl_insts.count; i++) {
-        if(!pkg->inst(func.arg_decl_insts[i])->var_decl.is_comptime && func.arg_type_insts[i] != INVALID_INST) {
+        if(!func.is_comptime && func.arg_type_insts[i] != INVALID_INST) {
             if(is_type_type(ResultValue(func.arg_type_insts[i]).type_val())) {
                 context()->reporter.report_error(
                     pkg->inst(func.arg_decl_insts[i])->src_loc,
-                    "parameter of type 'type' must be a compile-time parameter (prefix with '$')"
+                    "parameter of type 'type' requires the function to be declared as comptime (wrap parameter list with '$()')"
                 );
                 Set_ResultError(pc());
             }
@@ -2060,7 +2060,7 @@ void Interpreter::analyze_AddrOf() {
             }
         }
 
-        if(got_fv && is_generic_func(fv.func_key.cir_package, fv.func_key.cir_package->inst(fv.func_key.inst_ref)->func_decl)) {
+        if(got_fv && is_pure_comptime_func(fv.func_key.cir_package->inst(fv.func_key.inst_ref)->func_decl, result_context())) {
             context()->reporter.report_error(pkg->inst(pc())->src_loc, "cannot take address of generic function");
             Set_ResultError(pc());
             return;
@@ -2338,15 +2338,7 @@ void Interpreter::analyze_TypeAscribe() {
 
     TypeRef declared_type = ResultValue(info.type_inst).type_val();
 
-    // 非编译期变量不允许类型为 type
     CIRVariableDecl& vd = pkg->inst(info.var_inst)->var_decl;
-    if(!vd.is_comptime && is_type_type(declared_type)) {
-        context()->reporter.report_error(pkg->inst(pc())->src_loc,
-            "non-comptime variable cannot have type 'type'");
-        Set_ResultError(pc());
-        Set_ResultError(info.var_inst);
-        return;
-    }
 
     TypeRef existing = ResultType(info.var_inst);
     if(existing == undefined_type()) {
@@ -2912,15 +2904,6 @@ bool Interpreter::has_error(CIRInstructionRef ref) {
     return result_context().result_of(ref).state == CIRResultState::Error;
 }
 
-bool Interpreter::is_generic_func(CIRPackage *fpkg, CIRFunction& func) {
-    if (func.is_comptime) return true;
-    for (isize i = 0; i < func.arg_decl_insts.count; i++) {
-        auto decl_inst = func.arg_decl_insts[i];
-        if (decl_inst == INVALID_INST) continue;
-        if (fpkg->inst(decl_inst)->var_decl.is_comptime) return true;
-    }
-    return false;
-}
 
 void Interpreter::Set_ResultError(CIRInstructionRef ref) {
     DEBUG_TRACE("Set_ResultError: ref: {}, op: {}, src_loc: {}", ref, pkg->inst(ref)->to_string(), pkg->inst(ref)->src_loc);

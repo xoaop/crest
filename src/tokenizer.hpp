@@ -50,6 +50,7 @@
     TOKEN_INFO(Hash, "#"),                                      \
     TOKEN_INFO(Arrow, "->"),                                    \
     TOKEN_INFO(Dot, "."),                                       \
+    TOKEN_INFO(DotDot, ".."),                                   \
     TOKEN_INFO(Caret, "^"),                                     \
     TOKEN_INFO(TripleMinus, "---"),                             \
     TOKEN_INFO(Integer, "interger"),                            \
@@ -65,6 +66,7 @@
     TOKEN_INFO(KW_if, "if"),                                    \
     TOKEN_INFO(KW_else, "else"),                                \
     TOKEN_INFO(KW_for, "for"),                                  \
+    TOKEN_INFO(KW_in, "in"),                                    \
     TOKEN_INFO(KW_switch, "switch"),                            \
     TOKEN_INFO(KW_case, "case"),                                \
     TOKEN_INFO(KW_return, "return"),                            \

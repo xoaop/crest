@@ -255,25 +255,34 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_ForStmt: {
-            bool has_else = false;
             i32 child_count = 0;
-            if (a->ForStmt.init) child_count++;
+            if (a->ForStmt.iter_var) child_count++;
+            if (a->ForStmt.index_var) child_count++;
+            if (a->ForStmt.iterable) child_count++;
+            if (a->ForStmt.iterable_end) child_count++;
             if (a->ForStmt.condition) child_count++;
-            if (a->ForStmt.post) child_count++;
             child_count++; // body always exists
 
             i32 idx = 0;
-            if (a->ForStmt.init) {
-                print_line(depth + 1, (++idx == child_count), "init:");
-                print_ast(a->ForStmt.init, depth + 2, true);
+            if (a->ForStmt.iter_var) {
+                print_line(depth + 1, (++idx == child_count), "iter_var:");
+                print_ast(a->ForStmt.iter_var, depth + 2, true);
+            }
+            if (a->ForStmt.index_var) {
+                print_line(depth + 1, (++idx == child_count), "index_var:");
+                print_ast(a->ForStmt.index_var, depth + 2, true);
+            }
+            if (a->ForStmt.iterable) {
+                print_line(depth + 1, (++idx == child_count), "iterable:");
+                print_ast(a->ForStmt.iterable, depth + 2, true);
+            }
+            if (a->ForStmt.iterable_end) {
+                print_line(depth + 1, (++idx == child_count), "iterable_end:");
+                print_ast(a->ForStmt.iterable_end, depth + 2, true);
             }
             if (a->ForStmt.condition) {
                 print_line(depth + 1, (++idx == child_count), "condition:");
                 print_ast(a->ForStmt.condition, depth + 2, true);
-            }
-            if (a->ForStmt.post) {
-                print_line(depth + 1, (++idx == child_count), "post:");
-                print_ast(a->ForStmt.post, depth + 2, true);
             }
             print_line(depth + 1, true, "body:");
             print_ast(a->ForStmt.body, depth + 2, true);

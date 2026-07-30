@@ -244,8 +244,6 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
         Token curr = curr_token(p);
         if(curr.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
             has_named_params = true;
-        } else if(curr.type == TokenType::Dollar && peek_token(p, 1).type == TokenType::Ident && peek_token(p, 2).type == TokenType::Colon) {
-            has_named_params = true;
         }
     }
 
@@ -269,12 +267,6 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
         }
 
         if(has_named_params) {
-            bool is_comptime = false;
-            if(curr_token(p).type == TokenType::Dollar) {
-                advance_token(p);
-                is_comptime = true;
-            }
-
             Token param_name_token = expect(p, TokenType::Ident);
             expect(p, TokenType::Colon);
             Ast *param_type_ast = parse_type(p);
@@ -283,7 +275,6 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
             param_ast->ParamDecl.name = param_name_token.token_str;
             param_ast->ParamDecl.type_ast = param_type_ast;
             param_ast->ParamDecl.is_var_arg = false;
-            param_ast->ParamDecl.is_comptime = is_comptime;
             param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
 
             out_params.push_back(param_ast);
@@ -364,14 +355,6 @@ Ast *parse_function_value_or_type(Parser *p) {
         a->FunctionDeclValue.block = block_ast;
         a->FunctionDeclValue.return_type_ast = return_type_ast;
         a->FunctionDeclValue.is_extern_c = is_extern_c;
-
-        // 任意参数有 is_comptime 则整个函数为编译期函数
-        for(isize i = 0; i < params.count; i++) {
-            if(params[i]->ParamDecl.is_comptime) {
-                a->FunctionDeclValue.is_comptime = true;
-                break;
-            }
-        }
 
         return a;
     }
@@ -681,45 +664,92 @@ Ast *parse_for(Parser *p) {
     Ast *a = ast_alloc(AstType_ForStmt);
     a->token = expect(p, TokenType::KW_for);
 
-
-    // TODO 换成现代 for 语法, 而不是现在的 C 风格 for 语法
-    // init
-    if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.init = parse_var_decl(p); // 只允许变量声明
-    } else {
-        a->ForStmt.init = NULL;
+    // 1. Infinite loop: for { ... }
+    if(curr_token(p).type == TokenType::LeftCurlyBracket) {
+        a->ForStmt.body = parse_block(p);
+        a->src_loc = merge(a->token.src_loc, a->ForStmt.body->src_loc);
+        return a;
     }
-    expect(p, TokenType::Semicolon);
 
-    // condition
-    if(curr_token(p).type != TokenType::Semicolon) {
-        a->ForStmt.condition = parse_expr(p, 0);
-    } else {
-        a->ForStmt.condition = NULL;
+    // 2. Check for for-in pattern using peek: [*] Ident (: | , | in)
+    bool is_for_in = false;
+    bool is_ptr_iter = false;
+    bool has_index = false;
+    isize offset = 0;
+
+    if(peek_token(p, offset).type == TokenType::Star) {
+        is_ptr_iter = true;
+        offset++;
     }
-    expect(p, TokenType::Semicolon);
 
-    // post
-    if(curr_token(p).type != TokenType::LeftCurlyBracket) {
-        a->ForStmt.post = parse_assignment_or_expr(p);
-
-        if(a->ForStmt.post->type != AstType_Assignment) {
-            context()->reporter.report(
-                ErrorLevel::Error,
-                curr_token(p).src_loc,
-                "expected assignment expression in for loop post statement, got expression that is not an assignment"
-            );
+    auto t0 = peek_token(p, offset).type;
+    if(t0 == TokenType::Ident) {
+        auto t1 = peek_token(p, offset + 1).type;
+        if(t1 == TokenType::Colon || t1 == TokenType::KW_in) {
+            is_for_in = true;
+        } else if(t1 == TokenType::Comma) {
+            auto t2 = peek_token(p, offset + 2).type;
+            if(t2 == TokenType::Ident) {
+                has_index = true;
+                auto t3 = peek_token(p, offset + 3).type;
+                if(t3 == TokenType::Colon || t3 == TokenType::KW_in) {
+                    is_for_in = true;
+                }
+            }
         }
-        XP_ASSERT_DEFAULT(a->ForStmt.post->type == AstType_Assignment);
-    } else {
-        a->ForStmt.post = NULL;
     }
 
+    if(is_for_in) {
+
+        if(is_ptr_iter) {
+            expect(p, TokenType::Star);
+        }
+        Token item_tok = expect(p, TokenType::Ident);
+
+        Ast *var_decl = ast_alloc(AstType_VariableDecl, item_tok);
+        var_decl->VariableDecl.var_name = item_tok.token_str;
+        var_decl->VariableDecl.expr = nullptr;
+        var_decl->VariableDecl.no_zero_init = false;
+
+        if(curr_token(p).type == TokenType::Colon) {
+            advance_token(p);
+            var_decl->VariableDecl.type_ast = parse_type(p);
+        }
+
+        a->ForStmt.iter_var = var_decl;
+
+        if(has_index) {
+            expect(p, TokenType::Comma);
+            Token idx_tok = expect(p, TokenType::Ident);
+            Ast *idx_decl = ast_alloc(AstType_VariableDecl, idx_tok);
+            idx_decl->VariableDecl.var_name = idx_tok.token_str;
+            idx_decl->VariableDecl.expr = nullptr;
+            idx_decl->VariableDecl.no_zero_init = false;
+
+            if(curr_token(p).type == TokenType::Colon) {
+                advance_token(p);
+                idx_decl->VariableDecl.type_ast = parse_type(p);
+            }
+
+            a->ForStmt.index_var = idx_decl;
+        }
+
+        expect(p, TokenType::KW_in);
+
+        a->ForStmt.iterable = parse_expr(p, 0);
+        if(curr_token(p).type == TokenType::DotDot) {
+            advance_token(p);
+            a->ForStmt.iterable_end = parse_expr(p, 0);
+        }
+
+        var_decl->src_loc = merge(item_tok.src_loc, a->ForStmt.iterable_end ? a->ForStmt.iterable_end->src_loc : a->ForStmt.iterable->src_loc);
+
+    } else {
+        a->ForStmt.condition = parse_expr(p, 0);
+    }
 
     a->ForStmt.body = parse_block(p);
-
     a->src_loc = merge(a->token.src_loc, a->ForStmt.body->src_loc);
-
     return a;
 }
 
@@ -950,15 +980,19 @@ Ast *parse_expr_factor(Parser *p) {
         // (expr)
         // (ident, ...) -> ident
         // (<$> ident: ident, ...) -> ident/? { ...(body) }
-        case TokenType::LeftBracket: {
+        case TokenType::LeftBracket:
+        case TokenType::Dollar: {
+            bool is_comptime_func = false;
+            if (curr.type == TokenType::Dollar) {
+                advance_token(p);
+                is_comptime_func = true;
+            }
             Token lb = expect(p, TokenType::LeftBracket);
 
             bool is_named = false;
             if (curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
                 Token first = curr_token(p);
                 if (first.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
-                    is_named = true;
-                } else if (first.type == TokenType::Dollar && peek_token(p, 1).type == TokenType::Ident && peek_token(p, 2).type == TokenType::Colon) {
                     is_named = true;
                 }
             }
@@ -979,12 +1013,6 @@ Ast *parse_expr_factor(Parser *p) {
                 }
 
                 if (is_named) {
-                    bool is_comptime = false;
-                    if (curr_token(p).type == TokenType::Dollar) {
-                        advance_token(p);
-                        is_comptime = true;
-                    }
-
                     Token name = expect(p, TokenType::Ident);
                     expect(p, TokenType::Colon);
                     Ast *type_ast = parse_type(p);
@@ -992,7 +1020,6 @@ Ast *parse_expr_factor(Parser *p) {
                     Ast *param = ast_alloc(AstType_ParamDecl, name);
                     param->ParamDecl.name = name.token_str;
                     param->ParamDecl.type_ast = type_ast;
-                    param->ParamDecl.is_comptime = is_comptime;
                     param->src_loc = merge(name.src_loc, type_ast->src_loc);
                     params.push_back(param);
                 } else {
@@ -1084,12 +1111,7 @@ Ast *parse_expr_factor(Parser *p) {
                     a->FunctionDeclValue.is_builtin = is_builtin;
                     a->FunctionDeclValue.infer_return_type = infer_return_type;
 
-                    for (isize i = 0; i < params.count; i++) {
-                        if (params[i]->ParamDecl.is_comptime) {
-                            a->FunctionDeclValue.is_comptime = true;
-                            break;
-                        }
-                    }
+                    a->FunctionDeclValue.is_comptime = is_comptime_func;
                 } else {
                     if(infer_return_type) {
                         context()->reporter.report_error(rb.src_loc, "pure function type cannot use '-> ?' to infer return type");

@@ -32,7 +32,6 @@ struct CIRVariableDecl {
     SymbolInfoRef symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
-    bool is_comptime;             // 是否是编译期参数
 
     bool no_zero_init;
 };
