@@ -1025,9 +1025,18 @@ Ast *parse_expr_factor(Parser *p) {
                 }
 
                 bool is_builtin = false;
-                if (curr_token(p).type == TokenType::KW_builtin) {
-                    is_builtin = true;
+                if (curr_token(p).type == TokenType::Hash) {
                     advance_token(p);
+                    Token builtin_token = expect(p, TokenType::Ident);
+                    if (xp_string_equal(builtin_token.token_str, xp_string_c("builtin"))) {
+                        is_builtin = true;
+                    } else {
+                        context()->reporter.report_error(
+                            builtin_token.src_loc,
+                            "unknown directive '{}', expected 'builtin'",
+                            builtin_token.token_str
+                        );
+                    }
                 }
 
                 if (must_be_c_fn && !is_extern_c) {
