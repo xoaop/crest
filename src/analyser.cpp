@@ -515,22 +515,25 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     case AstType_ForStmt: {
         Analyser for_scope = new_scope(analyser, ScopeType::LoopBlock, stmt_ast);
 
-        if(stmt_ast->ForStmt.init != NULL) {
-            resolve_local_stmt(stmt_ast->ForStmt.init, for_scope);
+        if(stmt_ast->ForStmt.iter_var != NULL) {
+            resolve_var_decl(stmt_ast->ForStmt.iter_var, for_scope);
+
+            if(stmt_ast->ForStmt.index_var != NULL) {
+                resolve_var_decl(stmt_ast->ForStmt.index_var, for_scope);
+            }
+
+            if(stmt_ast->ForStmt.iterable != NULL) {
+                resolve_expr(stmt_ast->ForStmt.iterable, for_scope);
+            }
+            if(stmt_ast->ForStmt.iterable_end != NULL) {
+                resolve_expr(stmt_ast->ForStmt.iterable_end, for_scope);
+            }
         }
 
         if(stmt_ast->ForStmt.condition != NULL) {
             resolve_expr(stmt_ast->ForStmt.condition, for_scope);
         }
-        
 
-
-        if(stmt_ast->ForStmt.post != NULL) {
-            resolve_local_stmt(stmt_ast->ForStmt.post, for_scope);
-        }
-        
-        // 对于for 循环体的block, 不创建新作用域, 而是和init. condition. post共享同一作用域
-        // 同时ScopeType::LoopBlock也标记了这是一个循环体作用域
         resolve_block(stmt_ast->ForStmt.body, for_scope, false);
     } break;
 

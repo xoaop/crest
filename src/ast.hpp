@@ -57,9 +57,11 @@ struct Ast;
         Ast *else_block;                                                    \
     })                                                                      \
     AST_INFO(ForStmt, "for statement", struct {                             \
-        Ast *init;                                                          \
+        Ast *iter_var;                                                      \
+        Ast *index_var;                                                     \
+        Ast *iterable;                                                      \
+        Ast *iterable_end;    /* non-null = range iter: start..end */       \
         Ast *condition;                                                     \
-        Ast *post;                                                          \
         Ast *body;                                                          \
     })                                                                      \
     AST_INFO(Break, "break statement", struct {})                           \
@@ -85,7 +87,6 @@ struct Ast;
         xpString name;                                                      \
         Ast *type_ast;                                                      \
         bool is_var_arg;                                                    \
-        bool is_comptime;                                                   \
     })                                                                      \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})         \
     AST_INFO(Constant, "constant", struct {                                 \

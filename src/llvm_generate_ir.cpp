@@ -1753,12 +1753,6 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
 
     SymbolInfo *var_info = (inst->var_decl.symbol)();
 
-    // 泛型实例：comptime 参数没有对应的 LLVM 参数，直接跳过
-    if(inst->var_decl.is_comptime) {
-        add_local_val(&syms, var_info, nullptr);
-        return;
-    }
-
     // 1. 分配空间
     LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(inst->var_decl.name, stage_allocator()).c_str, get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
 

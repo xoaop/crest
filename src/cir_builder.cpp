@@ -183,7 +183,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoR
         var.symbol = param->ast_symbol;
         var.slot = i;                       // 参数槽位: 0, 1, 2, ...
         var.is_var_arg = param->ParamDecl.is_var_arg;
-        var.is_comptime = param->ParamDecl.is_comptime;
         param_decls.push_back(var);
         // func.args.push_back(var);
         func.arg_type_insts.push_back(param_type);
@@ -236,7 +235,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoR
 
                 // NOTE: 函数参数变量的no_zero_init为false, 因为一定有值, 没必要
                 auto vd = Alloc_Var(var.name, var.is_var_arg, false, fd->FunctionDeclValue.params[i]);
-                Instruction(vd).var_decl.is_comptime = var.is_comptime;
                 func.arg_decl_insts.push_back(vd);
 
                 auto param_type = func.arg_type_insts[i];
@@ -361,66 +359,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
         } break;
 
         case AstType_ForStmt: {
-            auto _scope_guard = ScopeGuard(this, stmt);
-
-            if(stmt->ForStmt.init != nullptr) {
-                build_inst_for_stmt(stmt->ForStmt.init);
-            }
-            
-            
-            auto loop_inst = Begin_Loop(stmt);
-            
-            auto cond = INVALID_INST;
-            if(stmt->ForStmt.condition != nullptr) {
-                cond = build_inst_for_expr(stmt->ForStmt.condition);
-            } else {
-                // 无条件循环, 构造一个永真条件
-                
-                auto true_val = make_value(easy_type(Type_bool));
-                true_val.bool_val(true);
-                
-                cond = New_Instruction(CIROperator::ConstantValue, stmt);
-                Instruction(cond).imm_val = true_val;
-            }
-
-            // CondBr 先占位，then/else 紧跟其后作为 body
-            auto condbr_for_loop = New_Instruction(CIROperator::CondBr, stmt);
-
-            auto then = INVALID_INST;
-            {
-                then = Begin_Block(stmt, false, false);
-                defer(End_Block(then));
-
-                // TODO: ABSTRACT
-                loop_body_block_stack.push_back(then);
-                defer({
-                    XP_ASSERT_DEFAULT(loop_body_block_stack.back() == then);
-                    loop_body_block_stack.pop_back();
-                });
-
-                build_inst_for_ast_block(stmt->ForStmt.body, false);
-            }
-
-            auto else_blk = INVALID_INST;
-            {
-                else_blk = Begin_Block(stmt, false, false);
-                defer(End_Block(else_blk));
-
-                New_Break(loop_inst, INVALID_INST, stmt); // TODO: 妥善处理无返回值的Break
-            }
-
-            Instruction(condbr_for_loop).condbr_info = {
-                .condition_inst = cond,
-                .true_block_inst = then,
-                .false_block_inst = else_blk,
-            };
-
-            if(stmt->ForStmt.post != nullptr) {
-                build_inst_for_stmt(stmt->ForStmt.post);
-            }
-
-            End_Loop(loop_inst);
-
+            build_inst_for_for_stmt(stmt);
         } break;
 
         case AstType_ReturnStmt: {
@@ -454,6 +393,97 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
 
     // TODO: 妥善处理
     return INVALID_INST;
+}
+
+void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
+    auto _scope_guard = ScopeGuard(this, stmt);
+    auto& fs = stmt->ForStmt;
+
+    CIRInstructionRef incr_var_inst = INVALID_INST;
+    CIRInstructionRef end_inst = INVALID_INST;
+
+    // Pre-loop: build invariant values
+    if(fs.iter_var != nullptr) {
+        if(fs.iterable_end != nullptr) {
+            fs.iter_var->VariableDecl.expr = fs.iterable;
+            incr_var_inst = build_inst_for_var_decl(fs.iter_var);
+            end_inst = build_inst_for_expr(fs.iterable_end);
+        } else {
+            context()->reporter.report_error(stmt->src_loc, "for-in over array/slice is not yet implemented");
+            return;
+        }
+    }
+
+    auto loop_inst = Begin_Loop(stmt);
+
+    // Build condition inside loop (re-evaluated each iteration)
+    CIRInstructionRef cond_inst;
+    if(fs.iter_var != nullptr) {
+        auto load_var = New_Instruction(CIROperator::Load, stmt);
+        Instruction(load_var).load_info = { .ptr_inst = incr_var_inst };
+
+        cond_inst = New_Instruction(CIROperator::Binary, stmt);
+        Instruction(cond_inst).binary_info = { .op = TokenType::LessThan, .left_inst = load_var, .right_inst = end_inst };
+    } else if(fs.condition != nullptr) {
+        cond_inst = build_inst_for_expr(fs.condition);
+    } else {
+        auto true_val = make_value(easy_type(Type_bool));
+        true_val.bool_val(true);
+        cond_inst = New_Instruction(CIROperator::ConstantValue, stmt);
+        Instruction(cond_inst).imm_val = true_val;
+    }
+
+    auto condbr = New_Instruction(CIROperator::CondBr, stmt);
+
+    auto body_block = Begin_Block(stmt, false, false);
+    {
+        defer(End_Block(body_block));
+
+        auto user_block = Begin_Block(stmt, false, false);
+        {
+            defer(End_Block(user_block));
+
+            loop_body_block_stack.push_back(user_block);
+            defer({
+                XP_ASSERT_DEFAULT(loop_body_block_stack.back() == user_block);
+                loop_body_block_stack.pop_back();
+            });
+
+            build_inst_for_ast_block(fs.body, false);
+        }
+
+        if(incr_var_inst != INVALID_INST) {
+            auto load_var = New_Instruction(CIROperator::Load, stmt);
+            Instruction(load_var).load_info = { .ptr_inst = incr_var_inst };
+
+            auto one_val = New_Instruction(CIROperator::ConstantValue, stmt);
+            {
+                auto v = make_value(easy_type(Type_untyped_int));
+                v.integer_val(1);
+                Instruction(one_val).imm_val = v;
+            }
+
+            auto add_inst = New_Instruction(CIROperator::Binary, stmt);
+            Instruction(add_inst).binary_info = { .op = TokenType::Add, .left_inst = load_var, .right_inst = one_val };
+
+            auto store_inc = New_Instruction(CIROperator::Store, stmt);
+            Instruction(store_inc).store_info = { .var_inst = incr_var_inst, .value_inst = add_inst };
+        }
+    }
+
+    auto exit_block = Begin_Block(stmt, false, false);
+    {
+        defer(End_Block(exit_block));
+        New_Break(loop_inst, INVALID_INST, stmt);
+    }
+
+    Instruction(condbr).condbr_info = {
+        .condition_inst = cond_inst,
+        .true_block_inst = body_block,
+        .false_block_inst = exit_block,
+    };
+
+    End_Loop(loop_inst);
 }
 
 CIRInstructionRef CIRBuilder::build_inst_for_var_decl(Ast *var_decl_ast) {
