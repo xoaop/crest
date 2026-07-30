@@ -39,13 +39,14 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
         if(key.has_value()) {
             auto *instance = xp_hash_map_get(inst_key.cir_package->result_instances, key.value());
             if(instance) {
-                auto *res = xp_hash_map_get((*instance)->results, inst_key.inst_ref);
+                auto *res = (*instance)->result_ptr_of(inst_key.inst_ref);
                 if(res) {
                     return *res;
                 }
             }
         }
-        return inst_key.cir_package->results[inst_key.inst_ref];
+        auto *res = xp_hash_map_get(inst_key.cir_package->results, inst_key.inst_ref);
+        if(res) return *res;
     }
 
     return CIRInstResult{};

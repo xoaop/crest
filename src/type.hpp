@@ -215,7 +215,7 @@ bool is_array_type(TypeRef type);
 bool is_type_type(TypeRef type);
 bool is_package_type(TypeRef type);
 bool is_slice_struct_type(TypeRef type);
-bool is_string_struct_type(TypeRef type);
+// bool is_string_struct_type(TypeRef type);
 bool is_value_type(TypeRef type);
 bool is_var_arg_function(TypeRef type);
 bool is_named_type(TypeRef type);
@@ -287,13 +287,8 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
 
 isize type_size_of(TypeRef type);
 isize type_align_of(TypeRef type);
-isize type_stride_of(TypeRef type);
 isize field_offset_in_struct(TypeRef struct_type, isize index);
-isize align_up(isize value, isize alignment);
-
 TypeRef slice_type_as_struct(TypeRef elem_type);
-TypeRef string_type_as_struct();
-
 
 TypeRef get_or_add_type(Type type);
 TypeRef get_type(Type type);

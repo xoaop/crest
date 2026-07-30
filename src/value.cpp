@@ -36,25 +36,6 @@ Value make_value(TypeRef type) {
     return v;
 }
 
-Value make_value_string(Pointer data, isize count, xpAllocator allocator) {
-    Value v = make_value(string_type_as_struct());
-    Array<Value> field_values = make_array<Value>(allocator);
-
-    // data
-    Value data_field = make_value(v.type->struct_info.struct_fields[0].type);
-    data_field.pointer_val(data);
-    field_values.push_back(data_field);
-
-    // count
-    Value count_field = make_value(v.type->struct_info.struct_fields[1].type);
-    count_field.integer_val(count);
-    field_values.push_back(count_field);
-
-    v.struct_fields_val(field_values);
-
-    return v;
-}
-
 ActualValueType Value::actual_type() const {
     return actual_value_type;
 }
@@ -88,6 +69,12 @@ void Value::array_element_values(Array<Value> elem_values) {
 void Value::func_val(CIRInstResultRef func_key) {
     actual_value_type = ActualValueType::Function;
     this->func_value.func_key = func_key;
+}
+
+void Value::func_val(CIRInstResultRef func_key, BuiltinKind builtin_kind) {
+    actual_value_type = ActualValueType::Function;
+    this->func_value.func_key = func_key;
+    this->func_value.builtin_kind = builtin_kind;
 }
 
 void Value::func_val_key(CIRInstResultRef key) {
@@ -216,8 +203,8 @@ Value clone_value(const Value& v, xpAllocator allocator) {
         case ActualValueType::Type:     copy.type_val(v.type_val()); break;
         case ActualValueType::Package:  copy.package_val(v.package_val()); break;
         case ActualValueType::Function: {
-            // copy.func_val(v.func_val().name, v.func_val().func_key);
-            copy.func_val(v.func_val().func_key);
+            copy.actual_value_type = ActualValueType::Function;
+            copy.func_value = v.func_value;
         } break;
         case ActualValueType::Struct: {
             Array<Value> fields = make_array<Value>(allocator);
@@ -239,6 +226,87 @@ Value clone_value(const Value& v, xpAllocator allocator) {
         case ActualValueType::Reference: ASSERT(false && "Reference not implemented"); break;
     }
     return copy;
+}
+
+
+// ============================================================
+// 类型序列化布局函数
+// ============================================================
+
+static isize basic_type_serialize_size(TypeKind kind) {
+    switch(kind) {
+        case Type_i8:  case Type_u8:  case Type_bool:  return 1;
+        case Type_i32: case Type_u32: case Type_f32:    return 4;
+        case Type_i64: case Type_u64: case Type_f64:    return 8;
+        case Type_untyped_int:  case Type_untyped_float: return 8;
+        case Type_void:                                  return 0;
+        case Type_pointer:                               return Pointer::BYTE_SIZE;
+        case Type_isize:  case Type_usize:              return sizeof(void*);
+        default:                                         return 8; // type/function/package/etc.
+    }
+}
+
+static isize basic_type_serialize_align(TypeKind kind) {
+    if (kind == Type_pointer) return 8;  // Pointer::mem+offset 只需 8 字节对齐
+    if (kind == Type_isize || kind == Type_usize) return sizeof(void*);
+    return basic_type_serialize_size(kind); // 自然对齐：对齐 == 大小
+}
+
+isize type_serialize_size(TypeRef type) {
+    switch(type->kind) {
+        case Type_array:
+            return (isize)type->array_info.count * type_serialize_size(type->array_info.element_type);
+        case Type_struct: {
+            if(type->struct_info.struct_fields.count == 0) return 0;
+            auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
+            return field_serialize_offset(type, type->struct_info.struct_fields.count - 1)
+                 + type_serialize_size(last.type);
+        }
+        default:
+            return basic_type_serialize_size(type->kind);
+    }
+}
+
+isize type_serialize_align(TypeRef type) {
+    switch(type->kind) {
+        case Type_struct: {
+            isize max_align = 1;
+            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+                isize a = type_serialize_align(type->struct_info.struct_fields[i].type);
+                if(a > max_align) max_align = a;
+            }
+            return max_align;
+        }
+        case Type_array:
+            return type_serialize_align(type->array_info.element_type);
+        default:
+            return basic_type_serialize_align(type->kind);
+    }
+}
+
+isize type_serialize_stride(TypeRef type) {
+    return type_serialize_size(type);
+}
+
+isize field_serialize_offset(TypeRef struct_type, isize index) {
+    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+    isize offset = 0;
+    for(isize i = 0; i < index; i++) {
+        TypeRef ft = struct_type->struct_info.struct_fields[i].type;
+        isize align = type_serialize_align(ft);
+        offset = serialize_align_up(offset, align);
+        offset += type_serialize_size(ft);
+    }
+    // 对齐当前字段
+    if(index < struct_type->struct_info.struct_fields.count) {
+        TypeRef ft = struct_type->struct_info.struct_fields[index].type;
+        offset = serialize_align_up(offset, type_serialize_align(ft));
+    }
+    return offset;
+}
+
+isize serialize_align_up(isize value, isize alignment) {
+    return xp_align_up_isize(value, alignment);
 }
 
 
@@ -290,8 +358,7 @@ Value TypeProgress::Finished() {
 
 void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
     TypeRef t = v.type;
-    isize size = type_size_of(t);
-
+    isize size = type_serialize_size(t);
     switch (v.actual_type()) {
         case ActualValueType::Type: {
             isize ptr = (isize)(v.type_val());
@@ -331,7 +398,7 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             auto fields = v.struct_fields_val();
             ASSERT(is_struct_type(t));
             for (isize i = 0; i < fields.count; i++) {
-                isize field_off = field_offset_in_struct(t, i);
+                isize field_off = field_serialize_offset(t, i);
                 write_value_to_bytes(bytes, offset + field_off, fields[i]);
             }
             break;
@@ -340,7 +407,7 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             auto elems = v.array_element_values();
             ASSERT(is_array_type(t));
             TypeRef et = t->array_info.element_type;
-            isize stride = type_stride_of(et);
+            isize stride = type_serialize_stride(et);
             for (isize i = 0; i < elems.count; i++) {
                 write_value_to_bytes(bytes, offset + i * stride, elems[i]);
             }
@@ -362,7 +429,7 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
 }
 
 Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, xpAllocator allocator) {
-    isize size = type_size_of(type);
+    isize size = type_serialize_size(type);
 
     switch (type->kind) {
         case Type_i8: case Type_u8: case Type_i32: case Type_u32:
@@ -424,7 +491,7 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
             Array<Value> fields = make_array_count<Value>(allocator, type->struct_info.struct_fields.count);
             for (isize i = 0; i < type->struct_info.struct_fields.count; i++) {
                 TypeRef ft = type->struct_info.struct_fields[i].type;
-                isize field_off = field_offset_in_struct(type, i);
+                isize field_off = field_serialize_offset(type, i);
                 fields[i] = read_value_from_bytes(bytes, offset + field_off, ft, allocator);
             }
             v.struct_fields_val(fields);
@@ -433,7 +500,7 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
         case Type_array: {
             TypeRef et = type->array_info.element_type;
             isize count = type->array_info.count;
-            isize stride = type_stride_of(et);
+            isize stride = type_serialize_stride(et);
 
             Value v = make_value(type);
             Array<Value> elems = make_array_count<Value>(allocator, count);
@@ -462,7 +529,7 @@ void ValueMemory::free() {
 }
 
 Pointer ValueMemory::alloc_bytes(isize size, isize align) {
-    isize addr = align_up(bytes.count, align);
+    isize addr = serialize_align_up(bytes.count, align);
     isize new_count = addr + size;
     bytes.resize(new_count);
 
@@ -545,24 +612,26 @@ void Pointer::store_bytes(const void* src, isize size) const {
 
 
 void Pointer::to_bytes(Array<u8>& bytes, isize offset) const {
-    // 前8字节：offset低63位 + kind(1 bit)打包在offset的最高位
-    isize packed = (this->offset & ~(1LL << 63)) | ((isize)kind << 63);
-    memcpy(&bytes[offset], &packed, sizeof(packed));
-    // 后8字节：mem原始指针地址
+    // kind, offset, mem 各自直接存入
+    u8 k = (u8)kind;
+    memcpy(&bytes[offset], &k, sizeof(k));
+    memcpy(&bytes[offset + sizeof(k)], &this->offset, sizeof(this->offset));
     isize mem_addr = (isize)mem;
-    memcpy(&bytes[offset + sizeof(packed)], &mem_addr, sizeof(mem_addr));
+    memcpy(&bytes[offset + sizeof(k) + sizeof(this->offset)], &mem_addr, sizeof(mem_addr));
 }
 
 
 Pointer Pointer::from_bytes(const Array<u8>& bytes, isize offset) {
-    isize packed;
-    memcpy(&packed, &bytes[offset], sizeof(packed));
+    u8 k;
+    memcpy(&k, &bytes[offset], sizeof(k));
+    isize off;
+    memcpy(&off, &bytes[offset + sizeof(k)], sizeof(off));
     isize mem_addr;
-    memcpy(&mem_addr, &bytes[offset + sizeof(packed)], sizeof(mem_addr));
+    memcpy(&mem_addr, &bytes[offset + sizeof(k) + sizeof(off)], sizeof(mem_addr));
 
     Pointer ptr{};
-    ptr.kind = (MemoryKind)(packed >> 63);
-    ptr.offset = packed & ~(1LL << 63);
+    ptr.kind = (MemoryKind)k;
+    ptr.offset = off;
     ptr.mem = (ValueMemory*)mem_addr;
     return ptr;
 }

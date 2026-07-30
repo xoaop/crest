@@ -114,11 +114,11 @@ void init_global_symbols() {
             SymbolInfo symbol_info = make_symbol(
                 get_type_kind_str(kind), 
                 type_val,
-                &context()->global_blank_package, 
+                context()->global_blank_package, 
                 nullptr, 
                 nullptr
             );
-            add_symbol_to_scope(&context()->global_blank_package.package_scope, symbol_info);
+            add_symbol_to_scope(&context()->global_blank_package->package_scope, symbol_info);
         };
 
         insert_basic_type(Type_void);
@@ -137,36 +137,6 @@ void init_global_symbols() {
 
 
     {
-        xpString string_struct_name = xp_string_c("string");
-
-        Array<StructField> fields = make_array<StructField>(temp_allocator());
-        defer(xp_arena_allocator_clear(temp_allocator()));
-
-        fields.push_back(StructField { 
-            xp_string_c("data"), 
-            pointer_type(easy_type(Type_u8)) 
-        });    
-        fields.push_back(StructField { 
-            xp_string_c("count"), 
-            easy_type(Type_i64) // TODO 考虑改成isize
-        });    
-
-        TypeRef string_struct_typeref = struct_type(nullptr, string_struct_name, fields);
-        Value string_type_val = make_value(type_type());
-        string_type_val.type_val(string_struct_typeref);
-
-        // 符号表
-        SymbolInfo string_struct_symbol = make_symbol(
-            string_struct_name, 
-            string_type_val,
-            &context()->global_blank_package,
-            nullptr,
-            nullptr
-        );
-        add_symbol_to_scope(&context()->global_blank_package.package_scope, string_struct_name, string_struct_symbol);
-    }
-
-    {
         xpString type_string = xp_string_c("type");
         TypeRef type_type_ref = type_type();
         Value type_type_value = make_value(type_type_ref);
@@ -175,11 +145,11 @@ void init_global_symbols() {
         SymbolInfo type_symbol = make_symbol(
             type_string, 
             type_type_value,
-            &context()->global_blank_package,
+            context()->global_blank_package,
             nullptr,
             nullptr
         );
-        add_symbol_to_scope(&context()->global_blank_package.package_scope, type_string, type_symbol);
+        add_symbol_to_scope(&context()->global_blank_package->package_scope, type_string, type_symbol);
     }
 }
 

@@ -107,36 +107,32 @@ static xpHashMap<CIRInstResultRef, xpString>& get_global_func_names() {
 
 xpString register_func_name(CIRInstResultRef key, bool is_extern_c) {
     auto& map = get_global_func_names();
-    xpString *cached = xp_hash_map_get(map, key);
-    if (cached) { return *cached; }
+    return map.get_or_insert(key, [&]{
+        CIRInstruction* inst = key.cir_package->inst(key.inst_ref);
+        ASSERT(inst->op == CIROperator::FunctionDecl);
 
-    CIRInstruction* inst = key.cir_package->inst(key.inst_ref);
-    ASSERT(inst->op == CIROperator::FunctionDecl);
+        SymbolInfo* sym = (inst->symbol)();
+        xpString base_name;
+        if (sym) {
+            base_name = sym->name;
+        } else {
+            static isize anon_counter = 0;
+            base_name = xp_string_copy(permanent_allocator(), xp_string_c("__anon_"));
+            xp_string_append(&base_name, xp_isize_to_string(anon_counter++, permanent_allocator()));
+        }
 
-    SymbolInfo* sym = (inst->symbol)();
-    xpString base_name;
-    if (sym) {
-        base_name = sym->name;
-    } else {
-        static isize anon_counter = 0;
-        base_name = xp_string_copy(permanent_allocator(), xp_string_c("__anon_"));
-        xp_string_append(&base_name, xp_isize_to_string(anon_counter++, permanent_allocator()));
-    }
+        if (xp_string_equal(base_name, xp_string_c("main")) || is_extern_c) {
+            return base_name;
+        }
 
-    if (xp_string_equal(base_name, xp_string_c("main")) || is_extern_c) {
-        xp_hash_map_insert(&map, key, base_name);
-        return base_name;
-    }
-
-    Package* pkg = sym ? sym->package : nullptr;
-    xpString full_name = xp_string_concat_mid(
-        pkg ? pkg->path : xp_string_c(""),
-        base_name,
-        xpOption<xpString>(xp_string_c(".")),
-        permanent_allocator()
-    );
-    xp_hash_map_insert(&map, key, full_name);
-    return full_name;
+        Package* pkg = sym ? sym->package : nullptr;
+        return xp_string_concat_mid(
+            pkg ? pkg->path : xp_string_c(""),
+            base_name,
+            xpOption<xpString>(xp_string_c(".")),
+            permanent_allocator()
+        );
+    });
 }
 
 
@@ -272,7 +268,7 @@ struct LLVMGenerator {
     void llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBlockRef to);
     xpString gen_ir_package(LLVMIRGenerateConfig config);
 
-    LLVMValueRef gen_ir_string_struct_value(xpString str);
+    // LLVMValueRef gen_ir_string_struct_value(xpString str);
 
     LLVMValueRef gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVMValueRef value);
     LLVMValueRef gen_array_value_to_slice_cast(LLVMValueRef array_value_ptr, TypeRef array_value_type);
@@ -322,6 +318,7 @@ public:
     CIRInstructionRef curr_blk;
 
     CIRResultContext result_ctx;
+    CIRInstructionRef debug_curr_gen_ref = -1;
 
 };
 
@@ -629,9 +626,11 @@ Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerate
 
 xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     // 线性遍历所有指令
-    for(CIRInstructionRef pc = 0; pc < pkg->cir_package.instructions.count; ) {
-        isize skip = gen_ir_inst(pc);
-        pc += skip;
+    auto it = pkg->cir_package.instructions.begin();
+    auto end = pkg->cir_package.instructions.end();
+    while (it != end) {
+        isize skip = gen_ir_inst(it.subscript());
+        while (skip-- > 0 && it != end) ++it;
     }
 
 
@@ -720,7 +719,8 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
 
 
 LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
-    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstance*>(result_ctx.call_instance()) : std::nullopt};
+    DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)result_ctx.pkg(), (void*)result_ctx.call_instance(), debug_curr_gen_ref);
+    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt};
     LLVMValueRef *val = xp_hash_map_get(inst_vals, key);
     if(val != nullptr) {
         return *val;
@@ -746,14 +746,27 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     LLVMValueRef *cached = xp_hash_map_get(inst_vals, key);
     if(cached) return *cached;
 
-    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} op={} state={}", ref, (int)result_ctx.pkg()->inst(ref)->op, (int)result.state);
+    // 当前 call_instance 未命中 → 尝试 null call_instance
+    if(result_ctx.call_instance() != nullptr) {
+        CIRInstResultRef null_key{result_ctx.pkg(), ref, std::nullopt};
+        LLVMValueRef *null_cached = xp_hash_map_get(inst_vals, null_key);
+        if(null_cached) return *null_cached;
+    }
+
+    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} op={} state={} call_instance={} curr_gen_ref={} curr_gen_op={}", ref, (int)result_ctx.pkg()->inst(ref)->op, (int)result.state, (void*)result_ctx.call_instance(), debug_curr_gen_ref, result_ctx.pkg()->inst(debug_curr_gen_ref) ? (int)result_ctx.pkg()->inst(debug_curr_gen_ref)->op : -1);
     UNREACHABLE();
     return nullptr;
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
-    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstance*>(result_ctx.call_instance()) : std::nullopt};
+    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt};
+    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={} op={}", ref, (void*)result_ctx.pkg(), (void*)result_ctx.call_instance(), (int)result_ctx.pkg()->inst(ref)->op);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
+    // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
+    if(result_ctx.call_instance() != nullptr) {
+        CIRInstResultRef null_key{result_ctx.pkg(), ref, std::nullopt};
+        xp_hash_map_insert(&inst_vals, null_key, llvm_val);
+    }
 }
 
 
@@ -864,25 +877,25 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 
 
 
-LLVMValueRef LLVMGenerator::gen_ir_string_struct_value(xpString str) {
-    LLVMValueRef str_const = LLVMBuildGlobalString(
-        builder, 
+// LLVMValueRef LLVMGenerator::gen_ir_string_struct_value(xpString str) {
+//     LLVMValueRef str_const = LLVMBuildGlobalString(
+//         builder, 
 
-        // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
-        // 不把""当成字符串内容
-        xp_string_to_c_style(str, stage_allocator()).c_str,
-        "stringliteraltmp"
-    );
+//         // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
+//         // 不把""当成字符串内容
+//         xp_string_to_c_style(str, stage_allocator()).c_str,
+//         "stringliteraltmp"
+//     );
 
-    LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(string_type_as_struct()));
+//     LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(string_type_as_struct()));
     
-    // TODO: 现在是硬编码
-    str_struct = LLVMBuildInsertValue(builder, str_struct, str_const, 0, "insertstrptrtmp");
+//     // TODO: 现在是硬编码
+//     str_struct = LLVMBuildInsertValue(builder, str_struct, str_const, 0, "insertstrptrtmp");
 
-    str_struct = LLVMBuildInsertValue(builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(ctx), str.length, 0), 1, "insertstrlenntmp");
+//     str_struct = LLVMBuildInsertValue(builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(ctx), str.length, 0), 1, "insertstrlenntmp");
 
-    return str_struct;
-}
+//     return str_struct;
+// }
 
 
 LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<TypeRef> expected_type) {
@@ -929,51 +942,11 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
         } break;
 
         case Type_struct: {
-            if(is_string_struct_type(value.type)) {
-                // llvm_val = gen_ir_string_struct_value(value.string_val());
-                Pointer ptr = value.struct_field_val(0).pointer_val();
-                auto count = value.struct_field_val(1).integer_val();
-
-
-                LLVMValueRef str_value = {};
-                if(LLVMValueRef* str_val = xp_hash_map_get(string_globals, ptr.offset); str_val != nullptr) {
-                    str_value = *str_val;
-                } else if(ptr.kind == MemoryKind::Heap) {
-                    xpAutoArenaRestore t{temp_allocator()};
-
-                    char *str = static_cast<char *>(xp_alloc(temp_allocator(), count + 1));
-                    ptr.load_bytes(0, str, count + 1);
-
-                    auto str_val = LLVMBuildGlobalString(
-                        builder, 
-                        // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
-                        // 不把""当成字符串内容
-                        str,
-                        "stringliteraltmp"
-                    );
-
-                    xp_hash_map_insert(&string_globals, ptr.offset, str_val);
-
-                    str_value = str_val;
-                } else {
-                    DEBUG_PANIC("no");
-                }
-
-                auto count_val = value.struct_field_val(1);
-
-                LLVMValueRef field_values[2] = {
-                    str_value,
-                    gen_llvm_val_by_value(count_val)
-                };
-
-                llvm_val = LLVMConstNamedStruct(get_llvm_type_from_type(value.type), field_values, xp_array_len(field_values));
-
-            } else if(is_struct_type(value.type)) {
+            if(is_struct_type(value.type)) {
                 Array<LLVMValueRef> field_values = make_array<LLVMValueRef>(stage_allocator());
 
                 Array<Value> field_vals = value.struct_fields_val();
                 for(isize i = 0; i < field_vals.count; i++) {
-
                     LLVMValueRef field_llvm_val = gen_llvm_val_by_value(field_vals[i]);
                     field_values.push_back(field_llvm_val);
                 }
@@ -989,6 +962,37 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
             if(value.is_null) {
                 llvm_val = LLVMConstNull(get_llvm_type_from_type(value.type));
                 break;
+            }
+
+            // TODO: HARDCODE, 这里的情况只处理字符串, 别的类型数据不能处理
+            // 非空 comptime 指针：从 static_mem 读取字符串数据，创建 LLVM 全局
+            if(value.actual_type() == ActualValueType::Pointer) {
+                Pointer ptr = value.pointer_val();
+
+                if(LLVMValueRef* cached = xp_hash_map_get(string_globals, ptr.offset); cached != nullptr) {
+                    llvm_val = *cached;
+                    break;
+                }
+
+                if(ptr.kind == MemoryKind::String) {
+                    // 扫描 null 结尾确定长度
+                    auto& bytes = ptr.mem->bytes;
+                    isize max_len = bytes.count - ptr.offset;
+                    isize str_len = 0;
+                    for(isize i = 0; i < max_len; i++) {
+                        if(bytes[ptr.offset + i] == 0) { str_len = i; break; }
+                    }
+
+                    xpAutoArenaRestore t{temp_allocator()};
+                    char *str = static_cast<char *>(xp_alloc(temp_allocator(), str_len + 1));
+                    ptr.load_bytes(0, str, str_len);
+                    str[str_len] = '\0';
+
+                    auto str_val = LLVMBuildGlobalString(builder, str, "strptr");
+                    xp_hash_map_insert(&string_globals, ptr.offset, str_val);
+                    llvm_val = str_val;
+                    break;
+                }
             }
 
             UNREACHABLE();
@@ -1044,10 +1048,10 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     if (target_cir_pkg == nullptr) target_cir_pkg = &pkg->cir_package;
 
     CIRInstruction *func_inst = target_cir_pkg->inst(func_ref);
-    XP_ASSERT_DEFAULT(func_inst->op == CIROperator::FunctionDecl);
 
+    XP_ASSERT_DEFAULT(func_inst->op == CIROperator::FunctionDecl);
     auto& fd = func_inst->func_decl;
-    if (fd.is_extern_c) return;
+    if (fd.is_extern_c || fd.is_builtin) return;
 
     auto *saved_ctx_pkg = result_ctx.pkg();
     result_ctx.set_pkg(target_cir_pkg);
@@ -1076,6 +1080,18 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     CIRInstResultRef fk = res.actual_val().func_val().func_key;
     auto& info = declare_func(fk);
     if (info.body_done) return;
+
+    auto saved_call_instance = result_ctx.call_instance();
+    if (fk.result_instance.has_value()) {
+        result_ctx.enter_call_instance(fk.result_instance.value());
+    }
+    defer({
+        if (saved_call_instance) {
+            result_ctx.enter_call_instance(saved_call_instance);
+        } else {
+            result_ctx.exit_call();
+        }
+    });
 
     LLVMValueRef func = info.llvm_func;
     add_local_val(&syms, func_sym, func);
@@ -1171,6 +1187,7 @@ isize LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef ref, bool conn
 
 
 isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
+    debug_curr_gen_ref = ref;
     CIRInstruction *inst = result_ctx.pkg()->inst(ref);
     DEBUG_TRACE("gen_ir_inst ref=%{} op={}, loc= {}", ref, string(inst->op), inst->src_loc);
 
@@ -1194,7 +1211,7 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
         // FunctionDecl 和 Block 在 switch 前已处理，这里仅消除编译警告
         case CIROperator::FunctionDecl: {
-            if(inst->func_decl.is_extern_c) return 1;
+            if(inst->func_decl.is_extern_c || inst->func_decl.is_builtin) return 1;
 
             // 纯编译期函数（返回 type 或有 comptime 参数）→ 跳过，不生成 LLVM IR
             if(is_pure_comptime_func(inst->func_decl, result_ctx)) {
@@ -1258,8 +1275,8 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         
         // 不需要生成IR
         case CIROperator::ConstantValue:
+        case CIROperator::StringLiteral:
             break;
-        
         // 这些是运行时指令, 可能需要生成IR
         case CIROperator::StructInit: {
             auto &info = inst->struct_init_info;
@@ -1309,46 +1326,61 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         case CIROperator::FieldAccess: {
             auto &info = inst->field_access_info;
 
-
-
             LLVMValueRef parent_val = get_llvm_val_from_inst_ref(info.parent_inst);
-            TypeRef parent_type = result_ctx.result_of(info.parent_inst).actual_type();
+            auto &parent_res = result_ctx.result_of(info.parent_inst);
+            TypeRef logical_type = parent_res.type();
+            bool is_lval = parent_res.value_kind == CIRValueKind::LValue;
 
+            // ① LValue → load 一层得到逻辑值
+            if (is_lval) {
+                parent_val = LLVMBuildLoad2(builder, get_llvm_type_from_type(logical_type), parent_val, "loadtmp");
+            }
+
+            // ② 如果逻辑类型是 *StructType → 再 load 得到结构体值
             TypeRef struct_type = nullptr;
-            if (is_struct_type(parent_type)) {
-                struct_type = parent_type;
-            } else if (is_pointer_type(parent_type) && is_struct_type(parent_type->pointed_type)) {
-                struct_type = parent_type->pointed_type;
+            if (is_pointer_type(logical_type) && is_struct_type(logical_type->pointed_type)) {
+                struct_type = logical_type->pointed_type;
                 parent_val = LLVMBuildLoad2(builder, get_llvm_type_from_type(struct_type), parent_val, "loadtmp");
+            } else {
+                struct_type = logical_type;
             }
+            XP_ASSERT_DEFAULT(is_struct_type(struct_type));
 
-            if (struct_type) {
-                isize field_idx = -1;
-                for (isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-                    if (xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
-                        field_idx = i;
-                        break;
-                    }
+            isize field_idx = -1;
+            for (isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
+                if (xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
+                    field_idx = i;
+                    break;
                 }
-                XP_ASSERT_DEFAULT(field_idx != -1);
-
-                LLVMValueRef field_val = LLVMBuildExtractValue(builder, parent_val, (unsigned)field_idx, "fieldtmp");
-                save_llvm_val_of_inst(ref, field_val);
             }
+            XP_ASSERT_DEFAULT(field_idx != -1);
+
+            LLVMValueRef field_val = LLVMBuildExtractValue(builder, parent_val, (unsigned)field_idx, "fieldtmp");
+            save_llvm_val_of_inst(ref, field_val);
         } break;
 
         case CIROperator::FieldPtr: {
-            // 老代码:
-            //     LLVMValueRef struct_ptr = gen_ir_expr(gen, parent_expr, state, true);
-            //     LLVMValueRef field_ptr = LLVMBuildStructGEP2(builder, get_llvm_type_from_type(struct_type), struct_ptr, field_index, "fieldptrtmp");
-            //     return field_ptr;
-
             auto &info = inst->field_access_info;
             LLVMValueRef struct_ptr = get_llvm_val_from_inst_ref(info.parent_inst);
-            TypeRef parent_type = result_ctx.result_of(info.parent_inst).actual_type();
+            auto &parent_res = result_ctx.result_of(info.parent_inst);
+            TypeRef actual_type = parent_res.actual_type();
+            bool is_lval = parent_res.value_kind == CIRValueKind::LValue;
 
-            TypeRef struct_type = is_struct_type(parent_type) ? parent_type :
-                (is_pointer_type(parent_type) && is_struct_type(parent_type->pointed_type)) ? parent_type->pointed_type : nullptr;
+            // ① LValue of *StructType（actual=**StructType）→ load 出 *StructType 指针值
+            if (is_lval && is_pointer_type(actual_type) && is_pointer_type(actual_type->pointed_type)) {
+                struct_ptr = LLVMBuildLoad2(builder, get_llvm_type_from_type(actual_type), struct_ptr, "loaddblptr");
+                actual_type = actual_type->pointed_type;
+            }
+
+            // ② 确定结构体类型并 GEP
+            TypeRef struct_type = nullptr;
+            if (is_pointer_type(actual_type) && is_struct_type(actual_type->pointed_type)) {
+                struct_type = actual_type->pointed_type;
+            } else if (is_lval && is_struct_type(actual_type)) {
+                // LValue 但 actual_type 不是指针（actual_type 未按 *T 规范），
+                // LLVM 值隐含是指向 actual_type 的指针
+                struct_type = actual_type;
+            }
             XP_ASSERT_DEFAULT(struct_type != nullptr);
 
             isize field_idx = -1;
@@ -1380,7 +1412,7 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0);
                 indices[1] = index_val;
                 elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
-            } else if(is_slice_struct_type(array_type) || is_string_struct_type(array_type)) {
+            } else if(is_slice_struct_type(array_type)) {
                 LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
                 LLVMValueRef data_raw = LLVMBuildExtractValue(builder, slice_val, 0, "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
@@ -1417,7 +1449,7 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0);
                 indices[1] = index_val;
                 elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
-            } else if(is_slice_struct_type(array_type) || is_string_struct_type(array_type)) {
+            } else if(is_slice_struct_type(array_type)) {
                 LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
                 LLVMValueRef data_raw = LLVMBuildExtractValue(builder, slice_val, 0, "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
@@ -1448,12 +1480,14 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     auto saved_state = curr_state;
                     auto saved_func_info = curr_func_info;
                     auto saved_blk = curr_blk;
+                    auto *saved_ci = result_ctx.call_instance();
                     if(fk.result_instance.has_value()) {
                         result_ctx.enter_call_instance(fk.result_instance.value());
                     }
                     gen_ir_function(fk.inst_ref, fk.cir_package);
                     if(fk.result_instance.has_value()) {
                         result_ctx.exit_call();
+                        if(saved_ci) result_ctx.enter_call_instance(saved_ci);
                     }
                     curr_state = saved_state;
                     curr_func_info = saved_func_info;
@@ -1634,7 +1668,11 @@ isize LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                is_function_type(ptr_result.actual_type()->pointed_type)) {
                 save_llvm_val_of_inst(ref, ptr);
             } else {
-                TypeRef val_type = result_ctx.result_of(ref).actual_type();
+                auto &load_result = result_ctx.result_of(ref);
+                if(load_result.state == CIRResultState::NothingYet) {
+                    DEBUG_TRACE("Load NothingYet: ref={} ptr_inst={}", ref, info.ptr_inst);
+                }
+                TypeRef val_type = load_result.actual_type();
                 LLVMValueRef loaded = LLVMBuildLoad2(builder, get_llvm_type_from_type(val_type), ptr, "loadtmp");
                 save_llvm_val_of_inst(ref, loaded);
             }

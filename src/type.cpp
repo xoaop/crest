@@ -446,17 +446,20 @@ bool is_slice_struct_type(TypeRef type) {
     return true;
 }
 
-bool is_string_struct_type(TypeRef type) {
-    if(!is_struct_type(type)) {
-        return false;
-    }
-
-    if(xp_string_cmp(type->type_name, xp_string_c("string")) == 0) {
-        return true;
-    }
-
-    return false;
-}
+// @deprecated
+// bool is_string_struct_type(TypeRef type) {
+//     if(!is_struct_type(type)) return false;
+//
+//     auto& fields = type->struct_info.struct_fields;
+//     if(fields.count != 2) return false;
+//
+//     TypeRef field0_type = fields[0].type;
+//     if(!is_pointer_type(field0_type)) return false;
+//
+//     if(field0_type->pointed_type->kind != Type_u8) return false;
+//
+//     return true;
+// }
 
 
 bool is_value_type(TypeRef type) {
@@ -948,7 +951,7 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     });
     fields.push_back(StructField { 
         xp_make_string(type_allocator(), "count"), 
-        easy_type(Type_i64) 
+        easy_type(Type_isize) 
     });
 
 
@@ -958,25 +961,6 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     */
     Ast *decl = is_struct_type(elem_type) ? elem_type->struct_info.hash_key.decl_ast : nullptr;
     return struct_type(decl, slice_struct_name, fields);
-}
-
-// NOTE: 实际上就是结构体
-TypeRef string_type_as_struct() {
-    xpString string_struct_name = xp_string_c("string");
-
-    Type t = {};
-    t.kind = Type_struct;
-    t.struct_info.hash_key = TypeHashKey{ nullptr, string_struct_name };
-
-    TypeRef type_ref = get_type(t);
-    
-    if(type_ref != NULL) {
-        return type_ref;
-    } else {
-        XP_ASSERT_MSG(0, "string type should be pre-defined");
-    }
-    
-    return nullptr;
 }
 
 
@@ -1223,9 +1207,8 @@ xpAllocator type_allocator() {
     return permanent_allocator();
 }
 
-
 // ============================================================
-// 类型布局函数
+// 类型系统布局函数（独立于序列化）
 // ============================================================
 
 static isize basic_type_size(TypeKind kind) {
@@ -1235,16 +1218,16 @@ static isize basic_type_size(TypeKind kind) {
         case Type_i64: case Type_u64: case Type_f64:    return 8;
         case Type_untyped_int:  case Type_untyped_float: return 8;
         case Type_void:                                  return 0;
-        case Type_pointer:                               return 16; // 必须与 Pointer::SERIALIZED_SIZE 一致
+        case Type_pointer:                               return sizeof(void*);
         case Type_isize:  case Type_usize:              return sizeof(void*);
-        default:                                         return 8; // type/function/package/etc.
+        default:                                         return 8;
     }
 }
 
 static isize basic_type_align(TypeKind kind) {
-    if (kind == Type_pointer) return 8;  // Pointer::mem+offset 只需 8 字节对齐
+    if (kind == Type_pointer) return sizeof(void*);
     if (kind == Type_isize || kind == Type_usize) return sizeof(void*);
-    return basic_type_size(kind); // 自然对齐：对齐 == 大小
+    return basic_type_size(kind);
 }
 
 isize type_size_of(TypeRef type) {
@@ -1279,27 +1262,19 @@ isize type_align_of(TypeRef type) {
     }
 }
 
-isize type_stride_of(TypeRef type) {
-    return type_size_of(type);
-}
-
 isize field_offset_in_struct(TypeRef struct_type, isize index) {
     XP_ASSERT_DEFAULT(is_struct_type(struct_type));
     isize offset = 0;
     for(isize i = 0; i < index; i++) {
         TypeRef ft = struct_type->struct_info.struct_fields[i].type;
         isize align = type_align_of(ft);
-        offset = align_up(offset, align);
+        offset = xp_align_up_isize(offset, align);
         offset += type_size_of(ft);
     }
-    // 对齐当前字段
     if(index < struct_type->struct_info.struct_fields.count) {
         TypeRef ft = struct_type->struct_info.struct_fields[index].type;
-        offset = align_up(offset, type_align_of(ft));
+        offset = xp_align_up_isize(offset, type_align_of(ft));
     }
     return offset;
 }
 
-isize align_up(isize value, isize alignment) {
-    return xp_align_up_isize(value, alignment);
-}

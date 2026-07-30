@@ -53,6 +53,7 @@ struct Interpreter {
     void analyze_cir_package(CIRPackage* cir_package);
 
     void analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
+    void analyze_instruction_at(CIRInstructionRef at_ref);
 
     void set_scope(Scope *scope);
 
@@ -70,6 +71,7 @@ struct Interpreter {
     void analyze_FieldPtr();
     void analyze_Call();
     void analyze_ConstantValue();
+    void analyze_StringLiteral();
     void analyze_Cast();
     void analyze_StructInit();
     void analyze_ArrayInit();
@@ -153,6 +155,7 @@ struct Interpreter {
     // 返回 AnalyzeResult = (result, target) → dispatch 自动 apply + pc++
     // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
     std::optional<AnalyzeResult> handler_ConstantValue(CIRInstruction* inst, CIRInstructionRef pc_ref);
+    std::optional<AnalyzeResult> handler_StringLiteral(CIRInstruction* inst, CIRInstructionRef pc_ref);
     std::optional<AnalyzeResult> handler_PointerType(CIRInstruction* inst, CIRInstructionRef pc_ref);
     std::optional<AnalyzeResult> handler_Load(CIRInstruction* inst, CIRInstructionRef pc_ref);
     std::optional<AnalyzeResult> handler_Deref(CIRInstruction* inst, CIRInstructionRef pc_ref);

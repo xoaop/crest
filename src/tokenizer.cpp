@@ -421,8 +421,23 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             // tokenizer_scan_integer(t);
             break;
 
-        
-        default: 
+        case '#':
+            advance_one_character(t);
+            while(is_letter_or_digit(tokenizer_curr_character(t))) {
+                advance_one_character(t);
+            }
+            {
+                xpString str = xp_make_string_capacity(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+                TokenType *type = NULL;
+                if((type = xp_hash_map_get(keyword_map, str)) != NULL) {
+                    token.type = *type;
+                } else {
+                    goto unknown_character;
+                }
+            }
+            break;
+
+        default:
         unknown_character: // TODO(xoaop): 不太好
             // XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
             // XP_ASSERT_DEFAULT(0);

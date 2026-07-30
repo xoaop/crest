@@ -370,7 +370,7 @@ static ValueResult exec_cast(Value &val, TypeRef target_type) {
 
 bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref, TypeRef casted_expr_type, TypeRef target_type) {
 
-    if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type)) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type))) {
+    if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type) || casted_expr_type->kind == Type_bool) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type) || target_type->kind == Type_bool)) {
         // 任意数字类型之间都可以转化
 
         return true;
@@ -572,7 +572,7 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
 
         CIRInstructionRef end = (fi + 1 < pkg->file_ranges.count)
             ? pkg->file_ranges[fi + 1].start
-            : pkg->instructions.count;
+            : pkg->instructions.count();
 
         while(pc() < end) {
             analyze_instruction();
@@ -622,6 +622,10 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         result_opt = handler_ConstantValue(inst, pc());
         goto end;
     }
+    if(inst->op == CIROperator::StringLiteral) {
+        result_opt = handler_StringLiteral(inst, pc());
+        goto end;
+    }
     if(inst->op == CIROperator::PointerType) {
         result_opt = handler_PointerType(inst, pc());
         goto end;
@@ -653,6 +657,13 @@ end:
         apply_result(target, result);
     }
     pc() += 1;
+}
+
+void Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
+    auto saved_pc = pc();
+    pc() = at_ref;
+    analyze_instruction();
+    pc() = saved_pc;
 }
 
 
@@ -938,7 +949,15 @@ void Interpreter::analyze_FunctionDecl() {
 
         SymbolInfo* sym = (pkg->inst(pc())->symbol)();
 
-        v.func_val(CIRInstResultRef{pkg, pc(), result_context().in_call() ? std::optional<CIRResultInstance*>{result_context().call_instance()} : std::nullopt});
+        {
+            auto func_key = CIRInstResultRef{pkg, pc(), result_context().in_call() ? std::optional<CIRResultInstanceRef>{result_context().call_instance()} : std::nullopt};
+
+            if (func.is_builtin && sym != nullptr && sym->name == xp_string_c("sizeof")) {
+                v.func_val(func_key, BuiltinKind::SizeOf);
+            } else {
+                v.func_val(func_key);
+            }
+        }
 
         // DEBUG_TRACE("to set type and result for func {}", sym ? sym->name : xp_string_c("<anon>"));
 
@@ -951,8 +970,8 @@ void Interpreter::analyze_FunctionDecl() {
         }
     }
 
-    if(func.is_extern_c) {
-        // extern "C" 函数没有函数体，不分析了
+    if(func.is_extern_c || func.is_builtin) {
+        // extern "C" / #builtin 没有函数体，不分析了
     } else {
         ASSERT_MSG(func.body_inst != INVALID_INST, "non-extern function must have body");
 
@@ -1072,6 +1091,20 @@ void Interpreter::analyze_Call() {
         CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
         CIRFunction& func = callee_pkg->inst(func_decl_pc)->func_decl;
 
+        if(fv.builtin_kind != BuiltinKind::None) {
+            switch(fv.builtin_kind) {
+                case BuiltinKind::None: break;
+                case BuiltinKind::SizeOf: {
+                    Value arg_val = ResultValue(call_info.arg_insts[0]);
+                    TypeRef target_type = arg_val.type_val();
+                    isize size = type_size_of(target_type);
+                    Value result = make_value(easy_type(Type_usize));
+                    result.integer_val(size);
+                    Set_ResultTypeAndValue(pc(), result);
+                } goto end;
+            }
+        }
+
         isize var_count = func.slot_count;
         isize arg_count = func.arg_decl_insts.count;
 
@@ -1083,12 +1116,13 @@ void Interpreter::analyze_Call() {
 
 
         // 构建编译期函数调用结果查询键
-        FuncCallKey cache_key = {};
-        cache_key.func_decl_pc = func_decl_pc;
-        cache_key.func_instance = fv.func_key.result_instance;
-        cache_key.comptime_arg_refs = make_array<CIRInstResultRef>(permanent_allocator());
+        FuncCallKey cache_key = { 
+            .func_decl_pc = func_decl_pc,
+            .func_instance = fv.func_key.result_instance,
+            .comptime_arg_refs = make_array<CIRInstResultRef>(permanent_allocator())
+        };
         {
-            std::optional<CIRResultInstance*> ri;
+            std::optional<CIRResultInstanceRef> ri;
             if(auto* inst = curr_instance()) { ri = inst->ctx.call_instance(); }
             for(isize i = 0; i < call_info.arg_insts.count; i++) {
                 cache_key.comptime_arg_refs.push_back(CIRInstResultRef::make(pkg, call_info.arg_insts[i], ri));
@@ -1096,9 +1130,9 @@ void Interpreter::analyze_Call() {
         }
 
         // 查询编译期函数调用结果缓存
-        CIRResultInstance *callee_result_instance = callee_pkg->get_result_instance(cache_key);
+        CIRResultInstanceRef callee_result_instance = callee_pkg->get_result_instance(cache_key);
         {
-            CIRInstResult *cached_body = xp_hash_map_get(callee_result_instance->results, func.body_inst);
+            CIRInstResult *cached_body = callee_result_instance->result_ptr_of(func.body_inst);
             if(cached_body && cached_body->state == CIRResultState::WholeValue) {
                 Set_ResultTypeAndValue(pc(), cached_body->actual_val());
                 goto end;
@@ -1117,8 +1151,8 @@ void Interpreter::analyze_Call() {
 
         for(isize i = 0; i < arg_count; i++) {
             TypeRef arg_type = ResultType(call_info.arg_insts[i]);
-            isize size  = type_size_of(arg_type);
-            isize align = type_align_of(arg_type);
+            isize size  = type_serialize_size(arg_type);
+            isize align = type_serialize_align(arg_type);
 
             auto ptr = stack_mem.alloc_bytes(size, align);
             ptr.store(ResultValue(call_info.arg_insts[i]));
@@ -1149,9 +1183,7 @@ void Interpreter::analyze_Call() {
 
         if(has_return) {
             return_val = clone_value(return_val, permanent_allocator());
-            CIRInstResult cached;
-            cached.set_val(return_val);
-            xp_hash_map_insert(&callee_result_instance->results, func.body_inst, cached);
+            callee_result_instance->result_of(func.body_inst).set_val(return_val);
             Set_ResultTypeAndValue(pc(), return_val);
 
             pkg->comptime_func_calls.push_back(cache_key);
@@ -1413,9 +1445,15 @@ void Interpreter::analyze_Binary() {
         }
 
         if(left_type != right_type) {
-            context()->reporter.report_error(pkg->inst(pc())->src_loc, "pointer types in comparison must be identical");
-            Set_ResultError(pc());
-            return;
+
+            // TODO: 换成只有 NULL 才能直接和任意指针比较，而不是目前的 *void 类型可以直接比较，也就是要加大限制
+            // allow comparison with *void (null) — any pointer can be compared with *void
+            if(get_innermost_type_of_pointer(left_type) != easy_type(Type_void) &&
+               get_innermost_type_of_pointer(right_type) != easy_type(Type_void)) {
+                context()->reporter.report_error(pkg->inst(pc())->src_loc, "pointer types in comparison must be identical");
+                Set_ResultError(pc());
+                return;
+            }
         }
 
     } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
@@ -1661,10 +1699,6 @@ void Interpreter::analyze_FieldAccess() {
 
                 Set_ResultType(pc(), struct_type->struct_info.struct_fields[i].type);
 
-                if(is_string_struct_type(struct_type)) {
-                    break;
-                }
-
                 if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
                     auto parent_val = ResultValue(parent_inst);
                     Value field_val = parent_val.struct_field_val(i);
@@ -1744,9 +1778,13 @@ void Interpreter::analyze_FieldPtr() {
             if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
 
                 auto ptr = ResultValue(parent_inst).pointer_val();
+                if(is_pointer_type(ResultType(parent_inst)) && is_struct_type(ResultType(parent_inst)->pointed_type)) {
+                    Value inner = ptr.load(ResultType(parent_inst), stage_allocator());
+                    ptr = inner.pointer_val();
+                }
 
                 TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
-                isize field_off = field_offset_in_struct(struct_type, i);
+                isize field_off = field_serialize_offset(struct_type, i);
                 isize total_off = ptr.offset + field_off;
 
                 Value addr = make_value(pointer_type(field_type));
@@ -1908,10 +1946,6 @@ void Interpreter::analyze_Index() {
 
         elem_type = array_type_ref->array_info.element_type;
 
-    } else if(is_string_struct_type(array_type_ref)) {
-
-        elem_type = easy_type(Type_u8);
-
     } else if(is_slice_struct_type(array_type_ref)) {
 
         elem_type = array_type_ref->struct_info.struct_fields[0].type->pointed_type;
@@ -1934,27 +1968,13 @@ void Interpreter::analyze_Index() {
                 Set_ResultError(pc());
                 return;
             }
-            XP_TODO(); // compile-time array element extraction
-        } else if(is_string_struct_type(array_type_ref)) {
-            auto str_val = ResultValue(array_inst);
-
-            auto str_count = str_val.struct_field_val(1).integer_val();
-
-            if(!(idx >= 0 && idx < str_count)) {
-                context()->reporter.report_error(pkg->inst(pc())->src_loc, "string index out of bounds");
-                Set_ResultError(pc());
-                return;
-            }
-
-            // TODO: 不保险, 有点危险
-            Value char_val = make_value(str_val.struct_field_val(0).type->pointed_type);
-            char_val.integer_val(str_val.struct_field_val(0).pointer_val().load(str_val.struct_field_val(0).type->pointed_type, idx, {}).integer_val()); // TODO: ASSUME: 这里的 load 不需要 allocator
-
-
-            Set_ResultValue(pc(), char_val);
+            context()->reporter.report_error(pkg->inst(pc())->src_loc, "编译期数组元素提取尚未实现");
+            Set_ResultError(pc());
+            return;
         } else if(is_slice_struct_type(array_type_ref)) {
-            // TODO: compile-time slice element extraction
-            XP_TODO(); // compile-time slice element extraction
+            context()->reporter.report_error(pkg->inst(pc())->src_loc, "编译期切片元素提取尚未实现");
+            Set_ResultError(pc());
+            return;
         }
     }
 
@@ -1994,7 +2014,7 @@ void Interpreter::analyze_IndexPtr() {
         // TODO: ABSTRACT
         auto base_ptr = ResultValue(array_inst);
         i128 idx = ResultValue(info.index_inst).integer_val();
-        isize stride = type_stride_of(elem_type);
+        isize stride = type_serialize_stride(elem_type);
 
         auto ptr = Pointer::add(base_ptr.pointer_val(), idx, stride);
 
@@ -2342,8 +2362,8 @@ void Interpreter::analyze_TypeAscribe() {
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
         auto ptr = curr_instance()->var_ptrs[vd.slot];
         if(ptr.is_null()) {  // 参数已由 caller 分配
-            isize size  = type_size_of(declared_type);
-            isize align = type_align_of(declared_type);
+            isize size  = type_serialize_size(declared_type);
+            isize align = type_serialize_align(declared_type);
             ptr = stack_mem.alloc_bytes(size, align);
             curr_instance()->var_ptrs[vd.slot] = ptr;
         }
@@ -3107,6 +3127,7 @@ static Array<CIRInstructionRef> deps_of(CIRInstruction* inst, xpAllocator alloc)
         case CIROperator::VariableDecl:
             return make_array<CIRInstructionRef>(alloc);
 
+        case CIROperator::StringLiteral:    { auto a = make_array_count<CIRInstructionRef>(alloc, 1); a[0]=inst->string_literal_info.string_type_inst; return a; }
         case CIROperator::Binary:           { auto a = make_array_count<CIRInstructionRef>(alloc, 2); a[0]=inst->binary_info.left_inst; a[1]=inst->binary_info.right_inst; return a; }
         case CIROperator::Unary:            { auto a = make_array_count<CIRInstructionRef>(alloc, 1); a[0]=inst->unary_info.operand_inst; return a; }
         case CIROperator::Cast:             { auto a = make_array_count<CIRInstructionRef>(alloc, 2); a[0]=inst->cast_info.expr_inst; a[1]=inst->cast_info.target_type_inst; return a; }
@@ -3219,6 +3240,35 @@ CIRInstResult inst_error(CIRInstruction* inst, std::format_string<Args...> fmt, 
 std::optional<AnalyzeResult> Interpreter::handler_ConstantValue(CIRInstruction* inst, CIRInstructionRef pc_ref) {
     Value val = inst->imm_val;
     return AnalyzeResult{CIRInstResult::make_value(val.type, val), pc_ref};
+}
+
+// handler: StringLiteral
+std::optional<AnalyzeResult> Interpreter::handler_StringLiteral(CIRInstruction* inst, CIRInstructionRef pc_ref) {
+    // 从 IdentVal 依赖获取 string 类型（由 std/builtin/string.cst 注册并解析）
+    TypeRef string_type = ResultValue(inst->string_literal_info.string_type_inst).type_val();
+    if (string_type == nullptr) {
+        return AnalyzeResult{CIRInstResult::make_error(), pc_ref};
+    }
+
+    auto& info = inst->string_literal_info;
+    Value v = make_value(string_type);
+    Array<Value> field_values = make_array<Value>(permanent_allocator());
+
+    Value data_field = make_value(string_type->struct_info.struct_fields[0].type);
+    data_field.pointer_val(info.data);
+    field_values.push_back(data_field);
+
+    Value count_field = make_value(string_type->struct_info.struct_fields[1].type);
+    count_field.integer_val(info.count);
+    field_values.push_back(count_field);
+
+    v.struct_fields_val(field_values);
+
+    return AnalyzeResult{CIRInstResult::make_value(string_type, v), pc_ref};
+}
+
+void Interpreter::analyze_StringLiteral() {
+    // TODO: STBU
 }
 
 // handler: PointerType

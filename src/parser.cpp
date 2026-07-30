@@ -1024,6 +1024,12 @@ Ast *parse_expr_factor(Parser *p) {
                     advance_token(p);
                 }
 
+                bool is_builtin = false;
+                if (curr_token(p).type == TokenType::KW_builtin) {
+                    is_builtin = true;
+                    advance_token(p);
+                }
+
                 if (must_be_c_fn && !is_extern_c) {
                     context()->reporter.report_error(
                         merge(rb.src_loc, return_type_ast->src_loc),
@@ -1031,7 +1037,7 @@ Ast *parse_expr_factor(Parser *p) {
                     );
                 }
 
-                if (is_extern_c || curr_token(p).type == TokenType::LeftCurlyBracket) {
+                if (is_extern_c || is_builtin || curr_token(p).type == TokenType::LeftCurlyBracket) {
                     if(infer_return_type && is_extern_c) {
                         context()->reporter.report_error(rb.src_loc, "extern \"C\" function cannot use '-> ?' to infer return type");
                         a = ast_alloc(AstType_BadExpr, rb);
@@ -1053,7 +1059,7 @@ Ast *parse_expr_factor(Parser *p) {
 
                     Ast *body = nullptr;
                     SourceLocation loc;
-                    if (is_extern_c) {
+                    if (is_extern_c || is_builtin) {
                         loc = merge(lb.src_loc, return_type_ast->src_loc);
                     } else {
                         body = parse_block(p);
@@ -1066,6 +1072,7 @@ Ast *parse_expr_factor(Parser *p) {
                     a->FunctionDeclValue.block = body;
                     a->FunctionDeclValue.return_type_ast = return_type_ast;
                     a->FunctionDeclValue.is_extern_c = is_extern_c;
+                    a->FunctionDeclValue.is_builtin = is_builtin;
                     a->FunctionDeclValue.infer_return_type = infer_return_type;
 
                     for (isize i = 0; i < params.count; i++) {
