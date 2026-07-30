@@ -21,6 +21,7 @@
 #include "analyser.hpp"
 #include "cir_builder.hpp"
 #include "llvm_generate_ir.hpp"
+#include "stable_ordered_array.hpp"
 
 
 
@@ -58,7 +59,11 @@ int main(int argc, char** argv) {
         last_time = now;
     };
     
-    
+    #ifdef CREST_DEBUG
+    // test_stable_ordered_array();
+    // test_array_perf();
+    #endif
+
     char const *main_path = NULL;
 
     if(argc < 2) {
@@ -149,10 +154,6 @@ int main(int argc, char** argv) {
     context()->package_search_paths.push_back(xp_make_string(permanent_allocator(), context()->compiler_path.string().c_str()));
 
 
-    context()->global_blank_package = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
-    context()->global_blank_package.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-    // context()->ast_scope_map = xp_hash_map_make<Ast *, Scope *>(permanent_allocator());
-
     context()->reporter = make_error_reporter(permanent_allocator());
 
     // 类型系统初始化
@@ -160,7 +161,28 @@ int main(int argc, char** argv) {
     defer(free_type_table(context()));
 
 
-    context()->all_packages = resolve_dependencies(xp_string_c(main_path));
+    context()->all_packages = make_array<Package>(permanent_allocator());
+
+    bool has_builtin_pkg = false;
+    {
+        auto builtin_path_opt = resolve_package_path(xp_string_c("std/builtin"), permanent_allocator());
+        if (builtin_path_opt.has_value()) {
+            Package builtin_pkg = tokenize_and_parse_package(builtin_path_opt.unwrap().as_c_str());
+            builtin_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
+            context()->all_packages.push_back(builtin_pkg);
+            has_builtin_pkg = true;
+        }
+    }
+    if (!has_builtin_pkg) {
+        Package blank_pkg = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
+        blank_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
+        context()->all_packages.push_back(blank_pkg);
+    }
+
+    resolve_dependencies(xp_string_c(main_path), context()->all_packages);
+
+    // 在所有 push_back 完成后设置指针，避免 realloc 导致指针失效
+    context()->global_blank_package = &context()->all_packages[0];
 
 
     DEBUG_TRACE("All packages resolved:");
@@ -188,11 +210,11 @@ int main(int argc, char** argv) {
     }
 
     if(context()->scope_dump) {
-        print_scope_tree(&context()->global_blank_package.package_scope);
+        print_scope_tree(&context()->global_blank_package->package_scope);
     }
 
 
-    context()->static_mem.init(MemoryKind::Heap, permanent_allocator());
+    context()->static_mem.init(MemoryKind::String, permanent_allocator());
     for(auto& pkg : context()->all_packages) {
         CIRBuilder builder{stage_allocator()};
         builder.build_cir_package(&pkg);

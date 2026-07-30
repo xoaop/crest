@@ -77,6 +77,7 @@
     /*      */                                                  \
     /* TEMP */                                                  \
     TOKEN_INFO(KW_extern_C, "extern_C"),                        \
+    TOKEN_INFO(KW_builtin, "#buildin"),                         \
     TOKEN_INFO(__END__OF__KEYWORD__, ""),                       \
     TOKEN_INFO(EndOfTokens, "end of tokens")                    \
 /**/

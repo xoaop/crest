@@ -7,10 +7,10 @@
 #include <optional>
 
 struct CIRPackage;
-struct Package;
 struct CIRInstResult;
 struct CIRResultInstance;
 struct CIRInstruction;
+using CIRResultInstanceRef = CIRResultInstance*;
 using CIRInstructionRef = isize;
 
 // 引用 CIRPackage 中某个指令的结果值
@@ -19,9 +19,9 @@ using CIRInstructionRef = isize;
 struct CIRInstResultRef {
     CIRPackage*                            cir_package;
     CIRInstructionRef                      inst_ref;
-    std::optional<CIRResultInstance*>      result_instance;
+    std::optional<CIRResultInstanceRef>      result_instance;
 
-    static CIRInstResultRef make(CIRPackage* pkg, CIRInstructionRef ref, std::optional<CIRResultInstance*> ri = std::nullopt);
+    static CIRInstResultRef make(CIRPackage* pkg, CIRInstructionRef ref, std::optional<CIRResultInstanceRef> ri = std::nullopt);
 
     const CIRInstResult* get_result() const;
 
@@ -47,8 +47,8 @@ struct std::hash<CIRInstResultRef> {
 
 struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
+    std::optional<CIRResultInstanceRef>        func_instance;
     Array<CIRInstResultRef>                  comptime_arg_refs;
-    std::optional<CIRResultInstance*>        func_instance;
 
     u64 hash() const;
     bool operator==(const FuncCallKey& other) const;

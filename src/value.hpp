@@ -11,16 +11,19 @@ struct Value;
 struct Ast;
 struct Type;
 using TypeRef = Type *;
-
+struct Package;
 struct ValueMemory;  // 前置声明，定义在 cir_builder.hpp
 
 
 enum class MemoryKind: u8 {
     Heap,
     Stack,
+    String,  // 在可执行文件中有对应地址的数据（如字符串字面量）
 };
 
 struct Pointer {
+    static constexpr isize BYTE_SIZE = 17; // u8 kind + isize offset + isize mem_ptr
+
     MemoryKind kind = MemoryKind::Heap;
     ValueMemory *mem = nullptr;
     isize offset = 0;
@@ -92,8 +95,15 @@ enum class ActualValueType {
 
 
 
+enum class BuiltinKind : u8 {
+    None,
+    SizeOf,
+};
+
+
 struct FuncValue {
-    CIRInstResultRef   func_key;
+    CIRInstResultRef                func_key;
+    BuiltinKind                     builtin_kind = BuiltinKind::None;
 };
 
 struct Value {
@@ -116,6 +126,7 @@ public:
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
     void func_val(CIRInstResultRef func_key);
+    void func_val(CIRInstResultRef func_key, BuiltinKind builtin_kind);
     void func_val_key(CIRInstResultRef key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
@@ -177,8 +188,6 @@ public:
 Value make_value();
 Value make_value(TypeRef type);
 
-Value make_value_string(Pointer data, isize count, xpAllocator allocator);
-
 //
 // Value Utils
 //
@@ -193,6 +202,15 @@ Value clone_value(const Value& v, xpAllocator allocator);
 //
 void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v);
 Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, xpAllocator allocator);
+
+//
+// 类型序列化布局函数
+//
+isize type_serialize_size(TypeRef type);
+isize type_serialize_align(TypeRef type);
+isize type_serialize_stride(TypeRef type);
+isize field_serialize_offset(TypeRef struct_type, isize index);
+isize serialize_align_up(isize value, isize alignment);
 
 
 enum class ProgressType {

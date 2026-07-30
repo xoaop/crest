@@ -13,8 +13,11 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg);
 void collect_top_level_symbols_in_package(Package *pkg) {
     
     // NOTE: 别忘了创建package scope
-    pkg->package_scope = make_scope(&context()->global_blank_package.package_scope, ScopeType::Package, permanent_allocator());
-    add_sub_scope(&context()->global_blank_package.package_scope, &pkg->package_scope);
+    // global_blank_package 的 scope 已在 main.cpp 初始化，跳过以免自引用
+    if (pkg != context()->global_blank_package) {
+        pkg->package_scope = make_scope(&context()->global_blank_package->package_scope, ScopeType::Package, permanent_allocator());
+        add_sub_scope(&context()->global_blank_package->package_scope, &pkg->package_scope);
+    }
 
     for(isize i = 0; i < pkg->ast_files.count; i++) {
         AstFile *ast_file = &pkg->ast_files[i];

@@ -26,7 +26,7 @@ enum class PackageState {
 
 void collect_all_imports_in_ast_file(AstFile ast_file, Array<Ast *> *imported_packages);
 AstFile tokenize_and_parse_file(const char *path);
-Array<Package> resolve_dependencies(xpString main_dir_path);
+void resolve_dependencies(xpString main_dir_path, Array<Package> &out_packages);
 Package tokenize_and_parse_package(const char *path_of_package_dir);
 bool check_directory_legel(xpString path);
 bool check_file_legal(xpString path);
@@ -173,9 +173,7 @@ void resolve_packages_from_imports(Package curr_pkg, xpHashMap<xpString, Package
 
 
 
-Array<Package> resolve_dependencies(xpString main_path) {
-    // 所有package所在
-    Array<Package> packages = make_array<Package>(permanent_allocator());
+void resolve_dependencies(xpString main_path, Array<Package> &packages) {
     xpHashMap<xpString, PackageState> package_state_map = xp_hash_map_make<xpString, PackageState>(permanent_allocator());
 
 
@@ -184,7 +182,7 @@ Array<Package> resolve_dependencies(xpString main_path) {
         std::println("Error: main package path '{}' is not a valid directory or file", main_path.c_str);
         exit(1);
 
-        return packages;
+        return;
     }
 
 
@@ -214,8 +212,6 @@ Array<Package> resolve_dependencies(xpString main_path) {
     resolve_packages_from_imports(main_package, package_state_map, packages);
     packages.push_back(main_package);  // 后序：所有依赖包处理完后再加入
 
-
-    return packages;
 }
 
 

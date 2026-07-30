@@ -59,7 +59,7 @@ void ThreadPool::enqueue_task(std::function<void()> job) {
     {
         std::lock_guard<std::mutex> lock(mtx);
         if(stopping) {
-            throw std::runtime_error("submit on stopped ThreadPool");
+            return;
         }
         tasks.emplace(std::move(job));
     }

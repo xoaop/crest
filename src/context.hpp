@@ -23,7 +23,7 @@ struct Context {
     // Package搜索路径 — 按优先级排列
     Array<xpString> package_search_paths;
 
-    Package global_blank_package;
+    Package *global_blank_package = nullptr;
 
 
     // NOTE: const_decl:function_decl_value, block, for_stmt, 

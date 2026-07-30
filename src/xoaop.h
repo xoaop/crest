@@ -1203,6 +1203,8 @@ struct xpHashMap {
     xpHashMap copy(xpAllocator a) const;
     V *insert(K key, V value);
     xpHashMapEntry<K, V> *get_entry(K key) const;
+    V& get(K key);
+    template<typename F> V& get_or_insert(K key, F&& factory);
     V& operator[](K key);
     b32 remove(K key);
     void clear();
@@ -1455,6 +1457,19 @@ V *xpHashMap<K, V>::insert(K key, V value) {
 template<typename K, typename V>
 xpHashMapEntry<K, V> *xpHashMap<K, V>::get_entry(K key) const {
     return xp_hash_map_get_entry(*this, key);
+}
+
+template<typename K, typename V>
+V& xpHashMap<K, V>::get(K key) {
+    return get_or_insert(key, []{ return V{}; });
+}
+
+template<typename K, typename V>
+template<typename F>
+V& xpHashMap<K, V>::get_or_insert(K key, F&& factory) {
+    V* v = xp_hash_map_get(*this, key);
+    if (v) return *v;
+    return *insert(key, factory());
 }
 
 template<typename K, typename V>
