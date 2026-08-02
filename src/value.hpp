@@ -4,7 +4,7 @@
 
 #include "xoaop.h"
 #include "array.hpp"
-#include "cir_key.hpp"
+#include "cir_instruction_ref.hpp"
 
 
 struct Value;
@@ -110,8 +110,8 @@ struct Value {
 public:
 
     Value();
-    Value(const Value& other);
-    Value& operator=(const Value& other);
+    // 拷贝构造/赋值用编译器隐式生成的 trivial 拷贝（bitwise，同 memcpy）
+    // 不再手写——否则 Value 被当作非平凡拷贝，连累含它的 union 无法 = default
 
     Value set_type(TypeRef new_type);
 

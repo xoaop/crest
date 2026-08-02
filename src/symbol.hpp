@@ -5,7 +5,7 @@
 
 #include "xoaop.h"
 #include "common.hpp"
-#include "cir_key.hpp"
+#include "cir_instruction_ref.hpp"
 
 #include "value.hpp"
 

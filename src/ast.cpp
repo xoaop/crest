@@ -452,7 +452,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
 
         default:
             // 未实现就报错
-            UNREACHABLE();
+            std::unreachable();
             break;
     }
 }
