@@ -9,16 +9,6 @@ Value::Value() {
     type = undefined_type();
 }
 
-Value::Value(const Value& other) {
-    memcpy((void*)this, &other, sizeof(Value));
-}
-
-Value& Value::operator=(const Value& other) {
-    if (this == &other) return *this;
-    memcpy((void*)this, &other, sizeof(Value));
-    return *this;
-}
-
 Value Value::set_type(TypeRef new_type) {
     type = new_type;
     return *this;

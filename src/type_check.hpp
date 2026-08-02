@@ -1,6 +1,21 @@
 #pragma once
 
-#include "analyser.hpp"
+#include "type.hpp"
+#include "cir_instruction_ref.hpp"
+
+struct CIRPackage;
 
 
-// TypeRef infer_expr_type(Ast *expr, bool has_target, TypeRef target_type, Analyser analyser, bool allow_untyped);
+bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref, TypeRef casted_expr_type, TypeRef target_type);
+
+
+bool check_untyped_int_to_type(i128 value, TypeRef target_type);
+bool check_untyped_float_to_type(double value, TypeRef target_type);
+
+
+TypeRef get_compliable_integer_type(i128 value);
+TypeRef get_compliable_float_type(double value);
+
+
+
+TypeRef default_certain_type_for_untyped_type(TypeRef untyped_type);

@@ -717,17 +717,17 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
     case AstType_BadExpr: {
-        UNREACHABLE();
+        std::unreachable();
     } break;
     
     case AstType_Undefined: {
-        UNREACHABLE();
+        std::unreachable();
     } break;
 
     default: {
         DEBUG_LOG("unhandled expr type: {}", ast_string(expr_ast->type));
 
-        UNREACHABLE();
+        std::unreachable();
     } break;
     
     }
@@ -841,7 +841,7 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     }
 
 
-    UNREACHABLE();
+    std::unreachable();
 }
 
 
