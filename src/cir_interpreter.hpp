@@ -6,11 +6,35 @@
 #include "value.hpp"
 #include "cir_builder.hpp"
 
-struct CIRPackage;
-
+//
+// 公共接口
+//
 void analyze_package(Package *pkg);
 
-using AnalyzeResult = std::tuple<CIRInstResult, CIRInstructionRef>;
+
+
+
+
+//
+//
+//
+
+struct CIRPackage;
+
+// 一次结果写入：给某指令写一个结果（type/value/lvalue 全在 CIRInstResult 里）
+struct ResultWrite {
+    CIRInstructionRef ref;
+    CIRInstResult result;
+};
+
+// handler 返回：一组结果写入（通常 1 个=当前指令，可多个=传染/Break 目标）+ 可选 pc 控制
+struct AnalyzeResult {
+    Array<ResultWrite> writes;
+    std::optional<CIRInstructionRef> next_pc = std::nullopt;  // 为空 → 调度器 advance()
+
+    AnalyzeResult();   // 空写入（write_result 等构造空）
+    AnalyzeResult(CIRInstResult result, CIRInstructionRef ref);   // 单结果写指定指令
+};
 
 enum class EvalMode {
     FullEval,
@@ -38,67 +62,36 @@ struct EvalInstance {
 
     // 用于恢复调用者上下文
     CIRPackage *caller_pkg = nullptr;
-    CIRInstructionRef caller_pc = 0;
-    Scope *saved_scope = nullptr;
+    CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
 
     CIRResultContext result_context() const { return ctx; }
 };
 
 
 
+
+//
+//
+//
+
 struct Interpreter {
     Interpreter(xpAllocator allocator);
     ~Interpreter();
+
+
+
+    void set_scope(Scope *scope);
 
     void analyze_cir_package(CIRPackage* cir_package);
 
     void analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
     void analyze_instruction_at(CIRInstructionRef at_ref);
 
-    void set_scope(Scope *scope);
 
-    void analyze_ConstDecl();
-    void analyze_FunctionDecl();
-    void analyze_GetOrInitStruct();
-    void analyze_StructField();
-    void analyze_FinishStruct();
-    void analyze_EnumDeclInit();
-    void analyze_UnionDecl();
-    void analyze_VariableDecl();
-    void analyze_Binary();
-    void analyze_Unary();
-    void analyze_FieldAccess();
-    void analyze_FieldPtr();
-    void analyze_Call();
-    void analyze_ConstantValue();
-    void analyze_StringLiteral();
-    void analyze_Cast();
-    void analyze_StructInit();
-    void analyze_ArrayInit();
-    void analyze_Index();
-    void analyze_IndexPtr();
-    void analyze_AddrOf();
-    void analyze_PointerType();
-    void analyze_ArrayType();
-    void analyze_SliceType();
-    void analyze_FuncType();
-    void analyze_Block(std::optional<EvalMode> force_eval_mode = std::nullopt);
-    void analyze_Loop();
-    void analyze_CondBr();
-    void analyze_Break();
-    void analyze_Load();
-    void analyze_Store();
-    void analyze_TypeAscribe();
-    void analyze_IdentRef();
-    void analyze_IdentVal();
-    void analyze_EnterScope();
-    void analyze_ExitScope();
-    void analyze_DetermineType();
-    void analyze_TypeOfInstResult();
-    void analyze_FieldTypeOfStruct();
-    void analyze_FuncParamType();
-    void analyze_Deref();
-
+    void analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);  // 进入块 blk 分析；target = 块的 handle（结果位置，可选：无结果位置的块传 nullopt）
+    void analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 循环块分析（完全独立）：入口 + 迭代 + 编译时检查 + 恢复
+    void analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
+    
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 
@@ -124,8 +117,8 @@ struct Interpreter {
     bool is_lvalue(CIRInstructionRef ref);
     void set_lvalue(CIRInstructionRef ref);
 
-    void new_pc_flow(CIRInstructionRef new_pc);
-    void recover_pc_flow();
+    void new_analyze_flow(CIRInstructionRef new_pc);
+    void recover_analyze_flow();
 
     EvalMode curr_eval_mode() const;
 
@@ -142,48 +135,36 @@ struct Interpreter {
         return instance_stack.back().result_context();
     }
 
-    void push_call_instance(EvalInstance inst);
-    void pop_call_instance();
+    void push_eval_instance(EvalInstance inst);
+    void pop_eval_instance();
 
-
-    // === 函数式重构 — 新基础设施 (WIP) ===
-
-    void apply_result(CIRInstructionRef target, const CIRInstResult& result);
-
-    // 新 handler 原型（接受 inst + pc_ref，不依赖 pc() 可变状态）
-    // 返回 AnalyzeResult = (result, target) → dispatch 自动 apply + pc++
-    // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
-    std::optional<AnalyzeResult> handler_ConstantValue(CIRInstruction* inst, CIRInstructionRef pc_ref);
-    std::optional<AnalyzeResult> handler_StringLiteral(CIRInstruction* inst, CIRInstructionRef pc_ref);
-    std::optional<AnalyzeResult> handler_PointerType(CIRInstruction* inst, CIRInstructionRef pc_ref);
-    std::optional<AnalyzeResult> handler_Load(CIRInstruction* inst, CIRInstructionRef pc_ref);
-    std::optional<AnalyzeResult> handler_Deref(CIRInstruction* inst, CIRInstructionRef pc_ref);
-
-public:
-
-    struct AnalyzeFlowState {
-        Scope *scope;
-        CIRInstructionRef pc;
-    };
-
-    CIRPackage *pkg;
-
-    AnalyzeFlowState& curr_state();
-    CIRInstructionRef& pc();
-    Scope*&             scope();
+    CIRInstructionRef& curr_inst_ref();   // 当前指令位置 = inst_stack 栈顶
+    Scope*& scope();                      // 当前作用域 = scope_stack 栈顶
     EvalInstance* curr_instance() {
         return instance_stack.count > 1 ? &instance_stack.back() : nullptr;
     }
 
-    // 嵌套调用栈
-    Array<EvalInstance> instance_stack;
 
-    // 当前求值实例（null = 使用包级 store）
+    // === 函数式重构 — 新基础设施 (WIP) ===
+    void apply_result(CIRInstructionRef target, const CIRInstResult& result);
 
-    Array<AnalyzeFlowState> pc_stack;
+    // 新 handler 原型（接受 inst + pc_ref + params，不依赖 curr_inst() 可变状态）
+    // 返回 AnalyzeResult{ writes, next_pc } → dispatch 统一 apply 所有 writes + advance/next_pc
+    // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
+    // @new 统一三参签名：analyze_XXX(inst, pc_ref, params) — 声明由 CIR_OPERATORS 宏生成（op 增删自动同步）
+#define X(name) std::optional<AnalyzeResult> analyze_##name(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params);
+    CIR_OPERATORS
+#undef X
 
+public:
+
+    CIRPackage *pkg;
+
+    Array<EvalInstance> instance_stack; // 嵌套调用栈
+    Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）
+    Array<Scope*> scope_stack;          // 作用域栈（与 pc 同步压弹，EnterScope/ExitScope 只改栈顶）
     Array<EvalMode> eval_mode_stack;
-    Array<CIRInstructionRef> loop_stack;  // 当前嵌套的 Loop 指令栈
+    Array<CIRInstructionRef> loop_stack; // 当前嵌套的 Loop 指令栈
 
     ValueMemory stack_mem;
 };
