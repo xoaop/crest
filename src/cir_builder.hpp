@@ -41,7 +41,7 @@ struct CIRBuilder {
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
     CIRInstructionRef build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym);
-    CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block);
+    CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
     CIRInstructionRef build_inst_for_stmt(Ast *stmt);
     CIRInstructionRef build_inst_for_expr(Ast *expr);
     CIRInstructionRef build_block_inst_for_expr(Ast *expr, bool is_comptime_block, bool immediate_eval);
@@ -52,13 +52,12 @@ struct CIRBuilder {
     void build_inst_for_for_stmt(Ast *stmt);
 
     CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
-    // std::pair<CIRInstructionRef, CIRInstruction&> New_Inst(CIROperator op, Ast *ast);
     CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast);
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 
-    CIRInstructionRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);
-    void End_Block(CIRInstructionRef block_inst);
+    CIRInstructionRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);  // 创建子块 + BlockRef 指令并压栈，返回 handle（尾随 BlockRef 指令位置）
+    void End_Block();                                                           // 弹栈
     CIRInstructionRef Begin_Loop(Ast *ast);
     void End_Loop(CIRInstructionRef loop_inst);
 
@@ -76,7 +75,7 @@ public:
 
     CIRPackage *curr_pkg;
     StableOrderedArray<CIRInstruction> *curr_instruction_buffer;
-    CIRFunction *curr_func;
+    CIRFunctionDeclInfo *curr_func;
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;
     Scope *curr_scope;
@@ -84,6 +83,7 @@ public:
 
 
     // cirbuilder所有的状态, 需要分配
+    Array<CIRBlockRef> block_stack;
     Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
     Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
 };
