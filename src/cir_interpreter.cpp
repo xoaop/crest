@@ -593,10 +593,20 @@ AnalyzeResult::AnalyzeResult(CIRInstResult result, CIRInstructionRef ref) {
 }
 
 // 便捷：构造单个结果写入的 AnalyzeResult（写到指定指令）
-static AnalyzeResult write_result(CIRInstResult result, CIRInstructionRef ref) {
+static AnalyzeResult make_result(CIRInstructionRef ref, CIRInstResult result) {
     AnalyzeResult r;
     r.writes = make_array<ResultWrite>(stage_allocator());
     r.writes.push_back({ref, result});
+    return r;
+}
+
+// 便捷：构造多个结果写入的 AnalyzeResult（{ref, result} 列表，单/多结果统一入口）
+static AnalyzeResult make_result(std::initializer_list<ResultWrite> writes) {
+    AnalyzeResult r;
+    r.writes = make_array<ResultWrite>(stage_allocator());
+    for(auto& w : writes) {
+        r.writes.push_back(w);
+    }
     return r;
 }
 
@@ -737,7 +747,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRInstruction* inst, CI
     } else if(op == TokenType::Minus) {
         result_type = operand_type;
     } else {
-        return write_result(inst_error(inst, "未知的一元运算符"), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "未知的一元运算符"));
     }
 
     //
@@ -745,11 +755,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRInstruction* inst, CI
     //
     if(op == TokenType::Minus) {
         if(!is_number_type(operand_type)) {
-            return write_result(inst_error(inst, "一元负号要求数值类型操作数，实际类型 '{}'", operand_type->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "一元负号要求数值类型操作数，实际类型 '{}'", operand_type->name()));
         }
     } else if(op == TokenType::Exclamation) {
         if(operand_type != easy_type(Type_bool)) {
-            return write_result(inst_error(inst, "逻辑非要求布尔类型操作数，实际类型 '{}'", operand_type->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "逻辑非要求布尔类型操作数，实际类型 '{}'", operand_type->name()));
         }
     }
 
@@ -760,14 +770,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRInstruction* inst, CI
 
         ValueResult exec_res = exec_unary(operand_val, op);
         if(exec_res.is_err()) {
-            return write_result(inst_error(inst, "一元表达式求值失败"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "一元表达式求值失败"));
         }
 
         Value result_val = exec_res.as_ok();
-        return write_result(CIRInstResult::make_value(result_type, result_val), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_value(result_type, result_val));
     }
 
-    return write_result(CIRInstResult::make_type_only(result_type), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(result_type));
 }
 
 // handler: Cast
@@ -791,7 +801,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Cast(CIRInstruction* inst, CIR
     TypeRef target_type = ResultValue(target_type_inst).type_val();
 
     if(!check_explicit_type_cast(pkg, expr_inst, expr_type, target_type)) {
-        return write_result(inst_error(inst, "不能在这些类型之间进行转换：'{}' → '{}'", expr_type->name(), target_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能在这些类型之间进行转换：'{}' → '{}'", expr_type->name(), target_type->name()));
     }
 
     TypeRef result_type = target_type;
@@ -802,14 +812,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_Cast(CIRInstruction* inst, CIR
 
         ValueResult exec_res = exec_cast(expr_val, target_type);
         if(exec_res.is_err()) {
-            return write_result(inst_error(inst, "转换表达式求值失败"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "转换表达式求值失败"));
         }
 
         Value result_val = exec_res.as_ok();
-        return write_result(CIRInstResult::make_value(result_type, result_val), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_value(result_type, result_val));
     }
 
-    return write_result(CIRInstResult::make_type_only(result_type), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(result_type));
 }
 
 // handler: ArrayType
@@ -824,14 +834,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayType(CIRInstruction* inst
 
     if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({info.count_inst})) {
         if(ResultType(info.element_type_inst) != type_type()) {
-            return write_result(inst_error(inst, "数组类型需要一个类型参数，实际收到 '{}'", ResultType(info.element_type_inst)->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "数组类型需要一个类型参数，实际收到 '{}'", ResultType(info.element_type_inst)->name()));
         }
 
         TypeRef elem_type = ResultValue(info.element_type_inst).type_val();
 
         // count 未求值（变量/错误表达式）时 FullEval 下会 panic，这里显式报错
         if(!has_result_val(info.count_inst)) {
-            return write_result(inst_error(inst, "数组长度必须是编译期常量，实际 '{}' 未求值", pkg->inst(info.count_inst)->to_string()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "数组长度必须是编译期常量，实际 '{}' 未求值", pkg->inst(info.count_inst)->to_string()));
         }
 
         Value count_val = ResultValue(info.count_inst);
@@ -842,7 +852,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayType(CIRInstruction* inst
 
         Value result = make_value(meta);
         result.type_val(arr_type);
-        return write_result(CIRInstResult::make_value(result), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_value(result));
     }
 
     return std::nullopt;   // 非 FullEval 不写结果（与原代码一致）
@@ -859,11 +869,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_SliceType(CIRInstruction* inst
     // propagate_error({info.element_type_inst}) 已由 deps_of 短路替代
 
     if(!has_result_val(info.element_type_inst)) {
-        return write_result(CIRInstResult::make_type_only(type_type()), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_type_only(type_type()));
     }
 
     if(ResultType(info.element_type_inst) != type_type()) {
-        return write_result(inst_error(inst, "切片类型需要一个类型参数，实际收到 '{}'", ResultType(info.element_type_inst)->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "切片类型需要一个类型参数，实际收到 '{}'", ResultType(info.element_type_inst)->name()));
     }
 
     TypeRef elem_type = ResultValue(info.element_type_inst).type_val();
@@ -873,7 +883,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_SliceType(CIRInstruction* inst
 
     Value result = make_value(meta);
     result.type_val(slice_type);
-    return write_result(CIRInstResult::make_value(result), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_value(result));
 }
 
 // handler: FuncType
@@ -891,20 +901,20 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncType(CIRInstruction* inst,
 
     for(isize i = 0; i < info.param_type_insts.count; i++) {
         if(!has_result_val(info.param_type_insts[i])) {
-            return write_result(CIRInstResult::make_type_only(type_type()), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_type_only(type_type()));
         }
         if(ResultType(info.param_type_insts[i]) != type_type()) {
-            return write_result(inst_error(inst, "函数类型第 {} 个参数需要一个类型参数", i), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "函数类型第 {} 个参数需要一个类型参数", i));
         }
         TypeRef pt = ResultValue(info.param_type_insts[i]).type_val();
         param_types.push_back(pt);
     }
 
     if(!has_result_val(info.return_type_inst)) {
-        return write_result(CIRInstResult::make_type_only(type_type()), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_type_only(type_type()));
     }
     if(ResultType(info.return_type_inst) != type_type()) {
-        return write_result(inst_error(inst, "函数类型需要一个类型参数作为返回类型"), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "函数类型需要一个类型参数作为返回类型"));
     }
     TypeRef return_type = ResultValue(info.return_type_inst).type_val();
 
@@ -913,7 +923,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncType(CIRInstruction* inst,
 
     Value result = make_value(meta);
     result.type_val(func_type);
-    return write_result(CIRInstResult::make_value(result), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_value(result));
 }
 
 // handler: TypeOfInstResult
@@ -936,7 +946,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeOfInstResult(CIRInstructio
 
     Value result = make_value(meta);
     result.type_val(target_type);
-    return write_result(CIRInstResult::make_value(result), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_value(result));
 }
 
 // handler: FieldTypeOfStruct
@@ -955,7 +965,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldTypeOfStruct(CIRInstructi
     TypeRef st = ResultValue(info.struct_type_inst).type_val();
 
     if(!is_struct_type(st)) {
-        return write_result(inst_error(inst, "不能从非结构体类型获取字段类型，实际类型 '{}'", st->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能从非结构体类型获取字段类型，实际类型 '{}'", st->name()));
     }
 
     TypeRef field_type = st->struct_info.struct_fields[info.field_index].type;
@@ -963,7 +973,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldTypeOfStruct(CIRInstructi
 
     Value result = make_value(meta);
     result.type_val(field_type);
-    return write_result(CIRInstResult::make_value(result), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_value(result));
 }
 
 // handler: FuncParamType
@@ -983,7 +993,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncParamType(CIRInstruction* 
     }
 
     if(!is_function_type(func_type)) {
-        return write_result(inst_error(inst, "不能从非函数类型获取参数类型，实际类型 '{}'", func_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能从非函数类型获取参数类型，实际类型 '{}'", func_type->name()));
     }
 
     auto& param_types = func_type->function_info.param_types;
@@ -1001,7 +1011,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncParamType(CIRInstruction* 
             }
         }
         if(!any_var_arg) {
-            return write_result(inst_error(inst, "参数索引 {} 越界（函数共有 {} 个参数）", info.param_index, param_types.count), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "参数索引 {} 越界（函数共有 {} 个参数）", info.param_index, param_types.count));
         }
         param_type = easy_type(Type_var_arg_c);
     }
@@ -1009,7 +1019,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncParamType(CIRInstruction* 
     TypeRef meta = type_type();
     Value result = make_value(meta);
     result.type_val(param_type);
-    return write_result(CIRInstResult::make_value(result), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_value(result));
 }
 
 // handler: StructInit
@@ -1030,11 +1040,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_StructInit(CIRInstruction* ins
     TypeRef st = ResultValue(info.struct_type_inst).type_val();
     // XP_ASSERT_DEFAULT(is_struct_type(st));
     if(!is_struct_type(st)) {
-        return write_result(inst_error(inst, "你不能把非结构体类型 '{}' 当作结构体来初始化", st->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "你不能把非结构体类型 '{}' 当作结构体来初始化", st->name()));
     }
 
     if(info.field_init_insts.count != st->struct_info.struct_fields.count) {
-        return write_result(inst_error(inst, "结构体初始化字段数量与结构体定义不匹配（{} vs {}）", info.field_init_insts.count, st->struct_info.struct_fields.count), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "结构体初始化字段数量与结构体定义不匹配（{} vs {}）", info.field_init_insts.count, st->struct_info.struct_fields.count));
     }
 
     // 字段类型检查
@@ -1043,7 +1053,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_StructInit(CIRInstruction* ins
         TypeRef expected = st->struct_info.struct_fields[i].type;
         std::optional<TypeRef> implicit_type = result_context().result_of(info.field_init_insts[i]).implicit_type;
         if(field_type != expected && ((!implicit_type.has_value()) || implicit_type != expected)) {
-            return write_result(inst_error(inst, "结构体初始化字段类型与定义不匹配（字段 {}：实际 '{}'，期望 '{}'）", i, field_type->name(), expected->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "结构体初始化字段类型与定义不匹配（字段 {}：实际 '{}'，期望 '{}'）", i, field_type->name(), expected->name()));
         }
     }
 
@@ -1055,10 +1065,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_StructInit(CIRInstruction* ins
             field_values.push_back(ResultValue(info.field_init_insts[i]));
         }
         v.struct_fields_val(field_values);
-        return write_result(CIRInstResult::make_value(v), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_value(v));
     }
 
-    return write_result(CIRInstResult::make_type_only(st), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(st));
 }
 
 // handler: ArrayInit（含 untyped 元素传染，副作用进 writes）
@@ -1098,11 +1108,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRInstruction* inst
                 Value v = ResultValue(ei);
                 v.set_type(elem_type);   // 模拟传染后的类型做溢出检查
                 if(is_val_overflow(v)) {
-                    return write_result(inst_error(inst, "数组初始化元素值溢出（元素 {}）", i), pc_ref);
+                    return make_result(pc_ref, inst_error(inst, "数组初始化元素值溢出（元素 {}）", i));
                 }
                 r.writes.push_back({ei, CIRInstResult::make_type_only(elem_type)});   // 传染
             } else if(t != elem_type) {
-                return write_result(inst_error(inst, "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", i, t->name(), elem_type->name()), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", i, t->name(), elem_type->name()));
             }
         }
     }
@@ -1153,7 +1163,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Index(CIRInstruction* inst, CI
         elem_type = array_type_ref->struct_info.struct_fields[0].type->pointed_type;
 
     } else {
-        return write_result(inst_error(inst, "索引不支持的类型的值，实际类型 '{}'", array_type_ref->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "索引不支持的类型的值，实际类型 '{}'", array_type_ref->name()));
     }
 
     if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({info.array_inst, info.index_inst})) {
@@ -1161,15 +1171,15 @@ std::optional<AnalyzeResult> Interpreter::analyze_Index(CIRInstruction* inst, CI
 
         if(is_array_type(array_type_ref)) {
             if(idx < 0 || idx >= array_type_ref->array_info.count) {
-                return write_result(inst_error(inst, "数组索引越界（索引 {}，长度 {}）", idx, array_type_ref->array_info.count), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "数组索引越界（索引 {}，长度 {}）", idx, array_type_ref->array_info.count));
             }
-            return write_result(inst_error(inst, "编译期数组元素提取尚未实现"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "编译期数组元素提取尚未实现"));
         } else if(is_slice_struct_type(array_type_ref)) {
-            return write_result(inst_error(inst, "编译期切片元素提取尚未实现"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "编译期切片元素提取尚未实现"));
         }
     }
 
-    return write_result(CIRInstResult::make_type_only(elem_type), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(elem_type));
 }
 
 // handler: StructField
@@ -1184,7 +1194,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_StructField(CIRInstruction* in
         if(has_result_val(type_block_inst)) {
             r.set_val(ResultValue(type_block_inst));
         }
-        return write_result(r, pc_ref);
+        return make_result(pc_ref, r);
     }
 
     return std::nullopt;
@@ -1214,14 +1224,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRInstruction* in
         Package *pkg_val = parent_type->package_info;
         SymbolInfo *field_sym = find_symbol_curr(&pkg_val->package_scope, info.field_name);
         if(field_sym == nullptr) {
-            return write_result(inst_error(inst, "包成员 '{}' 不存在", info.field_name), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "包成员 '{}' 不存在", info.field_name));
         }
         auto r = field_sym->result(curr_cache_key());
         if(r.state == CIRResultState::WholeValue) {
             // type = 成员的类型，actual = 成员的实际值（可能来自 value_inst，类型不同）
-            return write_result(CIRInstResult::make_value(r.type(), r.actual_val()), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_value(r.type(), r.actual_val()));
         }
-        return write_result(CIRInstResult::make_type_only(r.type()), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_type_only(r.type()));
 
     } else if(TypeRef struct_type = get_struct_type(parent_type)) {
         for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
@@ -1229,29 +1239,29 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRInstruction* in
                 TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
                 if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
                     Value field_val = ResultValue(parent_inst).struct_field_val(i);
-                    return write_result(CIRInstResult::make_value(field_type, field_val), pc_ref);
+                    return make_result(pc_ref, CIRInstResult::make_value(field_type, field_val));
                 }
-                return write_result(CIRInstResult::make_type_only(field_type), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_type_only(field_type));
             }
         }
-        return write_result(inst_error(inst, "结构体字段 '{}' 不存在", info.field_name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "结构体字段 '{}' 不存在", info.field_name));
 
     } else if(has_result_val(parent_inst) && is_enum_type(ResultValue(parent_inst).type_val())) {
         // 枚举成员访问: EnumType.Variant
         TypeRef enum_type = ResultValue(parent_inst).type_val();
         SymbolInfo *field_sym = find_symbol_curr(enum_type->enum_info.enum_scope, info.field_name);
         if(field_sym == nullptr) {
-            return write_result(inst_error(inst, "枚举变体 '{}' 不存在", info.field_name), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "枚举变体 '{}' 不存在", info.field_name));
         }
         auto r = field_sym->result(curr_cache_key());
         if(r.state == CIRResultState::WholeValue) {
             // 枚举成员的值本身是 tag（u8），但结果类型强制为枚举类型本身
-            return write_result(CIRInstResult::make_value(enum_type, r.actual_val()), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_value(enum_type, r.actual_val()));
         }
-        return write_result(CIRInstResult::make_type_only(enum_type), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_type_only(enum_type));
 
     } else {
-        return write_result(inst_error(inst, "字段访问不支持的类型的值，实际类型 '{}'", parent_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "字段访问不支持的类型的值，实际类型 '{}'", parent_type->name()));
     }
 }
 
@@ -1262,7 +1272,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRInstruction* inst,
     // deps 短路替代 propagate_error({parent_inst})
 
     if(!is_lvalue(parent_inst)) {
-        return write_result(inst_error(inst, "不能对非左值表达式取字段指针"), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能对非左值表达式取字段指针"));
     }
 
     TypeRef parent_type = ResultType(parent_inst);
@@ -1272,7 +1282,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRInstruction* inst,
     } else if(is_pointer_type(parent_type) && is_struct_type(parent_type->pointed_type)) {
         struct_type = parent_type->pointed_type;
     } else {
-        return write_result(inst_error(inst, "字段指针访问仅支持结构体类型或指向结构体的指针，实际收到 '{}'", parent_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "字段指针访问仅支持结构体类型或指向结构体的指针，实际收到 '{}'", parent_type->name()));
     }
 
     for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
@@ -1293,13 +1303,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRInstruction* inst,
                 // TODO: ABSTRACT ptr.mem
                 addr.pointer_val(Pointer::make(ptr.mem, total_off));
 
-                return write_result(CIRInstResult::make_value(field_type, addr, CIRValueKind::LValue), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_value(field_type, addr, CIRValueKind::LValue));
             }
-            return write_result(CIRInstResult::make_type_only(field_type, CIRValueKind::LValue), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_type_only(field_type, CIRValueKind::LValue));
         }
     }
 
-    return write_result(inst_error(inst, "FieldPtr：结构体字段 '{}' 不存在", info.field_name), pc_ref);
+    return make_result(pc_ref, inst_error(inst, "FieldPtr：结构体字段 '{}' 不存在", info.field_name));
 }
 
 // handler: IndexPtr（结果 = LValue）
@@ -1309,7 +1319,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRInstruction* inst,
     // deps 短路替代 propagate_error({info.array_inst, info.index_inst})
 
     if(!is_lvalue(array_inst)) {
-        return write_result(inst_error(inst, "不能对非左值表达式取索引指针"), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能对非左值表达式取索引指针"));
     }
 
     TypeRef array_type_ref = ResultType(array_inst);
@@ -1319,7 +1329,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRInstruction* inst,
     } else if(is_slice_struct_type(array_type_ref)) {
         elem_type = array_type_ref->struct_info.struct_fields[0].type->pointed_type;
     } else {
-        return write_result(inst_error(inst, "索引指针不支持的类型的值，实际类型 '{}'", array_type_ref->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "索引指针不支持的类型的值，实际类型 '{}'", array_type_ref->name()));
     }
 
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
@@ -1333,9 +1343,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRInstruction* inst,
         Value addr = make_value(pointer_type(elem_type));
         addr.pointer_val(ptr);
 
-        return write_result(CIRInstResult::make_value(elem_type, addr, CIRValueKind::LValue), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_value(elem_type, addr, CIRValueKind::LValue));
     }
-    return write_result(CIRInstResult::make_type_only(elem_type, CIRValueKind::LValue), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(elem_type, CIRValueKind::LValue));
 }
 
 // TODO: 模仿Deref的处理
@@ -1347,7 +1357,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRInstruction* inst, C
 
     TypeRef lval_type = ResultType(lval_inst);
     if(!is_lvalue(lval_inst) && !is_function_type(lval_type)) {
-        return write_result(inst_error(inst, "不能对非左值表达式取地址"), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "不能对非左值表达式取地址"));
     }
 
     if(is_function_type(lval_type)) {
@@ -1368,7 +1378,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRInstruction* inst, C
             }
         }
         if(got_fv && is_pure_comptime_func(fv.func_key.cir_package->inst(fv.func_key.inst_ref)->info<CIROperator::FunctionDecl>(), result_context())) {
-            return write_result(inst_error(inst, "不能取泛型函数的地址"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "不能取泛型函数的地址"));
         }
     }
 
@@ -1376,10 +1386,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRInstruction* inst, C
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
         if(is_lvalue(lval_inst)) {
             Value addr = ResultValue(lval_inst);
-            return write_result(CIRInstResult::make_value(ptr_type, addr), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_value(ptr_type, addr));
         }
     }
-    return write_result(CIRInstResult::make_type_only(ptr_type), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(ptr_type));
 }
 
 // handler: Binary（含 untyped 类型传染，副作用进 writes）
@@ -1425,7 +1435,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRInstruction* inst, C
             Value v = ResultValue(contagion_target);
             v.set_type(contagion_type);   // 模拟传染后的类型做溢出检查
             if(is_val_overflow(v)) {
-                return write_result(inst_error(inst, "类型传染时值溢出（传染后类型 '{}'）", contagion_type->name()), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "类型传染时值溢出（传染后类型 '{}'）", contagion_type->name()));
             }
         }
     }
@@ -1443,47 +1453,47 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRInstruction* inst, C
     // 类型检查
     if(is_pointer_type(left_type) && is_pointer_type(right_type)) {
         if(!is_equal_compare_operator(op)) {
-            return write_result(inst_error(inst, "指针类型之间只允许相等比较"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "指针类型之间只允许相等比较"));
         }
         if(left_type != right_type) {
             if(get_innermost_type_of_pointer(left_type) != easy_type(Type_void) &&
                get_innermost_type_of_pointer(right_type) != easy_type(Type_void)) {
-                return write_result(inst_error(inst, "比较的指针类型必须一致（'{}' vs '{}'）", left_type->name(), right_type->name()), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "比较的指针类型必须一致（'{}' vs '{}'）", left_type->name(), right_type->name()));
             }
         }
     } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
         TypeRef ptr   = is_pointer_type(left_type) ? left_type : right_type;
         TypeRef other = is_pointer_type(left_type) ? right_type : left_type;
         if(!is_add_sub_operator(op)) {
-            return write_result(inst_error(inst, "指针算术只允许 + 和 - 运算符"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "指针算术只允许 + 和 - 运算符"));
         }
         if(get_innermost_type_of_pointer(ptr) == easy_type(Type_void)) {
-            return write_result(inst_error(inst, "不允许对 void 指针进行指针算术"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "不允许对 void 指针进行指针算术"));
         }
         if(!is_integer_or_untyped_type(other)) {
-            return write_result(inst_error(inst, "指针算术只允许在指针和整数类型之间进行（实际 '{}' 与 '{}'）", left_type->name(), right_type->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "指针算术只允许在指针和整数类型之间进行（实际 '{}' 与 '{}'）", left_type->name(), right_type->name()));
         }
     } else {
         if(left_type != right_type) {
-            return write_result(inst_error(inst, "二元运算符要求两个操作数类型相同（实际 '{}' 与 '{}'）", left_type->name(), right_type->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "二元运算符要求两个操作数类型相同（实际 '{}' 与 '{}'）", left_type->name(), right_type->name()));
         }
         if(is_struct_type(left_type) || is_array_type(left_type)) {
             if(!is_equal_compare_operator(op)) {
-                return write_result(inst_error(inst, "结构体和数组类型只允许相等比较"), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "结构体和数组类型只允许相等比较"));
             }
         }
         if(is_enum_type(left_type)) {
             if(!is_equal_compare_operator(op)) {
-                return write_result(inst_error(inst, "枚举类型只允许相等比较和布尔运算符"), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "枚举类型只允许相等比较和布尔运算符"));
             }
         }
         if(left_type == easy_type(Type_bool)) {
             if(!is_operator_for_bool(op)) {
-                return write_result(inst_error(inst, "布尔类型只允许布尔运算符和相等比较"), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "布尔类型只允许布尔运算符和相等比较"));
             }
         }
         if(op == TokenType::Percent && is_float_type(left_type)) {
-            return write_result(inst_error(inst, "浮点类型不允许取模运算符"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "浮点类型不允许取模运算符"));
         }
     }
 
@@ -1499,7 +1509,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRInstruction* inst, C
         }
         ValueResult exec_res = exec_binary(left_val, right_val, op);
         if(exec_res.is_err()) {
-            return write_result(inst_error(inst, "二元表达式求值失败"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "二元表达式求值失败"));
         }
         r.writes.push_back({pc_ref, CIRInstResult::make_value(result_type, exec_res.as_ok())});
         return r;
@@ -1519,13 +1529,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_Break(CIRInstruction* inst, CI
         // 已有类型：检查是否匹配
         if(result_state(target_block) >= CIRResultState::OnlyType) {
             if(has_error(target_block)) {
-                return write_result(CIRInstResult::make_error(), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_error());
             }
             TypeRef existing_type = ResultType(target_block);
             TypeRef new_type = ResultType(info.break_value_inst);
             if(existing_type != new_type) {
                 context()->reporter.report_error(inst->src_loc, "break 值类型不匹配（现有 '{}'，传入 '{}'）", existing_type->name(), new_type->name());
-                return write_result(CIRInstResult::make_error(), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_error());
             }
         } else {
             // 无类型：设置类型（不 return，继续写值）
@@ -1562,7 +1572,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRInstruction* in
             TypeRef t = ResultType(info.type_inst);
             if(t != type_type() && t != undefined_type()) {
                 context()->reporter.report_error(inst->src_loc, "类型标注必须是类型，实际收到 '{}'", t->name());
-                return write_result(CIRInstResult::make_error(), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_error());
             }
         }
         return std::nullopt;
@@ -1570,7 +1580,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRInstruction* in
 
     if(!is_type_type(ResultValue(info.type_inst).type)) {
         context()->reporter.report_error(inst->src_loc, "类型标注必须是类型，实际收到 '{}'", ResultValue(info.type_inst).type->name());
-        return write_result(CIRInstResult::make_error(), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_error());
     }
 
     TypeRef declared_type = ResultValue(info.type_inst).type_val();
@@ -1583,7 +1593,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRInstruction* in
     } else {
         if(existing != declared_type) {
             context()->reporter.report_error(inst->src_loc, "类型标注与推导出的变量类型冲突");
-            return write_result(CIRInstResult::make_error(), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_error());
         }
     }
 
@@ -1617,7 +1627,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Store(CIRInstruction* inst, CI
     } else {
         TypeRef ptr_type = ResultType(var_inst);
         if(!is_pointer_type(ptr_type)) {
-            return write_result(inst_error(inst, "只能赋值给变量、字段、数组元素或解引用后的指针"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "只能赋值给变量、字段、数组元素或解引用后的指针"));
         }
         target_type = ptr_type->pointed_type;
     }
@@ -1625,18 +1635,18 @@ std::optional<AnalyzeResult> Interpreter::analyze_Store(CIRInstruction* inst, CI
     if(target_type == undefined_type()) {
         TypeRef inferred = ResultType(store_info.value_inst);
         if(is_function_type(inferred)) {
-            return write_result(inst_error(inst, "不能将函数值赋值给变量，请使用 '&' 显式取地址"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "不能将函数值赋值给变量，请使用 '&' 显式取地址"));
         }
         // 类型推断：写 var_inst
-        return write_result(CIRInstResult::make_type_only(inferred), var_inst);
+        return make_result(var_inst, CIRInstResult::make_type_only(inferred));
     } else {
         TypeRef value_type = ResultType(store_info.value_inst);
         if(is_function_type(value_type)) {
-            return write_result(inst_error(inst, "不能将函数值赋值给变量，请使用 '&' 显式取地址"), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "不能将函数值赋值给变量，请使用 '&' 显式取地址"));
         }
         std::optional<TypeRef> implicit_type = result_context().result_of(store_info.value_inst).implicit_type;
         if(value_type != target_type && ((!implicit_type.has_value()) || implicit_type.value() != target_type)) {
-            return write_result(inst_error(inst, "尝试存储类型为 '{}' 的值，但期望类型为 '{}'", value_type->t_name(), target_type->t_name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "尝试存储类型为 '{}' 的值，但期望类型为 '{}'", value_type->t_name(), target_type->t_name()));
         }
     }
 
@@ -1731,7 +1741,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRInstruction* 
         expected_type = ResultValue(info.type_inst).type_val();
         if(is_untyped_type(expected_type)) {
             // 目标类型不应该是 untyped（原为断言，改正常报错）
-            return write_result(inst_error(inst, "类型确定的目标类型不能是未定类型，实际 '{}'", expected_type->name()), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "类型确定的目标类型不能是未定类型，实际 '{}'", expected_type->name()));
         }
 
         // var_arg: 不约束类型
@@ -1765,7 +1775,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRInstruction* 
             if(is_pointer_type(expected_type) && expected_type->pointed_type == determined_type) {
                 context()->reporter.report_error(inst->src_loc,
                     "implicit conversion from function type to function pointer is not allowed, use '&' to take address explicitly");
-                return write_result(CIRInstResult::make_error(), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_error());
             }
         } else if(determined_type == expected_type) {
             ok = true;
@@ -1773,7 +1783,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRInstruction* 
 
         if(!ok) {
             context()->reporter.report_error(inst->src_loc, "无法确定类型：期望 {}，实际 {}", expected_type->t_name(), determined_type->t_name());
-            return write_result(CIRInstResult::make_error(), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_error());
         }
 
         if(!is_implicit_cast) {
@@ -1789,7 +1799,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRInstruction* 
             result_val = ResultValue(determined_inst);
             if(is_val_overflow(result_val)) {
                 context()->reporter.report_error(inst->src_loc, "类型确定时值溢出（目标类型 '{}'）", expected_type->name());
-                return write_result(CIRInstResult::make_error(), pc_ref);
+                return make_result(pc_ref, CIRInstResult::make_error());
             }
         }
     }
@@ -1824,7 +1834,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRInstruction* inst
     }
     // 注：value_inst 错误不能交给 dispatch 短路（前向引用时短路检查时尚未分析），这里显式检查
     if(has_error(info.value_inst)) {
-        return write_result(CIRInstResult::make_error(), pc_ref);
+        return make_result(pc_ref, CIRInstResult::make_error());
     }
 
     if(!has_result_val(info.value_inst)) {
@@ -1832,7 +1842,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRInstruction* inst
             // 副作用：符号绑定到本指令结果 + Solved（仅类型，无值）
             sym->val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
             sym->state = SymbolState::Solved;
-            return write_result(CIRInstResult::make_type_only(ResultType(info.value_inst)), pc_ref);
+            return make_result(pc_ref, CIRInstResult::make_type_only(ResultType(info.value_inst)));
         }
         return std::nullopt;
     }
@@ -1857,7 +1867,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_VariableDecl(CIRInstruction* i
     sym->state = SymbolState::Solved;
 
     // FullEval 时不分配内存，TypeAscribe 会在类型已知后分配
-    return write_result(CIRInstResult::make_type_only(undefined_type(), CIRValueKind::LValue), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(undefined_type(), CIRValueKind::LValue));
 }
 
 // handler: EnumDeclInit（写自身 type/value；枚举字段注册副作用保留）
@@ -1865,16 +1875,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* i
     auto& info = inst->info<CIROperator::EnumDeclInit>();
     // deps 短路替代 propagate_error({info.tag_type_inst}) + 各字段 value_inst
 
-    AnalyzeResult r;   // 累积自身 type → value 写入
-    r.writes.push_back({pc_ref, CIRInstResult::make_type_only(type_type())});
-
     if(!should_eval_for_lazy_eval({info.tag_type_inst})) {
-        return r;
+        return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}});
     }
 
     TypeRef elem_type = ResultValue(info.tag_type_inst).type_val();
     if(!is_integer_type(elem_type)) {
-        return write_result(inst_error(inst, "枚举的底层类型必须是整数类型，实际类型 '{}'", elem_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "枚举的底层类型必须是整数类型，实际类型 '{}'", elem_type->name()));
     }
 
     std::optional<xpString> enum_name = std::nullopt;
@@ -1888,8 +1895,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* i
     TypeRef meta = type_type();
     Value v = make_value(meta);
     v.type_val(enum_type);
-
-    r.writes.push_back({pc_ref, CIRInstResult::make_value(v)});
 
     {
         // 副作用：枚举符号绑定 type 值 + Solved
@@ -1918,7 +1923,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* i
             field_val.integer_val(next_auto_value);
 
             if(check_integer_overflow(field_val.integer_val(), elem_type)) {
-                return write_result(inst_error(inst, "枚举判别值溢出（底层类型 '{}'）", elem_type->name()), pc_ref);
+                return make_result(pc_ref, inst_error(inst, "枚举判别值溢出（底层类型 '{}'）", elem_type->name()));
             }
 
             next_auto_value += 1;
@@ -1936,7 +1941,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* i
         field_sym->state = SymbolState::Solved;
     }
 
-    return r;
+    return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(v)}});
 }
 
 // handler: FinishStruct（写自身 type/value；填字段副作用保留）
@@ -1944,9 +1949,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRInstruction* i
     auto& info = inst->info<CIROperator::FinishStruct>();
     auto struct_decl_inst = info.struct_decl_inst;
     // deps 短路替代 propagate_error({struct_decl_inst}) + propagate_error(info.field_insts)
-
-    AnalyzeResult r;   // 累积自身 type → value 写入
-    r.writes.push_back({pc_ref, CIRInstResult::make_type_only(type_type())});
 
     // 有具体字段值时，完成结构体类型（填字段）
     if(curr_eval_mode() == EvalMode::FullEval || (should_eval_for_lazy_eval({struct_decl_inst}) && should_eval_for_lazy_eval(info.field_insts))) {
@@ -1968,17 +1970,17 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRInstruction* i
                 fields.push_back(sf);
 
                 if(sf.type == st) {
-                    return write_result(inst_error(inst, "结构体 '{}' 直接包含自身（未通过指针间接引用），将导致无限大小", sf.name), pc_ref);
+                    return make_result(pc_ref, inst_error(inst, "结构体 '{}' 直接包含自身（未通过指针间接引用），将导致无限大小", sf.name));
                 }
             }
 
             finish_unfinish_struct_type(st, fields);
         }
 
-        r.writes.push_back({pc_ref, CIRInstResult::make_value(ResultValue(struct_decl_inst))});
+        return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(ResultValue(struct_decl_inst))}});
     }
 
-    return r;
+    return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}});
 }
 
 // handler: UnionDecl（写自身 type/value；联合体语义未定，保留占位）
@@ -1996,15 +1998,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_UnionDecl(CIRInstruction* inst
 
 // handler: GetOrInitStruct（写自身 type/value）
 std::optional<AnalyzeResult> Interpreter::analyze_GetOrInitStruct(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    AnalyzeResult r;   // 累积自身 type → value 写入
+    auto res = eval_GetOrInitStruct(pc_ref);
     if(!has_result_type(pc_ref)) {
         // TODO: type_type(undefined_type())得换成更规范的表示
-        r.writes.push_back({pc_ref, CIRInstResult::make_type_only(type_type())});
+        return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(res)}});
     }
-
-    auto res = eval_GetOrInitStruct(pc_ref);
-    r.writes.push_back({pc_ref, CIRInstResult::make_value(res)});
-    return r;
+    return make_result({{pc_ref, CIRInstResult::make_value(res)}});
 }
 
 // handler: BlockRef（进入子 Block 分析；pc 由 new_analyze_flow/recover 自管，dispatch 末尾 advance 越过）
@@ -2033,7 +2032,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRInstruction* inst, C
 
     TypeRef cond_type = ResultType(cond_inst);
     if(cond_type != easy_type(Type_bool)) {
-        return write_result(inst_error(inst, "if 语句的条件表达式必须是布尔类型，实际类型 '{}'", cond_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "if 语句的条件表达式必须是布尔类型，实际类型 '{}'", cond_type->name()));
     }
 
     if(curr_eval_mode() == EvalMode::FullEval) {
@@ -2055,7 +2054,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRInstruction* inst, C
             // 分支内错误向上传播
             for(isize i = 0; i < block_info.insts.count(); i++) {
                 if(has_error(CIRInstructionRef{chosen_blk, i})) {
-                    return write_result(CIRInstResult::make_error(), pc_ref);
+                    return make_result(pc_ref, CIRInstResult::make_error());
                 }
             }
         }
@@ -2102,8 +2101,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRInstruction* i
     for(isize i = 0; i < func.arg_decl_insts.count; i++) {
         if(!func.is_comptime && func.arg_type_insts[i] != INVALID_INST) {
             if(is_type_type(ResultValue(func.arg_type_insts[i]).type_val())) {
-                return write_result(inst_error(pkg->inst(func.arg_decl_insts[i]),
-                    "类型 'type' 的参数要求函数声明为 comptime（用 '$()' 包裹参数列表）"), pc_ref);
+                return make_result(pc_ref, inst_error(pkg->inst(func.arg_decl_insts[i]),
+                    "类型 'type' 的参数要求函数声明为 comptime（用 '$()' 包裹参数列表）"));
             }
         }
     }
@@ -2187,7 +2186,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRInstruction* inst, CIR
     }
 
     if(!is_function_type(called_type)) {
-        return write_result(inst_error(inst, "调用了非函数值（实际类型 '{}'）", called_type->name()), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "调用了非函数值（实际类型 '{}'）", called_type->name()));
     }
 
     auto& param_types = called_type->function_info.param_types;
@@ -2206,11 +2205,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRInstruction* inst, CIR
     isize arg_count = call_info.arg_insts.count;
     if(has_var_arg) {
         if(arg_count < non_var_arg_count) {
-            return write_result(inst_error(inst, "实参过少：至少需要 {} 个，实际 {} 个", non_var_arg_count, arg_count), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "实参过少：至少需要 {} 个，实际 {} 个", non_var_arg_count, arg_count));
         }
     } else {
         if(arg_count != param_types.count) {
-            return write_result(inst_error(inst, "实参数量不匹配：期望 {} 个，实际 {} 个", param_types.count, arg_count), pc_ref);
+            return make_result(pc_ref, inst_error(inst, "实参数量不匹配：期望 {} 个，实际 {} 个", param_types.count, arg_count));
         }
     }
 
@@ -2387,11 +2386,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRInstruction* inst,
     SymbolInfo *info = (inst->symbol)();
 
     if(info == nullptr) {
-        return write_result(inst_error(inst, "未定义标识符 '{}'", inst->info<CIROperator::IdentRef>().ident), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "未定义标识符 '{}'", inst->info<CIROperator::IdentRef>().ident));
     }
 
     if(!info->is_var_decl() && !info->is_const_decl_and_func()) {
-        return write_result(inst_error(inst, "标识符 '{}' 不是可寻址实体", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "标识符 '{}' 不是可寻址实体", info->name));
     }
 
     if(info->state == SymbolState::Unsolved) {
@@ -2401,7 +2400,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRInstruction* inst,
 
         analyze_instruction();
     } else if(info->state == SymbolState::Solving) {
-        return write_result(inst_error(inst, "求值 '{}' 时检测到循环依赖", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "求值 '{}' 时检测到循环依赖", info->name));
     }
 
     // 注：val 绑定指令不是本 op 的 refs（符号经 symbol 字段），dispatch 短路不覆盖，这里显式传播
@@ -2413,7 +2412,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRInstruction* inst,
 
     auto r = info->result(curr_cache_key());
     if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-        return write_result(inst_error(inst, "标识符 '{}' 无可用结果（符号未求值或出错）", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "标识符 '{}' 无可用结果（符号未求值或出错）", info->name));
     }
     if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || r.state == CIRResultState::WholeValue)) {
         if(info->is_var_decl()) {
@@ -2452,11 +2451,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRInstruction* inst,
     auto info = info_ref();
 
     if(info == nullptr) {
-        return write_result(inst_error(inst, "未定义标识符 '{}'", inst->info<CIROperator::IdentVal>().ident), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "未定义标识符 '{}'", inst->info<CIROperator::IdentVal>().ident));
     }
 
     if(info->is_var_decl()) {
-        return write_result(inst_error(inst, "IdentVal 只应作用于常量，'{}' 是变量", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "IdentVal 只应作用于常量，'{}' 是变量", info->name));
     }
 
     // 以支持顶层constDecl的顺序无关声明
@@ -2467,15 +2466,15 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRInstruction* inst,
 
         analyze_instruction();
     } else if(info->state == SymbolState::Solving) {
-        return write_result(inst_error(inst, "求值 '{}' 时检测到循环依赖", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "求值 '{}' 时检测到循环依赖", info->name));
     }
 
     auto r = info->result(curr_cache_key());
     if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-        return write_result(inst_error(inst, "标识符 '{}' 无可用结果（符号未求值或出错）", info->name), pc_ref);
+        return make_result(pc_ref, inst_error(inst, "标识符 '{}' 无可用结果（符号未求值或出错）", info->name));
     }
     if(r.state == CIRResultState::WholeValue) {
         return AnalyzeResult{CIRInstResult::make_value(r.actual_val()), pc_ref};
     }
-    return write_result(CIRInstResult::make_type_only(r.type()), pc_ref);
+    return make_result(pc_ref, CIRInstResult::make_type_only(r.type()));
 }
