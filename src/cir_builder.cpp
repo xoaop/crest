@@ -68,8 +68,7 @@ void CIRBuilder::build_cir_package(Package *pkg) {
         curr_scope = &ast_file.file_scope;
 
         // @new — 顶层 scope 用显式 EnterScope 指令切换（不发 ExitScope，靠下一个 EnterScope 覆盖）
-        auto enter_scope = New_Instruction(CIROperator::EnterScope, nullptr);
-        Instruction(enter_scope).info<CIROperator::EnterScope>().scope = &ast_file.file_scope;
+        auto enter_scope = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = &ast_file.file_scope });
 
         for(Ast *ast : ast_file.top_levels) {
             CIRInstructionRef top_inst = INVALID_INST;
@@ -110,13 +109,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     CIRInstructionRef value_inst = build_block_inst_for_expr(value_ast, true, true);
     curr_const_sym = {};
 
-    auto const_decl = New_Instruction(CIROperator::ConstDecl, const_decl_ast);
-
-    Instruction(const_decl).info<CIROperator::ConstDecl>() = {
+    auto const_decl = Make_Instruction<CIROperator::ConstDecl>(const_decl_ast, {
         .ident = const_decl_ast->ConstDecl.name,
         .symbol = const_decl_ast->ast_symbol,
         .value_inst = value_inst,
-    };
+    });
 
 
     sym->val({
@@ -187,10 +184,9 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoR
     } else {
         auto rt_block = Begin_Block(fd, true, true);   // CIRBlockRef
 
-        auto void_const = New_Instruction(CIROperator::ConstantValue, fd);
         auto val = make_value(type_type());
         val.type_val(easy_type(Type_void));
-        Instruction(void_const).info<CIROperator::ConstantValue>().value = val;
+        auto void_const = Make_Instruction<CIROperator::ConstantValue>(fd, { .value = val });
 
         New_Break(rt_block, void_const, fd);
 
@@ -229,11 +225,10 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoR
 
                 auto param_type = func.arg_type_insts[i];
                 if(param_type != INVALID_INST) {
-                    auto ta = New_Instruction(CIROperator::TypeAscribe, fd->FunctionDeclValue.params[i]);
-                    Instruction(ta).info<CIROperator::TypeAscribe>() = {
+                    auto ta = Make_Instruction<CIROperator::TypeAscribe>(fd->FunctionDeclValue.params[i], {
                         .var_inst  = vd,
                         .type_inst = param_type,
-                    };
+                    });
                 }
             }
 
@@ -308,22 +303,19 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
             //     .type_inst = INVALID_INST,
             // };
 
-            auto typeof_inst = New_Instruction(CIROperator::TypeOfInstResult, stmt);
-            Instruction(typeof_inst).info<CIROperator::TypeOfInstResult>() = {
+            auto typeof_inst = Make_Instruction<CIROperator::TypeOfInstResult>(stmt, {
                 .target_inst = ptr_inst
-            };
+            });
 
-            auto determine_type = New_Instruction(CIROperator::DetermineType, stmt);
-            Instruction(determine_type).info<CIROperator::DetermineType>() = {
+            auto determine_type = Make_Instruction<CIROperator::DetermineType>(stmt, {
                 .determining_inst = value_inst,
                 .type_inst = typeof_inst,
-            };
+            });
 
-            auto st = New_Instruction(CIROperator::Store, stmt);
-            Instruction(st).info<CIROperator::Store>() = {
+            auto st = Make_Instruction<CIROperator::Store>(stmt, {
                 .var_inst   = ptr_inst,
                 .value_inst = value_inst,
-            };
+            });
         } break;
 
         case AstType_IfStmt: {
@@ -331,9 +323,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
 
             auto cond_inst = build_inst_for_expr(if_stmt.condition);
 
-            // CondBr 先占位，then/else 是独立子块（不插入父块，由 CondBr 独占引用）
-            auto condbr_inst = New_Instruction(CIROperator::CondBr, stmt);
-
+            // CondBr 引用 then/else 独立子块（不插入父块，由 CondBr 独占引用）
             CIRBlockRef then_blk = INVALID_BLOCK;
             build_inst_for_ast_block(if_stmt.then_block, true, false, &then_blk);
 
@@ -347,11 +337,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
                 End_Block();
             }
 
-            Instruction(condbr_inst).info<CIROperator::CondBr>() = {
+            auto condbr_inst = Make_Instruction<CIROperator::CondBr>(stmt, {
                 .condition_inst = cond_inst,
                 .true_block     = then_blk,
                 .false_block    = else_blk,
-            };
+            });
         } break;
 
         case AstType_ForStmt: {
@@ -415,21 +405,16 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
     // Build condition inside loop (re-evaluated each iteration)
     CIRInstructionRef cond_inst;
     if(fs.iter_var != nullptr) {
-        auto load_var = New_Instruction(CIROperator::Load, stmt);
-        Instruction(load_var).info<CIROperator::Load>() = { .ptr_inst = incr_var_inst };
+        auto load_var = Make_Instruction<CIROperator::Load>(stmt, { .ptr_inst = incr_var_inst });
 
-        cond_inst = New_Instruction(CIROperator::Binary, stmt);
-        Instruction(cond_inst).info<CIROperator::Binary>() = { .op = TokenType::LessThan, .left_inst = load_var, .right_inst = end_inst };
+        cond_inst = Make_Instruction<CIROperator::Binary>(stmt, { .op = TokenType::LessThan, .left_inst = load_var, .right_inst = end_inst });
     } else if(fs.condition != nullptr) {
         cond_inst = build_inst_for_expr(fs.condition);
     } else {
         auto true_val = make_value(easy_type(Type_bool));
         true_val.bool_val(true);
-        cond_inst = New_Instruction(CIROperator::ConstantValue, stmt);
-        Instruction(cond_inst).info<CIROperator::ConstantValue>().value = true_val;
+        cond_inst = Make_Instruction<CIROperator::ConstantValue>(stmt, { .value = true_val });
     }
-
-    auto condbr = New_Instruction(CIROperator::CondBr, stmt);
 
     auto body_blk = curr_pkg->create_block(false, false, false);
     block_stack.push_back(body_blk);
@@ -450,21 +435,15 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
         }
 
         if(incr_var_inst != INVALID_INST) {
-            auto load_var = New_Instruction(CIROperator::Load, stmt);
-            Instruction(load_var).info<CIROperator::Load>() = { .ptr_inst = incr_var_inst };
+            auto load_var = Make_Instruction<CIROperator::Load>(stmt, { .ptr_inst = incr_var_inst });
 
-            auto one_val = New_Instruction(CIROperator::ConstantValue, stmt);
-            {
-                auto v = make_value(easy_type(Type_untyped_int));
-                v.integer_val(1);
-                Instruction(one_val).info<CIROperator::ConstantValue>().value = v;
-            }
+            auto v = make_value(easy_type(Type_untyped_int));
+            v.integer_val(1);
+            auto one_val = Make_Instruction<CIROperator::ConstantValue>(stmt, { .value = v });
 
-            auto add_inst = New_Instruction(CIROperator::Binary, stmt);
-            Instruction(add_inst).info<CIROperator::Binary>() = { .op = TokenType::Add, .left_inst = load_var, .right_inst = one_val };
+            auto add_inst = Make_Instruction<CIROperator::Binary>(stmt, { .op = TokenType::Add, .left_inst = load_var, .right_inst = one_val });
 
-            auto store_inc = New_Instruction(CIROperator::Store, stmt);
-            Instruction(store_inc).info<CIROperator::Store>() = { .var_inst = incr_var_inst, .value_inst = add_inst };
+            auto store_inc = Make_Instruction<CIROperator::Store>(stmt, { .var_inst = incr_var_inst, .value_inst = add_inst });
         }
     }
 
@@ -475,11 +454,11 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
         New_Break(loop_inst, INVALID_INST, stmt);
     }
 
-    Instruction(condbr).info<CIROperator::CondBr>() = {
+    auto condbr = Make_Instruction<CIROperator::CondBr>(stmt, {
         .condition_inst = cond_inst,
         .true_block     = body_blk,
         .false_block    = exit_blk,
-    };
+    });
 
     End_Loop(loop_inst);
 }
@@ -498,42 +477,37 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(Ast *var_decl_ast) {
     CIRInstructionRef type_block_inst = INVALID_INST;
     if(vd_ast.type_ast != nullptr) {
         type_block_inst = build_block_inst_for_expr(vd_ast.type_ast, true, true);
-        auto ta = New_Instruction(CIROperator::TypeAscribe, vd_ast.type_ast);
-        Instruction(ta).info<CIROperator::TypeAscribe>() = {
+        auto ta = Make_Instruction<CIROperator::TypeAscribe>(vd_ast.type_ast, {
             .var_inst  = vd,
             .type_inst = type_block_inst,
-        };
+        });
     }
 
     // 3. 有初始值则发射 DetermineType + Store
     if(vd_ast.expr != nullptr) {
         auto value_inst = build_inst_for_expr(vd_ast.expr);
 
-        auto determine_type = New_Instruction(CIROperator::DetermineType, vd_ast.expr);
         CIRInstructionRef type_inst = (type_block_inst != INVALID_INST) ? type_block_inst : INVALID_INST;
-        Instruction(determine_type).info<CIROperator::DetermineType>() = {
+        auto determine_type = Make_Instruction<CIROperator::DetermineType>(vd_ast.expr, {
             .determining_inst = value_inst,
             .type_inst = type_inst,
-        };
+        });
 
         // 无显式类型标注时，补 TypeOfInstResult + TypeAscribe 以分配内存
         if(type_block_inst == INVALID_INST) {
-            auto type_of = New_Instruction(CIROperator::TypeOfInstResult, vd_ast.expr);
-            Instruction(type_of).info<CIROperator::TypeOfInstResult>() = {
+            auto type_of = Make_Instruction<CIROperator::TypeOfInstResult>(vd_ast.expr, {
                 .target_inst = value_inst
-            };
-            auto ta = New_Instruction(CIROperator::TypeAscribe, vd_ast.expr);
-            Instruction(ta).info<CIROperator::TypeAscribe>() = {
+            });
+            auto ta = Make_Instruction<CIROperator::TypeAscribe>(vd_ast.expr, {
                 .var_inst  = vd,
                 .type_inst = type_of,
-            };
+            });
         }
 
-        auto st = New_Instruction(CIROperator::Store, var_decl_ast);
-        Instruction(st).info<CIROperator::Store>() = {
+        auto st = Make_Instruction<CIROperator::Store>(var_decl_ast, {
             .var_inst   = vd,
             .value_inst = value_inst,
-        };
+        });
     }
 
     return vd;
@@ -548,11 +522,10 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
 
     if(value_inst != INVALID_INST) {
         // 如果 return 语句有表达式, 检查表达式类型是否和函数返回类型兼容
-        auto determine_type = New_Instruction(CIROperator::DetermineType, return_stmt_ast);
-        Instruction(determine_type).info<CIROperator::DetermineType>() = {
+        auto determine_type = Make_Instruction<CIROperator::DetermineType>(return_stmt_ast, {
             .determining_inst = value_inst,
             .type_inst = curr_func->return_type_inst,
-        };
+        });
 
     } else {
         // 没有返回值的 return, 判断函数返回类型是否为 void
@@ -560,16 +533,14 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
         // 构造一个字面量, 类型为void, 
         // 虽然这个压根不存在, 但它的类型信息可以用来判断函数返回类型是否为 void
         // 搭了determine_type需要的结构, 以复用错误检查逻辑
-        auto void_type_inst = New_Instruction(CIROperator::ConstantValue, return_stmt_ast);
         auto void_type_val = make_value();
         void_type_val.set_type(easy_type(Type_void)); // 这个值本身不存在, 但我们需要它的类型信息来判断函数返回类型是否为 void
-        Instruction(void_type_inst).info<CIROperator::ConstantValue>().value = void_type_val;
+        auto void_type_inst = Make_Instruction<CIROperator::ConstantValue>(return_stmt_ast, { .value = void_type_val });
 
-        auto determine_type = New_Instruction(CIROperator::DetermineType, return_stmt_ast);
-        Instruction(determine_type).info<CIROperator::DetermineType>() = {
+        auto determine_type = Make_Instruction<CIROperator::DetermineType>(return_stmt_ast, {
             .determining_inst = void_type_inst,
             .type_inst = curr_func->return_type_inst,
-        };
+        });
 
     }
 
@@ -602,11 +573,10 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
 
         case AstType_FieldAccess: {
             auto parent_ptr = build_ptr_inst_for_expr(expr->FieldAccess.parent);
-            auto fa = New_Instruction(CIROperator::FieldPtr, expr);
-            Instruction(fa).info<CIROperator::FieldPtr>() = {
+            auto fa = Make_Instruction<CIROperator::FieldPtr>(expr, {
                 .parent_inst = parent_ptr,
                 .field_name = expr->FieldAccess.field_name,
-            };
+            });
             return fa;
         } break;
 
@@ -615,17 +585,15 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
             auto index_inst = build_inst_for_expr(expr->IndexExpr.index_expr);
 
             // TODO: SYMPLIFY
-            auto determine_type = New_Instruction(CIROperator::DetermineType, expr);
-            Instruction(determine_type).info<CIROperator::DetermineType>() = {
+            auto determine_type = Make_Instruction<CIROperator::DetermineType>(expr, {
                 .determining_inst = index_inst,
                 .type_inst = INVALID_INST,
-            };
+            });
 
-            auto idx = New_Instruction(CIROperator::IndexPtr, expr);
-            Instruction(idx).info<CIROperator::IndexPtr>() = {
+            auto idx = Make_Instruction<CIROperator::IndexPtr>(expr, {
                 .array_inst = array_ptr,
                 .index_inst = index_inst,
-            };
+            });
             return idx;
         } break;
 
@@ -633,8 +601,7 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
             // ^ptr 左值: 取指针值作为地址，产生左值
             if(expr->UnaryExpr.op == TokenType::Caret) {
                 auto ptr_val = build_ptr_inst_for_expr(expr->UnaryExpr.operand);
-                auto deref = New_Instruction(CIROperator::Deref, expr);
-                Instruction(deref).info<CIROperator::Deref>().operand_inst = ptr_val;
+                auto deref = Make_Instruction<CIROperator::Deref>(expr, { .operand_inst = ptr_val });
                 return deref;
             }
             return build_inst_for_expr(expr);
@@ -657,8 +624,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             if(sym && sym->is_var_decl()) {
                 auto ref = New_Instruction(CIROperator::IdentRef, expr);
                 Instruction(ref).symbol = expr->ast_symbol;
-                auto load = New_Instruction(CIROperator::Load, expr);
-                Instruction(load).info<CIROperator::Load>() = { .ptr_inst = ref };
+                auto load = Make_Instruction<CIROperator::Load>(expr, { .ptr_inst = ref });
 
                 result = load;
                 break;
@@ -672,10 +638,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_FunctionCallExpr: {
                 // func_type = TypeOfInstResult(func_val)
                 auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
-                auto typeof_func = New_Instruction(CIROperator::TypeOfInstResult, expr);
-                Instruction(typeof_func).info<CIROperator::TypeOfInstResult>() = {
+                auto typeof_func = Make_Instruction<CIROperator::TypeOfInstResult>(expr, {
                     .target_inst = called_thing_inst
-                };
+                });
 
                 // 每个实参: FunParamType + DetermineType
                 Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(stage_allocator());
@@ -683,26 +648,23 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                     Ast *arg = expr->FunctionCallExpr.args[i];
                     auto arg_inst = build_inst_for_expr(arg);
 
-                    auto fpt = New_Instruction(CIROperator::FuncParamType, arg);
-                    Instruction(fpt).info<CIROperator::FuncParamType>() = {
+                    auto fpt = Make_Instruction<CIROperator::FuncParamType>(arg, {
                         .type_of_func_type_inst = typeof_func,
                         .param_index = i,
-                    };
+                    });
 
-                    auto determine_type = New_Instruction(CIROperator::DetermineType, arg);
-                    Instruction(determine_type).info<CIROperator::DetermineType>() = {
+                    auto determine_type = Make_Instruction<CIROperator::DetermineType>(arg, {
                         .determining_inst = arg_inst,
                         .type_inst = fpt,
-                    };
+                    });
 
                     arg_insts.push_back(arg_inst);
                 }
 
-                auto call_inst = New_Instruction(CIROperator::Call, expr);
-                Instruction(call_inst).info<CIROperator::Call>() = {
+                auto call_inst = Make_Instruction<CIROperator::Call>(expr, {
                     .called_thing = called_thing_inst,
                     .arg_insts = arg_insts.copy(permanent_allocator()),
-                };
+                });
 
                 result = call_inst;
             } break;
@@ -711,12 +673,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
             auto right_inst = build_inst_for_expr(expr->BinaryExpr.right);
 
-            auto bin = New_Instruction(CIROperator::Binary, expr);
-            Instruction(bin).info<CIROperator::Binary>() = {
+            auto bin = Make_Instruction<CIROperator::Binary>(expr, {
                 .op = expr->BinaryExpr.op,
                 .left_inst  = left_inst,
                 .right_inst = right_inst,
-            };
+            });
             result = bin;
         } break;
 
@@ -726,42 +687,37 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // &x: 左值取地址 → 指针值
             if(op == TokenType::And) {
                 auto lval = build_ptr_inst_for_expr(expr->UnaryExpr.operand);
-                auto addr_of = New_Instruction(CIROperator::AddrOf, expr);
-                Instruction(addr_of).info<CIROperator::AddrOf>().lval_inst = lval;
+                auto addr_of = Make_Instruction<CIROperator::AddrOf>(expr, { .lval_inst = lval });
                 result = addr_of; break;
             }
             // ^ptr: 对指针值 Load
             if(op == TokenType::Caret) {
                 auto ptr_val_inst = build_inst_for_expr(expr->UnaryExpr.operand);
-                auto load = New_Instruction(CIROperator::Deref, expr);
-                Instruction(load).info<CIROperator::Deref>().operand_inst = ptr_val_inst;
+                auto load = Make_Instruction<CIROperator::Deref>(expr, { .operand_inst = ptr_val_inst });
                 result = load; break;
             }
 
             // -, !, ~, 等其他一元运算
             auto operand_inst = build_inst_for_expr(expr->UnaryExpr.operand);
-            auto un = New_Instruction(CIROperator::Unary, expr);
-            Instruction(un).info<CIROperator::Unary>() = {
+            auto un = Make_Instruction<CIROperator::Unary>(expr, {
                 .op = op,
                 .operand_inst = operand_inst,
-            };
+            });
             result = un;
         } break;
 
         case AstType_CastExpr: {
             auto value_inst = build_inst_for_expr(expr->CastExpr.expr);
             auto target_inst = build_inst_for_expr(expr->CastExpr.target_type_ast);
-            auto cast = New_Instruction(CIROperator::Cast, expr);
-            Instruction(cast).info<CIROperator::Cast>() = {
+            auto cast = Make_Instruction<CIROperator::Cast>(expr, {
                 .expr_inst = value_inst,
                 .target_type_inst = target_inst,
-            };
+            });
             result = cast;
         } break;
 
         case AstType_Constant: {
-            auto c = New_Instruction(CIROperator::ConstantValue, expr);
-            Instruction(c).info<CIROperator::ConstantValue>().value = expr->Constant.value;
+            auto c = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = expr->Constant.value });
             result = c;
         } break;
 
@@ -776,36 +732,32 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
                 // 确定化各个field的类型
-                auto field_type_of_struct = New_Instruction(CIROperator::FieldTypeOfStruct, field_init);
-                Instruction(field_type_of_struct).info<CIROperator::FieldTypeOfStruct>() = {
+                auto field_type_of_struct = Make_Instruction<CIROperator::FieldTypeOfStruct>(field_init, {
                     .struct_type_inst = struct_type_inst,
                     .field_index = i,
-                };
+                });
 
-                auto determine_type = New_Instruction(CIROperator::DetermineType, field_init);
-                Instruction(determine_type).info<CIROperator::DetermineType>() = {
+                auto determine_type = Make_Instruction<CIROperator::DetermineType>(field_init, {
                     .determining_inst = field_value_inst,
                     .type_inst = field_type_of_struct
-                };
+                });
 
                 field_insts.push_back(field_value_inst);
             }
 
-            auto init = New_Instruction(CIROperator::StructInit, expr);
-            Instruction(init).info<CIROperator::StructInit>() = {
+            auto init = Make_Instruction<CIROperator::StructInit>(expr, {
                 .struct_type_inst = struct_type_inst,
                 .field_init_insts = field_insts.copy(permanent_allocator()),
-            };
+            });
             result = init;
         } break;
 
         case AstType_FieldAccess: {
             auto parent_inst = build_inst_for_expr(expr->FieldAccess.parent);
-            auto fa = New_Instruction(CIROperator::FieldAccess, expr);
-            Instruction(fa).info<CIROperator::FieldAccess>() = {
+            auto fa = Make_Instruction<CIROperator::FieldAccess>(expr, {
                 .parent_inst = parent_inst,
                 .field_name = expr->FieldAccess.field_name,
-            };
+            });
             result = fa;
         } break;
 
@@ -815,10 +767,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 element_insts.push_back(build_inst_for_expr(elem));
             }
 
-            auto init = New_Instruction(CIROperator::ArrayInit, expr);
-            Instruction(init).info<CIROperator::ArrayInit>() = {
+            auto init = Make_Instruction<CIROperator::ArrayInit>(expr, {
                 .element_insts = element_insts.copy(permanent_allocator()),
-            };
+            });
             result = init;
         } break;
 
@@ -827,17 +778,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto index_inst = build_inst_for_expr(expr->IndexExpr.index_expr);
 
             // TODO: SYMPLIFY 确定化 index_inst 的类型
-            auto determine_type = New_Instruction(CIROperator::DetermineType, expr);
-            Instruction(determine_type).info<CIROperator::DetermineType>() = {
+            auto determine_type = Make_Instruction<CIROperator::DetermineType>(expr, {
                 .determining_inst = index_inst,
                 .type_inst = INVALID_INST,
-            };
+            });
 
-            auto idx = New_Instruction(CIROperator::Index, expr);
-            Instruction(idx).info<CIROperator::Index>() = {
+            auto idx = Make_Instruction<CIROperator::Index>(expr, {
                 .array_inst = array_inst,
                 .index_inst = index_inst,
-            };
+            });
             result = idx;
         } break;
 
@@ -859,49 +808,46 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             SymbolInfo *string_sym = find_symbol_until_global(&context()->global_blank_package->package_scope, xp_string_c("string"));
             Instruction(string_ident).symbol = SymbolInfoRef{&context()->global_blank_package->package_scope.symbols, xp_string_c("string")};
 
-            auto s = New_Instruction(CIROperator::StringLiteral, expr);
-            Instruction(s).info<CIROperator::StringLiteral>().data = ptr;
-            Instruction(s).info<CIROperator::StringLiteral>().count = count_str;
-            Instruction(s).info<CIROperator::StringLiteral>().str = str;
-            Instruction(s).info<CIROperator::StringLiteral>().string_type_inst = string_ident;
+            auto s = Make_Instruction<CIROperator::StringLiteral>(expr, {
+                .data = ptr,
+                .count = count_str,
+                .str = str,
+                .string_type_inst = string_ident,
+            });
 
             result = s;
         } break;
 
         case AstType_EasyType: {
-            auto t = New_Instruction(CIROperator::ConstantValue, expr);
             auto val = make_value(type_type());
             val.type_val(easy_type(expr->EasyType.kind));
-            Instruction(t).info<CIROperator::ConstantValue>().value = val;
+            auto t = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = val });
             result = t;
         } break;
 
         case AstType_PointerType: {
             auto pointed_inst = build_inst_for_expr(expr->PointerType.pointed_type_ast);
-            auto pt = New_Instruction(CIROperator::PointerType, expr);
-            Instruction(pt).info<CIROperator::PointerType>() = {
+            auto pt = Make_Instruction<CIROperator::PointerType>(expr, {
                 .pointed_type_inst = pointed_inst,
-            };
+            });
             result = pt;
         } break;
 
         case AstType_ArrayType: {
             auto elem_inst = build_inst_for_expr(expr->ArrayType.element_type_ast);
             auto count_inst = build_inst_for_expr(expr->ArrayType.count_expr);
-            auto at = New_Instruction(CIROperator::ArrayType, expr);
-            Instruction(at).info<CIROperator::ArrayType>() = {
+            auto at = Make_Instruction<CIROperator::ArrayType>(expr, {
                 .element_type_inst = elem_inst,
                 .count_inst = count_inst,
-            };
+            });
             result = at;
         } break;
 
         case AstType_SliceType: {
             auto elem_inst = build_inst_for_expr(expr->SliceType.element_type_ast);
-            auto st = New_Instruction(CIROperator::SliceType, expr);
-            Instruction(st).info<CIROperator::SliceType>() = {
+            auto st = Make_Instruction<CIROperator::SliceType>(expr, {
                 .element_type_inst = elem_inst,
-            };
+            });
             result = st;
         } break;
 
@@ -911,10 +857,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto struct_decl_block = Begin_Block(expr, true, false);
 
             // 1. GetOrInitStruct
-            auto decl_init = New_Instruction(CIROperator::GetOrInitStruct, expr);
-            Instruction(decl_init).info<CIROperator::GetOrInitStruct>() = {
+            auto decl_init = Make_Instruction<CIROperator::GetOrInitStruct>(expr, {
                 .decl_ast = expr,
-            };
+            });
 
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
@@ -924,20 +869,18 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
                 auto type_block = build_block_inst_for_expr(field->StructField.type_ast, true, false);
 
-                auto sf = New_Instruction(CIROperator::StructField, field);
-                Instruction(sf).info<CIROperator::StructField>() = {
+                auto sf = Make_Instruction<CIROperator::StructField>(field, {
                     .type_block_inst = type_block,
                     .name = field->StructField.name,
-                };
+                });
                 field_insts.push_back(sf);
             }
 
             // 3. FinishStruct — 集中完成所有工作
-            auto finish = New_Instruction(CIROperator::FinishStruct, expr);
-            Instruction(finish).info<CIROperator::FinishStruct>() = {
+            auto finish = Make_Instruction<CIROperator::FinishStruct>(expr, {
                 .struct_decl_inst = decl_init,
                 .field_insts = field_insts.copy(permanent_allocator()),
-            };
+            });
             New_Break(struct_decl_block, finish, expr);
             End_Block();
 
@@ -954,10 +897,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             } else {
                 auto ti_block = Begin_Block(expr, true, false);
 
-                auto i32_type_inst = New_Instruction(CIROperator::ConstantValue, expr);
                 auto val = make_value(type_type());
                 val.type_val(easy_type(Type_i32));
-                Instruction(i32_type_inst).info<CIROperator::ConstantValue>().value = val;
+                auto i32_type_inst = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = val });
 
                 New_Break(ti_block, i32_type_inst, expr);
 
@@ -973,11 +915,10 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                     ef.name = field->ConstDecl.name;
                     ef.value_inst = const_decl_inst;
 
-                    auto dt = New_Instruction(CIROperator::DetermineType, field);
-                    Instruction(dt).info<CIROperator::DetermineType>() = {
+                    auto dt = Make_Instruction<CIROperator::DetermineType>(field, {
                         .determining_inst = const_decl_inst,
                         .type_inst = tag_type_inst,
-                    };
+                    });
                 } else {
                     ef.name = field->Ident.name;
                     ef.value_inst = INVALID_INST;
@@ -985,14 +926,13 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 fields.push_back(ef);
             }
 
-            auto decl_init = New_Instruction(CIROperator::EnumDeclInit, expr);
-            Instruction(decl_init).info<CIROperator::EnumDeclInit>() = {
+            auto decl_init = Make_Instruction<CIROperator::EnumDeclInit>(expr, {
                 .tag_type_inst = tag_type_inst,
                 .decl_ast = expr,
                 .symbol = curr_const_sym,
                 .scope = curr_scope,
                 .fields = fields,
-            };
+            });
             curr_const_sym = {};
             result = decl_init;
         } break;
@@ -1020,11 +960,10 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             CIRInstructionRef return_type_inst = build_inst_for_expr(expr->FunctionType.return_type_ast);
 
-            result = New_Instruction(CIROperator::FuncType, expr);
-            Instruction(result).info<CIROperator::FuncType>() = {
+            result = Make_Instruction<CIROperator::FuncType>(expr, {
                 .param_type_insts = param_type_insts.copy(permanent_allocator()),
                 .return_type_inst = return_type_inst,
-            };
+            });
         } break;
 
         default: {
@@ -1047,23 +986,21 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 CIRInstructionRef CIRBuilder::Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast) {
     isize slot = curr_func ? curr_func->slot_count++ : -1;
-    auto vd = New_Instruction(CIROperator::VariableDecl, ast);
-    Instruction(vd).info<CIROperator::VariableDecl>() = {
+    auto vd = Make_Instruction<CIROperator::VariableDecl>(ast, {
         .name = name,
         .symbol = ast ? ast->ast_symbol : SymbolInfoRef{},
         .slot = slot,
         .is_var_arg = is_var_arg,
         .no_zero_init = no_zero_init,
-    };
+    });
     return vd;
 }
 
 CIRInstructionRef CIRBuilder::New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast) {
-    auto br = New_Instruction(CIROperator::Break, ast);
-    Instruction(br).info<CIROperator::Break>() = {
+    auto br = Make_Instruction<CIROperator::Break>(ast, {
         .break_block = break_block,
         .break_value_inst = break_value_inst,
-    };
+    });
     return br;
 }
 
@@ -1093,8 +1030,7 @@ CIRInstructionRef CIRBuilder::Begin_Block(Ast *ast, bool is_comptime, bool immed
 
     CIRBlockRef blk = curr_pkg->create_block(is_comptime, immediate_eval, false);
 
-    auto blockref = New_Instruction(CIROperator::BlockRef, ast);
-    Instruction(blockref).info<CIROperator::BlockRef>().block_ref = blk;
+    auto blockref = Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk });
 
     block_stack.push_back(blk);
 
@@ -1133,8 +1069,7 @@ bool CIRBuilder::Enter_Scope(Ast *ast) {
         return false;
     }
 
-    auto ref = New_Instruction(CIROperator::EnterScope, nullptr);
-    Instruction(ref).info<CIROperator::EnterScope>().scope = child;
+    auto ref = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = child });
     curr_scope = child;
 
     return true;
@@ -1146,8 +1081,7 @@ void CIRBuilder::Exit_Scope() {
         return;
     }
 
-    auto ref = New_Instruction(CIROperator::ExitScope, nullptr);
-    Instruction(ref).info<CIROperator::ExitScope>().scope = parent;
+    auto ref = Make_Instruction<CIROperator::ExitScope>(nullptr, { .scope = parent });
     curr_scope = parent;
 }
 

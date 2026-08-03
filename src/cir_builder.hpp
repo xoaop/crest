@@ -56,6 +56,15 @@ struct CIRBuilder {
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 
+    // 便捷：创建指令 + 填充 payload（op 只出现一次；payload 用 designated initializer）
+    // op 是编译期模板参数 → info_type<Op>::type 推导 payload 类型，braced-init 直接构造
+    template<CIROperator Op>
+    CIRInstructionRef Make_Instruction(Ast *ast, const typename info_type<Op>::type& payload) {
+        auto ref = New_Instruction(Op, ast);
+        Instruction(ref).info<Op>() = payload;
+        return ref;
+    }
+
     CIRInstructionRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);  // 创建子块 + BlockRef 指令并压栈，返回 handle（尾随 BlockRef 指令位置）
     void End_Block();                                                           // 弹栈
     CIRInstructionRef Begin_Loop(Ast *ast);
