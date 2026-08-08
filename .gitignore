@@ -25,6 +25,7 @@ temp*
 # 构建输出目录
 output/
 build/
+build_release/
 .build/
 build_cmake_*/
 build_rel_*/
