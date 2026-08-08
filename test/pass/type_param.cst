@@ -1,0 +1,290 @@
+
+// @pass
+// @run
+
+// ─── 1 type param ───────────────────────────────────
+
+Array :: $(T: type) -> type {
+    return struct {
+        data: *T;
+        len: i64;
+    };
+}
+
+Box :: $(T: type) -> type {
+    return struct {
+        ptr: *T;
+    };
+}
+
+// ─── 2 type params ──────────────────────────────────
+
+Pair :: $(K: type, V: type) -> type {
+    return struct {
+        key: *K;
+        val: *V;
+    };
+}
+
+// ─── 3 type params ──────────────────────────────────
+
+Triple :: $(A: type, B: type, C: type) -> type {
+    return struct {
+        first: *A;
+        second: *B;
+        third: *C;
+    };
+}
+
+// ─── 4 type params ──────────────────────────────────
+
+Quad :: $(T0: type, T1: type, T2: type, T3: type) -> type {
+    return struct {
+        f0: *T0;
+        f1: *T1;
+        f2: *T2;
+        f3: *T3;
+    };
+}
+
+// ─── 5 type params ──────────────────────────────────
+
+Quint :: $(A: type, B: type, C: type, D: type, E: type) -> type {
+    return struct {
+        a: *A;
+        b: *B;
+        c: *C;
+        d: *D;
+        e: *E;
+    };
+}
+
+// ─── identity: 透传 type param ───────────────────────
+
+Id :: $(T: type) -> type {
+    return T;
+}
+
+// ─── 双重指针 ────────────────────────────────────────
+
+PtrPtr :: $(T: type) -> type {
+    return **T;
+}
+
+// ─── 混合类型字段 ────────────────────────────────────
+
+Mixed :: $(T: type) -> type {
+    return struct {
+        p: *T;
+        flag: bool;
+        count: i64;
+    };
+}
+
+// ─── 嵌套泛型: 泛型 struct 包含指针和计数 ─────────────
+
+BoxedArray :: $(T: type) -> type {
+    return struct {
+        ptr: *T;
+        len: i64;
+    };
+}
+
+// ─── enum with type param ────────────────────────────
+
+Maybe :: $(T: type) -> type {
+    return enum {
+        Nothing;
+        Just;
+    };
+}
+
+// ─── 泛型 struct 作为字段 ────────────────────────────
+
+Entry :: $(K: type, V: type) -> type {
+    return struct {
+        kv: Pair(K, V);
+        extra: *V;
+    };
+}
+
+
+Recursive :: $(T: type) -> type {
+    T = struct {
+        value: *T;
+        next: *T;
+    };
+
+    return T;
+}
+
+Recursive2 :: $(T: type) -> type {
+    return struct {
+        value: i32;
+        next: i32;
+    };
+}
+
+
+Mess :: $(T: type, a: i32) -> type {
+    T = struct {
+        value: *T;
+        next: T;
+    };
+
+
+    return i32;
+}
+
+scope_problem :: $(T: type) -> type {
+    Color :: enum T {
+        Red;
+        Green;
+    }
+
+    a: Color = Color.Red;
+
+
+    return i32;
+}
+
+List :: $(T: type) -> type {
+    return struct {
+        value: *T;
+        next: *List(T);
+    };
+}
+
+
+
+main :: () -> i32 {
+
+    data := {1, 2, 3, 4, 5};
+
+    // ─── Array (1 type param) ─────────────────────
+    arr: Array(i32);
+    arr.data = cast(*i32)&data;
+    arr.len = 5;
+
+    // ─── Box (1 type param) ───────────────────────
+    bx: Box(bool);
+    bx_val: bool = true;
+    bx.ptr = &bx_val;
+    if !^(bx.ptr) { return 1; }
+
+    // ─── Pair (2 type params) ─────────────────────
+    kv: Pair(i32, i64);
+    k_val: i32 = 42;
+    v_val: i64 = 100;
+    kv.key = &k_val;
+    kv.val = &v_val;
+    if (^(kv.key) != 42) || (^(kv.val) != 100) { return 2; }
+
+    // ─── Triple (3 type params) ───────────────────
+    tp: Triple(i32, i64, bool);
+    tp.first = &k_val;
+    tp.second = &v_val;
+    tp.third = &bx_val;
+    if ^(tp.first) != 42 { return 3; }
+
+    // ─── Quad (4 type params) ─────────────────────
+    qd: Quad(i8, i32, i64, bool);
+    q_val1: i8 = 1;
+    q_val2: i32 = 2;
+    q_val3: i64 = 3;
+    q_val4: bool = true;
+    qd.f0 = &q_val1;
+    qd.f1 = &q_val2;
+    qd.f2 = &q_val3;
+    qd.f3 = &q_val4;
+    if (^(qd.f0) != 1) || (^(qd.f1) != 2) { return 4; }
+
+    // ─── Quint (5 type params) ────────────────────
+    qn: Quint(i8, f64, i32, i64, bool);
+    qn_a: i8 = 10;
+    qn_b: f64 = 20.0;
+    qn_c: i32 = 30;
+    qn_d: i64 = 40;
+    qn_e: bool = false;
+    qn.a = &qn_a;
+    qn.b = &qn_b;
+    qn.c = &qn_c;
+    qn.d = &qn_d;
+    qn.e = &qn_e;
+    if (^(qn.a) != 10) || (^(qn.c) != 30) { return 5; }
+
+    // ─── Identity ─────────────────────────────────
+    id1: Id(i32);
+    id1 = 100;
+    if id1 != 100 { return 6; }
+
+    id2: Id(bool);
+    id2 = true;
+    if !id2 { return 7; }
+
+    // ─── PtrPtr ────────────────────────────────────
+    pp: PtrPtr(i32);
+    p_val: i32 = 999;
+    p_ptr: *i32 = &p_val;
+    pp = &p_ptr;
+    if ^(^(pp)) != 999 { return 8; }
+
+    // ─── Mixed ─────────────────────────────────────
+    mx: Mixed(f64);
+    mx_f: f64 = 3.14;
+    mx.p = &mx_f;
+    mx.flag = true;
+    mx.count = 42;
+    if !mx.flag { return 9; }
+    if mx.count != 42 { return 10; }
+
+    // ─── BoxedArray ────────────────────────────────
+    ba: BoxedArray(i32);
+    ba.ptr = &k_val;
+    ba.len = 100;
+    if ^(ba.ptr) != 42 { return 11; }
+    if ba.len != 100 { return 12; }
+
+    // ─── Maybe enum ────────────────────────────────
+    m_some: Maybe(i32);
+    m_nothing: Maybe(i64);
+    // just test it compiles and the type exists
+
+    c :: Maybe(i32).Just
+
+    // ─── Entry ──────────────────────────────────────
+    e: Entry(i32, i64);
+    e.kv.key = &k_val;
+    e.kv.val = &v_val;
+    if (^(e.kv.key) != 42) { return 13; }
+
+    // ─── 重复使用同一泛型类型 ───────────────────────
+    arr3: Array(bool);
+    arr4: Array(i64);
+    arr5: Array(f64);
+    arr3.data = cast(*bool)&bx_val;
+    arr3.len = 1;
+    arr4.data = cast(*i64)&v_val;
+    arr4.len = 1;
+    arr5_f: f64 = 2.71;
+    arr5.data = &arr5_f;
+    arr5.len = 1;
+    if (^(arr3.data) != true) { return 14; }
+    if (^(arr4.data) != 100) { return 15; }
+
+    arr3_: Array(bool);
+
+    if(arr3_ == arr3) { return 16; }
+
+
+    //asdsad :: scope_problem(Array(i32))
+
+    //a_i32_number: i32 = 123;
+    //bbb: Mess(bool, a_i32_number);
+
+    //a_list : List(i32);
+    //a_list.value = &a_i32_number;
+    //a_list.next = &a_list;
+
+    return 0;
+}

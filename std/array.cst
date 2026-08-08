@@ -1,0 +1,177 @@
+import "std/c"
+
+make_array :: $(T: type) -> ? {
+    return (allocator: Allocator) -> Array(T) {
+
+        a : []T;
+        a.data = null;
+        a.count = 0;
+
+        return Array(T).{
+            a,
+            0,    // capacity
+            allocator
+        };
+    };
+}
+
+
+free_array :: $(T: type) -> ? {
+    return (arr: *Array(T)) -> void {
+        free(&arr.allocator, cast(*void) arr.data.data);
+        return;
+    };
+}
+
+array_get :: $(T: type) -> ? {
+    return (arr: *Array(T), index: isize) -> *T {
+        c.assert(index >= 0 && index < arr.data.count);
+        return &arr.data[index];
+    };
+}
+
+array_insert :: $(T: type) -> ? {
+    return (arr: *Array(T), index: isize, value: T) -> void {
+        c.assert(index >= 0 && index <= arr.data.count);
+
+        if(arr.data.count == arr.capacity) {
+            new_capacity : isize;
+            if arr.capacity == 0 {
+                new_capacity = 1;
+            } else {
+                new_capacity = arr.capacity * 2;
+            }
+
+            old_size := arr.capacity * cast(isize)sizeof(T);
+            new_data : *T = cast(*T) realloc(&arr.allocator, cast(*void) arr.data.data, new_capacity * cast(isize)sizeof(T), old_size);
+            arr.data.data = new_data;
+            arr.capacity = new_capacity;
+        }
+
+        i := arr.data.count;
+        for i > index {
+            arr.data[i] = arr.data[i - 1];
+            i = i - 1;
+        }
+
+        arr.data[index] = value;
+        arr.data.count = arr.data.count + 1;
+
+        return;
+    };
+}
+
+
+array_remove :: $(T: type) -> ? {
+    return (arr: *Array(T), index: isize) -> void {
+        c.assert(index >= 0 && index < arr.data.count);
+
+        for i in index..(arr.data.count - 1) {
+            arr.data[i] = arr.data[i + 1];
+        }
+
+        arr.data.count = arr.data.count - 1;
+
+        return;
+    };
+}
+
+array_push_back :: $(T: type) -> ? {
+    return (arr: *Array(T), value: T) -> void {
+        array_insert(T)(arr, arr.data.count, value);
+        return;
+    };
+}
+
+
+array_pop_back :: $(T: type) -> ? {
+    return (arr: *Array(T)) -> void {
+        c.assert(arr.data.count > 0);
+        arr.data.count = arr.data.count - 1;
+        return;
+    };
+}
+
+
+
+Array :: $(T: type) -> type {
+    return struct {
+        data: []T;
+        capacity: isize;
+        allocator: Allocator;
+    };
+}
+
+// main :: () -> i32 {
+    
+//     alloc := heap_allocator();
+    
+//     arr := make_array(isize)(alloc);
+    
+//     // push_back
+//     array_push_back(isize)(&arr, 10);
+//     array_push_back(isize)(&arr, 20);
+//     array_push_back(isize)(&arr, 30);
+//     if arr.data.count != 3 { return 1; }
+//     if ^(array_get(isize)(&arr, 0)) != 10 { return 2; }
+//     if ^(array_get(isize)(&arr, 1)) != 20 { return 3; }
+//     if ^(array_get(isize)(&arr, 2)) != 30 { return 4; }
+    
+//     // insert at head
+//     array_insert(isize)(&arr, 0, 5);
+//     if arr.data.count != 4 { return 5; }
+//     if ^(array_get(isize)(&arr, 0)) != 5  { return 6; }
+//     if ^(array_get(isize)(&arr, 1)) != 10 { return 7; }
+
+//     // remove at index 1
+//     array_remove(isize)(&arr, 1);
+//     if arr.data.count != 3 { return 8; }
+//     if ^(array_get(isize)(&arr, 0)) != 5  { return 9; }
+//     if ^(array_get(isize)(&arr, 1)) != 20 { return 10; }
+
+//     // pop_back
+//     array_pop_back(isize)(&arr);
+//     if arr.data.count != 2 { return 11; }
+//     if ^(array_get(isize)(&arr, 0)) != 5  { return 12; }
+//     if ^(array_get(isize)(&arr, 1)) != 20 { return 13; }
+
+//     // insert at end
+//     array_insert(isize)(&arr, arr.data.count, 99);
+//     if arr.data.count != 3 { return 14; }
+//     if ^(array_get(isize)(&arr, 2)) != 99 { return 15; }
+
+//     // remove at beginning
+//     array_remove(isize)(&arr, 0);
+//     if arr.data.count != 2 { return 16; }
+//     if ^(array_get(isize)(&arr, 0)) != 20 { return 17; }
+
+
+//     // remove at end
+//     array_remove(isize)(&arr, arr.data.count - 1);
+//     if arr.data.count != 1 { return 18; }
+//     if ^(array_get(isize)(&arr, 0)) != 20 { return 19; }
+
+//     // push_back 并触发扩容
+//     array_push_back(isize)(&arr, 40);
+//     array_push_back(isize)(&arr, 50);
+//     array_push_back(isize)(&arr, 60);
+//     array_push_back(isize)(&arr, 70);  // 触发扩容
+//     if arr.data.count != 5 { return 20; }
+//     if ^(array_get(isize)(&arr, 0)) != 20 { return 21; }
+//     if ^(array_get(isize)(&arr, 1)) != 40 { return 22; }
+//     if ^(array_get(isize)(&arr, 2)) != 50 { return 23; }
+//     if ^(array_get(isize)(&arr, 3)) != 60 { return 24; }
+//     if ^(array_get(isize)(&arr, 4)) != 70 { return 25; }
+
+//     // pop_back 连续缩减
+//     array_pop_back(isize)(&arr);
+//     array_pop_back(isize)(&arr);
+//     if arr.data.count != 3 { return 26; }
+//     if ^(array_get(isize)(&arr, 0)) != 20 { return 27; }
+//     if ^(array_get(isize)(&arr, 1)) != 40 { return 28; }
+//     if ^(array_get(isize)(&arr, 2)) != 50 { return 29; }
+
+//     free_array(isize)(&arr);
+
+//     return 0;
+// }

@@ -1,0 +1,43 @@
+// @pass
+// (run: expected exit 0)
+
+main :: () -> i32 {
+
+    // int → bool: non-zero → true
+    b1 := cast(bool)(1);
+    if b1 != true  { return 1; }
+
+    // int → bool: zero → false
+    b2 := cast(bool)(0);
+    if b2 != false { return 2; }
+
+    // int → bool: negative → true
+    b3 := cast(bool)(-1);
+    if b3 != true  { return 3; }
+
+    // i64 → bool
+    b4 := cast(bool)(cast(i64)(100));
+    if b4 != true  { return 4; }
+
+    // bool → i32: true → 1
+    i1 := cast(i32)(true);
+    if i1 != 1     { return 5; }
+
+    // bool → i32: false → 0
+    i2 := cast(i32)(false);
+    if i2 != 0     { return 6; }
+
+    // bool → i64
+    i3 := cast(i64)(true);
+    if i3 != 1     { return 7; }
+
+    // bool → u8
+    u1 := cast(u8)(false);
+    if u1 != 0     { return 8; }
+
+    // bool → bool: identity
+    b5 := cast(bool)(true);
+    if b5 != true  { return 9; }
+
+    return 0;
+}

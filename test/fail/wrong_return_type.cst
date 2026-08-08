@@ -1,0 +1,6 @@
+// @fail
+// @error "undefined symbol"
+
+main :: () -> i32 {
+    return nonexistent_func();
+}

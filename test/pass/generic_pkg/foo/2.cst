@@ -1,0 +1,36 @@
+
+
+
+generate_func :: $(T: type) -> ? {
+
+
+    return () -> T {
+        return cast(T)0;
+    };
+}
+
+
+b :: () -> void {
+    a :: generate_func(i32)
+
+    a();
+
+    return;
+}
+
+c :: () -> ? {
+    a :: generate_func(i32)
+    return a;
+}
+
+d :: () -> ? {
+    return ()->? {
+        return ()->? {
+            return () -> ? {
+                return () -> i32 {
+                    return 0;
+                };
+            };
+        };
+    };
+}

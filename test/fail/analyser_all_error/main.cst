@@ -1,0 +1,116 @@
+
+
+parent_struct :: struct {
+    a: bool;
+    b: i8;
+}
+
+import "parent_struct" // import符号冲突, 导入了一个和struct同名的包
+
+
+import "pkg" 
+//import "pkg" // 重复import同一个包
+
+
+
+
+
+//import "nonexist_pkg" // 导入不存在的包
+
+a_struct :: struct {
+    a: i32;
+    b: i32;
+}
+
+// a_struct :: struct { // 重复定义同名struct
+//     a: i32;
+//     b: i64;
+// }
+
+// pkg :: struct { // 定义了和别的同名符号的struct
+//     a: i32;
+//     b: f32;
+// }
+
+func1 :: () -> void {
+    return;
+}
+// func1 :: () -> i32 { // 重复定义同名函数
+//     return 0;
+// }
+
+// parent_struct :: () -> void { // 定义了和别的同名符号的函数
+//     return;
+// }
+
+legel_fn :: () -> i32 {
+    return pkg.fn_in_pkg();
+}
+
+
+inf_struct_type :: struct {
+    inf_struct_type: inf_struct_type; // 直接递归定义
+    a : i32;
+}
+
+indirect_inf_struct_type1 :: struct {
+    a : indirect_inf_struct_type2; // 间接递归定义
+}
+
+indirect_inf_struct_type2 :: struct {
+    a : indirect_inf_struct_type1; // 间接递归定义
+}
+
+
+
+main :: () -> i32 {
+    // a : unknown_type; // 使用了未知类型
+    // b : a.unknown_pkg.abcd.unknown_type; // 使用了未知包的类型
+    // c : pkg.unknown_type; // 使用了已知包的未知类型
+
+    count := 1;
+    d : [count]i32; // 使用了非常量表达式作为数组长度
+    e : [2147483647i32 + 1]i32; // 使用了溢出的常量表达式作为数组长度, 导致常量折叠失败
+    f : [999999999999]i32; // 使用了不符合要求的常量表达式作为数组长度, 常量折叠成功但结果不合法
+
+
+    //a := 1; // 变量相同作用域重复定义
+
+    g: void; // 变量定义使用了void类型
+
+    1 = 1; // 非法的赋值表达式, 左值不是变量
+    
+    //break; // 在非循环体内使用break
+    //continue; // 在非循环体内使用continue
+
+
+    h : i32 = pkg; // 变量初始化表达式类型error
+
+    parent_struct(); // 调用函数, 但是parent_struct是一个struct
+
+    legel_fn(1); // 函数参数个数不匹配
+
+    //i := unknown_struct.{1, 2}; // 使用了未知struct类型
+
+    //pkg.unknown_fn(); // 调用已知包的未知函数
+
+    j := 1 + 1.0 + 1;
+
+    {
+        pkg := 1;
+
+        pkg.unknown_func(); // 在局部作用域中定义了和包同名的变量, 导致无法访问包中的符号
+    }
+
+    return 0;
+
+}
+
+
+non_void_fn :: () -> i32 {
+    return; // 非void函数没有返回值
+}
+
+void_fn :: () -> void {
+    return 1; // void函数返回了值
+}

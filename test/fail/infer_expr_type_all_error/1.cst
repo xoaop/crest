@@ -1,0 +1,125 @@
+
+import "std/common"
+
+import "pkg"
+
+
+a_struct_type :: struct {
+    field_1: i8;
+    field_2: f32;
+}
+
+
+main :: () -> i32 {
+
+    i32_max : i32 = common.I32_MAX;
+    i32_min : i32 = common.I32_MIN;
+    i64_max : i64 = common.I64_MAX;
+    i64_min : i64 = common.I64_MIN;
+    u8_max : u8 = common.U8_MAX;
+    u8_min : u8 = 0;
+    u32_max : u32 = common.U32_MAX;
+    u32_min : u32 = 0;
+    u64_max : u64 = common.U64_MAX;
+    u64_min : u64 = 0;
+
+
+    bool_true : bool = true;
+    bool_false : bool = false;
+    arr_i32_3_1 : [3]i32 = {1, 2, 3};
+    arr_i32_3_2 : [3]i32 = {4, 5, 6};
+
+    ptr_i32_max : *i32 = &i32_max;
+    ptr_i32_min : *i32 = &i32_min;
+    ptr_i64_max : *i64 = &i64_max;
+    ptr_i64_min : *i64 = &i64_min;
+
+    a_struct_var_1 : a_struct_type = a_struct_type.{ 10, 3.14 };
+    a_struct_var_2 : a_struct_type = a_struct_type.{ 20, 2.718 };
+
+
+    // AstType_Constant部分
+    a: i8 = 128; // untyped_type不能fit_in target_type
+
+
+    // AstType_BinaryExpr部分
+    b := ptr_i32_max + ptr_i32_min; // 指针之间只能 == 或 !=, 其他操作符都是错误的
+    c := ptr_i32_max == ptr_i32_min; // 合法
+    d := ptr_i32_max == ptr_i64_max; // 不同指向类型的指针之间不能比较
+    e := ptr_i32_max == null; // 合法, null可以和任何指针类型比较
+
+    f := null + 1; // null不能参与算术运算
+    g := ptr_i32_max + 1.0; // 指针加减法只能和整数类型进行, 其他类型都是错误的
+    h := ptr_i32_max * 2; // 指针和整数只能+, -, 其他操作符都是错误的
+
+    i := i32_max + i64_max; // 二元运算不同类型的操作数, 不能进行隐式转换
+
+    j := a_struct_var_1 + a_struct_var_2; // 结构体类型只能 == 或 !=, 其他操作符都是错误的
+    k := arr_i32_3_1 + arr_i32_3_2; // 数组类型只能 == 或 !=, 其他操作符都是错误的
+
+    l := true + false; // bool类型只能 == 或 !=, 其他操作符都是错误的
+
+    m := 1.0f32 % 2.0f32; // 浮点数类型不能使用取模运算符
+
+    // AstType_UnaryExpr部分
+    n : i8 = -129; // 
+    o := -true; // bool类型不能使用-运算符
+    p := !1; // 非bool类型不能使用!运算符
+    q := &123; // 字面量不是左值, 不能取地址
+    r := ^123; // 字面量不是指针, 不能解引用
+    s := ^cast(*void)ptr_i32_max; // *void指针不能解引用
+
+    // AstType_CastExpr部分 
+    {
+        a := cast(i8)cast(i32)cast(i64)cast(u8)cast(u32)cast(u64)cast(f32)cast(f64)1; // 合法, 整数和浮点数类型之间可以相互转化
+        b := cast(*i64)ptr_i32_max; // 合法, 指针类型之间可以相互转化
+        e := cast([]i32)arr_i32_3_1; // 合法, 数组可以转化为切片
+
+        c := cast(i32)ptr_i32_max; // 指针不能转化为非指针类型
+        d := cast(*i32)1; // 非指针类型不能转化为指针类型
+        f := cast([3]i32)e; // 切片不能转化为数组
+        g := cast(i32)a_struct_var_1; // 结构体类型不能转化为别的类型
+    }
+
+    // AstType_FieldAccess部分
+    {
+        a := I8_MAX.field_1; // 非package, 非struct变量不能访问字段
+        b := a_struct_var_1.field_3; // 访问不存在的字段
+        c := pkg.str;
+    
+    }
+
+    // AstType_StructInitExpr部分
+    {
+        a := error_struct_type.{ }; // 结构体类型不存在
+        b := a_struct_type.{ 10 }; // 结构体初始化缺少字段
+        c := a_struct_type.{ 10, 3.14, 20 }; // 结构体初始化多了字段
+        d := a_struct_type.{ 3.14, 10 }; // 结构体初始化字段类型不匹配
+    }
+
+    // AstType_ArrayInitExpr部分
+    {
+        a : [3]i32 = {1, 2}; // 数组初始化元素数量不足
+        b : [3]i32 = {1, 2, 3, 4}; // 数组初始化元素数量过多
+        c : [3]i32 = {1, 2, 3.14}; // 数组初始化元素类型不匹配
+    }
+
+    // AstType_IndexExpr部分
+    {
+        a := 1[0]; // 非数组、切片、指针类型不能进行索引访问
+        b := arr_i32_3_1[1.0]; // 索引类型必须是整数类型
+        c := arr_i32_3_1[3]; // 索引越界
+        d := arr_i32_3_1[2147483647 + 1]; // 常量表达式下标溢出
+    }
+
+    // AstType_Ident部分
+    {
+        a := a_struct_type; // 类型不能作为表达式使用
+        b := unknown_func(); // 调用未定义函数
+    }
+    
+
+    abc := pkg; // package不能作为表达式使用
+
+    return 0;
+}

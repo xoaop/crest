@@ -1,0 +1,10 @@
+
+struct_in_foo :: struct {
+    a: i32;
+    b: f32;
+}
+
+
+func_in_foo :: () -> i32 {
+    return 514;
+}

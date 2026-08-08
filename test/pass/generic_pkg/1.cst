@@ -1,0 +1,11 @@
+
+import "foo"
+
+
+main :: () -> i32 {
+    foo.b();
+    foo.c()();
+    foo.d()()()()();
+
+    return foo.generate_func(i32)();
+}

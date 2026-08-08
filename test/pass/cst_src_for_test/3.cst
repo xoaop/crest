@@ -1,0 +1,25 @@
+
+import "foo"
+
+
+func_in_same_pkg_diff_file :: () -> i32 {
+    return 7 + foo.func_in_foo();
+}
+
+
+test_slice :: () -> void {
+    test_struct_arr := {test_struct.{1, 1.1}, test_struct.{2, 2.2}, test_struct.{3, 3.3}};
+    struct_in_foo_arr := {foo.struct_in_foo.{10, 10.1}, foo.struct_in_foo.{20, 20.2}};
+
+    test_struct_slice : []test_struct = test_struct_arr;
+    struct_in_foo_slice : []foo.struct_in_foo = struct_in_foo_arr;
+
+    for i: isize in 0..test_struct_slice.count {
+        a := test_struct_slice[i].a;
+        b := test_struct_slice[i].b;
+
+    }
+
+
+    return;
+}

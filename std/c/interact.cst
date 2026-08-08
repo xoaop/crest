@@ -1,0 +1,10 @@
+// functions for interacting with C code
+
+assert :: (condition: bool) -> void {
+    if condition == false {
+        abort();
+    }
+    return;
+}
+
+

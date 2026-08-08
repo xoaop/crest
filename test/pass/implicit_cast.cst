@@ -1,0 +1,10 @@
+// @pass
+// (run: expected exit 0)
+
+main :: () -> i32 {
+
+    a : **i32 = null;  // null can be assigned to any pointer type
+    b : *void = a;     // any pointer implicitly converts to *void
+
+    return 0;
+}

@@ -1,0 +1,63 @@
+// @pass
+// @run
+// Test: array, slice, and string indexing through full LLVM pipeline.
+// Covers Index (rvalue) and IndexPtr (lvalue) for fixed arrays,
+// slice params, string params, and local strings.
+
+sum :: (arr: []i32, len: i64) -> i32 {
+    total: i32 = 0;
+    for i: i64 in 0..len {
+        total = total + arr[i];
+    }
+    return total;
+}
+
+fill_seq :: (arr: []i32, len: i64) -> void {
+    for i: i64 in 0..len {
+        arr[i] = cast(i32)i;
+    }
+    return;
+}
+
+first_byte :: (s: string) -> u8 {
+    return s[0];
+}
+
+main :: () -> i32 {
+    // --- 1. Fixed array write + read ---
+    arr: [5]i32;
+    for i: i64 in 0..5 {
+        arr[i] = cast(i32)(i * 3);
+    }
+    if arr[0] != 0  { return 1; }
+    if arr[2] != 6  { return 2; }
+    if arr[4] != 12 { return 3; }
+
+    // --- 2. Slice param: write via fill_seq, read via sum ---
+    arr2: [6]i32;
+    fill_seq(arr2, 6);
+    if arr2[0] != 0 { return 4; }
+    if arr2[5] != 5 { return 5; }
+    s := sum(arr2, 6);
+    if s != 15 { return 6; }  // 0+1+2+3+4+5
+
+    // --- 3. String literal indexing ---
+    t := "XYZ";
+    c0 := t[0];
+    c2 := t[2];
+    if c0 != cast(u8)88 { return 7; }  // 'X' = 88
+    if c2 != cast(u8)90 { return 8; }  // 'Z' = 90
+
+    // --- 4. String param → indexing inside function ---
+    fb := first_byte("ABC");
+    if fb != cast(u8)65 { return 9; }  // 'A' = 65
+
+    // --- 5. Overwrite same index ---
+    arr3: [3]i32;
+    arr3[1] = 42;
+    if arr3[1] != 42 { return 10; }
+    arr3[1] = 99;
+    if arr3[1] != 99 { return 11; }
+
+    return 0;
+}

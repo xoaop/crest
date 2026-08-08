@@ -1,0 +1,83 @@
+// @pass
+// @run
+
+C :: import "std/c"
+
+std :: import "std"
+
+
+main :: () -> i32 {
+    // Test integer addition
+
+    fff : i32;
+    a: i64 = 10;
+    b: i64 = 20;
+    c: i64 = a + b;
+
+    eee : i32 = ---;
+
+    C.printf("The sum of %d and %d is %d\n".data, a, b, c);
+    
+
+    // Test function call
+    d: i64 = add_1(c);
+    if(d != 31) {
+        return 1;
+    }
+
+    // 测试复杂的常量表达式
+    e: i64 = (d * 2 + 5) / 3 - 4;
+    if(e != 18) {
+        return 1;
+    }
+
+    bool_test: bool = (10 >= 2 * 5 || 3 == 3);
+    if(!bool_test) {
+        return 1;
+    }
+
+
+    // 测试复杂的非常量表达式
+    f: i64 = 0;
+    f = (e + 10) * 2 - add_1(5);
+    
+
+    if(f != 50) {
+        return 1;
+    }
+
+
+    // stmt测试
+    if f > 20 {
+        f = f - 10;
+    } else {
+        f = f + 10;
+    }
+    if f != 40 {
+        return 1;
+    }
+
+    for i: i64 in 0..5 {
+        f = f + i;
+    }
+    if f != 50 {
+        return 1;
+    }
+
+    func_in_func :: () -> i32 {
+        a := 2;
+
+        return 42;
+    }
+
+    C.printf("func_in_func: %d".data, func_in_func());
+
+    
+
+    
+    return 0;
+}
+
+add_1 :: (a: i64) -> i64 {
+    return a + 1;
+}

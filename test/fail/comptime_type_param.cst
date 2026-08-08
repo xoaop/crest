@@ -1,0 +1,10 @@
+// @fail
+// @error "类型 'type' 的参数要求函数声明为 comptime"
+
+bad_func :: (x: type) -> type {
+    return x;
+}
+
+main :: () -> i32 {
+    return 0;
+}
