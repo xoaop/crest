@@ -48,3 +48,21 @@ endif()
 if(UNIX AND NOT APPLE)
     target_link_options(crest PRIVATE "-Wl,-rpath,${CMAKE_CURRENT_SOURCE_DIR}/bin")
 endif()
+
+# 把可执行文件复制到项目根目录：编译器从自身目录（compiler_path）搜 std/ 等包，
+# exe 必须和 std/ 同根，resolve_package_path("std/builtin") 才能命中
+if(WIN32)
+    set(CREST_ROOT_EXE "${CMAKE_CURRENT_SOURCE_DIR}/crest.exe")
+else()
+    set(CREST_ROOT_EXE "${CMAKE_CURRENT_SOURCE_DIR}/crest")
+endif()
+add_custom_command(TARGET crest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:crest>" "${CREST_ROOT_EXE}")
+# Windows 根目录的 exe 运行依赖 LLVM-C.dll（根目录 dll 不跟踪，新克隆没有）
+if(WIN32)
+    add_custom_command(TARGET crest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/bin/LLVM-C.dll"
+            "${CMAKE_CURRENT_SOURCE_DIR}/LLVM-C.dll")
+endif()
