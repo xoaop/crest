@@ -261,7 +261,13 @@ xp_define xpAllocator xp_heap_allocator();
 // 8MB
 #define MEMORY_BLOCK_DEFAULT_MIN_SIZE (8ll * 1024ll * 1024ll)
 
-#define ALIGNMENT_DEFAULT (8ll)
+// 用 max_align_t 的对齐（x86-64 为 16）。硬编码 8 会让含 __int128（对齐 16）的类型
+// （Value/CIRInstruction）在 arena 上未对齐访问，触发 GPF（Windows 的 malloc 对齐 16 掩盖了此问题）
+#if defined(__cplusplus)
+#define ALIGNMENT_DEFAULT (alignof(::max_align_t))
+#else
+#define ALIGNMENT_DEFAULT (_Alignof(max_align_t))
+#endif
 
 typedef struct xpMemoryBlock {
     struct xpMemoryBlock *prev;
@@ -2211,8 +2217,9 @@ private:
 #if __cplusplus >= 202300L
 
 
-#if defined(XOAOP_I128_SUPPORT)
+#if defined(XOAOP_I128_SUPPORT) && !defined(_LIBCPP_VERSION)
 
+// libc++ 21 起内置支持 formatter<__int128>，无需项目特化（避免重复特化错误）
 template<>
 struct std::formatter<i128>: std::formatter<std::string_view> {
     using std::formatter<std::string_view>::parse;
@@ -2688,8 +2695,12 @@ xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size) {
         arena->curr_block = new_block;
     }
 
-    alloc_result = arena->curr_block->base + arena->curr_block->used;
-    arena->curr_block->used = xp_align_up(arena->curr_block->base + arena->curr_block->used, ALIGNMENT_DEFAULT) - arena->curr_block->base + size;
+    // 对齐到 ALIGNMENT_DEFAULT（≥ i128 的 16 对齐）：返回对齐后的位置，
+    // 否则首次分配（used = sizeof(xpMemoryBlock)，非 16 倍数）只 8 对齐，
+    // 含 __int128 的类型（Value/CIRInstruction）未对齐访问会 GPF（Windows malloc 掩盖）
+    isize aligned_used = xp_align_up(arena->curr_block->base + arena->curr_block->used, ALIGNMENT_DEFAULT) - arena->curr_block->base;
+    alloc_result = arena->curr_block->base + aligned_used;
+    arena->curr_block->used = aligned_used + size;
 
     return alloc_result;
 }

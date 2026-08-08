@@ -10,7 +10,8 @@ std::string get_program_path();
 xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     FILE *file = NULL;
 
-    if(fopen_s(&file, path, "rb")) {
+    file = fopen(path, "rb");
+    if(file == NULL) {
         printf("Read File Failed: %s\n", path);
     }
 
