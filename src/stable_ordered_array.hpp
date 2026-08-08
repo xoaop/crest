@@ -132,8 +132,9 @@ private:
 };
 
 // ============================================================
-// 测试
+// 测试（Debug 专用，依赖 <chrono>/<print>）
 // ============================================================
+#ifdef CREST_DEBUG
 static void test_stable_ordered_array() {
 
     // --- 空 ---
@@ -498,5 +499,7 @@ static void test_stable_ordered_array() {
         }
     }
 }
+
+#endif // CREST_DEBUG
 
 #endif

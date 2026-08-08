@@ -6,6 +6,9 @@
 #include <cstring>
 
 Value::Value() {
+    // 清零整个对象：trivial 拷贝（memcpy）会复制 union 未初始化字节（UB），
+    // Debug -O0 侥幸不崩，Release -O2 会暴露。构造时归零消除。
+    memset(this, 0, sizeof(*this));
     type = undefined_type();
 }
 

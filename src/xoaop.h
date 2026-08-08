@@ -183,6 +183,7 @@ bool xp_check_f64_is_inf(f64 value);
 xp_define u8 *xp_align_up(u8 *value, isize alignment);
 xp_define u8 *xp_align_down(u8 *value, isize alignment);
 xp_define isize xp_align_up_isize(isize value, isize alignment);
+xp_define isize xp_max_alignment(void);
 xp_define b32 xp_is_power_of_two(isize x);
 
 xp_define b32 xp_is_space(char c);
@@ -261,13 +262,12 @@ xp_define xpAllocator xp_heap_allocator();
 // 8MB
 #define MEMORY_BLOCK_DEFAULT_MIN_SIZE (8ll * 1024ll * 1024ll)
 
-// 用 max_align_t 的对齐（x86-64 为 16）。硬编码 8 会让含 __int128（对齐 16）的类型
-// （Value/CIRInstruction）在 arena 上未对齐访问，触发 GPF（Windows 的 malloc 对齐 16 掩盖了此问题）
-#if defined(__cplusplus)
-#define ALIGNMENT_DEFAULT (alignof(::max_align_t))
-#else
-#define ALIGNMENT_DEFAULT (_Alignof(max_align_t))
-#endif
+// 对齐用 xp_max_alignment()（见实现）：
+// arena 对齐 ≥ max(默认分配器对齐, 项目用到的最大扩展类型对齐)。
+// 不用 max_align_t：标准只要求覆盖"所有标量类型"，不含 __int128 这类扩展类型，
+// Windows clang 上 max_align_t 只有 8，会低估 i128（对齐 16）→ 含它的类型
+// （Value/CIRInstruction）在 arena 上只 8 对齐，Release -O2 下 16 字节 movaps
+// 存储未对齐而崩（Debug 用非对齐指令侥幸不崩）。
 
 typedef struct xpMemoryBlock {
     struct xpMemoryBlock *prev;
@@ -1119,10 +1119,10 @@ u32 xp_murmur_hash3_32(const void *data, usize length, usize seed) {
     const u32 c1 = 0xcc9e2d51;
     const u32 c2 = 0x1b873593;
 
-    // 处理 4 字节块
-    const u32 *blocks = cast(u32 *)key;
+    // 处理 4 字节块（memcpy 读，避免 key 未对齐时强转 u32* 的 UB）
     for (usize i = 0; i < nblocks; ++i) {
-        u32 k1 = blocks[i];
+        u32 k1;
+        memcpy(&k1, key + i * 4, 4);
 
         k1 *= c1;
         k1 = rotate_left(k1, 15);
@@ -2353,6 +2353,22 @@ isize xp_align_up_isize(isize value, isize alignment) {
     return (value + (alignment - 1)) & ~(alignment - 1);
 }
 
+isize xp_max_alignment(void) {
+    // 项目用到的所有类型中最大的对齐。默认分配器对齐（operator new 保证，
+    // Windows/Linux x86-64 上都是 16）覆盖所有标准标量类型；__int128 是扩展类型，
+    // 标准宏不保证覆盖（i386 上默认 new=8 而 __int128=16），单独取较大者消除平台巧合。
+#if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
+    isize align = (isize)__STDCPP_DEFAULT_NEW_ALIGNMENT__;
+#else
+    isize align = (isize)alignof(max_align_t);
+#endif
+#if defined(XOAOP_I128_SUPPORT)
+    isize align_i128 = (isize)alignof(i128);
+    if (align_i128 > align) align = align_i128;
+#endif
+    return align;
+}
+
 
 
 b32 xp_is_power_of_two(isize x) {
@@ -2657,7 +2673,7 @@ xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size) {
         xpMemoryBlock *curr_block = arena->curr_block;
 
         // NOTE(xoaop): 对齐
-        isize available_size = curr_block->size - (xp_align_up(curr_block->base + curr_block->used, ALIGNMENT_DEFAULT) - curr_block->base);
+        isize available_size = curr_block->size - (xp_align_up(curr_block->base + curr_block->used, xp_max_alignment()) - curr_block->base);
         if (available_size >= size) {
             found = true;
             break;
@@ -2672,7 +2688,7 @@ xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size) {
     if (!found) {
         arena->curr_block = prev_block;
 
-        isize alloc_size = size + xp_align_up_isize(sizeof(xpMemoryBlock), ALIGNMENT_DEFAULT);
+        isize alloc_size = size + xp_align_up_isize(sizeof(xpMemoryBlock), xp_max_alignment());
 
         isize alloc_block_count = (alloc_size + arena->block_size - 1) / arena->block_size;
 
@@ -2695,10 +2711,10 @@ xp_internal void *xp_arena_alloc_item(xpArena *arena, isize size) {
         arena->curr_block = new_block;
     }
 
-    // 对齐到 ALIGNMENT_DEFAULT（≥ i128 的 16 对齐）：返回对齐后的位置，
+    // 对齐到 xp_max_alignment()（≥ i128 的 16 对齐）：返回对齐后的位置，
     // 否则首次分配（used = sizeof(xpMemoryBlock)，非 16 倍数）只 8 对齐，
     // 含 __int128 的类型（Value/CIRInstruction）未对齐访问会 GPF（Windows malloc 掩盖）
-    isize aligned_used = xp_align_up(arena->curr_block->base + arena->curr_block->used, ALIGNMENT_DEFAULT) - arena->curr_block->base;
+    isize aligned_used = xp_align_up(arena->curr_block->base + arena->curr_block->used, xp_max_alignment()) - arena->curr_block->base;
     alloc_result = arena->curr_block->base + aligned_used;
     arena->curr_block->used = aligned_used + size;
 

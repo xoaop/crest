@@ -6,8 +6,17 @@ A static-typed, GC-free compiled systems programming language.
 
 Requires Clang (C++23) and LLVM 21 (C API library in `bin/`).
 
+Debug (default):
+
 ```bash
 cmake -S . -B build
+cmake --build build
+```
+
+Release:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 

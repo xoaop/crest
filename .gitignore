@@ -24,6 +24,9 @@ temp*
 output/
 build/
 .build/
+build_cmake_*/
+build_rel_*/
+build_ubsan*/
 
 # IDE配置
 .vscode/

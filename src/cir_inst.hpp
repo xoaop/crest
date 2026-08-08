@@ -428,7 +428,10 @@ concept HasTargets = requires(T& t, xpAllocator a) { t.targets(a); };
 
 struct CIRInstruction {
 
-    CIRInstruction() : op{} {
+    CIRInstruction() {
+        // 清零整个对象：trivial 拷贝（default）会复制 union 未初始化字节（UB），
+        // Debug -O0 侥幸不崩，Release -O2 会暴露；op 由 New_Instruction 重设。
+        memset(this, 0, sizeof(*this));
         new (&ConstantValue_info) CIRConstantValueInfo();
     }
     CIRInstruction(const CIRInstruction&) = default;
