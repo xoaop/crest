@@ -242,11 +242,6 @@ isize LLVMBasicBlockMapper::frag_count() {
 }
 
 
-struct LLVMFuncInfo {
-    LLVMValueRef llvm_func = nullptr;  // LLVM 函数值
-    bool body_done = false;            // body 是否已在本 .o 生成
-};
-
 // LLVM IR 生成器, 保存生成一个Module所需的状态
 // 目前一个Module就代表一个package
 struct LLVMGenerator {
@@ -258,8 +253,8 @@ struct LLVMGenerator {
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
     LLVMTypeRef get_llvm_type_from_type(TypeRef type);
     void gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg = nullptr);
+    void gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func);
 
-    LLVMFuncInfo& declare_func(CIRInstResultRef key);
     void gen_ir_inst(CIRInstructionRef ref);
     void gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent = false);
     void gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef first_bb, LLVMBasicBlockMapper& blk_mapper, CIRBlockRef parent_blk_ref);   // 循环收尾接线（回边 + break 目标 → 父 merge）
@@ -309,7 +304,6 @@ public:
     CIRFunctionDeclInfo curr_func_info;
 
     xpHashMap<CIRInstResultRef, LLVMValueRef> inst_vals;
-    xpHashMap<CIRInstResultRef, LLVMFuncInfo> func_map;
 
     xpHashMap<CIRBlockRef, Array<LLVMBasicBlockMapper>> block_to_bbs;
     xpHashMap<isize, LLVMValueRef> string_globals;  // static_mem offset → @str_N
@@ -344,7 +338,7 @@ void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
         "x86-64",
         "",
         LLVMCodeGenLevelDefault,
-        LLVMRelocDefault,
+        LLVMRelocPIC,   // 位置无关代码（对齐主流编译器默认 -fPIE）：Linux 可默认 PIE 链接，Windows 亦可重定位
         LLVMCodeModelDefault
     );
     target_data = LLVMCreateTargetDataLayout(target_machine);
@@ -359,7 +353,6 @@ void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
         .local_vals = xp_hash_map_make<SymbolInfo *, LLVMValueRef>(allocator)
     };
     inst_vals = xp_hash_map_make<CIRInstResultRef, LLVMValueRef>(allocator);
-    func_map = xp_hash_map_make<CIRInstResultRef, LLVMFuncInfo>(allocator);
     block_to_bbs = xp_hash_map_make<CIRBlockRef, Array<LLVMBasicBlockMapper>>(allocator);
     string_globals = xp_hash_map_make<isize, LLVMValueRef>(allocator);
 }
@@ -374,7 +367,6 @@ void LLVMGenerator::deinit() {
 
     array_free(&loop_stack);
     xp_hash_map_free(struct_types);
-    xp_hash_map_free(func_map);
     xp_hash_map_free(block_to_bbs);
 }
 
@@ -731,9 +723,18 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
             ref, result_ctx.pkg()->inst(ref)->to_string(), (int)(v.type ? v.type->kind : -1));
         LLVMValueRef llvm_val;
         if(is_function_type(v.type)) {
+            // 函数值：走原子入口（声明 + body 一体），inst_vals 命中即完整
             const auto& fk = v.func_val().func_key;
-            auto& info = declare_func(fk);
-            llvm_val = info.llvm_func;
+            auto *saved_ci = result_ctx.call_instance();
+            if(fk.result_instance.has_value()) {
+                result_ctx.enter_call_instance(fk.result_instance.value());
+            }
+            gen_ir_function(fk.inst_ref, fk.cir_package);
+            if(fk.result_instance.has_value()) {
+                result_ctx.exit_call();
+                if(saved_ci) result_ctx.enter_call_instance(saved_ci);
+            }
+            llvm_val = *xp_hash_map_get(inst_vals, fk);
         } else {
             llvm_val = gen_llvm_val_by_value(v);
             save_llvm_val_of_inst(ref, llvm_val);
@@ -1018,29 +1019,6 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
 }
 
 
-
-LLVMFuncInfo& LLVMGenerator::declare_func(CIRInstResultRef key) {
-    LLVMFuncInfo *existing = xp_hash_map_get(func_map, key);
-    if (existing) return *existing;
-
-    auto& res = key.cir_package->result_of(key.inst_ref, key.result_instance);
-    XP_ASSERT_DEFAULT(res.state == CIRResultState::WholeValue);
-    Value v = res.actual_val();
-    XP_ASSERT_DEFAULT(is_function_type(v.type));
-
-    auto& func_info = key.cir_package->inst(key.inst_ref)->info<CIROperator::FunctionDecl>();
-    LLVMTypeRef fn_type = get_llvm_type_from_type(v.type);
-    xpString func_full_name = register_func_name(key, func_info.is_extern_c);
-    const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
-    LLVMValueRef llvm_func = LLVMAddFunction(module, c_name, fn_type);
-
-    LLVMFuncInfo info;
-    info.llvm_func = llvm_func;
-    info.body_done = false;
-
-    return *xp_hash_map_insert(&func_map, key, info);
-}
-
 void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg) {
     bool is_cross_pkg = (target_cir_pkg != nullptr && target_cir_pkg != &pkg->cir_package);
     if (target_cir_pkg == nullptr) target_cir_pkg = &pkg->cir_package;
@@ -1049,7 +1027,6 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 
     XP_ASSERT_DEFAULT(func_inst->op == CIROperator::FunctionDecl);
     auto& fd = func_inst->info<CIROperator::FunctionDecl>();
-    if (fd.is_extern_c || fd.is_builtin) return;
 
     auto *saved_ctx_pkg = result_ctx.pkg();
     result_ctx.set_pkg(target_cir_pkg);
@@ -1061,29 +1038,43 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 
     SymbolInfo *func_sym = (func_inst->symbol)();
 
-    // 跨包命名函数：只声明不生成函数体，函数体由所属包的 gen_ir_package 负责
-    // 匿名函数即使跨包也生成（不属于任何包），用 linkonce_odr 让链接器去重
-    if (is_cross_pkg && func_sym) {
-        auto& res = result_ctx.result_of(func_ref);
-        if (res.state == CIRResultState::WholeValue) {
-            CIRInstResultRef fk = res.actual_val().func_val().func_key;
-            declare_func(fk);
-        }
-        return;
-    }
-
     auto& res = result_ctx.result_of(func_ref);
     if (res.state != CIRResultState::WholeValue) return;
-
     CIRInstResultRef fk = res.actual_val().func_val().func_key;
-    auto& info = declare_func(fk);
-    if (info.body_done) return;
 
+    // 无状态：inst_vals 命中即已完整处理（声明 + body 原子完成）
+    if (xp_hash_map_get(inst_vals, fk)) return;
+
+    // 创建声明 + 落库（生成即稳定）
+    LLVMTypeRef fn_type = get_llvm_type_from_type(res.actual_val().type);
+    xpString func_full_name = register_func_name(fk, fd.is_extern_c);
+    const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
+    LLVMValueRef func = LLVMAddFunction(module, c_name, fn_type);
+    xp_hash_map_insert(&inst_vals, fk, func);
+
+    // extern C / builtin：只声明（无 body，值由外部符号提供）
+    if (fd.is_extern_c || fd.is_builtin) return;
+
+    // 跨包命名函数：只声明（body 由所属包生成），匿名函数即使跨包也生成（COMDAT 去重）
+    if (is_cross_pkg && func_sym) return;
+
+    gen_func_body(fk, func);
+}
+
+void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) {
+    auto* func_inst = key.cir_package->inst(key.inst_ref);
+    auto& fd = func_inst->info<CIROperator::FunctionDecl>();
+    SymbolInfo *func_sym = (func_inst->symbol)();
+
+    // 上下文切到函数所在包/实例（生成完恢复）
+    auto *saved_pkg = result_ctx.pkg();
     auto saved_call_instance = result_ctx.call_instance();
-    if (fk.result_instance.has_value()) {
-        result_ctx.enter_call_instance(fk.result_instance.value());
+    result_ctx.set_pkg(key.cir_package);
+    if (key.result_instance.has_value()) {
+        result_ctx.enter_call_instance(key.result_instance.value());
     }
     defer({
+        result_ctx.set_pkg(saved_pkg);
         if (saved_call_instance) {
             result_ctx.enter_call_instance(saved_call_instance);
         } else {
@@ -1091,18 +1082,30 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
         }
     });
 
-    LLVMValueRef func = info.llvm_func;
-    add_local_val(&syms, func_sym, func);
+    // 保存调用者生成状态（函数体生成完恢复）
+    auto saved_state = curr_state;
+    auto saved_func_info = curr_func_info;
+    auto saved_blk = curr_blk;
+    defer({
+        curr_state = saved_state;
+        curr_func_info = saved_func_info;
+        curr_blk = saved_blk;
+        if (curr_state.curr_function != nullptr) {
+            LLVMPositionBuilderAtEnd(builder, curr_bb());
+        }
+    });
 
-    curr_state.curr_function = func;
-    save_llvm_val_of_inst(func_ref, func);
+    add_local_val(&syms, func_sym, llvm_func);
+
+    curr_state.curr_function = llvm_func;
+    save_llvm_val_of_inst(key.inst_ref, llvm_func);
     CIRBlockRef body_blk_ref = result_ctx.pkg()->inst(fd.body_inst)->info<CIROperator::BlockRef>().block_ref;   // body_inst 是 handle（BlockRef 指令），经 inst() 取子块
     auto& body_mapper = add_mapper_for_block(body_blk_ref, false);
-    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(ctx, func, "entry");
-    body_mapper.create_exit(ctx, func);
+    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(ctx, llvm_func, "entry");
+    body_mapper.create_exit(ctx, llvm_func);
     LLVMPositionBuilderAtEnd(builder, entry);
 
-    curr_state = {func, entry};
+    curr_state = {llvm_func, entry};
     curr_func_info = fd;
 
     curr_blk = body_blk_ref;
@@ -1117,13 +1120,11 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
         }
     }
 
-    info.body_done = true;
-
     // 匿名函数可能被多个模块引用，用 COMDAT (any) 去重，避免 COFF 弱外部 .default. 冲突
     if (!func_sym) {
-        LLVMComdatRef comdat = LLVMGetOrInsertComdat(module, LLVMGetValueName(func));
+        LLVMComdatRef comdat = LLVMGetOrInsertComdat(module, LLVMGetValueName(llvm_func));
         LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
-        LLVMSetComdat(func, comdat);
+        LLVMSetComdat(llvm_func, comdat);
     }
 }
 
@@ -1227,19 +1228,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 return;
             }
 
-            auto saved_state = curr_state;
-            auto saved_func_info = curr_func_info;
-            auto saved_blk = curr_blk;
-            defer({
-                curr_state = saved_state;
-                curr_func_info = saved_func_info;
-                curr_blk = saved_blk;
-                if(curr_state.curr_function != nullptr) {
-                    LLVMPositionBuilderAtEnd(builder, curr_bb());
-                }
-            });
-
-            gen_ir_function(ref);
+            gen_ir_function(ref);   // 原子入口：生成状态由 gen_func_body 管理
         } break;
 
         case CIROperator::BlockRef: {
@@ -1474,15 +1463,12 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             TypeRef func_type = is_pointer_type(called_type) ? called_type->pointed_type : called_type;
             XP_ASSERT_DEFAULT(is_function_type(func_type));
 
-            // 在调用处生成函数体（链接器去重），不区分是否本 package
+            // 调用处确保被调函数存在（原子：声明 + body 一体，生成状态由 gen_func_body 管理）
             auto& callee_result = result_ctx.result_of(info.called_thing);
             if(callee_result.state == CIRResultState::WholeValue) {
                 Value v = callee_result.actual_val();
                 if(is_function_type(v.type)) {
                     auto fk = v.func_val().func_key;
-                    auto saved_state = curr_state;
-                    auto saved_func_info = curr_func_info;
-                    auto saved_blk = curr_blk;
                     auto *saved_ci = result_ctx.call_instance();
                     if(fk.result_instance.has_value()) {
                         result_ctx.enter_call_instance(fk.result_instance.value());
@@ -1491,12 +1477,6 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     if(fk.result_instance.has_value()) {
                         result_ctx.exit_call();
                         if(saved_ci) result_ctx.enter_call_instance(saved_ci);
-                    }
-                    curr_state = saved_state;
-                    curr_func_info = saved_func_info;
-                    curr_blk = saved_blk;
-                    if(curr_state.curr_function != nullptr) {
-                        LLVMPositionBuilderAtEnd(builder, curr_bb());
                     }
                 }
             }
