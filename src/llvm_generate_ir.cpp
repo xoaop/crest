@@ -338,7 +338,7 @@ void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
         "x86-64",
         "",
         LLVMCodeGenLevelDefault,
-        LLVMRelocPIC,   // 位置无关代码（对齐主流编译器默认 -fPIE）：Linux 可默认 PIE 链接，Windows 亦可重定位
+        LLVMRelocPIC,
         LLVMCodeModelDefault
     );
     target_data = LLVMCreateTargetDataLayout(target_machine);

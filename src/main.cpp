@@ -94,7 +94,9 @@ int main(int argc, char** argv) {
             return 0;
 
         } else if(strcmp(argv[i], "-trace") == 0) {
+#if defined(CREST_DEBUG)
             g_trace_enabled = true;
+#endif
         } else if(strcmp(argv[i], "-cir_dump") == 0) {
             context()->cir_dump = true;
         } else if(strcmp(argv[i], "-scope_dump") == 0) {
