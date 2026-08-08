@@ -1,4 +1,4 @@
-﻿#include "llvm_generate_ir.hpp"
+#include "llvm_generate_ir.hpp"
 #include "internal/llvm_generator.hpp"
 
 // #include "common.hpp"
@@ -198,28 +198,9 @@ isize LLVMBasicBlockMapper::frag_count() {
 
 
 void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
-    ctx = LLVMContextCreate();
-    module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, ctx);
-    builder = LLVMCreateBuilderInContext(ctx);
-
-    LLVMTargetRef target;
-    char *error = nullptr;
-    if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
-        std::println(stderr, "Error getting target: {}", error);
-        LLVMDisposeMessage(error);
-        XP_ASSERT_DEFAULT(0);
-    }
-
-    target_machine = LLVMCreateTargetMachine(
-        target,
-        LLVMGetDefaultTargetTriple(),
-        "x86-64",
-        "",
-        LLVMCodeGenLevelDefault,
-        LLVMRelocPIC,
-        LLVMCodeModelDefault
-    );
-    target_data = LLVMCreateTargetDataLayout(target_machine);
+    // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
+    module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
+    builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     loop_stack = make_array<LLVMLoopBlocks>(allocator);
     struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
@@ -237,11 +218,9 @@ void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
 
 
 void LLVMGenerator::deinit() {
+    // 全局会话（ctx/target_machine/target_data）生命周期到进程结束，不在这里释放
     LLVMDisposeBuilder(builder);
     LLVMDisposeModule(module);
-    LLVMContextDispose(ctx);
-    LLVMDisposeTargetData(target_data);
-    LLVMDisposeTargetMachine(target_machine);
 
     array_free(&loop_stack);
     xp_hash_map_free(struct_types);
@@ -264,16 +243,38 @@ void LLVMGenerator::deinit() {
 
 
 
+LLVMSession g_llvm_session = {};
+
 void init_llvm() {
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
     LLVMInitializeNativeAsmParser();
     LLVMInitializeNativeDisassembler();
+
+    // 全局会话创建一次（跨 package 共享）：ctx + target_machine + target_data
+    LLVMTargetRef target;
+    char *error = nullptr;
+    if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
+        std::println(stderr, "Error getting target: {}", error);
+        LLVMDisposeMessage(error);
+        XP_ASSERT_DEFAULT(0);
+    }
+    g_llvm_session.ctx = LLVMContextCreate();
+    g_llvm_session.target_machine = LLVMCreateTargetMachine(
+        target,
+        LLVMGetDefaultTargetTriple(),
+        "x86-64",
+        "",
+        LLVMCodeGenLevelDefault,
+        LLVMRelocPIC,
+        LLVMCodeModelDefault
+    );
+    g_llvm_session.target_data = LLVMCreateTargetDataLayout(g_llvm_session.target_machine);
 }
 
 
 LLVMBasicBlockMapper& LLVMGenerator::add_mapper_for_block(CIRBlockRef blk, bool create_exit) {
-    LLVMBasicBlockMapper mapper = LLVMBasicBlockMapper(stage_allocator(), ctx, curr_state.curr_function, create_exit);
+    LLVMBasicBlockMapper mapper = LLVMBasicBlockMapper(stage_allocator(), g_llvm_session.ctx, curr_state.curr_function, create_exit);
     auto* arr = xp_hash_map_get(block_to_bbs, blk);
     if(!arr) {
         auto new_arr = make_array<LLVMBasicBlockMapper>(permanent_allocator());
@@ -307,7 +308,7 @@ LLVMBasicBlockRef LLVMGenerator::curr_bb() {
 
 
 int LLVMGenerator::size_of_type(TypeRef type) {
-    return (int)LLVMStoreSizeOfType(target_data, get_llvm_type_from_type(type));
+    return (int)LLVMStoreSizeOfType(g_llvm_session.target_data, get_llvm_type_from_type(type));
 }
 
 
@@ -382,26 +383,26 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
 LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
     switch(type->kind) {
         case Type_void:
-            return LLVMVoidTypeInContext(ctx);
+            return LLVMVoidTypeInContext(g_llvm_session.ctx);
         case Type_i8:
         case Type_u8:
-            return LLVMInt8TypeInContext(ctx);
+            return LLVMInt8TypeInContext(g_llvm_session.ctx);
         case Type_i32:
         case Type_u32:
-            return LLVMInt32TypeInContext(ctx);
+            return LLVMInt32TypeInContext(g_llvm_session.ctx);
         case Type_i64:
         case Type_u64:
-            return LLVMInt64TypeInContext(ctx);
+            return LLVMInt64TypeInContext(g_llvm_session.ctx);
         case Type_bool:
-            return LLVMInt1TypeInContext(ctx);
+            return LLVMInt1TypeInContext(g_llvm_session.ctx);
         case Type_f32:
-            return LLVMFloatTypeInContext(ctx);
+            return LLVMFloatTypeInContext(g_llvm_session.ctx);
         case Type_f64:
-            return LLVMDoubleTypeInContext(ctx);
+            return LLVMDoubleTypeInContext(g_llvm_session.ctx);
             
         case Type_isize:
         case Type_usize:
-            return LLVMIntPtrTypeForASInContext(ctx, target_data, 0);
+            return LLVMIntPtrTypeForASInContext(g_llvm_session.ctx, g_llvm_session.target_data, 0);
 
         case Type_pointer: {
             LLVMTypeRef pointed_type = get_llvm_type_from_type(type->pointed_type);
@@ -421,7 +422,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             auto name_maybe = type->struct_info.hash_key.name;
             xpString name = name_maybe.has_value() ? type->struct_info.hash_key.name.value() : xp_string_c("anonymous_struct");
 
-            LLVMTypeRef struct_ty = LLVMStructCreateNamed(ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
+            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
             LLVMTypeRef *struct_type = xp_hash_map_insert(&struct_types, key, struct_ty);
             
             
@@ -465,9 +466,9 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
 
         // // *NOTE: 这两种类型只会在常量出现, 且一定会被转为其它类型
         // case Type_untyped_int:
-        //     return LLVMInt128TypeInContext(ctx);
+        //     return LLVMInt128TypeInContext(g_llvm_session.ctx);
         // case Type_untyped_float:
-        //     return LLVMDoubleTypeInContext(ctx);
+        //     return LLVMDoubleTypeInContext(g_llvm_session.ctx);
 
 
         default:
@@ -559,7 +560,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     }
 
     // 运行优化
-    LLVMRunPasses(module, passes, target_machine, options);
+    LLVMRunPasses(module, passes, g_llvm_session.target_machine, options);
 
     
 
@@ -569,7 +570,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
 
     // 生成.o文件
     if(LLVMTargetMachineEmitToFile(
-        target_machine,
+        g_llvm_session.target_machine,
         module,
         obj_file_path.generic_string().c_str(),
         LLVMObjectFile,
@@ -737,7 +738,7 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 
     // bool ⇄ integer (i1)
     if(to_type == easy_type(Type_bool) && is_integer_or_untyped_type(from_type)) {
-        return LLVMBuildTrunc(builder, value, LLVMInt1TypeInContext(ctx), "booltrunctmp");
+        return LLVMBuildTrunc(builder, value, LLVMInt1TypeInContext(g_llvm_session.ctx), "booltrunctmp");
     }
     if(from_type == easy_type(Type_bool) && is_integer_or_untyped_type(to_type)) {
         return LLVMBuildZExt(builder, value, get_llvm_type_from_type(to_type), "boolzexttmp");
@@ -769,7 +770,7 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 //     // TODO: 现在是硬编码
 //     str_struct = LLVMBuildInsertValue(builder, str_struct, str_const, 0, "insertstrptrtmp");
 
-//     str_struct = LLVMBuildInsertValue(builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(ctx), str.length, 0), 1, "insertstrlenntmp");
+//     str_struct = LLVMBuildInsertValue(builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(g_llvm_session.ctx), str.length, 0), 1, "insertstrlenntmp");
 
 //     return str_struct;
 // }
@@ -799,11 +800,11 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
             break;
 
         // case Type_untyped_int:
-        //     llvm_val = LLVMConstInt(LLVMInt128TypeInContext(ctx), cast(unsigned long long)value.integer_val(), false);
+        //     llvm_val = LLVMConstInt(LLVMInt128TypeInContext(g_llvm_session.ctx), cast(unsigned long long)value.integer_val(), false);
         //     break;
 
         // case Type_untyped_float:
-        //     llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(ctx), cast(double)value.float_val());
+        //     llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(g_llvm_session.ctx), cast(double)value.float_val());
         //     break;
 
         case Type_array: {
@@ -979,8 +980,8 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     save_llvm_val_of_inst(key.inst_ref, llvm_func);
     CIRBlockRef body_blk_ref = result_ctx.pkg()->inst(fd.body_inst)->info<CIROperator::BlockRef>().block_ref;   // body_inst 是 handle（BlockRef 指令），经 inst() 取子块
     auto& body_mapper = add_mapper_for_block(body_blk_ref, false);
-    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(ctx, llvm_func, "entry");
-    body_mapper.create_exit(ctx, llvm_func);
+    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(g_llvm_session.ctx, llvm_func, "entry");
+    body_mapper.create_exit(g_llvm_session.ctx, llvm_func);
     LLVMPositionBuilderAtEnd(builder, entry);
 
     curr_state = {llvm_func, entry};
@@ -1029,7 +1030,7 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     LLVMBasicBlockRef parent_bb = curr_bb();
 
     auto& blk_mapper = get_or_create_mapper(blk_ref);
-    auto first_bb = blk_mapper.add_frag_blk(ctx, curr_state.curr_function, is_loop ? "loop" : "block");
+    auto first_bb = blk_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, is_loop ? "loop" : "block");
 
     // 入口接线：Block(connect_to_parent) 与 Loop（内建接线）都从 parent_bb 进入 first_bb
     if(connect_to_parent || is_loop) llvm_build_br_when_no_br(parent_bb, first_bb);
@@ -1048,7 +1049,7 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     } else if(connect_to_parent) {
         llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
         auto& parent_mapper = get_or_create_mapper(old_curr_blk);
-        auto merge_bb = parent_mapper.add_frag_blk(ctx, curr_state.curr_function, "block.merge");
+        auto merge_bb = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "block.merge");
         llvm_build_br_when_no_br(blk_mapper.exit_blk(), merge_bb);
         LLVMPositionBuilderAtEnd(builder, merge_bb);
     } else {
@@ -1064,10 +1065,10 @@ void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef fir
     llvm_build_br_when_no_br(last_bb, first_bb);
 
     // exit_blk（break 目标）→ loop.cont → 父.merge
-    auto cont_bb = blk_mapper.add_frag_blk(ctx, curr_state.curr_function, "loop.cont");
+    auto cont_bb = blk_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "loop.cont");
     llvm_build_br_when_no_br(blk_mapper.exit_blk(), cont_bb);
     auto& parent_mapper = get_or_create_mapper(parent_blk_ref);
-    auto loop_merge = parent_mapper.add_frag_blk(ctx, curr_state.curr_function, "loop.merge");
+    auto loop_merge = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "loop.merge");
     LLVMPositionBuilderAtEnd(builder, cont_bb);
     LLVMBuildBr(builder, loop_merge);
     LLVMPositionBuilderAtEnd(builder, loop_merge);
@@ -1279,7 +1280,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             if(is_array_type(array_type)) {
                 LLVMValueRef array_ptr = array_is_ptr ? array_val : get_ptr_of_llvm_value(array_val, true);
-                indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0);
+                indices[0] = LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0);
                 indices[1] = index_val;
                 elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
@@ -1316,7 +1317,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             if(is_array_type(array_type)) {
                 LLVMValueRef array_ptr = array_is_ptr ? array_val : get_ptr_of_llvm_value(array_val, true);
-                indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0);
+                indices[0] = LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0);
                 indices[1] = index_val;
                 elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
@@ -1433,7 +1434,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMBuildCondBr(builder, cond_val, true_bb, false_bb);
 
             auto& parent_mapper = get_or_create_mapper(curr_blk);
-            auto merge_bb = parent_mapper.add_frag_blk(ctx, curr_state.curr_function, "condbr.merge");
+            auto merge_bb = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "condbr.merge");
 
             LLVMBasicBlockRef true_exit = true_mapper->exit_blk();
             llvm_build_br_when_no_br(true_exit, merge_bb);
@@ -1475,7 +1476,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             // ret 和 br 都是 terminator，后续指令不可达：统一创建新 fragment block 承接死代码
             auto curr_mapper = mapper(curr_blk);
-            auto new_frag_blk = curr_mapper->add_frag_blk(ctx, curr_state.curr_function, "after_break");
+            auto new_frag_blk = curr_mapper->add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "after_break");
             LLVMPositionBuilderAtEnd(builder, new_frag_blk);
         } break;
 
@@ -1624,8 +1625,8 @@ LLVMValueRef LLVMGenerator::gen_array_value_to_slice_cast(LLVMValueRef array_val
     LLVMValueRef slice_struct_value = LLVMGetUndef(slice_struct_type);
 
     LLVMValueRef indices[2] = {
-        LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0),
-        LLVMConstInt(LLVMInt32TypeInContext(ctx), 0, 0)
+        LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0),
+        LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0)
     };
     // 设置数据指针
     LLVMValueRef data_ptr = LLVMBuildGEP2(builder, array_type, array_value_ptr, indices, 2, "arraydataptrtmp");
@@ -1633,7 +1634,7 @@ LLVMValueRef LLVMGenerator::gen_array_value_to_slice_cast(LLVMValueRef array_val
     
     // 设置count
     // TODO i64 换成 isize
-    LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(ctx), array_value_type->array_info.count, 0);
+    LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(g_llvm_session.ctx), array_value_type->array_info.count, 0);
 
     slice_struct_value = LLVMBuildInsertValue(builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
 
@@ -1689,7 +1690,7 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
                 result = LLVMBuildFSub(builder, left, right, "subtmp");
             } else if(is_pointer_type(left_type) && is_pointer_type(right_type)) {
                 TypeRef pointed_type = left_type->pointed_type;
-                LLVMTypeRef int_type = LLVMInt64TypeInContext(ctx);
+                LLVMTypeRef int_type = LLVMInt64TypeInContext(g_llvm_session.ctx);
                 LLVMValueRef left_int  = LLVMBuildPtrToInt(builder, left,  int_type, "ptrtointtmp");
                 LLVMValueRef right_int = LLVMBuildPtrToInt(builder, right, int_type, "ptrtointtmp");
                 LLVMValueRef byte_diff = LLVMBuildSub(builder, left_int, right_int, "ptrdiffbytetmp");

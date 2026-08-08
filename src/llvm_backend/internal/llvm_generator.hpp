@@ -66,6 +66,15 @@ private:
 };
 
 
+// 全局 LLVM 会话：跨 package 共享，init_llvm() 创建一次
+struct LLVMSession {
+    LLVMContextRef ctx;
+    LLVMTargetMachineRef target_machine;
+    LLVMTargetDataRef target_data;
+};
+extern LLVMSession g_llvm_session;
+
+
 // LLVM IR 生成器, 保存生成一个Module所需的状态
 // 目前一个Module就代表一个package
 struct LLVMGenerator {
@@ -108,12 +117,8 @@ struct LLVMGenerator {
 
     LLVMBasicBlockRef curr_bb();
 public:
-    LLVMContextRef ctx;
     LLVMModuleRef module;
     LLVMBuilderRef builder;
-    LLVMTargetMachineRef target_machine;
-    LLVMTargetDataRef target_data;
-
 
     Array<LLVMLoopBlocks> loop_stack;
 
