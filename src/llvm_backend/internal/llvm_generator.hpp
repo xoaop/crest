@@ -46,15 +46,16 @@ struct LLVMState {
 };
 
 
+// 逐 Block 的 BB 集合。增删 BB 用全局会话 ctx（不传参）+ 自身 owner_func。
 struct LLVMBasicBlockMapper {
     LLVMBasicBlockMapper() = default;
-    LLVMBasicBlockMapper(xpAllocator allocator, LLVMContextRef ctx, LLVMValueRef curr_func, bool create_exit_block = true);
+    LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef curr_func, bool create_exit_block = true);
 
-    LLVMBasicBlockRef add_frag_blk(LLVMContextRef ctx, LLVMValueRef func, const char *name);
+    LLVMBasicBlockRef add_frag_blk(const char *name);
     LLVMBasicBlockRef first_frag_blk();
     LLVMBasicBlockRef last_frag_blk();
     LLVMBasicBlockRef exit_blk();
-    void create_exit(LLVMContextRef ctx, LLVMValueRef func);
+    void create_exit();
     LLVMBasicBlockRef frag_at(isize i);
     isize frag_count();
 
@@ -73,6 +74,13 @@ struct LLVMSession {
     LLVMTargetDataRef target_data;
 };
 extern LLVMSession g_llvm_session;
+
+
+// 逐单元 LLVM 句柄：每个 package 一个 module + 绑定它的 builder
+struct LLVMModuleState {
+    LLVMModuleRef module;
+    LLVMBuilderRef builder;
+};
 
 
 // LLVM IR 生成器, 保存生成一个Module所需的状态
@@ -117,8 +125,7 @@ struct LLVMGenerator {
 
     LLVMBasicBlockRef curr_bb();
 public:
-    LLVMModuleRef module;
-    LLVMBuilderRef builder;
+    LLVMModuleState unit;   // 逐单元 LLVM 句柄（module + builder）
 
     Array<LLVMLoopBlocks> loop_stack;
 
