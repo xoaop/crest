@@ -9,9 +9,11 @@
 *.ll
 *.bc
 *.out
+*.so
 
 # LLVM-C 库 dll（Windows 运行时依赖，入库）
 !bin/LLVM-C.dll
+!bin/libLLVM.so.21.1
 
 # 临时文件
 *.tmp

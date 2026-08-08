@@ -44,9 +44,17 @@ if(WIN32)
             "$<TARGET_FILE_DIR:crest>/LLVM-C.dll")
 endif()
 
-# Linux：运行时从 bin/ 找 LLVM-C 共享库
+# Linux：复制 .so 到项目根目录（与根目录 exe 同目录）；
+# RPATH 指向 exe 自身目录（$ORIGIN）和 bin/，两处都能找 libLLVM.so.21.1。
+# 用 BUILD_RPATH 属性而非 target_link_options：CMake 对 $ORIGIN 的转义在
+# 链接选项中会变成 $$ORIGIN（字面路径），属性方式才正确
 if(UNIX AND NOT APPLE)
-    target_link_options(crest PRIVATE "-Wl,-rpath,${CMAKE_CURRENT_SOURCE_DIR}/bin")
+    add_custom_command(TARGET crest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/bin/libLLVM.so.21.1"
+            "${CMAKE_CURRENT_SOURCE_DIR}/libLLVM.so.21.1")
+    set_target_properties(crest PROPERTIES
+        BUILD_RPATH "$ORIGIN:${CMAKE_CURRENT_SOURCE_DIR}/bin")
 endif()
 
 # 把可执行文件复制到项目根目录：编译器从自身目录（compiler_path）搜 std/ 等包，
