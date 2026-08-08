@@ -604,11 +604,6 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
 Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerateConfig config) {
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
     for(Package& pkg: *all_packages) {
-        // 跳过空包（如全局 scope 容器 global_blank_package）：没有源码可生成，
-        // 不该产出空的 .o/.ll 文件
-        if(pkg.ast_files.count == 0) {
-            continue;
-        }
         LLVMGenerator gen;
         gen.init(&pkg, stage_allocator());
         defer(gen.deinit());

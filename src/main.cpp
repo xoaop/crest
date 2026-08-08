@@ -165,21 +165,15 @@ int main(int argc, char** argv) {
 
     context()->all_packages = make_array<Package>(permanent_allocator());
 
-    bool has_builtin_pkg = false;
-    {
-        auto builtin_path_opt = resolve_package_path(xp_string_c("std/builtin"), permanent_allocator());
-        if (builtin_path_opt.has_value()) {
-            Package builtin_pkg = tokenize_and_parse_package(builtin_path_opt.unwrap().as_c_str());
-            builtin_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-            context()->all_packages.push_back(builtin_pkg);
-            has_builtin_pkg = true;
-        }
+    // std/builtin 是必需包：提供全局 scope 与基础类型（string 等），必须存在
+    auto builtin_path_opt = resolve_package_path(xp_string_c("std/builtin"), permanent_allocator());
+    if (!builtin_path_opt.has_value()) {
+        std::println("Error: std/builtin package not found (defines base types)");
+        return 1;
     }
-    if (!has_builtin_pkg) {
-        Package blank_pkg = make_package(xp_make_string(permanent_allocator(), "global_blank_package"), permanent_allocator());
-        blank_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-        context()->all_packages.push_back(blank_pkg);
-    }
+    Package builtin_pkg = tokenize_and_parse_package(builtin_path_opt.unwrap().as_c_str());
+    builtin_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
+    context()->all_packages.push_back(builtin_pkg);
 
     resolve_dependencies(xp_string_c(main_path), context()->all_packages);
 
