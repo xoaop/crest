@@ -14,11 +14,16 @@ endif()
 file(GLOB CREST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/thread_pool/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/*.cpp"
 )
 
 add_executable(crest ${CREST_SOURCES})
 
-target_include_directories(crest PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+# src/ 为顶层 include 根（parser.hpp / llvm-c/ 等），llvm_backend/ 供
+# main.cpp 直接引 llvm_generate_ir.hpp
+target_include_directories(crest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend")
 
 # 所有配置：禁用异常 + i128 支持
 target_compile_options(crest PRIVATE -fno-exceptions)
