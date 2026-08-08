@@ -1,0 +1,19 @@
+// @pass
+// @run
+
+import "foo"
+
+
+main :: () -> i32 {
+    // 跨包泛型实例化 → 内层匿名函数（带局部变量）→ 调用
+    db1 := foo.Doubled(i32, 7)();
+    db2 := foo.Doubled(i64, 10)();
+    if db1 != 14 { return 1; }
+    if db2 != cast(i64)20 { return 2; }
+
+    // 跨包泛型 + 无局部变量
+    z := foo.MakeZero(i32)();
+    if z != 0 { return 3; }
+
+    return 0;
+}

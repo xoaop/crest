@@ -1,0 +1,16 @@
+// 跨包包 foo：泛型 + 内层匿名函数
+
+// 内层函数带局部变量
+Doubled :: $(T: type, val: i32) -> ? {
+    return () -> T {
+        doubled: i32 = val * 2;
+        return cast(T)(doubled);
+    };
+}
+
+// 内层函数无局部变量
+MakeZero :: $(T: type) -> ? {
+    return () -> T {
+        return cast(T)0;
+    };
+}

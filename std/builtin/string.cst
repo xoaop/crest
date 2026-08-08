@@ -1,0 +1,11 @@
+
+
+
+string :: []u8
+
+Slice :: $(T: type) -> type {
+    return struct {
+        data: *T;
+        count: isize;
+    };
+}

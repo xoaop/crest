@@ -1,0 +1,58 @@
+// @pass
+// @run
+
+import "foo"
+
+
+func_in_main :: () -> i32 {
+    return 114;
+}
+
+func_in_main_2 :: () -> i32 {
+    return foo.func_in_foo();
+}
+
+
+test_struct :: struct {
+    a : i32;
+    b : f32;
+}
+
+
+main :: () -> i32 {
+    // 1. Call local function
+    if func_in_main() != 114 { return 1; }
+
+    // 2. Call imported function (cross-package)
+    if foo.func_in_foo() != 514 { return 2; }
+
+    // 3. Call function that chains to imported function
+    if func_in_main_2() != 514 { return 3; }
+
+    // 4. Cross-package struct init + field access
+    foo_struct : foo.struct_in_foo = foo.struct_in_foo.{10, 3.14};
+    if foo_struct.a != 10 { return 4; }
+    foo_struct.a = foo_struct.a + func_in_main();
+    if foo_struct.a != 124 { return 5; }
+
+    // 5. Local struct init + field access
+    test_struct_instance : test_struct = test_struct.{1, 2.0};
+    if test_struct_instance.a != 1 { return 6; }
+    if test_struct_instance.b != 2.0 { return 7; }
+
+    // 6. Pointer to struct + pointer arithmetic
+    ptr_test_struct : *test_struct = &test_struct_instance;
+    if (^(ptr_test_struct + 1 - 1)).a != 1 { return 8; }
+
+    // 7. Cross-package call + pointer deref combined
+    a := foo.func_in_foo() + (^(ptr_test_struct + 1 - 1)).a;
+    if a != 515 { return 9; }
+
+    // 8. Call cross-file function (defined in 3.cst same package)
+    if func_in_same_pkg_diff_file() != 521 { return 10; }
+
+    // 9. test_slice from 3.cst should compile and not crash
+    test_slice();
+
+    return 0;
+}

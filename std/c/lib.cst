@@ -1,0 +1,180 @@
+// ==============================================
+// C Standard Library Bindings for Crest (简化版，适配当前语法)
+// ==============================================
+
+// 基础类型别名
+size_t :: u64
+ptrdiff_t :: i64
+
+// 固定宽度整数类型
+int8_t :: i8
+int32_t :: i32
+int64_t :: i64
+uint8_t :: u8
+uint32_t :: u32
+uint64_t :: u64
+intptr_t :: i64
+uintptr_t :: u64
+
+// 常用常量
+EOF :: -1
+SEEK_SET :: 0
+SEEK_CUR :: 1
+SEEK_END :: 2
+EXIT_SUCCESS :: 0
+EXIT_FAILURE :: 1
+RAND_MAX :: 32767
+CLOCKS_PER_SEC :: 1000000
+
+// 数学常量
+M_E :: 2.718281828459045
+M_PI :: 3.141592653589793
+
+// ==============================================
+// <ctype.h> 字符处理
+// ==============================================
+isalnum :: (c: i32) -> i32 extern_C
+isalpha :: (c: i32) -> i32 extern_C
+iscntrl :: (c: i32) -> i32 extern_C
+isdigit :: (c: i32) -> i32 extern_C
+isgraph :: (c: i32) -> i32 extern_C
+islower :: (c: i32) -> i32 extern_C
+isprint :: (c: i32) -> i32 extern_C
+ispunct :: (c: i32) -> i32 extern_C
+isspace :: (c: i32) -> i32 extern_C
+isupper :: (c: i32) -> i32 extern_C
+isxdigit :: (c: i32) -> i32 extern_C
+tolower :: (c: i32) -> i32 extern_C
+toupper :: (c: i32) -> i32 extern_C
+
+// ==============================================
+// <stdio.h> 标准输入输出
+// ==============================================
+// 字符IO
+getchar :: () -> i32 extern_C
+putchar :: (c: i32) -> i32 extern_C
+fgetc :: (stream: *void) -> i32 extern_C
+fputc :: (c: i32, stream: *void) -> i32 extern_C
+
+// 字符串IO
+puts :: (str: *u8) -> i32 extern_C
+fgets :: (str: *u8, n: i32, stream: *void) -> *u8 extern_C
+fputs :: (str: *u8, stream: *void) -> i32 extern_C
+
+// 格式化IO
+printf :: (fmt: *u8, ...) -> void extern_C
+scanf :: (fmt: *u8, ...) -> void extern_C
+fprintf :: (stream: *void, fmt: *u8, ...) -> void extern_C
+fscanf :: (stream: *void, fmt: *u8, ...) -> void extern_C
+sprintf :: (buf: *u8, fmt: *u8, ...) -> void extern_C
+snprintf :: (buf: *u8, size: size_t, fmt: *u8, ...) -> i32 extern_C
+sscanf :: (buf: *u8, fmt: *u8, ...) -> void extern_C
+
+// 文件操作
+fopen :: (filename: *u8, mode: *u8) -> *void extern_C
+fclose :: (stream: *void) -> i32 extern_C
+fflush :: (stream: *void) -> i32 extern_C
+
+// 文件IO
+fread :: (ptr: *void, size: size_t, count: size_t, stream: *void) -> size_t extern_C
+fwrite :: (ptr: *void, size: size_t, count: size_t, stream: *void) -> size_t extern_C
+
+// 文件定位
+fseek :: (stream: *void, offset: i64, origin: i32) -> i32 extern_C
+ftell :: (stream: *void) -> i64 extern_C
+rewind :: (stream: *void) -> void extern_C
+
+// 文件状态
+feof :: (stream: *void) -> i32 extern_C
+ferror :: (stream: *void) -> i32 extern_C
+remove :: (filename: *u8) -> i32 extern_C
+rename :: (oldname: *u8, newname: *u8) -> i32 extern_C
+
+// ==============================================
+// <stdlib.h> 通用工具
+// ==============================================
+// 内存管理
+malloc :: (size: size_t) -> *void extern_C
+free :: (ptr: *void) -> void extern_C
+calloc :: (count: size_t, size: size_t) -> *void extern_C
+realloc :: (ptr: *void, size: size_t) -> *void extern_C
+
+// 程序控制
+exit :: (code: i32) -> void extern_C
+abort :: () -> void extern_C
+system :: (cmd: *u8) -> i32 extern_C
+getenv :: (name: *u8) -> *u8 extern_C
+
+// 数值转换
+atof :: (str: *u8) -> f64 extern_C
+atoi :: (str: *u8) -> i32 extern_C
+atol :: (str: *u8) -> i64 extern_C
+
+// 随机数
+rand :: () -> i32 extern_C
+srand :: (seed: u32) -> void extern_C
+
+// ==============================================
+// <string.h> 字符串操作
+// ==============================================
+strlen :: (str: *u8) -> size_t extern_C
+strcpy :: (dest: *u8, src: *u8) -> *u8 extern_C
+strncpy :: (dest: *u8, src: *u8, n: size_t) -> *u8 extern_C
+strcat :: (dest: *u8, src: *u8) -> *u8 extern_C
+strncat :: (dest: *u8, src: *u8, n: size_t) -> *u8 extern_C
+strcmp :: (str1: *u8, str2: *u8) -> i32 extern_C
+strncmp :: (str1: *u8, str2: *u8, n: size_t) -> i32 extern_C
+strchr :: (str: *u8, c: i32) -> *u8 extern_C
+strrchr :: (str: *u8, c: i32) -> *u8 extern_C
+strstr :: (haystack: *u8, needle: *u8) -> *u8 extern_C
+
+// 内存操作
+memset :: (ptr: *void, value: i32, size: size_t) -> *void extern_C
+memcpy :: (dest: *void, src: *void, size: size_t) -> *void extern_C
+memmove :: (dest: *void, src: *void, size: size_t) -> *void extern_C
+memcmp :: (ptr1: *void, ptr2: *void, size: size_t) -> i32 extern_C
+
+// 错误信息
+strerror :: (errnum: i32) -> *u8 extern_C
+
+// ==============================================
+// <math.h> 数学函数
+// ==============================================
+abs :: (x: i32) -> i32 extern_C
+labs :: (x: i64) -> i64 extern_C
+fabs :: (x: f64) -> f64 extern_C
+sqrt :: (x: f64) -> f64 extern_C
+pow :: (x: f64, y: f64) -> f64 extern_C
+sin :: (x: f64) -> f64 extern_C
+cos :: (x: f64) -> f64 extern_C
+tan :: (x: f64) -> f64 extern_C
+floor :: (x: f64) -> f64 extern_C
+ceil :: (x: f64) -> f64 extern_C
+round :: (x: f64) -> f64 extern_C
+exp :: (x: f64) -> f64 extern_C
+log :: (x: f64) -> f64 extern_C
+log10 :: (x: f64) -> f64 extern_C
+fmod :: (x: f64, y: f64) -> f64 extern_C
+fmax :: (x: f64, y: f64) -> f64 extern_C
+fmin :: (x: f64, y: f64) -> f64 extern_C
+
+
+
+// ==============================================
+// <time.h> 时间函数
+// ==============================================
+time :: (timer: *u64) -> i64 extern_C
+clock :: () -> i64 extern_C
+difftime :: (time1: i64, time0: i64) -> f64 extern_C
+
+
+
+// ==============================================
+// Windows API
+// ==============================================
+Sleep :: (ms: u32) -> void extern_C
+GetLastError :: () -> u32 extern_C
+OutputDebugStringA :: (lpOutputString: *u8) -> void extern_C
+
+
+

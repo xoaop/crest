@@ -1,0 +1,231 @@
+import "std/c"
+
+
+
+AllocationType :: enum u8 {
+    Alloc :: 0;
+    Free;
+    FreeAll;
+    Realloc;
+}
+
+
+//allocator_proc :: (
+//     allocator_data: *void;
+//     type: AllocationType;
+//     ptr: *void;
+//     size: isize;
+//     old_size: isize;
+// ) -> *void;
+
+allocator_proc :: (
+    *void,            // allocator_data
+    AllocationType,   // type
+    *void,            // ptr
+    isize,            // size
+    isize,            // old_size
+) -> *void
+
+
+Allocator :: struct {
+    proc: *allocator_proc;
+    data: *void;
+}
+
+
+heap_allocator_proc :: (allocator_data: *void, type: AllocationType, ptr: *void, size: isize, old_size: isize) -> *void {
+    result : *void = null;
+
+    if(type == AllocationType.Alloc) {
+        result = c.malloc(cast(u64)size);
+    } else if(type == AllocationType.Free) {
+        c.free(ptr);
+    } else if(type == AllocationType.FreeAll) {
+        // no-op for heap allocator
+    } else if(type == AllocationType.Realloc) {
+        result = c.realloc(ptr, cast(u64)size);
+    }
+
+    return result;
+
+}
+
+
+heap_allocator :: () -> Allocator {
+    return Allocator.{
+        &heap_allocator_proc,
+        null
+    };
+}
+
+alloc :: (allocator: *Allocator, size: isize) -> *void {
+    return allocator.proc(allocator.data, AllocationType.Alloc, null, size, 0);
+}
+
+free :: (allocator: *Allocator, ptr: *void) -> void {
+    allocator.proc(allocator.data, AllocationType.Free, ptr, 0, 0);
+    return;
+}
+
+free_all :: (allocator: *Allocator) -> void {
+    allocator.proc(allocator.data, AllocationType.FreeAll, null, 0, 0);
+    return;
+}
+
+realloc :: (allocator: *Allocator, ptr: *void, new_size: isize, old_size: isize) -> *void {
+    return allocator.proc(allocator.data, AllocationType.Realloc, ptr, new_size, old_size);
+}
+
+// ── Arena Allocator ───────────────────────────────────────────
+
+MEMORY_BLOCK_DEFAULT_MIN_SIZE :: cast(isize)(8 * 1024 * 1024)
+
+MemoryBlock :: struct {
+    prev: *void;   // *MemoryBlock
+    next: *void;   // *MemoryBlock
+    data: *u8;
+    size: isize;
+    used: isize;
+}
+
+Arena :: struct {
+    curr_block: *MemoryBlock;
+    block_size: isize;
+    heap_malloc: bool;
+}
+
+make_arena :: (block_size: isize) -> Arena {
+    a: Arena;
+    a.curr_block = null;
+    a.block_size = block_size;
+    a.heap_malloc = false;
+    return a;
+}
+
+arena_allocator :: (arena: *Arena) -> Allocator {
+    return Allocator.{
+        &arena_allocator_proc,
+        cast(*void) arena
+    };
+}
+
+arena_alloc_item :: (arena: *Arena, size: isize) -> *void {
+    if size <= 0 { return null; }
+
+    prev: *MemoryBlock = null;
+
+    // search existing blocks
+    for arena.curr_block != null {
+        curr := arena.curr_block;
+        if curr.used + size <= curr.size {
+            // found space
+            result := cast(*void)(curr.data + curr.used);
+            curr.used = curr.used + size;
+            return result;
+        }
+        prev = curr;
+        arena.curr_block = cast(*MemoryBlock) curr.next;
+    }
+
+    // no block found, back to last block
+    arena.curr_block = prev;
+
+    // allocate new block
+    alloc_size := size;
+    if alloc_size < arena.block_size {
+        alloc_size = arena.block_size;
+    }
+
+    heap_alloc := heap_allocator();
+    new_block : *MemoryBlock = cast(*MemoryBlock) alloc(&heap_alloc, cast(isize)sizeof(MemoryBlock));
+    buf := cast(*u8) alloc(&heap_alloc, alloc_size);
+
+    new_block.data = buf;
+    new_block.size = alloc_size;
+    new_block.used = size;
+    new_block.prev = cast(*void) arena.curr_block;
+    new_block.next = null;
+
+    if arena.curr_block != null {
+        arena.curr_block.next = cast(*void) new_block;
+    }
+    arena.curr_block = new_block;
+
+    return cast(*void) new_block.data;
+}
+
+arena_allocator_proc :: (allocator_data: *void, type: AllocationType, ptr: *void, size: isize, old_size: isize) -> *void {
+    arena := cast(*Arena) allocator_data;
+    result : *void = null;
+
+    if type == AllocationType.Alloc {
+        result = arena_alloc_item(arena, size);
+    } else if type == AllocationType.Free {
+        // no-op: arena doesn't free individual allocations
+    } else if type == AllocationType.Realloc {
+        if ptr == null { return null; }
+
+        if size == 0 {
+            result = null;
+        } else if size <= old_size {
+            result = ptr;
+        } else {
+            result = arena_alloc_item(arena, size);
+            // memmove data to new location
+            c.memmove(result, ptr, cast(u64)old_size);
+        }
+    } else if type == AllocationType.FreeAll {
+        arena_free_all(arena);
+    }
+
+    return result;
+}
+
+arena_free_all :: (arena: *Arena) -> void {
+    // walk to the first block
+    for arena.curr_block != null {
+        prev := cast(*MemoryBlock) arena.curr_block.prev;
+        if prev == null { break; }
+        arena.curr_block = prev;
+    }
+
+    heap_alloc := heap_allocator();
+
+    // free all blocks from first to last
+    block := arena.curr_block;
+    for block != null {
+        next := cast(*MemoryBlock) block.next;
+        free(&heap_alloc, cast(*void) block.data);
+        free(&heap_alloc, cast(*void) block);
+        block = next;
+    }
+
+    arena.curr_block = null;
+
+    if arena.heap_malloc {
+        free(&heap_alloc, cast(*void) arena);
+    }
+
+    return;
+}
+
+arena_clear :: (arena: *Arena) -> void {
+    // walk to first block
+    for arena.curr_block != null {
+        prev := cast(*MemoryBlock) arena.curr_block.prev;
+        if prev == null { break; }
+        arena.curr_block = prev;
+    }
+
+    // reset used counters without freeing memory
+    block := arena.curr_block;
+    for block != null {
+        block.used = 0;
+        block = cast(*MemoryBlock) block.next;
+    }
+
+    return;
+}
+
+
+

@@ -1,0 +1,209 @@
+// @pass
+// @run
+
+
+// ─── 1 type param, return a value of T ──────────────
+MakeZero :: $(T: type) -> ? {
+    return () -> T {
+        return cast(T)0;
+    };
+}
+
+add :: $(T: type) -> ? {
+    return () -> T {
+        return cast(T)(1 + 1);
+    };
+}
+
+// ─── 2 type params ─────────────────────────────────────
+FirstAs :: $(T: type, U: type) -> ? {
+    return () -> T {
+        return cast(T)0;
+    };
+}
+
+SecondAs :: $(T: type, U: type) -> ? {
+    return () -> U {
+        return cast(U)0;
+    };
+}
+
+// ─── 3 type params ────────────────────────────────────
+ThirdAs :: $(A: type, B: type, C: type) -> ? {
+    return () -> C {
+        return cast(C)0;
+    };
+}
+
+// ─── mixed comptime + runtime params ───────────────────
+ScaleTo :: $(T: type, val: i32) -> ? {
+    return () -> T {
+        return cast(T)(val * 2);
+    };
+}
+
+AddTwo :: $(T: type, a: i32, b: i32) -> ? {
+    return () -> T {
+        return cast(T)(a + b);
+    };
+}
+
+// ─── generic with conditional (if/else) ────────────────
+Choose :: $(T: type, flag: bool) -> ? {
+    return () -> T {
+        if flag {
+            return cast(T)42;
+        }
+        return cast(T)0;
+    };
+}
+
+// ─── generic with multiple returns ─────────────────────
+SignTo :: $(T: type, val: i32) -> ? {
+    return () -> T {
+        if val > 0 {
+            return cast(T)1;
+        }
+        if val < 0 {
+            return cast(T)(-1);
+        }
+        return cast(T)0;
+    };
+}
+
+// ─── generic with local variable ───────────────────────
+Doubled :: $(T: type, val: i32) -> ? {
+    return () -> T {
+        doubled: i32 = val * 2;
+        return cast(T)(doubled);
+    };
+}
+
+// ─── generic with compound expression ──────────────────
+ExprTo :: $(T: type, x: i32, y: i32) -> ? {
+    return () -> T {
+        return cast(T)((x + y) * (x - y));
+    };
+}
+
+
+Array :: $(T: type) -> type {
+    return struct {
+        data: *T;
+        len: i32;
+    };
+}
+
+make_array :: $(T: type, len: i32) -> ? {
+
+    return () -> Array(T) {
+        arr: Array(T);
+        arr.data = null;
+        arr.len = len;
+        return arr;
+    };
+    
+}
+
+main :: () -> i32 {
+
+    ptr :: MakeZero
+
+    // ─── single type param (inference with :=) ──────
+    a := MakeZero(i32)();
+    b := add(i32)();
+    c := add(i64)();
+    if a != 0 { return 1; }
+    if b != 2 { return 2; }
+    if c != cast(i64)2 { return 3; }
+
+    // ─── two type params ───────────────────────────
+    f1 := FirstAs(i32, i64)();
+    s1 := SecondAs(i32, i64)();
+    f1 = 42;
+    s1 = cast(i64)100;
+    if f1 != 42 { return 4; }
+    if s1 != cast(i64)100 { return 5; }
+
+    // ─── three type params ─────────────────────────
+    t1 := ThirdAs(i8, i32, i64)();
+    t1 = cast(i64)99;
+    if t1 != cast(i64)99 { return 6; }
+
+    // ─── mixed comptime + runtime ──────────────────
+    st1 := ScaleTo(i32, 10)();
+    st2 := ScaleTo(i64, 5)();
+    if st1 != 20 { return 7; }
+    if st2 != cast(i64)10 { return 8; }
+
+    at1 := AddTwo(i32, 3, 7)();
+    at2 := AddTwo(i64, 100, 200)();
+    if at1 != 10 { return 9; }
+    if at2 != cast(i64)300 { return 10; }
+
+    // ─── conditional ───────────────────────────────
+    ch1 := Choose(i32, true)();
+    ch2 := Choose(i32, false)();
+    if ch1 != 42 { return 11; }
+    if ch2 != 0 { return 12; }
+
+    // ─── multiple returns ──────────────────────────
+    sg1 := SignTo(i32, 5)();
+    sg2 := SignTo(i32, -3)();
+    sg3 := SignTo(i32, 0)();
+    if sg1 != 1 { return 13; }
+    if sg2 != -1 { return 14; }
+    if sg3 != 0 { return 15; }
+
+    // ─── local variable ────────────────────────────
+    db1 := Doubled(i32, 7)();
+    db2 := Doubled(i64, 10)();
+    if db1 != 14 { return 16; }
+    if db2 != cast(i64)20 { return 17; }
+
+    // ─── compound expression ───────────────────────
+    ex1 := ExprTo(i32, 5, 3)();
+    ex2 := ExprTo(i64, 10, 4)();
+    if ex1 != 16 { return 18; }         // (5+3)*(5-3) = 8*2 = 16
+    if ex2 != cast(i64)84 { return 19; } // (10+4)*(10-4) = 14*6 = 84
+
+    // ─── reuse same generic instance (cache hit) ───
+    a2 := add(i32)();
+    a3 := add(i32)();
+    z2 := MakeZero(i32)();
+    if a2 != 2 { return 20; }
+    if a3 != 2 { return 21; }
+    if z2 != 0 { return 22; }
+
+    // ─── reuse with different runtime params ───────
+    st3 := ScaleTo(i32, 3)();
+    st4 := ScaleTo(i32, 7)();
+    st5 := ScaleTo(i64, 1)();
+    if st3 != 6 { return 23; }
+    if st4 != 14 { return 24; }
+    if st5 != cast(i64)2 { return 25; }
+
+    // ─── f64 and i8 type params ────────────────────
+    ff64 := MakeZero(f64)();
+    if ff64 != cast(f64)0 { return 26; }
+
+    fi8 := MakeZero(i8)();
+    fi8 = cast(i8)1;
+    if fi8 != cast(i8)1 { return 27; }
+
+    // ─── explicit type annotation + generic value ──
+    x: i32 = add(i32)();
+    y: i64 = add(i64)();
+    if x != 2 { return 28; }
+    if y != cast(i64)2 { return 29; }
+
+    array_i32 := make_array(i32, 5)();
+    array_i64 := make_array(i64, 10)();
+    array_i32.len = 5;
+    array_i64.len = 10;
+    if array_i32.len != 5 { return 30; }
+    if array_i64.len != 10 { return 31; }
+    
+
+    return 0;
+}

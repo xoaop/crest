@@ -1,0 +1,11 @@
+
+
+main :: () -> i32 {
+    
+    a_isize: isize = 1;
+    a_usize: usize = 1usize;
+
+    a_i32: i32 = cast(i32)a_isize; 
+
+    return 0;
+}

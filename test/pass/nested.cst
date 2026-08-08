@@ -1,0 +1,7 @@
+// @pass
+main :: () -> i32 {
+    nested :: () -> i32 {
+        return 42;
+    }
+    return 0;
+}

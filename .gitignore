@@ -1,6 +1,7 @@
 # 编译产物
 *.exe
 *.dll
+*.exp
 *.pdb
 *.ilk
 *.o
@@ -9,17 +10,20 @@
 *.bc
 *.out
 
-# 临时测试文件
-*.cst
+# LLVM-C 库 dll（Windows 运行时依赖，入库）
+!bin/LLVM-C.dll
+
+# 临时文件
 *.tmp
 temp*
-1.txt
-laji.cpp
+
+# Windows 批处理脚本（构建用 CMake 替代）
+*.bat
 
 # 构建输出目录
-bin/
 output/
 build/
+.build/
 
 # IDE配置
 .vscode/
@@ -30,6 +34,6 @@ build/
 *.vcxproj
 *.vcxproj.filters
 
-# 测试目录
-test/
-test_proj/
+# 测试：源码要提交，但排除测试构建产物
+test/build_test/
+test/__pycache__/

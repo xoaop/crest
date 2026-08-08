@@ -1,0 +1,37 @@
+
+
+// @pass
+// (run: expected exit 0 — requires link phase)
+
+main :: () -> i32 {
+
+    i8_var: i8 = 0;
+    i32_var: i32 = 1;
+    i64_var: i64 = 100000;
+    u8_var: u8 = 20;
+    u32_var: u32 = 2000;
+    u64_var: u64 = 200000;
+    bool_var: bool = true;
+
+    var := 12021321 + cast(i32)(i8_var) + cast(i32)(i32_var) + cast(i32)(i64_var) + cast(i32)(u8_var) + cast(i32)(u32_var) + cast(i32)(u64_var);
+
+    var1: i32 = cast(i32)(i64_var + 100);
+
+    d := test( 
+        -128, 
+        1000, 
+        100000, 
+        20,
+        2000, 
+        200000, 
+        true
+    ) == true;
+
+    return 0;
+}
+
+test :: (a: i8, b: i32, c: i64, d: u8, e: u32, f: u64, g: bool) -> bool {
+    return true;
+}
+
+    

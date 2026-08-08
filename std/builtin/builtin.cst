@@ -1,0 +1,16 @@
+
+
+sizeof :: $(T: type) -> usize #builtin
+
+// type_of :: $(T: type) -> ? {
+//     return $(val: T) -> type {
+//         return T;
+//     };
+// }
+
+// type_of :: $(val: $T) -> type {
+//     return T;
+// }
+
+
+// t :: (val1: $T, val2: T) -> void {...}

@@ -1,0 +1,7 @@
+
+//import "../analyser_all_error"
+
+fn_in_pkg :: () -> i32 {
+    //return analyser_all_error.legel_fn();
+    return 0;
+}
