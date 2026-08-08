@@ -151,22 +151,6 @@ LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfo *symbol_info, LLV
 
 
 
-LLVMBasicBlockMapper::LLVMBasicBlockMapper(xpAllocator allocator, LLVMContextRef ctx, LLVMValueRef curr_func, bool create_exit_block) {
-    fragments = make_array<LLVMBasicBlockRef>(allocator);
-    owner_func = curr_func;
-    if(create_exit_block)
-        exit_block = LLVMAppendBasicBlockInContext(ctx, curr_func, "block.exit");
-    else
-        exit_block = nullptr;
-}
-
-
-LLVMBasicBlockRef LLVMBasicBlockMapper::add_frag_blk(LLVMContextRef ctx, LLVMValueRef func, const char *name) {
-    auto bb = LLVMAppendBasicBlockInContext(ctx, func, name);
-    fragments.push_back(bb);
-    return bb;
-}
-
 LLVMBasicBlockRef LLVMBasicBlockMapper::first_frag_blk() {
     XP_ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting first frag blk");
     return fragments[0];
@@ -181,12 +165,6 @@ LLVMBasicBlockRef LLVMBasicBlockMapper::exit_blk() {
     return exit_block;
 }
 
-void LLVMBasicBlockMapper::create_exit(LLVMContextRef ctx, LLVMValueRef func) {
-    if(!exit_block) {
-        exit_block = LLVMAppendBasicBlockInContext(ctx, func, "block.exit");
-    }
-}
-
 LLVMBasicBlockRef LLVMBasicBlockMapper::frag_at(isize i) {
     XP_ASSERT_MSG(i >= 0 && i < fragments.count, "frag_at index out of range");
     return fragments[i];
@@ -197,10 +175,33 @@ isize LLVMBasicBlockMapper::frag_count() {
 }
 
 
+LLVMBasicBlockMapper::LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef curr_func, bool create_exit_block) {
+    fragments = make_array<LLVMBasicBlockRef>(allocator);
+    owner_func = curr_func;
+    if(create_exit_block) {
+        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, curr_func, "block.exit");
+    } else {
+        exit_block = nullptr;
+    }
+}
+
+LLVMBasicBlockRef LLVMBasicBlockMapper::add_frag_blk(const char *name) {
+    auto bb = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, name);
+    fragments.push_back(bb);
+    return bb;
+}
+
+void LLVMBasicBlockMapper::create_exit() {
+    if(!exit_block) {
+        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, "block.exit");
+    }
+}
+
+
 void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
-    module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
-    builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
+    unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
+    unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     loop_stack = make_array<LLVMLoopBlocks>(allocator);
     struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
@@ -219,8 +220,8 @@ void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
 
 void LLVMGenerator::deinit() {
     // 全局会话（ctx/target_machine/target_data）生命周期到进程结束，不在这里释放
-    LLVMDisposeBuilder(builder);
-    LLVMDisposeModule(module);
+    LLVMDisposeBuilder(unit.builder);
+    LLVMDisposeModule(unit.module);
 
     array_free(&loop_stack);
     xp_hash_map_free(struct_types);
@@ -260,21 +261,25 @@ void init_llvm() {
         XP_ASSERT_DEFAULT(0);
     }
     g_llvm_session.ctx = LLVMContextCreate();
+    char *host_cpu = LLVMGetHostCPUName();
+    char *host_features = LLVMGetHostCPUFeatures();
     g_llvm_session.target_machine = LLVMCreateTargetMachine(
         target,
         LLVMGetDefaultTargetTriple(),
-        "x86-64",
-        "",
+        host_cpu,
+        host_features,
         LLVMCodeGenLevelDefault,
         LLVMRelocPIC,
         LLVMCodeModelDefault
     );
+    LLVMDisposeMessage(host_cpu);
+    LLVMDisposeMessage(host_features);
     g_llvm_session.target_data = LLVMCreateTargetDataLayout(g_llvm_session.target_machine);
 }
 
 
 LLVMBasicBlockMapper& LLVMGenerator::add_mapper_for_block(CIRBlockRef blk, bool create_exit) {
-    LLVMBasicBlockMapper mapper = LLVMBasicBlockMapper(stage_allocator(), g_llvm_session.ctx, curr_state.curr_function, create_exit);
+    LLVMBasicBlockMapper mapper(stage_allocator(), curr_state.curr_function, create_exit);
     auto* arr = xp_hash_map_get(block_to_bbs, blk);
     if(!arr) {
         auto new_arr = make_array<LLVMBasicBlockMapper>(permanent_allocator());
@@ -319,31 +324,31 @@ LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasic
     LLVMBasicBlockRef curr_block = curr_bb();
     
 
-    LLVMPositionBuilderAtEnd(builder,target_block);
+    LLVMPositionBuilderAtEnd(unit.builder,target_block);
 
     // 如果有末尾指令且还是分支指令，就把 builder 定位到它前面，保证新 alloca 在分支指令前面
     LLVMValueRef last_instr = LLVMGetLastInstruction(target_block);
     if (last_instr && LLVMIsABranchInst(last_instr)) {
-        LLVMPositionBuilderBefore(builder, last_instr);
+        LLVMPositionBuilderBefore(unit.builder, last_instr);
     }
 
     DEBUG_LOG("BuildAlloca: var={}, type_kind={}", var_name, (int)LLVMGetTypeKind(type));
     XP_ASSERT_DEFAULT(type != nullptr);
-    LLVMValueRef alloca = LLVMBuildAlloca(builder, type, var_name);
+    LLVMValueRef alloca = LLVMBuildAlloca(unit.builder, type, var_name);
     DEBUG_LOG("BuildAlloca OK");
 
-    LLVMPositionBuilderAtEnd(builder,curr_block);
+    LLVMPositionBuilderAtEnd(unit.builder,curr_block);
 
     return alloca;
 }
 
 
 void LLVMGenerator::llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBlockRef to) {
-    LLVMPositionBuilderAtEnd(builder, from);
+    LLVMPositionBuilderAtEnd(unit.builder, from);
     if(!LLVMGetBasicBlockTerminator(from)) {
-        LLVMBuildBr(builder, to);
+        LLVMBuildBr(unit.builder, to);
     }
-    LLVMPositionBuilderAtEnd(builder, curr_bb());
+    LLVMPositionBuilderAtEnd(unit.builder, curr_bb());
 }
 
 
@@ -369,7 +374,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     if(allow_alloc_value_to_get_ptr) {
         LLVMTypeRef value_type = LLVMTypeOf(value);
         LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_bb(), "temp", value_type);
-        LLVMBuildStore(builder, value, temp_alloca);
+        LLVMBuildStore(unit.builder, value, temp_alloca);
         return temp_alloca;
     } else {
         XP_ASSERT_DEFAULT(0 && "Compiler Internal Error: Cannot get pointer of value, and not allowed to alloc value to get pointer");
@@ -521,12 +526,12 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     std::filesystem::path ll_file_path = output_path / (file_name + ".ll");
     
 
-    if(LLVMPrintModuleToFile(module, ll_file_path.generic_string().c_str(), &error)) {
+    if(LLVMPrintModuleToFile(unit.module, ll_file_path.generic_string().c_str(), &error)) {
         std::println(stderr, "Error writing .ll file: {}", error);
         LLVMDisposeMessage(error);
     }
     
-    if(LLVMVerifyModule(module, LLVMReturnStatusAction, &error)) {
+    if(LLVMVerifyModule(unit.module, LLVMReturnStatusAction, &error)) {
         std::println(stderr, "Module verification failed: {}", error);
         LLVMDisposeMessage(error);
         // XP_ASSERT_DEFAULT(0);
@@ -560,7 +565,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     }
 
     // 运行优化
-    LLVMRunPasses(module, passes, g_llvm_session.target_machine, options);
+    LLVMRunPasses(unit.module, passes, g_llvm_session.target_machine, options);
 
     
 
@@ -571,7 +576,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     // 生成.o文件
     if(LLVMTargetMachineEmitToFile(
         g_llvm_session.target_machine,
-        module,
+        unit.module,
         obj_file_path.generic_string().c_str(),
         LLVMObjectFile,
         &error
@@ -682,10 +687,10 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
         // 浮点数之间的转换
         if(short_to_long) {
             // 扩展
-            return LLVMBuildFPExt(builder, value, get_llvm_type_from_type(to_type), "fpexttmp");
+            return LLVMBuildFPExt(unit.builder, value, get_llvm_type_from_type(to_type), "fpexttmp");
         } else if(long_to_short) {
             // 截断
-            return LLVMBuildFPTrunc(builder, value, get_llvm_type_from_type(to_type), "fptrunctmp");
+            return LLVMBuildFPTrunc(unit.builder, value, get_llvm_type_from_type(to_type), "fptrunctmp");
         } else if(same_size){
             // 相等，直接返回
             return value;
@@ -696,10 +701,10 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
         // 整数到浮点数的转换
         if(is_signed_type(from_type)) {
             // 有符号整数到浮点数
-            return LLVMBuildSIToFP(builder, value, get_llvm_type_from_type(to_type), "sitofptmp");
+            return LLVMBuildSIToFP(unit.builder, value, get_llvm_type_from_type(to_type), "sitofptmp");
         } else {
             // 无符号整数到浮点数
-            return LLVMBuildUIToFP(builder, value, get_llvm_type_from_type(to_type), "uitofptmp");
+            return LLVMBuildUIToFP(unit.builder, value, get_llvm_type_from_type(to_type), "uitofptmp");
         }
     }
 
@@ -707,10 +712,10 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
         // 浮点数到整数的转换
         if(is_signed_type(to_type)) {
             // 浮点数到有符号整数
-            return LLVMBuildFPToSI(builder, value, get_llvm_type_from_type(to_type), "fptositmp");
+            return LLVMBuildFPToSI(unit.builder, value, get_llvm_type_from_type(to_type), "fptositmp");
         } else {
             // 浮点数到无符号整数
-            return LLVMBuildFPToUI(builder, value, get_llvm_type_from_type(to_type), "fptouitmp");
+            return LLVMBuildFPToUI(unit.builder, value, get_llvm_type_from_type(to_type), "fptouitmp");
         }
     }
 
@@ -721,15 +726,15 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
             // 扩展
             if(is_signed_type(from_type)) {
                 // 有符号扩展
-                return LLVMBuildSExt(builder, value, get_llvm_type_from_type(to_type), "sexttmp");
+                return LLVMBuildSExt(unit.builder, value, get_llvm_type_from_type(to_type), "sexttmp");
             } else {
                 // 无符号扩展
-                return LLVMBuildZExt(builder, value, get_llvm_type_from_type(to_type), "zexttmp");
+                return LLVMBuildZExt(unit.builder, value, get_llvm_type_from_type(to_type), "zexttmp");
             }
 
         } else if(long_to_short) {
             // 截断
-            return LLVMBuildTrunc(builder, value, get_llvm_type_from_type(to_type), "trunctmp");
+            return LLVMBuildTrunc(unit.builder, value, get_llvm_type_from_type(to_type), "trunctmp");
         } else if(same_size){
             // 相等，直接返回
             return value;
@@ -738,10 +743,10 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 
     // bool ⇄ integer (i1)
     if(to_type == easy_type(Type_bool) && is_integer_or_untyped_type(from_type)) {
-        return LLVMBuildTrunc(builder, value, LLVMInt1TypeInContext(g_llvm_session.ctx), "booltrunctmp");
+        return LLVMBuildTrunc(unit.builder, value, LLVMInt1TypeInContext(g_llvm_session.ctx), "booltrunctmp");
     }
     if(from_type == easy_type(Type_bool) && is_integer_or_untyped_type(to_type)) {
-        return LLVMBuildZExt(builder, value, get_llvm_type_from_type(to_type), "boolzexttmp");
+        return LLVMBuildZExt(unit.builder, value, get_llvm_type_from_type(to_type), "boolzexttmp");
     }
     if(from_type == easy_type(Type_bool) && to_type == easy_type(Type_bool)) {
         return value;
@@ -866,7 +871,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
                     ptr.load_bytes(0, str, str_len);
                     str[str_len] = '\0';
 
-                    auto str_val = LLVMBuildGlobalString(builder, str, "strptr");
+                    auto str_val = LLVMBuildGlobalString(unit.builder, str, "strptr");
                     xp_hash_map_insert(&string_globals, ptr.offset, str_val);
                     llvm_val = str_val;
                     break;
@@ -928,7 +933,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     LLVMTypeRef fn_type = get_llvm_type_from_type(res.actual_val().type);
     xpString func_full_name = register_func_name(fk, fd.is_extern_c);
     const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
-    LLVMValueRef func = LLVMAddFunction(module, c_name, fn_type);
+    LLVMValueRef func = LLVMAddFunction(unit.module, c_name, fn_type);
     xp_hash_map_insert(&inst_vals, fk, func);
 
     // extern C / builtin：只声明（无 body，值由外部符号提供）
@@ -970,7 +975,7 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
         curr_func_info = saved_func_info;
         curr_blk = saved_blk;
         if (curr_state.curr_function != nullptr) {
-            LLVMPositionBuilderAtEnd(builder, curr_bb());
+            LLVMPositionBuilderAtEnd(unit.builder, curr_bb());
         }
     });
 
@@ -980,9 +985,9 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     save_llvm_val_of_inst(key.inst_ref, llvm_func);
     CIRBlockRef body_blk_ref = result_ctx.pkg()->inst(fd.body_inst)->info<CIROperator::BlockRef>().block_ref;   // body_inst 是 handle（BlockRef 指令），经 inst() 取子块
     auto& body_mapper = add_mapper_for_block(body_blk_ref, false);
-    LLVMBasicBlockRef entry = body_mapper.add_frag_blk(g_llvm_session.ctx, llvm_func, "entry");
-    body_mapper.create_exit(g_llvm_session.ctx, llvm_func);
-    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMBasicBlockRef entry = body_mapper.add_frag_blk("entry");
+    body_mapper.create_exit();
+    LLVMPositionBuilderAtEnd(unit.builder, entry);
 
     curr_state = {llvm_func, entry};
     curr_func_info = fd;
@@ -993,15 +998,15 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     {
         auto* mapper_ptr = mapper(body_blk_ref);
         LLVMBasicBlockRef merge_bb = mapper_ptr->last_frag_blk();
-        LLVMPositionBuilderAtEnd(builder, merge_bb);
+        LLVMPositionBuilderAtEnd(unit.builder, merge_bb);
         if (!LLVMGetBasicBlockTerminator(merge_bb)) {
-            LLVMBuildUnreachable(builder);
+            LLVMBuildUnreachable(unit.builder);
         }
     }
 
     // 匿名函数可能被多个模块引用，用 COMDAT (any) 去重，避免 COFF 弱外部 .default. 冲突
     if (!func_sym) {
-        LLVMComdatRef comdat = LLVMGetOrInsertComdat(module, LLVMGetValueName(llvm_func));
+        LLVMComdatRef comdat = LLVMGetOrInsertComdat(unit.module, LLVMGetValueName(llvm_func));
         LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
         LLVMSetComdat(llvm_func, comdat);
     }
@@ -1030,12 +1035,12 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     LLVMBasicBlockRef parent_bb = curr_bb();
 
     auto& blk_mapper = get_or_create_mapper(blk_ref);
-    auto first_bb = blk_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, is_loop ? "loop" : "block");
+    auto first_bb = blk_mapper.add_frag_blk(is_loop ? "loop" : "block");
 
     // 入口接线：Block(connect_to_parent) 与 Loop（内建接线）都从 parent_bb 进入 first_bb
     if(connect_to_parent || is_loop) llvm_build_br_when_no_br(parent_bb, first_bb);
 
-    LLVMPositionBuilderAtEnd(builder, first_bb);
+    LLVMPositionBuilderAtEnd(unit.builder, first_bb);
     curr_blk = blk_ref;
 
     for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
@@ -1049,12 +1054,12 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     } else if(connect_to_parent) {
         llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
         auto& parent_mapper = get_or_create_mapper(old_curr_blk);
-        auto merge_bb = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "block.merge");
+        auto merge_bb = parent_mapper.add_frag_blk("block.merge");
         llvm_build_br_when_no_br(blk_mapper.exit_blk(), merge_bb);
-        LLVMPositionBuilderAtEnd(builder, merge_bb);
+        LLVMPositionBuilderAtEnd(unit.builder, merge_bb);
     } else {
         llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
-        LLVMPositionBuilderAtEnd(builder, parent_bb);
+        LLVMPositionBuilderAtEnd(unit.builder, parent_bb);
     }
 }
 
@@ -1065,13 +1070,13 @@ void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef fir
     llvm_build_br_when_no_br(last_bb, first_bb);
 
     // exit_blk（break 目标）→ loop.cont → 父.merge
-    auto cont_bb = blk_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "loop.cont");
+    auto cont_bb = blk_mapper.add_frag_blk("loop.cont");
     llvm_build_br_when_no_br(blk_mapper.exit_blk(), cont_bb);
     auto& parent_mapper = get_or_create_mapper(parent_blk_ref);
-    auto loop_merge = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "loop.merge");
-    LLVMPositionBuilderAtEnd(builder, cont_bb);
-    LLVMBuildBr(builder, loop_merge);
-    LLVMPositionBuilderAtEnd(builder, loop_merge);
+    auto loop_merge = parent_mapper.add_frag_blk("loop.merge");
+    LLVMPositionBuilderAtEnd(unit.builder, cont_bb);
+    LLVMBuildBr(unit.builder, loop_merge);
+    LLVMPositionBuilderAtEnd(unit.builder, loop_merge);
 }
 
 
@@ -1157,7 +1162,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             for (isize i = 0; i < info.field_init_insts.count; i++) {
                 LLVMValueRef field_val = get_llvm_val_from_inst_ref(info.field_init_insts[i]);
-                struct_val = LLVMBuildInsertValue(builder, struct_val, field_val, (unsigned)i, "insertfieldtmp");
+                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, (unsigned)i, "insertfieldtmp");
             }
             save_llvm_val_of_inst(ref, struct_val);
         } break;
@@ -1169,7 +1174,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             for (isize i = 0; i < info.element_insts.count; i++) {
                 LLVMValueRef elem_val = get_llvm_val_from_inst_ref(info.element_insts[i]);
-                array_val = LLVMBuildInsertValue(builder, array_val, elem_val, (unsigned)i, "insertelemtmp");
+                array_val = LLVMBuildInsertValue(unit.builder, array_val, elem_val, (unsigned)i, "insertelemtmp");
             }
             save_llvm_val_of_inst(ref, array_val);
         } break;
@@ -1204,14 +1209,14 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             // ① LValue → load 一层得到逻辑值
             if (is_lval) {
-                parent_val = LLVMBuildLoad2(builder, get_llvm_type_from_type(logical_type), parent_val, "loadtmp");
+                parent_val = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(logical_type), parent_val, "loadtmp");
             }
 
             // ② 如果逻辑类型是 *StructType → 再 load 得到结构体值
             TypeRef struct_type = nullptr;
             if (is_pointer_type(logical_type) && is_struct_type(logical_type->pointed_type)) {
                 struct_type = logical_type->pointed_type;
-                parent_val = LLVMBuildLoad2(builder, get_llvm_type_from_type(struct_type), parent_val, "loadtmp");
+                parent_val = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(struct_type), parent_val, "loadtmp");
             } else {
                 struct_type = logical_type;
             }
@@ -1226,7 +1231,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             }
             XP_ASSERT_DEFAULT(field_idx != -1);
 
-            LLVMValueRef field_val = LLVMBuildExtractValue(builder, parent_val, (unsigned)field_idx, "fieldtmp");
+            LLVMValueRef field_val = LLVMBuildExtractValue(unit.builder, parent_val, (unsigned)field_idx, "fieldtmp");
             save_llvm_val_of_inst(ref, field_val);
         } break;
 
@@ -1239,7 +1244,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             // ① LValue of *StructType（actual=**StructType）→ load 出 *StructType 指针值
             if (is_lval && is_pointer_type(actual_type) && is_pointer_type(actual_type->pointed_type)) {
-                struct_ptr = LLVMBuildLoad2(builder, get_llvm_type_from_type(actual_type), struct_ptr, "loaddblptr");
+                struct_ptr = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(actual_type), struct_ptr, "loaddblptr");
                 actual_type = actual_type->pointed_type;
             }
 
@@ -1263,7 +1268,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             }
             XP_ASSERT_DEFAULT(field_idx != -1);
 
-            LLVMValueRef field_ptr = LLVMBuildStructGEP2(builder, get_llvm_type_from_type(struct_type), struct_ptr, (unsigned)field_idx, "fieldptrtmp");
+            LLVMValueRef field_ptr = LLVMBuildStructGEP2(unit.builder, get_llvm_type_from_type(struct_type), struct_ptr, (unsigned)field_idx, "fieldptrtmp");
             save_llvm_val_of_inst(ref, field_ptr);
         } break;
 
@@ -1282,21 +1287,21 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 LLVMValueRef array_ptr = array_is_ptr ? array_val : get_ptr_of_llvm_value(array_val, true);
                 indices[0] = LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0);
                 indices[1] = index_val;
-                elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
+                elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
-                LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
-                LLVMValueRef data_raw = LLVMBuildExtractValue(builder, slice_val, 0, "slicedataptrtmp");
+                LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
+                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, 0, "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
                 LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(data_ptr_type);
-                LLVMValueRef data_typed_ptr = LLVMBuildBitCast(builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
+                LLVMValueRef data_typed_ptr = LLVMBuildBitCast(unit.builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
                 indices[0] = index_val;
-                elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
+                elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
             } else {
                 std::unreachable();
             }
 
             TypeRef val_type = result_ctx.result_of(ref).actual_type();
-            LLVMValueRef loaded = LLVMBuildLoad2(builder, get_llvm_type_from_type(val_type), elem_ptr, "loadindextmp");
+            LLVMValueRef loaded = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(val_type), elem_ptr, "loadindextmp");
             save_llvm_val_of_inst(ref, loaded);
         } break;
 
@@ -1319,15 +1324,15 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 LLVMValueRef array_ptr = array_is_ptr ? array_val : get_ptr_of_llvm_value(array_val, true);
                 indices[0] = LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0);
                 indices[1] = index_val;
-                elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
+                elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
-                LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
-                LLVMValueRef data_raw = LLVMBuildExtractValue(builder, slice_val, 0, "slicedataptrtmp");
+                LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
+                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, 0, "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
                 LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(data_ptr_type);
-                LLVMValueRef data_typed_ptr = LLVMBuildBitCast(builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
+                LLVMValueRef data_typed_ptr = LLVMBuildBitCast(unit.builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
                 indices[0] = index_val;
-                elem_ptr = LLVMBuildGEP2(builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
+                elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
             } else {
                 std::unreachable();
             }
@@ -1393,7 +1398,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             TypeRef return_type = result_ctx.result_of(ref).actual_type();
             char const *name = (return_type && return_type->kind == Type_void) ? "" : "calltmp";
-            LLVMValueRef result = LLVMBuildCall2(builder, fn_type, callee, args.data, (unsigned)args.count, name);
+            LLVMValueRef result = LLVMBuildCall2(unit.builder, fn_type, callee, args.data, (unsigned)args.count, name);
             save_llvm_val_of_inst(ref, result);
         } break;
         
@@ -1431,10 +1436,10 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMBasicBlockRef true_bb = true_mapper->first_frag_blk();
             LLVMBasicBlockRef false_bb = false_mapper->first_frag_blk();
 
-            LLVMBuildCondBr(builder, cond_val, true_bb, false_bb);
+            LLVMBuildCondBr(unit.builder, cond_val, true_bb, false_bb);
 
             auto& parent_mapper = get_or_create_mapper(curr_blk);
-            auto merge_bb = parent_mapper.add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "condbr.merge");
+            auto merge_bb = parent_mapper.add_frag_blk("condbr.merge");
 
             LLVMBasicBlockRef true_exit = true_mapper->exit_blk();
             llvm_build_br_when_no_br(true_exit, merge_bb);
@@ -1442,7 +1447,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMBasicBlockRef false_exit = false_mapper->exit_blk();
             llvm_build_br_when_no_br(false_exit, merge_bb);
 
-            LLVMPositionBuilderAtEnd(builder,merge_bb);
+            LLVMPositionBuilderAtEnd(unit.builder,merge_bb);
         } break;
 
         case CIROperator::Break: {
@@ -1455,9 +1460,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 // 函数 return：直接生成 ret
                 if(break_val_ref != INVALID_INST) {
                     LLVMValueRef ret_val = get_llvm_val_from_inst_ref(break_val_ref);
-                    LLVMBuildRet(builder, ret_val);
+                    LLVMBuildRet(unit.builder, ret_val);
                 } else {
-                    LLVMBuildRetVoid(builder);
+                    LLVMBuildRetVoid(unit.builder);
                 }
             } else {
                 // block break：保存值到目标 block，跳转到 exit_block
@@ -1471,13 +1476,13 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                         save_llvm_val_of_inst(info.break_block, break_val);
                     }
                 }
-                LLVMBuildBr(builder, target_block_exit);
+                LLVMBuildBr(unit.builder, target_block_exit);
             }
 
             // ret 和 br 都是 terminator，后续指令不可达：统一创建新 fragment block 承接死代码
             auto curr_mapper = mapper(curr_blk);
-            auto new_frag_blk = curr_mapper->add_frag_blk(g_llvm_session.ctx, curr_state.curr_function, "after_break");
-            LLVMPositionBuilderAtEnd(builder, new_frag_blk);
+            auto new_frag_blk = curr_mapper->add_frag_blk("after_break");
+            LLVMPositionBuilderAtEnd(unit.builder, new_frag_blk);
         } break;
 
         case CIROperator::Load: {
@@ -1496,7 +1501,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     DEBUG_TRACE("Load NothingYet: ref={} ptr_inst={}", ref, info.ptr_inst);
                 }
                 TypeRef val_type = load_result.actual_type();
-                LLVMValueRef loaded = LLVMBuildLoad2(builder, get_llvm_type_from_type(val_type), ptr, "loadtmp");
+                LLVMValueRef loaded = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(val_type), ptr, "loadtmp");
                 save_llvm_val_of_inst(ref, loaded);
             }
         } break;
@@ -1508,7 +1513,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto result = result_ctx.result_of(info.operand_inst);
             TypeRef stored_type = result.actual_type();
             TypeRef pointed_type = stored_type->pointed_type;
-            LLVMValueRef addr = LLVMBuildLoad2(builder, get_llvm_type_from_type(pointed_type), ptr, "derefptr");
+            LLVMValueRef addr = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(pointed_type), ptr, "derefptr");
             save_llvm_val_of_inst(ref, addr);
         } break;
 
@@ -1535,7 +1540,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 val = gen_ir_cast(from_type, to_type, val);
             }
 
-            LLVMBuildStore(builder, val, ptr);
+            LLVMBuildStore(unit.builder, val, ptr);
         } break;
 
 
@@ -1590,7 +1595,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
 
         LLVMTypeRef var_type = get_llvm_type_from_type(result_ctx.result_of(ref).actual_type());
         LLVMValueRef zero_value = LLVMConstNull(var_type);
-        LLVMBuildStore(builder, zero_value, alloca);
+        LLVMBuildStore(unit.builder, zero_value, alloca);
     }
 
 
@@ -1605,7 +1610,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
         // 保护性检查: 如果参数索引在函数参数范围内则读取
         // LLVM函数类型的参数量可用 LLVMCountParams/LLVMGetParams，但这里只尝试读取并在失败时忽略
         param_val = LLVMGetParam(curr_state.curr_function, param_idx);
-        LLVMBuildStore(builder, param_val, alloca);
+        LLVMBuildStore(unit.builder, param_val, alloca);
     }
 
 
@@ -1629,14 +1634,14 @@ LLVMValueRef LLVMGenerator::gen_array_value_to_slice_cast(LLVMValueRef array_val
         LLVMConstInt(LLVMInt32TypeInContext(g_llvm_session.ctx), 0, 0)
     };
     // 设置数据指针
-    LLVMValueRef data_ptr = LLVMBuildGEP2(builder, array_type, array_value_ptr, indices, 2, "arraydataptrtmp");
-    slice_struct_value = LLVMBuildInsertValue(builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+    LLVMValueRef data_ptr = LLVMBuildGEP2(unit.builder, array_type, array_value_ptr, indices, 2, "arraydataptrtmp");
+    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
     
     // 设置count
     // TODO i64 换成 isize
     LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(g_llvm_session.ctx), array_value_type->array_info.count, 0);
 
-    slice_struct_value = LLVMBuildInsertValue(builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
 
     return slice_struct_value;
 }
@@ -1673,51 +1678,51 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
     switch(op) {
         case TokenType::Add: { // +
             if(is_float_type(left_type)) {
-                result = LLVMBuildFAdd(builder, left, right, "addtmp");
+                result = LLVMBuildFAdd(unit.builder, left, right, "addtmp");
             } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
                 LLVMValueRef pointer_val = is_pointer_type(left_type) ? left : right;
                 LLVMValueRef index_val  = is_pointer_type(left_type) ? right : left;
                 TypeRef pointer_type = is_pointer_type(left_type) ? left_type : right_type;
 
                 LLVMValueRef indices[] = { index_val };
-                result = LLVMBuildGEP2(builder, get_llvm_type_from_type(pointer_type->pointed_type), pointer_val, indices, 1, "ptraddtmp");
+                result = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(pointer_type->pointed_type), pointer_val, indices, 1, "ptraddtmp");
             } else {
-                result = LLVMBuildAdd(builder, left, right, "addtmp");
+                result = LLVMBuildAdd(unit.builder, left, right, "addtmp");
             }
         } break;
         case TokenType::Minus: { // -
             if(is_float_type(left_type)) {
-                result = LLVMBuildFSub(builder, left, right, "subtmp");
+                result = LLVMBuildFSub(unit.builder, left, right, "subtmp");
             } else if(is_pointer_type(left_type) && is_pointer_type(right_type)) {
                 TypeRef pointed_type = left_type->pointed_type;
                 LLVMTypeRef int_type = LLVMInt64TypeInContext(g_llvm_session.ctx);
-                LLVMValueRef left_int  = LLVMBuildPtrToInt(builder, left,  int_type, "ptrtointtmp");
-                LLVMValueRef right_int = LLVMBuildPtrToInt(builder, right, int_type, "ptrtointtmp");
-                LLVMValueRef byte_diff = LLVMBuildSub(builder, left_int, right_int, "ptrdiffbytetmp");
+                LLVMValueRef left_int  = LLVMBuildPtrToInt(unit.builder, left,  int_type, "ptrtointtmp");
+                LLVMValueRef right_int = LLVMBuildPtrToInt(unit.builder, right, int_type, "ptrtointtmp");
+                LLVMValueRef byte_diff = LLVMBuildSub(unit.builder, left_int, right_int, "ptrdiffbytetmp");
                 LLVMValueRef elem_size = LLVMConstInt(int_type, size_of_type(pointed_type), false);
-                result = LLVMBuildSDiv(builder, byte_diff, elem_size, "ptrdiffdivtmp");
+                result = LLVMBuildSDiv(unit.builder, byte_diff, elem_size, "ptrdiffdivtmp");
             } else if(is_pointer_type(left_type)) {
-                LLVMValueRef neg_index = LLVMBuildNeg(builder, right, "negtmp");
+                LLVMValueRef neg_index = LLVMBuildNeg(unit.builder, right, "negtmp");
                 LLVMValueRef indices[] = { neg_index };
-                result = LLVMBuildGEP2(builder, get_llvm_type_from_type(left_type->pointed_type), left, indices, 1, "ptrsubtmp");
+                result = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(left_type->pointed_type), left, indices, 1, "ptrsubtmp");
             } else {
-                result = LLVMBuildSub(builder, left, right, "subtmp");
+                result = LLVMBuildSub(unit.builder, left, right, "subtmp");
             }
         } break;
         case TokenType::Star: { // *
             if(is_float_type(left_type)) {
-                result = LLVMBuildFMul(builder, left, right, "multmp");
+                result = LLVMBuildFMul(unit.builder, left, right, "multmp");
             } else {
-                result = LLVMBuildMul(builder, left, right, "multmp");
+                result = LLVMBuildMul(unit.builder, left, right, "multmp");
             }
         } break;
         case TokenType::ForwardSlash: { // /
             if(is_float_type(left_type)) {
-                result = LLVMBuildFDiv(builder, left, right, "divtmp");
+                result = LLVMBuildFDiv(unit.builder, left, right, "divtmp");
             } else if(is_signed_type(left_type)) {
-                result = LLVMBuildSDiv(builder, left, right, "divtmp");
+                result = LLVMBuildSDiv(unit.builder, left, right, "divtmp");
             } else {
-                result = LLVMBuildUDiv(builder, left, right, "divtmp");
+                result = LLVMBuildUDiv(unit.builder, left, right, "divtmp");
             }
         } break;
         case TokenType::Percent: { // %
@@ -1726,53 +1731,53 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
             }
 
             if(is_signed_type(left_type)) {
-                result = LLVMBuildSRem(builder, left, right, "modtmp");
+                result = LLVMBuildSRem(unit.builder, left, right, "modtmp");
             } else {
-                result = LLVMBuildURem(builder, left, right, "modtmp");
+                result = LLVMBuildURem(unit.builder, left, right, "modtmp");
             }
         } break;
         case TokenType::GreaterThan: { // >
             if(is_float_type(left_type)) {
-                result = LLVMBuildFCmp(builder, LLVMRealOGT, left, right, "gttmp");
+                result = LLVMBuildFCmp(unit.builder, LLVMRealOGT, left, right, "gttmp");
             } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntUGT, left, right, "gttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntUGT, left, right, "gttmp");
             } else if(is_signed_type(left_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntSGT, left, right, "gttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntSGT, left, right, "gttmp");
             } else {
-                result = LLVMBuildICmp(builder, LLVMIntUGT, left, right, "gttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntUGT, left, right, "gttmp");
             }
         } break;
         case TokenType::GreaterEqual: { // >=
             if(is_float_type(left_type)) {
-                result = LLVMBuildFCmp(builder, LLVMRealOGE, left, right, "getmp");
+                result = LLVMBuildFCmp(unit.builder, LLVMRealOGE, left, right, "getmp");
             } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntUGE, left, right, "getmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntUGE, left, right, "getmp");
             } else if(is_signed_type(left_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntSGE, left, right, "getmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntSGE, left, right, "getmp");
             } else {
-                result = LLVMBuildICmp(builder, LLVMIntUGE, left, right, "getmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntUGE, left, right, "getmp");
             }
         } break;
         case TokenType::LessThan: { // <
             if(is_float_type(left_type)) {
-                result = LLVMBuildFCmp(builder, LLVMRealOLT, left, right, "lttmp");
+                result = LLVMBuildFCmp(unit.builder, LLVMRealOLT, left, right, "lttmp");
             } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntULT, left, right, "lttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntULT, left, right, "lttmp");
             } else if(is_signed_type(left_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntSLT, left, right, "lttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntSLT, left, right, "lttmp");
             } else {
-                result = LLVMBuildICmp(builder, LLVMIntULT, left, right, "lttmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntULT, left, right, "lttmp");
             }
         } break;
         case TokenType::LessEqual: { // <=
             if(is_float_type(left_type)) {
-                result = LLVMBuildFCmp(builder, LLVMRealOLE, left, right, "letmp");
+                result = LLVMBuildFCmp(unit.builder, LLVMRealOLE, left, right, "letmp");
             } else if(is_pointer_type(left_type) || is_pointer_type(right_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntULE, left, right, "letmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntULE, left, right, "letmp");
             } else if(is_signed_type(left_type)) {
-                result = LLVMBuildICmp(builder, LLVMIntSLE, left, right, "letmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntSLE, left, right, "letmp");
             } else {
-                result = LLVMBuildICmp(builder, LLVMIntULE, left, right, "letmp");
+                result = LLVMBuildICmp(unit.builder, LLVMIntULE, left, right, "letmp");
             }
         } break;
         case TokenType::DoubleEqual: { // ==
@@ -1782,10 +1787,10 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
             result = compare_two_values(left, right, left_type, true);
         } break;
         case TokenType::DoubleAnd: { // &&
-            result = LLVMBuildAnd(builder, left, right, "andtmp");
+            result = LLVMBuildAnd(unit.builder, left, right, "andtmp");
         } break;
         case TokenType::DoubleOr: { // ||
-            result = LLVMBuildOr(builder, left, right, "ortmp");
+            result = LLVMBuildOr(unit.builder, left, right, "ortmp");
         } break;
 
 
@@ -1816,16 +1821,16 @@ void LLVMGenerator::gen_ir_unary(CIRInstructionRef inst) {
     if (op == TokenType::Minus) {
         if(is_float_type(operand_type)) {
             LLVMValueRef zero = LLVMConstReal(llvm_operand_type, 0.0);
-            result = LLVMBuildFSub(builder, zero, operand, "fnegtmp");
+            result = LLVMBuildFSub(unit.builder, zero, operand, "fnegtmp");
         } else {
-            result = LLVMBuildNeg(builder, operand, "negtmp");
+            result = LLVMBuildNeg(unit.builder, operand, "negtmp");
         }
     } else if(op == TokenType::Exclamation) {
         if(is_float_type(operand_type)) {
             DEBUG_PANIC("不支持对浮点数使用逻辑非运算符");
         }
 
-        result = LLVMBuildNot(builder, operand, "nottmp");
+        result = LLVMBuildNot(unit.builder, operand, "nottmp");
     }
     
   
@@ -1842,36 +1847,36 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
         
         LLVMValueRef result = nullptr;
         for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-            LLVMValueRef left_field = LLVMBuildExtractValue(builder, left, i, "leftextracttmp");
-            LLVMValueRef right_field = LLVMBuildExtractValue(builder, right, i, "rightextracttmp");
+            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, i, "leftextracttmp");
+            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, i, "rightextracttmp");
             
             LLVMValueRef field_cmp = compare_two_values(left_field, right_field, type->struct_info.struct_fields[i].type, false);
             
             if(result == nullptr) {
                 result = field_cmp;
             } else {
-                result = LLVMBuildAnd(builder, result, field_cmp, "andeqtmp");
+                result = LLVMBuildAnd(unit.builder, result, field_cmp, "andeqtmp");
             }
         }
 
         if(is_not_equal) {
-            result = LLVMBuildNot(builder, result, "noteqtmp");
+            result = LLVMBuildNot(unit.builder, result, "noteqtmp");
         }
 
         return result;
     } else if(is_float_type(type)) {
 
         if(is_not_equal) {
-            return LLVMBuildFCmp(builder, LLVMRealONE, left, right, "noteqtmp");
+            return LLVMBuildFCmp(unit.builder, LLVMRealONE, left, right, "noteqtmp");
         } 
-        return LLVMBuildFCmp(builder, LLVMRealOEQ, left, right, "eqtmp");
+        return LLVMBuildFCmp(unit.builder, LLVMRealOEQ, left, right, "eqtmp");
     } else {
         // 整数、指针、枚举等类型的比较
 
         if(is_not_equal) {
-            return LLVMBuildICmp(builder, LLVMIntNE, left, right, "noteqtmp");
+            return LLVMBuildICmp(unit.builder, LLVMIntNE, left, right, "noteqtmp");
         }
-        return LLVMBuildICmp(builder, LLVMIntEQ, left, right, "eqtmp");
+        return LLVMBuildICmp(unit.builder, LLVMIntEQ, left, right, "eqtmp");
     }
 
 }
