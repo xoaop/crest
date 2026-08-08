@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
         }
     }
     if (!has_builtin_pkg) {
-        Package blank_pkg = make_package(xp_make_string(permanent_allocator(), "<global_blank_package>"), permanent_allocator());
+        Package blank_pkg = make_package(xp_make_string(permanent_allocator(), "global_blank_package"), permanent_allocator());
         blank_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
         context()->all_packages.push_back(blank_pkg);
     }
