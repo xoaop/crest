@@ -1,13 +1,9 @@
-#include "llvm_generate_ir.hpp"
+#include "internal/llvm_global.hpp"
+
+#include "internal/llvm_basic_block_mapper.hpp"
 #include "internal/llvm_generator.hpp"
 
-// #include "common.hpp"
-
-// #include "symbol.hpp"
-
-// #include "ast.hpp"
-
-// #include "analyser.hpp"
+#include "llvm_generate_ir.hpp"
 
 #include "context.hpp"
 
@@ -151,53 +147,6 @@ LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfo *symbol_info, LLV
 
 
 
-LLVMBasicBlockRef LLVMBasicBlockMapper::first_frag_blk() {
-    XP_ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting first frag blk");
-    return fragments[0];
-}
-
-LLVMBasicBlockRef LLVMBasicBlockMapper::last_frag_blk() {
-    XP_ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting last frag blk");
-    return fragments.back();
-}
-
-LLVMBasicBlockRef LLVMBasicBlockMapper::exit_blk() {
-    return exit_block;
-}
-
-LLVMBasicBlockRef LLVMBasicBlockMapper::frag_at(isize i) {
-    XP_ASSERT_MSG(i >= 0 && i < fragments.count, "frag_at index out of range");
-    return fragments[i];
-}
-
-isize LLVMBasicBlockMapper::frag_count() {
-    return fragments.count;
-}
-
-
-LLVMBasicBlockMapper::LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef curr_func, bool create_exit_block) {
-    fragments = make_array<LLVMBasicBlockRef>(allocator);
-    owner_func = curr_func;
-    if(create_exit_block) {
-        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, curr_func, "block.exit");
-    } else {
-        exit_block = nullptr;
-    }
-}
-
-LLVMBasicBlockRef LLVMBasicBlockMapper::add_frag_blk(const char *name) {
-    auto bb = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, name);
-    fragments.push_back(bb);
-    return bb;
-}
-
-void LLVMBasicBlockMapper::create_exit() {
-    if(!exit_block) {
-        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, "block.exit");
-    }
-}
-
-
 void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
     unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
@@ -242,40 +191,6 @@ void LLVMGenerator::deinit() {
 
 
 
-
-
-LLVMSession g_llvm_session = {};
-
-void init_llvm() {
-    LLVMInitializeNativeTarget();
-    LLVMInitializeNativeAsmPrinter();
-    LLVMInitializeNativeAsmParser();
-    LLVMInitializeNativeDisassembler();
-
-    // 全局会话创建一次（跨 package 共享）：ctx + target_machine + target_data
-    LLVMTargetRef target;
-    char *error = nullptr;
-    if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
-        std::println(stderr, "Error getting target: {}", error);
-        LLVMDisposeMessage(error);
-        XP_ASSERT_DEFAULT(0);
-    }
-    g_llvm_session.ctx = LLVMContextCreate();
-    char *host_cpu = LLVMGetHostCPUName();
-    char *host_features = LLVMGetHostCPUFeatures();
-    g_llvm_session.target_machine = LLVMCreateTargetMachine(
-        target,
-        LLVMGetDefaultTargetTriple(),
-        host_cpu,
-        host_features,
-        LLVMCodeGenLevelDefault,
-        LLVMRelocPIC,
-        LLVMCodeModelDefault
-    );
-    LLVMDisposeMessage(host_cpu);
-    LLVMDisposeMessage(host_features);
-    g_llvm_session.target_data = LLVMCreateTargetDataLayout(g_llvm_session.target_machine);
-}
 
 
 LLVMBasicBlockMapper& LLVMGenerator::add_mapper_for_block(CIRBlockRef blk, bool create_exit) {
@@ -347,6 +262,8 @@ void LLVMGenerator::llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBl
     LLVMPositionBuilderAtEnd(unit.builder, from);
     if(!LLVMGetBasicBlockTerminator(from)) {
         LLVMBuildBr(unit.builder, to);
+    } else {
+        DEBUG_TRACE("llvm_build_br_when_no_br: from block already has terminator, skip build br");
     }
     LLVMPositionBuilderAtEnd(unit.builder, curr_bb());
 }
@@ -1063,19 +980,16 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     }
 }
 
-// 循环收尾接线（相对独立）：回边到循环头 + exit_blk（break 目标）→ loop.cont → 父.merge
+// 循环收尾接线：回边到循环头 + exit_blk（break/条件假出口）→ 父.merge 一步到位
 void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef first_bb,
                                 LLVMBasicBlockMapper& blk_mapper, CIRBlockRef parent_blk_ref) {
     // 回边 → 循环头
     llvm_build_br_when_no_br(last_bb, first_bb);
 
-    // exit_blk（break 目标）→ loop.cont → 父.merge
-    auto cont_bb = blk_mapper.add_frag_blk("loop.cont");
-    llvm_build_br_when_no_br(blk_mapper.exit_blk(), cont_bb);
+    // exit_blk（break 目标）→ 父.merge
     auto& parent_mapper = get_or_create_mapper(parent_blk_ref);
     auto loop_merge = parent_mapper.add_frag_blk("loop.merge");
-    LLVMPositionBuilderAtEnd(unit.builder, cont_bb);
-    LLVMBuildBr(unit.builder, loop_merge);
+    llvm_build_br_when_no_br(blk_mapper.exit_blk(), loop_merge);
     LLVMPositionBuilderAtEnd(unit.builder, loop_merge);
 }
 

@@ -15,6 +15,7 @@ file(GLOB CREST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/thread_pool/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/internal/*.cpp"
 )
 
 add_executable(crest ${CREST_SOURCES})

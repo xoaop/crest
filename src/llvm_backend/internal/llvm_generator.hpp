@@ -13,14 +13,8 @@
 #include "cir_inst.hpp"              // CIRFunctionDeclInfo / CIRInstruction
 #include "cir_package.hpp"           // CIRResultContext
 
-#include "llvm-c/Core.h"
-#include "llvm-c/Comdat.h"
-#include "llvm-c/Target.h"
-#include "llvm-c/TargetMachine.h"
-#include "llvm-c/Analysis.h"
-#include "llvm-c/BitWriter.h"
-#include "llvm-c/Transforms/PassBuilder.h"
-#include "llvm-c/Linker.h"
+#include "llvm_global.hpp"              // 全部 LLVM-C 类型 / LLVMSession / g_llvm_session
+#include "llvm_basic_block_mapper.hpp"  // LLVMBasicBlockMapper
 
 
 struct SymbolInfo;
@@ -46,34 +40,6 @@ struct LLVMState {
 };
 
 
-// 逐 Block 的 BB 集合。增删 BB 用全局会话 ctx（不传参）+ 自身 owner_func。
-struct LLVMBasicBlockMapper {
-    LLVMBasicBlockMapper() = default;
-    LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef curr_func, bool create_exit_block = true);
-
-    LLVMBasicBlockRef add_frag_blk(const char *name);
-    LLVMBasicBlockRef first_frag_blk();
-    LLVMBasicBlockRef last_frag_blk();
-    LLVMBasicBlockRef exit_blk();
-    void create_exit();
-    LLVMBasicBlockRef frag_at(isize i);
-    isize frag_count();
-
-    LLVMValueRef owner_func;  // 该 mapper 所属的 LLVM 函数
-
-private:
-    Array<LLVMBasicBlockRef> fragments;
-    LLVMBasicBlockRef exit_block;
-};
-
-
-// 全局 LLVM 会话：跨 package 共享，init_llvm() 创建一次
-struct LLVMSession {
-    LLVMContextRef ctx;
-    LLVMTargetMachineRef target_machine;
-    LLVMTargetDataRef target_data;
-};
-extern LLVMSession g_llvm_session;
 
 
 // 逐单元 LLVM 句柄：每个 package 一个 module + 绑定它的 builder
