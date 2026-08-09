@@ -9,7 +9,8 @@
 
 #include "path.hpp"
 
-#include <print>
+#include "print.hpp"
+#include "error_msg.hpp"
 
 
 
@@ -256,10 +257,10 @@ LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasic
         Set_Curr_Inst_Pos_Before(last_instr);
     }
 
-    DEBUG_LOG("BuildAlloca: var={}, type_kind={}", var_name, (int)LLVMGetTypeKind(type));
+    DEBUG_TRACE("BuildAlloca: var={}, type_kind={}", var_name, (int)LLVMGetTypeKind(type));
     XP_ASSERT_DEFAULT(type != nullptr);
     LLVMValueRef alloca = LLVMBuildAlloca(unit.builder, type, var_name);
-    DEBUG_LOG("BuildAlloca OK");
+    DEBUG_TRACE("BuildAlloca OK");
 
     Set_Curr_Inst_Pos_At_End_Of_Basic_Block(curr_block);
 
@@ -453,12 +454,12 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     
 
     if(LLVMPrintModuleToFile(unit.module, ll_file_path.generic_string().c_str(), &error)) {
-        std::println(stderr, "Error writing .ll file: {}", error);
+        err("Error writing .ll file: {}", error);
         LLVMDisposeMessage(error);
     }
     
     if(LLVMVerifyModule(unit.module, LLVMReturnStatusAction, &error)) {
-        std::println(stderr, "Module verification failed: {}", error);
+        err("Module verification failed: {}", error);
         LLVMDisposeMessage(error);
         // XP_ASSERT_DEFAULT(0);
     }
@@ -507,7 +508,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
         LLVMObjectFile,
         &error
     )) {
-        std::println(stderr, "Error writing object file: {}", error);
+        err("Error writing object file: {}", error);
         LLVMDisposeMessage(error);
     }
     

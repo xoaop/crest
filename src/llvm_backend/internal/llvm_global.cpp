@@ -2,7 +2,8 @@
 
 #include "llvm_global.hpp"
 
-#include <print>
+#include "print.hpp"
+#include "error_msg.hpp"
 
 
 LLVMSession g_llvm_session = {};
@@ -18,7 +19,7 @@ void init_llvm() {
     LLVMTargetRef target;
     char *error = nullptr;
     if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
-        std::println(stderr, "Error getting target: {}", error);
+        err("Error getting target: {}", error);
         LLVMDisposeMessage(error);
         XP_ASSERT_DEFAULT(0);
     }

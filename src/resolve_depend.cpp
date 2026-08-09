@@ -1,7 +1,8 @@
 ﻿#include "resolve_depend.hpp"
 
 #include <filesystem>
-#include <print>
+
+#include "print.hpp"
 
 #include "ast.hpp"
 #include "file.hpp"
@@ -178,10 +179,7 @@ void resolve_dependencies(xpString main_path, Array<Package> &packages) {
 
 
     if(!check_directory_legel(main_path) && !check_file_legal(main_path)) {
-        // TODO ERROR: main package路径不合法
-        std::println("Error: main package path '{}' is not a valid directory or file", main_path.c_str);
-        exit(1);
-
+        context()->reporter.report_error("main package path '{}' is not a valid directory or file", main_path);
         return;
     }
 

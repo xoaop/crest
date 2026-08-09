@@ -1,6 +1,8 @@
 #include <stdarg.h>
 #include <cstring>
 
+#include "print.hpp"
+
 #include "ast.hpp"
 
 
@@ -147,11 +149,11 @@ const char *ast_string(AstType type) {
     return ast_strs[static_cast<i32>(type)];
 }
 
-#include <print>
+#if defined(CREST_DEBUG)
 
 xp_internal void print_indent(i32 depth) {
     for (i32 i = 0; i < depth; i++) {
-        std::print("│   ");
+        print_err("│   ");
     }
 }
 
@@ -159,9 +161,9 @@ xp_internal void print_branch(i32 depth, bool is_last) {
     if (depth == 0) return;
     print_indent(depth - 1);
     if (is_last) {
-        std::print("└── ");
+        print_err("└── ");
     } else {
-        std::print("├── ");
+        print_err("├── ");
     }
 }
 
@@ -169,7 +171,7 @@ xp_internal void print_branch(i32 depth, bool is_last) {
 template <typename... Args>
 xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...> fmt, Args&&... args) {
     print_branch(depth, is_last);
-    std::println(fmt, std::forward<Args>(args)...);
+    println_err(fmt, std::forward<Args>(args)...);
 }
 
 
@@ -200,16 +202,16 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             // TODO: 更正确地打印常量值, 目前只处理了整数和浮点数, 其他类型的常量还没有处理
 
             print_branch(depth + 1, false);
-            std::print("value: ");
+            print_err("value: ");
             TypeRef t = a->Constant.value.type;
             if(is_integer_or_untyped_type(t)) {
                 print_i128(a->Constant.value.integer_val());
             } else if(is_float_or_untyped_type(t)) {
-                std::print("{}", a->Constant.value.float_val());
+                print_err("{}", a->Constant.value.float_val());
             } else if(t->kind == Type_bool) {
-                std::print("{}", a->Constant.value.bool_val() ? "true" : "false");
+                print_err("{}", a->Constant.value.bool_val() ? "true" : "false");
             }
-            std::println("");
+            println_err("");
             break;
         }
 
@@ -469,6 +471,7 @@ void print_ast(Array<Ast *> a_arr, i32 depth, bool is_last) {
         print_ast(a_arr[i], depth, last);
     }
 }
+#endif // CREST_DEBUG
 
 
 

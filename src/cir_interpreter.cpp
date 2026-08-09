@@ -11,6 +11,8 @@
 #include "value_ops.hpp"
 #include "type_check.hpp"
 
+#include "print.hpp"
+
 
 bool is_val_overflow(const Value& val) {
     if(is_integer_type(val.type)) {

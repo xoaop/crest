@@ -1,11 +1,12 @@
-﻿#include <print>
+﻿#include "print.hpp"
 
 #include "error_msg.hpp"
 
 
-void ErrorReporter::add_error_msg(ErrorLevel level, Span highlight_span, SourceCode src_code, xpString formatted_msg) {
+void ErrorReporter::add_error_msg(ErrorLevel level, bool has_location, Span highlight_span, SourceCode src_code, xpString formatted_msg) {
     ErrorMsg msg;
     msg.level = level;
+    msg.has_location = has_location;
     msg.highlight_span = highlight_span;
     msg.src_code = src_code;
     msg.msg = std::move(formatted_msg); // 直接转移，零拷贝
@@ -19,63 +20,60 @@ void ErrorReporter::add_error_msg(ErrorLevel level, Span highlight_span, SourceC
     }
 }
 
-void ErrorReporter::print_msg() {
-    #define COLOR_RESET "\033[0m"
-    #define COLOR_RED "\033[31m"
-    #define COLOR_GREEN "\033[32m"
-    #define COLOR_BLUE "\033[34m"
+// 颜色常量（文件作用域，print_msg / print_error_line 共用）
+static constexpr const char *COLOR_RESET = "\033[0m";
+static constexpr const char *COLOR_RED   = "\033[31m";
+static constexpr const char *COLOR_GREEN = "\033[32m";
+static constexpr const char *COLOR_BLUE  = "\033[34m";
 
+
+// 彩色级别标签: Error→红, Warning→蓝
+void print_colored_level(ErrorLevel level) {
+    print_err("{}{}{}",
+        level == ErrorLevel::Error ? COLOR_RED : COLOR_BLUE,
+        level == ErrorLevel::Error ? "Error" : "Warning",
+        COLOR_RESET);
+}
+
+
+void ErrorReporter::print_msg() {
     if(error_msgs.count == 0) {
         return;
     }
 
-    std::println("\n{} error(s), {} warning(s) found:\n", error_count, warning_count);
+    println_err("\n{} error(s), {} warning(s) found:\n", error_count, warning_count);
 
     for (size_t i = 0; i < error_msgs.count; ++i) {
         ErrorMsg *msg = &error_msgs[i];
-        std::string_view level_str = "";
-        std::string_view color_code = "";
-        switch (msg->level) {
-            case ErrorLevel::Error:
-                level_str = "Error";
-                color_code = COLOR_RED;
-                break;
-            case ErrorLevel::Warning:
-                level_str = "Warning";
-                color_code = COLOR_BLUE;
-                break;
-        }
 
+        // 无行号错误：只打彩色级别行，跳过 file:line:col + 源码 + caret
+        if(!msg->has_location) {
+            print_error_line(msg->level, "{}", msg->msg);
+            continue;
+        }
 
         auto start = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.start);
         auto end = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.end);
 
-        std::println("{}:{}:{}: {}{}{}: {}",
-            msg->src_code.file_path,
-            start.first, start.second,
-            color_code,
-            level_str,
-            COLOR_RESET,
-            msg->msg
-        );
-
+        print_err("{}:{}:{}: ", msg->src_code.file_path, start.first, start.second);
+        print_error_line(msg->level, "{}", msg->msg);
 
         xpString line_str = get_line_str_of_pos(msg->src_code, msg->highlight_span.start, xp_heap_allocator());
         defer(xp_string_free(line_str));
 
-        std::print("{}", line_str); // 不需要换行，原行字符串已经带换行
+        print_err("{}", line_str); // 不需要换行，原行字符串已经带换行
 
-        std::println("");
+        println_err("");
 
-        for(isize i = 0; i < start.second - 1; i++) {
-            std::print(" ");
+        for(isize j = 0; j < start.second - 1; j++) {
+            print_err(" ");
         }
         // 统一开启绿色，输出所有^后再重置，避免冗余控制码
-        std::print("{}", COLOR_GREEN);
-        for(isize i = 0; i < end.second - start.second; i++) {
-            std::print("^");
+        print_err("{}", COLOR_GREEN);
+        for(isize j = 0; j < end.second - start.second; j++) {
+            print_err("^");
         }
-        std::println("{}", COLOR_RESET);
+        println_err("{}", COLOR_RESET);
     }
 }
 
