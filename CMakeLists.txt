@@ -37,7 +37,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(crest PRIVATE -O2)
 else()
     target_compile_options(crest PRIVATE -g)
-    target_compile_definitions(crest PRIVATE CREST_DEBUG)
+    target_compile_definitions(crest PRIVATE CREST_DEBUG XP_HEAP_RECORD_ENABLE)
 endif()
 
 target_link_libraries(crest PRIVATE "${LLVM_C_LIB}")
