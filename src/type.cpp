@@ -1,6 +1,8 @@
 ﻿#include <cfloat>
 #include <atomic>
 
+#include "print.hpp"
+
 #include "type.hpp"
 #include "value.hpp"
 
@@ -632,88 +634,12 @@ bool check_float_overflow(double val, TypeRef type) {
 
 
 
+#if defined(CREST_DEBUG)
 void print_type(TypeRef type) {
-    if(type == NULL) {
-        printf("null_type");
-        return;
-    }
-
-    switch (type->kind)
-    {
-    case Type_untyped_int:
-        printf("literal");
-        break;
-    case Type_i8:
-        printf("i8");
-        break;
-    case Type_i32:
-        printf("i32");
-        break;
-    case Type_i64:
-        printf("i64");
-        break;
-    case Type_u8:
-        printf("u8");
-        break;
-    case Type_u32:
-        printf("u32");
-        break;
-    case Type_u64:
-        printf("u64");
-        break;
-    case Type_isize:
-        printf("isize");
-        break;
-    case Type_usize:
-        printf("usize");
-        break;
-    case Type_f32:
-        printf("f32");
-        break;
-    case Type_f64:
-        printf("f64");
-        break;
-    case Type_bool:
-        printf("bool");
-        break;
-    case Type_void:
-        printf("void");
-        break;
-    case Type_function:
-        printf("func(");
-        for(isize i = 0; i < type->function_info.param_types.count; i++) {
-            print_type(type->function_info.param_types[i]);
-            if(i != type->function_info.param_types.count - 1) {
-                printf(", ");
-            }
-        }
-        printf(") -> ");
-        print_type(type->function_info.return_type);
-        break;
-    case Type_pointer: {
-        Type *curr = type;
-        for(;;) {
-            printf("*");
-            if(curr->pointed_type->kind == Type_pointer) {
-                curr = curr->pointed_type;
-            } else {
-                print_type(curr->pointed_type);
-                break;
-            }
-        }
-    } break;
-    case Type_struct:
-        printf("struct %s", type->type_name.c_str);
-        break;
-
-    case Type_Undefined:
-        printf("undefined");
-        break;
-    default:
-        printf("unknown_type");
-        break;
-    }
+    // 转发到 formatter<TypeRef>，打印语义与旧 printf 版一致
+    print_out("{}", type);
 }
+#endif // CREST_DEBUG
 
 
 

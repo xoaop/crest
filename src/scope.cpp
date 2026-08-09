@@ -2,6 +2,8 @@
 #include "cir_builder.hpp"
 #include "type.hpp"
 
+#include "print.hpp"
+
 struct Ast;
 
 SymbolInfo& Scope::operator[](xpString name) {
@@ -196,16 +198,18 @@ Scope *exit_scope(Scope *current) {
 
 
 void print_scope_tree(Scope *scope, int indent) {
+#if defined(CREST_DEBUG)
     if (!scope) return;
 
     auto print_indent = [](int n) {
-        for (int i = 0; i < n; i++) std::print(stderr, "  ");
+        for (int i = 0; i < n; i++) print_err("  ");
     };
 
     print_indent(indent);
-    std::println(stderr, "{}", *scope);
+    println_err("{}", *scope);
 
     for(Scope *sub_scope : scope->children) {
         print_scope_tree(sub_scope, indent + 1);
     }
+#endif
 }

@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "print.hpp"
 #include "xoaop.h"
 
 std::string get_program_path();
@@ -12,7 +13,7 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
 
     file = fopen(path, "rb");
     if(file == NULL) {
-        printf("Read File Failed: %s\n", path);
+        println_err("Read File Failed: {}", path);
     }
 
     fseek(file, 0, SEEK_END);

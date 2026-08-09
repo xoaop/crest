@@ -12,6 +12,8 @@
 #include "scope.hpp"
 #include "error_msg.hpp"
 
+#include "print.hpp"
+
 #include "cir_instruction_ref.hpp"
 
 enum TokenType : u8;  // forward declare, avoid circular include via tokenizer.hpp

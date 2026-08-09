@@ -248,6 +248,79 @@ const char *to_string(TypeKind kind);
 void print_type(TypeRef type);
 
 
+// TypeRef 的格式化支持（print_type 逻辑的 formatter 实现，打印语义与旧版一致）
+template<>
+struct std::formatter<TypeRef> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const TypeRef& type, std::format_context& ctx) const {
+        auto out = ctx.out();
+        if(type == nullptr) {
+            return std::format_to(out, "null_type");
+        }
+
+        switch (type->kind)
+        {
+        case Type_untyped_int:
+            return std::format_to(out, "literal");
+        case Type_i8:
+            return std::format_to(out, "i8");
+        case Type_i32:
+            return std::format_to(out, "i32");
+        case Type_i64:
+            return std::format_to(out, "i64");
+        case Type_u8:
+            return std::format_to(out, "u8");
+        case Type_u32:
+            return std::format_to(out, "u32");
+        case Type_u64:
+            return std::format_to(out, "u64");
+        case Type_isize:
+            return std::format_to(out, "isize");
+        case Type_usize:
+            return std::format_to(out, "usize");
+        case Type_f32:
+            return std::format_to(out, "f32");
+        case Type_f64:
+            return std::format_to(out, "f64");
+        case Type_bool:
+            return std::format_to(out, "bool");
+        case Type_void:
+            return std::format_to(out, "void");
+        case Type_function:
+            out = std::format_to(out, "func(");
+            for(isize i = 0; i < type->function_info.param_types.count; i++) {
+                out = std::format_to(out, "{}", type->function_info.param_types[i]);
+                if(i != type->function_info.param_types.count - 1) {
+                    out = std::format_to(out, ", ");
+                }
+            }
+            out = std::format_to(out, ") -> ");
+            return std::format_to(out, "{}", type->function_info.return_type);
+        case Type_pointer: {
+            Type *curr = type;
+            for(;;) {
+                out = std::format_to(out, "*");
+                if(curr->pointed_type->kind == Type_pointer) {
+                    curr = curr->pointed_type;
+                } else {
+                    return std::format_to(out, "{}", curr->pointed_type);
+                }
+            }
+        } break;
+        case Type_struct:
+            return std::format_to(out, "struct {}", type->type_name);
+        case Type_Undefined:
+            return std::format_to(out, "undefined");
+        default:
+            return std::format_to(out, "unknown_type");
+        }
+    }
+};
+
+
 
 
 

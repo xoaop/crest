@@ -1,13 +1,13 @@
 ﻿#include <stdio.h>
-#include <print>
-#include <format>
 #include <chrono>
+
+#include "print.hpp"
+#include "file.hpp"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 
 #include "thread_pool/thread_pool.hpp"
-#include "file.hpp"
 
 
 #include "xoaop.h"
@@ -29,23 +29,23 @@
 
 
 static void crest_helper() {
-    printf("Usage: crest <command> [options]\n");
-    printf("Commands:\n");
-    printf("  build <path>   Build the project at the specified path\n");
-    printf("  crest <path>   Same as 'crest build <path>'\n");
-    printf("  help           Show this help message\n");
-    printf("Options:\n");
-    printf("  -o <path>      Output directory\n");
-    printf("  -trace         Enable debug trace output\n");
-    printf("  -cir_dump      Dump CIR instructions\n");
-    printf("  -scope_dump    Dump scope tree\n");
+    println_out("Usage: crest <command> [options]");
+    println_out("Commands:");
+    println_out("  build <path>   Build the project at the specified path");
+    println_out("  crest <path>   Same as 'crest build <path>'");
+    println_out("  help           Show this help message");
+    println_out("Options:");
+    println_out("  -o <path>      Output directory");
+    println_out("  -trace         Enable debug trace output");
+    println_out("  -cir_dump      Dump CIR instructions");
+    println_out("  -scope_dump    Dump scope tree");
 }
 
 
 
 int main(int argc, char** argv) {
     
-    defer(printf("\n\nEXIT!"));
+    defer(DEBUG_LOG("\n\nEXIT!"));
 
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
         using Sec = std::chrono::duration<double>;
         auto total = std::chrono::duration_cast<Sec>(now - start_time).count();
         auto since_last = std::chrono::duration_cast<Sec>(now - last_time).count();
-        std::println(stderr, "[phase] {:>10.6f}s (+{:>10.6f}s) {}", total, since_last, name);
+        println_out("[phase] {:>10.6f}s (+{:>10.6f}s) {}", total, since_last, name);
         last_time = now;
     };
     
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
             i += 1; // 跳过 "build" 参数
 
             if(i >= argc) {
-                printf("Error: Missing path argument for build command\n");
+                err("Missing path argument for build command");
                 return -1;
             }
 
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
             i += 1; // 跳过 "-o" 参数
 
             if(i >= argc) {
-                printf("Error: Missing path argument for -o option\n");
+                err("Missing path argument for -o option");
                 return -1;
             }
 
@@ -148,8 +148,8 @@ int main(int argc, char** argv) {
     context()->compiler_path = std::filesystem::absolute(std::filesystem::path(exe_path)).parent_path();
     context()->current_working_directory = std::filesystem::current_path();
 
-    std::println("Compiler path: {}", context()->compiler_path.string());
-    std::println("Current working directory: {}", context()->current_working_directory.string());
+    println_out("Compiler path: {}", context()->compiler_path.string());
+    println_out("Current working directory: {}", context()->current_working_directory.string());
 
     // 初始化package搜索路径
     context()->package_search_paths = make_array<xpString>(permanent_allocator());
@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
     // std/builtin 是必需包：提供全局 scope 与基础类型（string 等），必须存在
     auto builtin_path_opt = resolve_package_path(xp_string_c("std/builtin"), permanent_allocator());
     if (!builtin_path_opt.has_value()) {
-        std::println("Error: std/builtin package not found (defines base types)");
+        err("std/builtin package not found (defines base types)");
         return 1;
     }
     Package builtin_pkg = tokenize_and_parse_package(builtin_path_opt.unwrap().as_c_str());

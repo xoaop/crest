@@ -23,6 +23,8 @@
 
 #include "error_msg.hpp"
 
+#include "print.hpp"
+
 #include "path.hpp"
 #include "value_ops.hpp"
 

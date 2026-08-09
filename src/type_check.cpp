@@ -1,5 +1,6 @@
 #include "type_check.hpp"
 #include "error_msg.hpp"
+#include "print.hpp"
 #include "context.hpp"
 
 
