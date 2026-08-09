@@ -4,25 +4,25 @@ A static-typed, GC-free compiled systems programming language.
 
 ## Build
 
-Requires Clang (C++23) and LLVM 21 (C API library in `bin/`).
+Requires CMake (>= 3.20), Ninja, and Clang (support C++23).
 
-Debug (default):
+Debug:
 
-```bash
+```
 cmake -S . -B build
 cmake --build build
 ```
 
 Release:
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+```
+cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
+cmake --build build_release
 ```
 
 On Linux, use clang 21 with libc++:
 
-```bash
-cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+```
+cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS="-stdlib=libc++"
 cmake --build build
 ```
