@@ -90,6 +90,10 @@ struct LLVMGenerator {
     LLVMBasicBlockMapper& get_or_create_mapper(CIRBlockRef blk);
 
     LLVMBasicBlockRef curr_bb();
+
+    // 所有改 builder 位置都走这里（唯一入口；Set_ 前缀 = 有副作用）
+    void Set_Curr_Inst_Pos_At_End_Of_Basic_Block(LLVMBasicBlockRef blk);
+    void Set_Curr_Inst_Pos_Before(LLVMValueRef inst);
 public:
     LLVMModuleState unit;   // 逐单元 LLVM 句柄（module + builder）
 
