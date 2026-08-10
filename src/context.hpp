@@ -10,6 +10,10 @@
 
 struct ThreadPool;
 
+
+using PackageRef = isize;
+
+
 struct Context {
     std::filesystem::path compiler_path;
     std::filesystem::path current_working_directory;
@@ -38,6 +42,8 @@ struct Context {
 
     ThreadPool *thread_pool;
 };
+
+PackageRef add_package(Context *ctx, Package pkg);
 
 Context *context();
 
