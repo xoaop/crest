@@ -2480,3 +2480,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRInstruction* inst,
     }
     return make_result(pc_ref, CIRInstResult::make_type_only(r.type()));
 }
+
+
+
+std::optional<AnalyzeResult> Interpreter::analyze_ImportPackage(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    const auto& info = inst->info<CIROperator::ImportPackage>();
+    const auto& pkg_path = info.path;
+
+
+    // @todo 实现
+    std::unreachable();
+}

@@ -101,8 +101,8 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(FuncParamType) \
     X(TypeOfInstResult) \
     X(FuncType) \
-    /* @new — 父→子 Block 的引用，analyzer/codegen 的入口点 */ \
     X(BlockRef) \
+    X(ImportPackage) \
 /**/
 
 enum class CIROperator {
@@ -411,6 +411,14 @@ struct CIREnterScopeInfo {
 struct CIRExitScopeInfo {
     Scope *scope;
 };
+
+struct CIRImportPackageInfo {
+    xpString path;
+};
+
+//
+//
+//
 
 // op → payload 类型映射（CIR_OPERATORS 生成：CIR##name##Info，每个 op 独立类型）
 template<CIROperator Op> struct info_type;
