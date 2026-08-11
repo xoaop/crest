@@ -29,10 +29,6 @@ struct Context {
 
     Package *global_blank_package = nullptr;
 
-
-    // NOTE: const_decl:function_decl_value, block, for_stmt, 
-    // xpHashMap<Ast *, Scope *> ast_scope_map;
-
     ErrorReporter reporter;
 
     Array<Package> all_packages;
