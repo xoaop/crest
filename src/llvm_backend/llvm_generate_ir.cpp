@@ -940,7 +940,7 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
 }
 
 
-void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent) {
+void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent, CIRInstructionRef caller_ref) {
     auto& block_info = *result_ctx.pkg()->block(blk_ref);
     bool is_loop = block_info.is_loop;
 
@@ -978,6 +978,28 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
 
     if(is_loop) {
         gen_ir_loop(last_bb, first_bb, blk_mapper, old_curr_blk);
+    } else if(blk_mapper.break_vals.count > 0) {
+        // ── break φ：多个带值 break 到达同一 block，在 exit_blk 头部建 φ ──
+        // 跳过 last_bb → exit_blk 接线（break 所在块已直接 br 到 exit_blk）
+        if(!LLVMGetBasicBlockTerminator(last_bb)) {
+            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(last_bb);
+            LLVMBuildUnreachable(unit.builder);
+        }
+        Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
+        LLVMValueRef phi = LLVMBuildPhi(unit.builder,
+            LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
+        LLVMAddIncoming(phi,
+            blk_mapper.break_vals.data, blk_mapper.break_srcs.data,
+            (unsigned)blk_mapper.break_vals.count);
+        save_llvm_val_of_inst(caller_ref, phi);
+        if(connect_to_parent) {
+            auto& parent_mapper = get_or_create_mapper(old_curr_blk);
+            auto merge_bb = parent_mapper.add_frag_blk("block.merge");
+            llvm_build_br_when_no_br(blk_mapper.exit_blk(), merge_bb);
+            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
+        } else {
+            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(parent_bb);
+        }
     } else if(connect_to_parent) {
         llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
         auto& parent_mapper = get_or_create_mapper(old_curr_blk);
@@ -1040,7 +1062,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::BlockRef: {
-            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true);
+            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true, ref);
         } break;
 
 
@@ -1389,21 +1411,20 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     LLVMBuildRetVoid(unit.builder);
                 }
             } else {
-                // block break：保存值到目标 block，跳转到 exit_block
-                auto target_blk_ref = result_ctx.pkg()->inst(target_block)->info<CIROperator::BlockRef>().block_ref;   // target_block 是 handle（BlockRef 指令），经 inst() 取子块
+                // block break：跳转到 target_block 的 exit_blk
+                auto target_blk_ref = result_ctx.pkg()->inst(target_block)->info<CIROperator::BlockRef>().block_ref;
                 auto target_block_mapper = mapper(target_blk_ref);
                 LLVMBasicBlockRef target_block_exit = target_block_mapper->exit_blk();
 
-                if(break_val_ref != INVALID_INST) {
-                    if(result_ctx.result_of(target_block).state != CIRResultState::WholeValue) {
-                        LLVMValueRef break_val = get_llvm_val_from_inst_ref(break_val_ref);
-                        save_llvm_val_of_inst(info.break_block, break_val);
-                    }
+                // 收集 break φ 入边：{值, break 所在 BB}
+                if(break_val_ref != INVALID_INST && result_ctx.result_of(target_block).state != CIRResultState::WholeValue) {
+                    target_block_mapper->break_vals.push_back(get_llvm_val_from_inst_ref(break_val_ref));
+                    target_block_mapper->break_srcs.push_back(curr_bb());
                 }
                 LLVMBuildBr(unit.builder, target_block_exit);
             }
 
-            // ret 和 br 都是 terminator，后续指令不可达：统一创建新 fragment block 承接死代码
+            // 死代码隔离：br 后的指令不可达，创建新 fragment block 承接
             auto curr_mapper = mapper(curr_blk);
             auto new_frag_blk = curr_mapper->add_frag_blk("after_break");
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(new_frag_blk);
