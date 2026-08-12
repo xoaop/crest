@@ -939,22 +939,22 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     }
 }
 
+// TODO: TEMP
+static void gen_ir_scan_nested_funcs(LLVMGenerator &g, CIRBlockRef blk_ref) {
+    auto& block_info = *g.result_ctx.pkg()->block(blk_ref);
+    for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
+        CIRInstructionRef pc{blk_ref, it.subscript()};
+        CIRInstruction *body_inst = g.result_ctx.pkg()->inst(pc);
+        if(body_inst->op == CIROperator::FunctionDecl || body_inst->op == CIROperator::BlockRef) {
+            g.gen_ir_inst(pc);
+        }
+    }
+}
+
 
 void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent) {
     auto& block_info = *result_ctx.pkg()->block(blk_ref);
     bool is_loop = block_info.is_loop;
-
-    // 不在函数内，或 comptime Block：只扫描 FunctionDecl 和 BlockRef
-    if(curr_state.curr_function == nullptr || block_info.is_comptime) {
-        for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
-            CIRInstructionRef pc{blk_ref, it.subscript()};
-            CIRInstruction *body_inst = result_ctx.pkg()->inst(pc);
-            if(body_inst->op == CIROperator::FunctionDecl || body_inst->op == CIROperator::BlockRef) {
-                gen_ir_inst(pc);
-            }
-        }
-        return;
-    }
 
     auto old_curr_blk = curr_blk;
     defer(curr_blk = old_curr_blk);
@@ -1040,7 +1040,14 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::BlockRef: {
-            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true);
+            auto child_blk = inst->info<CIROperator::BlockRef>().block_ref;
+
+            // TODO: REFACTOR: 统一对BlockRef的处理, 现在的处理很乱
+            if(curr_state.curr_function == nullptr || result_ctx.pkg()->block(child_blk)->is_comptime) {
+                gen_ir_scan_nested_funcs(*this, child_blk);
+            } else {
+                gen_ir_block_in_func_block(child_blk, true);
+            }
         } break;
 
 
