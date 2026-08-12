@@ -18,6 +18,10 @@ struct LLVMBasicBlockMapper {
 
     LLVMValueRef owner_func;  // 该 mapper 所属的 LLVM 函数
 
+    // break φ：收集到达该 block 的带值 break
+    Array<LLVMValueRef> break_vals;
+    Array<LLVMBasicBlockRef> break_srcs;  // 每个 break 所在的 LLVM BB（φ incoming block）
+
 private:
     Array<LLVMBasicBlockRef> fragments;
     LLVMBasicBlockRef exit_block;
