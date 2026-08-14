@@ -115,7 +115,7 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
     scope_stack.clear();
     scope_stack.push_back(pkg->package_scope);
 
-    analyze_block_insts(pkg->top_blk, std::nullopt);
+    analyze_block(pkg->top_blk, std::nullopt);
 }
 
 
@@ -2046,40 +2046,16 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRInstruction* inst, C
 
         CIRBlockRef chosen_blk = cond ? true_blk : false_blk;
         if(chosen_blk != INVALID_BLOCK) {
-            // CondBr 子块不插入父块，这里直接迭代其内容（复用 analyze_instruction）
-            // 副作用：进入选中分支块分析（new_analyze_flow/recover 压栈 pc）
-            new_analyze_flow(CIRInstructionRef{chosen_blk, 0});
-            auto& block_info = *pkg->block(chosen_blk);
-            while(curr_inst_ref().inst_index < block_info.insts.count()) {
-                analyze_instruction();
-            }
-            recover_analyze_flow();
-
-            // 分支内错误向上传播
-            for(isize i = 0; i < block_info.insts.count(); i++) {
-                if(has_error(CIRInstructionRef{chosen_blk, i})) {
-                    return make_result(pc_ref, CIRInstResult::make_error());
-                }
-            }
+            analyze_block(chosen_blk, pc_ref, params.block_eval_mode);
         }
     } else {
         // 类型模式：两个分支都检查（非运行分支的指令也要产出类型，codegen 依赖）
-        // 副作用：进入 true 分支块分析（new_analyze_flow/recover 压栈 pc）
-        new_analyze_flow(CIRInstructionRef{true_blk, 0});
         auto& true_child = *pkg->block(true_blk);
-        while(curr_inst_ref().inst_index < true_child.insts.count()) {
-            analyze_instruction();
-        }
-        recover_analyze_flow();
+        analyze_block(true_blk, pc_ref, EvalMode::TypeOnly);
 
         if(false_blk != INVALID_BLOCK) {
-            // 副作用：进入 false 分支块分析（new_analyze_flow/recover 压栈 pc）
-            new_analyze_flow(CIRInstructionRef{false_blk, 0});
             auto& false_child = *pkg->block(false_blk);
-            while(curr_inst_ref().inst_index < false_child.insts.count()) {
-                analyze_instruction();
-            }
-            recover_analyze_flow();
+            analyze_block(false_blk, pc_ref, EvalMode::TypeOnly);
         }
     }
     return std::nullopt;
@@ -2152,16 +2128,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRInstruction* i
     } else {
         ASSERT_MSG(func.body_inst != INVALID_INST, "non-extern function must have body");
 
-        // if(is_generic_func(pkg, func) && !try_to_instantiate) {
-        //     // 泛型模板：跳过 body（编译期参数无值，body 无法分析）
-        //     curr_inst() = func.body_inst + pkg->inst(func.body_inst)->len();
-        //     curr_inst() -= 1;
-        // } else
 
         if(is_pure_comptime_func(func, result_context())) {
             // 纯编译期函数：跳过 body（body BlockRef 紧跟 FunctionDecl）
             // old 代码 curr_inst() = next() 后再由外层 advance() 越过 → next_pc 需要补一格
-            r.next_pc = pc_ref.next().next();
+            r.next_pc = pc_ref.next(2);
         } else {
             // 普通运行时函数：TypeOnly body — 外层 const 块可能是 FullEval，需强制 TypeOnly 隔离
             CIRInstructionRef func_pc = pc_ref;
@@ -2170,7 +2141,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRInstruction* i
             analyze_instruction({}, {.block_eval_mode = EvalMode::TypeOnly});
             recover_analyze_flow();
             // 跳过紧随的 body BlockRef，避免外层迭代二次分析（同上补一格）
-            r.next_pc = func_pc.next().next();
+            r.next_pc = func_pc.next(2);
         }
     }
 
