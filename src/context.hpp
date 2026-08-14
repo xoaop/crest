@@ -10,6 +10,10 @@
 
 struct ThreadPool;
 
+
+using PackageRef = isize;
+
+
 struct Context {
     std::filesystem::path compiler_path;
     std::filesystem::path current_working_directory;
@@ -25,10 +29,6 @@ struct Context {
 
     Package *global_blank_package = nullptr;
 
-
-    // NOTE: const_decl:function_decl_value, block, for_stmt, 
-    // xpHashMap<Ast *, Scope *> ast_scope_map;
-
     ErrorReporter reporter;
 
     Array<Package> all_packages;
@@ -38,6 +38,8 @@ struct Context {
 
     ThreadPool *thread_pool;
 };
+
+PackageRef add_package(Context *ctx, Package pkg);
 
 Context *context();
 
