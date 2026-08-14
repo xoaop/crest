@@ -940,7 +940,7 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
 }
 
 
-void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent, CIRInstructionRef caller_ref) {
+void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent) {
     auto& block_info = *result_ctx.pkg()->block(blk_ref);
     bool is_loop = block_info.is_loop;
 
@@ -985,13 +985,32 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(last_bb);
             LLVMBuildUnreachable(unit.builder);
         }
+
+        // 在 exit_blk 开头建 φ
         Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
         LLVMValueRef phi = LLVMBuildPhi(unit.builder,
             LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
         LLVMAddIncoming(phi,
             blk_mapper.break_vals.data, blk_mapper.break_srcs.data,
             (unsigned)blk_mapper.break_vals.count);
-        save_llvm_val_of_inst(caller_ref, phi);
+
+        // 保存 φ：搜索 parent block 中引用当前 block 的 BlockRef 指令，以其 ref 为 key
+        CIRInstructionRef phi_key = CIRInstructionRef{blk_ref, 0};  // fallback
+        if(old_curr_blk != INVALID_BLOCK) {
+            auto& parent_block = *result_ctx.pkg()->block(old_curr_blk);
+            for(auto it = parent_block.insts.begin(); it != parent_block.insts.end(); ++it) {
+                CIRInstruction *body_inst = result_ctx.pkg()->inst(
+                    CIRInstructionRef{old_curr_blk, it.subscript()});
+                if(body_inst->op == CIROperator::BlockRef
+                   && body_inst->info<CIROperator::BlockRef>().block_ref == blk_ref) {
+                    phi_key = CIRInstructionRef{old_curr_blk, it.subscript()};
+                    break;
+                }
+            }
+        }
+        save_llvm_val_of_inst(phi_key, phi);
+
+        // exit_blk → 父 merge（与 connect_to_parent 逻辑一致）
         if(connect_to_parent) {
             auto& parent_mapper = get_or_create_mapper(old_curr_blk);
             auto merge_bb = parent_mapper.add_frag_blk("block.merge");
@@ -1062,7 +1081,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::BlockRef: {
-            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true, ref);
+            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true);
         } break;
 
 
