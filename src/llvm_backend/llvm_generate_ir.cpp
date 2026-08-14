@@ -920,7 +920,7 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     curr_func_info = fd;
 
     curr_blk = body_blk_ref;
-    gen_ir_block_in_func_block(body_blk_ref, true);
+    gen_ir_block_in_func_block(fd.body_inst, true);
 
     {
         auto* mapper_ptr = mapper(body_blk_ref);
@@ -939,22 +939,31 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
     }
 }
 
+// TODO: TEMP
+static void gen_ir_scan_nested_funcs(LLVMGenerator &g, CIRBlockRef blk_ref) {
+    auto& block_info = *g.result_ctx.pkg()->block(blk_ref);
+    for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
+        CIRInstructionRef pc{blk_ref, it.subscript()};
+        CIRInstruction *body_inst = g.result_ctx.pkg()->inst(pc);
+        if(body_inst->op == CIROperator::FunctionDecl || body_inst->op == CIROperator::BlockRef) {
+            g.gen_ir_inst(pc);
+        }
+    }
+}
 
-void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect_to_parent) {
+
+void LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, bool connect_to_parent) {
+    // blk_ref_inst：引用子块的 BlockRef 指令；或 CondBr 分支块入口 {blk, INVALID_INST_INDEX}
+    CIRBlockRef blk_ref = blk_ref_inst.block_ref;
+    if(blk_ref_inst.inst_index >= 0) {
+        CIRInstruction *ref_inst = result_ctx.pkg()->inst(blk_ref_inst);
+        if(ref_inst->op == CIROperator::BlockRef) {
+            blk_ref = ref_inst->info<CIROperator::BlockRef>().block_ref;
+        }
+    }
+
     auto& block_info = *result_ctx.pkg()->block(blk_ref);
     bool is_loop = block_info.is_loop;
-
-    // 不在函数内，或 comptime Block：只扫描 FunctionDecl 和 BlockRef
-    if(curr_state.curr_function == nullptr || block_info.is_comptime) {
-        for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
-            CIRInstructionRef pc{blk_ref, it.subscript()};
-            CIRInstruction *body_inst = result_ctx.pkg()->inst(pc);
-            if(body_inst->op == CIROperator::FunctionDecl || body_inst->op == CIROperator::BlockRef) {
-                gen_ir_inst(pc);
-            }
-        }
-        return;
-    }
 
     auto old_curr_blk = curr_blk;
     defer(curr_blk = old_curr_blk);
@@ -978,22 +987,26 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
 
     if(is_loop) {
         gen_ir_loop(last_bb, first_bb, blk_mapper, old_curr_blk);
-    } else if(blk_mapper.break_vals.count > 0) {
-        // ── break φ：带值 break 汇合到同一 block，在 exit_blk 开头建 φ ──
-        //（所有离开路径都是 break，last_bb 是死代码，无需接线到 exit_blk）
-        if(!LLVMGetBasicBlockTerminator(last_bb)) {
-            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(last_bb);
-            LLVMBuildUnreachable(unit.builder);
+    } else {
+        // 带值 break 汇合：在 exit_blk 开头建 φ（所有离开路径都是 break，last_bb 是死代码）
+        if(blk_mapper.break_vals.count > 0) {
+            if(!LLVMGetBasicBlockTerminator(last_bb)) {
+                Set_Curr_Inst_Pos_At_End_Of_Basic_Block(last_bb);
+                LLVMBuildUnreachable(unit.builder);
+            }
+            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
+            LLVMValueRef phi = LLVMBuildPhi(unit.builder,
+                LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
+            LLVMAddIncoming(phi,
+                blk_mapper.break_vals.data, blk_mapper.break_srcs.data,
+                (unsigned)blk_mapper.break_vals.count);
+            save_llvm_val_of_inst(blk_ref_inst, phi);
+        } else {
+            // 自然落出：last_bb → exit_blk
+            llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
         }
-        Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
-        LLVMValueRef phi = LLVMBuildPhi(unit.builder,
-            LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
-        LLVMAddIncoming(phi,
-            blk_mapper.break_vals.data, blk_mapper.break_srcs.data,
-            (unsigned)blk_mapper.break_vals.count);
-        save_llvm_val_of_inst(blk_mapper.phi_key, phi);
 
-        // exit_blk → 父 merge
+        // exit_blk → 父 merge（connect_to_parent 时）
         if(connect_to_parent) {
             auto& parent_mapper = get_or_create_mapper(old_curr_blk);
             auto merge_bb = parent_mapper.add_frag_blk("block.merge");
@@ -1002,15 +1015,6 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
         } else {
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(parent_bb);
         }
-    } else if(connect_to_parent) {
-        llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
-        auto& parent_mapper = get_or_create_mapper(old_curr_blk);
-        auto merge_bb = parent_mapper.add_frag_blk("block.merge");
-        llvm_build_br_when_no_br(blk_mapper.exit_blk(), merge_bb);
-        Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
-    } else {
-        llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
-        Set_Curr_Inst_Pos_At_End_Of_Basic_Block(parent_bb);
     }
 }
 
@@ -1064,7 +1068,14 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::BlockRef: {
-            gen_ir_block_in_func_block(inst->info<CIROperator::BlockRef>().block_ref, true);
+            auto child_blk = inst->info<CIROperator::BlockRef>().block_ref;
+
+            // TODO: REFACTOR: 统一对BlockRef的处理, 现在的处理很乱
+            if(curr_state.curr_function == nullptr || result_ctx.pkg()->block(child_blk)->is_comptime) {
+                gen_ir_scan_nested_funcs(*this, child_blk);
+            } else {
+                gen_ir_block_in_func_block(ref, true);
+            }
         } break;
 
 
@@ -1375,8 +1386,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMValueRef cond_val = get_llvm_val_from_inst_ref(info.condition_inst);
 
             // then/else 是独立 Block（各占一个 slot），自身接线由 connect_to_parent=false 处理
-            gen_ir_block_in_func_block(info.true_block, false);
-            gen_ir_block_in_func_block(info.false_block, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block, INVALID_INST_INDEX}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block, INVALID_INST_INDEX}, false);
 
             auto* true_mapper = mapper(info.true_block);
             auto* false_mapper = mapper(info.false_block);
@@ -1418,11 +1429,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 auto target_block_mapper = mapper(target_blk_ref);
                 LLVMBasicBlockRef target_block_exit = target_block_mapper->exit_blk();
 
-                // 收集 break φ 入边：{值, 所在 BB}；首个带值 break 记录结果 key
+                // 收集 break φ 入边：{值, 所在 BB}
                 if(break_val_ref != INVALID_INST && result_ctx.result_of(target_block).state != CIRResultState::WholeValue) {
-                    if(target_block_mapper->break_vals.count == 0) {
-                        target_block_mapper->phi_key = target_block;
-                    }
                     target_block_mapper->break_vals.push_back(get_llvm_val_from_inst_ref(break_val_ref));
                     target_block_mapper->break_srcs.push_back(curr_bb());
                 }
