@@ -214,10 +214,12 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
     // 进入循环块（压入块首即保存旧 pc），结束 recover 恢复
     new_analyze_flow(CIRInstructionRef{blk, 0});
 
-    analyze_block_insts(blk, target);
-
+    
+    // TODO: 实现编译期循环
     if(curr_eval_mode() == EvalMode::FullEval) {
-        XP_TODO(); // 目前不支持编译时循环
+        context()->reporter.report_error(pkg->inst(curr_inst_ref())->src_loc, "compile-time loop evaluation is not yet implemented");
+    } else {
+        analyze_block_insts(blk, target);
     }
 
 
