@@ -20,5 +20,5 @@ struct LLVMBasicBlockMapper {
 
 private:
     Array<LLVMBasicBlockRef> fragments;
-    LLVMBasicBlockRef exit_block;
+    LLVMBasicBlockRef exit_block = nullptr;
 };

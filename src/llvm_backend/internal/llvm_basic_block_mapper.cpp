@@ -2,25 +2,26 @@
 
 #include "llvm_basic_block_mapper.hpp"
 
-
+#include "print.hpp"
 
 
 LLVMBasicBlockRef LLVMBasicBlockMapper::first_frag_blk() {
-    XP_ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting first frag blk");
+    ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting first frag blk");
     return fragments[0];
 }
 
 LLVMBasicBlockRef LLVMBasicBlockMapper::last_frag_blk() {
-    XP_ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting last frag blk");
+    ASSERT_MSG(fragments.count > 0, "Remember to add at least one frag for block before getting last frag blk");
     return fragments.back();
 }
 
 LLVMBasicBlockRef LLVMBasicBlockMapper::exit_blk() {
+    ASSERT_MSG(exit_block != nullptr, "Exit block not created yet");
     return exit_block;
 }
 
 LLVMBasicBlockRef LLVMBasicBlockMapper::frag_at(isize i) {
-    XP_ASSERT_MSG(i >= 0 && i < fragments.count, "frag_at index out of range");
+    ASSERT_MSG(i >= 0 && i < fragments.count, "frag_at index out of range");
     return fragments[i];
 }
 
@@ -33,7 +34,7 @@ LLVMBasicBlockMapper::LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef c
     fragments = make_array<LLVMBasicBlockRef>(allocator);
     owner_func = curr_func;
     if(create_exit_block) {
-        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, curr_func, "block.exit");
+        create_exit();
     } else {
         exit_block = nullptr;
     }
@@ -46,7 +47,6 @@ LLVMBasicBlockRef LLVMBasicBlockMapper::add_frag_blk(const char *name) {
 }
 
 void LLVMBasicBlockMapper::create_exit() {
-    if(!exit_block) {
-        exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, "block.exit");
-    }
+    ASSERT_MSG(exit_block == nullptr, "Exit block already exists");
+    exit_block = LLVMAppendBasicBlockInContext(g_llvm_session.ctx, owner_func, "block.exit");
 }
