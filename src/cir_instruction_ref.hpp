@@ -3,6 +3,7 @@
 
 #include "xoaop.h"
 #include "array.hpp"
+#include "print.hpp"
 #include <format>
 #include <functional>
 #include <optional>
@@ -26,7 +27,12 @@ struct CIRInstructionRef {
     isize       inst_index;
 
     constexpr CIRInstructionRef() : block_ref(INVALID_BLOCK), inst_index(INVALID_INST_INDEX) {}
-    explicit constexpr CIRInstructionRef(CIRBlockRef blk, isize idx) : block_ref(blk), inst_index(idx) {}
+    explicit CIRInstructionRef(CIRBlockRef blk, isize idx) : block_ref(blk), inst_index(idx) {
+        ASSERT(blk != INVALID_BLOCK && idx != INVALID_INST_INDEX);
+    }
+    explicit CIRInstructionRef(CIRBlockRef blk) : block_ref(blk), inst_index(INVALID_INST_INDEX) {
+        ASSERT(blk != INVALID_BLOCK);
+    }
 
     // 块内推进：只动 inst_index，block_ref 不变（不跨 Block）
     void advance(isize n = 1) { 
@@ -47,7 +53,7 @@ struct CIRInstructionRef {
     auto operator<=>(const CIRInstructionRef&) const = default;
 };
 
-constexpr CIRInstructionRef INVALID_INST = CIRInstructionRef{ INVALID_BLOCK, INVALID_INST_INDEX };
+const CIRInstructionRef INVALID_INST = CIRInstructionRef{};
 
 
 
