@@ -107,9 +107,6 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
     root.ctx = CIRResultContext::create(cir_package);
     instance_stack.push_back(root);
 
-    // @new — 顶层驱动：从根 Block 遍历，初始 scope = package_scope
-    // scope 由显式 EnterScope 指令切换；每条指令都经 analyze_instruction 进入。
-    // 根块无结果位置（target = nullopt），迭代跑完整块
     inst_stack.clear();
     inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0});
     scope_stack.clear();
@@ -120,7 +117,6 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
 
 
 
-// 数据流声明（实现在文件末尾）
 static Array<CIRInstructionRef> deps_of(CIRInstruction* inst, xpAllocator alloc);
 static Array<CIRInstructionRef> targets_of(CIRInstruction* inst, xpAllocator alloc);
 
@@ -137,10 +133,8 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         }
     }
 
-    // 数据流声明——用于自动错误传播
     auto dep_arr = deps_of(inst, stage_allocator());
 
-    // 已迁移 handler 的结果（留空 = 旧 dispatch）
     std::optional<AnalyzeResult> result_opt = std::nullopt;
 
     // 自动 deps 错误传播：依赖有 error → 自动 Set_ResultError(curr_inst()) + 结果流向的 targets
@@ -148,8 +142,8 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         if(dep_arr[i] == INVALID_INST) continue;
         if(has_error(dep_arr[i])) {
             Set_ResultError(curr_inst_ref());
+
             // 与 apply_result 的 Error 分支一致：错误也传播到结果流向的目标
-            // （Break→break_block、TypeAscribe→var_inst、DetermineType→determining_inst 等）
             auto tgt = targets_of(inst, stage_allocator());
             for(isize j = 0; j < tgt.count; j++) {
                 if(tgt[j] != INVALID_INST) Set_ResultError(tgt[j]);
@@ -158,7 +152,6 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         }
     }
 
-    // ★ 已迁移 handler — 宏分派（每个 op → analyze_##name，40/40 全覆盖）
 #define X(name) if(inst->op == CIROperator::name) { result_opt = analyze_##name(inst, curr_inst_ref(), params); goto end; }
     CIR_OPERATORS
 #undef X
@@ -183,12 +176,9 @@ void Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
 }
 
 
-// 控制流 — 进入块 blk 分析（非循环块）；pc 进入块内迭代，结束后恢复。
-// target = 本块的 handle（尾随 BlockRef 指令位置），块结果写在这里；无结果位置的块传 nullopt
 void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
     auto& block_info = *pkg->block(blk);
 
-    // 进入块（压入块首即保存旧 pc），结束 recover 恢复
     new_analyze_flow(CIRInstructionRef{blk, 0});
     bool pushed_eval_mode = false;
     if(force_eval_mode.has_value()) {
@@ -199,19 +189,17 @@ void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef
         pushed_eval_mode = true;
     }
 
-    // 进入子 Block：每条指令都经 analyze_instruction（唯一入口），块内由 advance() 推进 inst_index
     analyze_block_insts(blk, target);
 
     if(pushed_eval_mode) {
         eval_mode_stack.pop_back();
     }
-    recover_analyze_flow(); // 恢复旧 pc——外层 analyze_instruction 末尾 advance() 越过 BlockRef 指令
+    recover_analyze_flow();
 }
 
 void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
     auto& block_info = *pkg->block(blk);
 
-    // 进入循环块（压入块首即保存旧 pc），结束 recover 恢复
     new_analyze_flow(CIRInstructionRef{blk, 0});
 
     
@@ -223,7 +211,7 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
     }
 
 
-    recover_analyze_flow(); // 恢复旧 pc
+    recover_analyze_flow();
 }
 
 void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
@@ -738,7 +726,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRInstruction* inst, CI
     auto op = unary_info.op;
     auto operand_inst = unary_info.operand_inst;
 
-    // propagate_error({operand_inst}) 已由 deps_of 短路替代
 
     TypeRef operand_type = ResultType(operand_inst);
 
@@ -795,7 +782,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Cast(CIRInstruction* inst, CIR
     auto expr_inst = cast_info.expr_inst;
     auto target_type_inst = cast_info.target_type_inst;
 
-    // propagate_error({expr_inst, target_type_inst}) 已由 deps_of 短路替代
 
     if(!has_result_val(target_type_inst)) {
         return std::nullopt;
@@ -834,7 +820,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayType(CIRInstruction* inst
 
     auto& info = inst->info<CIROperator::ArrayType>();
 
-    // propagate_error({info.element_type_inst, info.count_inst}) 已由 deps_of 短路替代
 
     if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({info.count_inst})) {
         if(ResultType(info.element_type_inst) != type_type()) {
@@ -870,7 +855,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_SliceType(CIRInstruction* inst
 
     auto& info = inst->info<CIROperator::SliceType>();
 
-    // propagate_error({info.element_type_inst}) 已由 deps_of 短路替代
 
     if(!has_result_val(info.element_type_inst)) {
         return make_result(pc_ref, CIRInstResult::make_type_only(type_type()));
@@ -898,7 +882,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncType(CIRInstruction* inst,
 
     auto& info = inst->info<CIROperator::FuncType>();
 
-    // propagate_error(info.param_type_insts) + propagate_error({info.return_type_inst}) 已由 deps_of 短路替代
 
     Array<TypeRef> param_types = make_array<TypeRef>(stage_allocator());
     defer(array_free(&param_types));
@@ -938,7 +921,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeOfInstResult(CIRInstructio
 
     auto target_inst = inst->info<CIROperator::TypeOfInstResult>().target_inst;
 
-    // propagate_error({target_inst}) 已由 deps_of 短路替代
 
     TypeRef target_type = ResultType(target_inst);
     // 如果目标结果本身就是 type value（如泛型 Call 返回的编译期类型），
@@ -961,7 +943,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldTypeOfStruct(CIRInstructi
 
     auto& info = inst->info<CIROperator::FieldTypeOfStruct>();
 
-    // propagate_error({info.struct_type_inst}) 已由 deps_of 短路替代
 
     if(!has_result_val(info.struct_type_inst)) {
         return std::nullopt;
@@ -988,7 +969,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncParamType(CIRInstruction* 
 
     auto& info = inst->info<CIROperator::FuncParamType>();
 
-    // propagate_error({info.type_of_func_type_inst}) 已由 deps_of 短路替代
 
     TypeRef func_type = ResultValue(info.type_of_func_type_inst).type_val();
 
@@ -1034,8 +1014,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_StructInit(CIRInstruction* ins
 
     auto& info = inst->info<CIROperator::StructInit>();
 
-    // propagate_error({info.struct_type_inst}) 已由 deps_of 短路替代
-    // propagate_error(info.field_init_insts) 已由 deps_of 短路替代
 
     if(!has_result_val(info.struct_type_inst)) {
         return std::nullopt;
@@ -1083,7 +1061,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRInstruction* inst
 
     auto& info = inst->info<CIROperator::ArrayInit>();
 
-    // propagate_error(info.element_insts) 已由 deps_of 短路替代
 
     // 找第一个有具体类型的元素作为数组元素类型
     // 都没有则用第一个元素的 untyped 类型，留给 DetermineType 决定
@@ -1153,7 +1130,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Index(CIRInstruction* inst, CI
 
     auto& info = inst->info<CIROperator::Index>();
 
-    // propagate_error({info.array_inst, info.index_inst}) 已由 deps_of 短路替代
 
     TypeRef array_type_ref = ResultType(info.array_inst);
 
@@ -1190,7 +1166,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Index(CIRInstruction* inst, CI
 std::optional<AnalyzeResult> Interpreter::analyze_StructField(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto type_block_inst = inst->info<CIROperator::StructField>().type_block_inst;
 
-    // propagate_error({type_block_inst}) 已由 deps_of 短路替代
 
     if(has_result_type(type_block_inst)) {
         CIRInstResult r;
@@ -1212,7 +1187,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRInstruction* in
 
     auto& info = inst->info<CIROperator::FieldAccess>();
     CIRInstructionRef parent_inst = info.parent_inst;
-    // deps 短路替代 propagate_error({parent_inst})
 
     TypeRef parent_type = ResultType(parent_inst);
 
@@ -1273,7 +1247,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRInstruction* in
 std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::FieldPtr>();
     CIRInstructionRef parent_inst = info.parent_inst;
-    // deps 短路替代 propagate_error({parent_inst})
 
     if(!is_lvalue(parent_inst)) {
         return make_result(pc_ref, inst_error(inst, "不能对非左值表达式取字段指针"));
@@ -1320,7 +1293,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRInstruction* inst,
 std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::IndexPtr>();
     CIRInstructionRef array_inst = info.array_inst;
-    // deps 短路替代 propagate_error({info.array_inst, info.index_inst})
 
     if(!is_lvalue(array_inst)) {
         return make_result(pc_ref, inst_error(inst, "不能对非左值表达式取索引指针"));
@@ -1357,7 +1329,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRInstruction* inst,
 std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::AddrOf>();
     CIRInstructionRef lval_inst = info.lval_inst;
-    // deps 短路替代 propagate_error({lval_inst})
 
     TypeRef lval_type = ResultType(lval_inst);
     if(!is_lvalue(lval_inst) && !is_function_type(lval_type)) {
@@ -1404,7 +1375,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRInstruction* inst, C
     auto op = binary_info.op;
     auto left_inst = binary_info.left_inst;
     auto right_inst = binary_info.right_inst;
-    // deps 短路替代 propagate_error({left_inst, right_inst})
 
     TypeRef left_type = ResultType(left_inst);
     TypeRef right_type = ResultType(right_inst);
@@ -1526,7 +1496,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRInstruction* inst, C
 std::optional<AnalyzeResult> Interpreter::analyze_Break(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto info = inst->info<CIROperator::Break>();
     CIRInstructionRef target_block = info.break_block;
-    // deps 短路替代 propagate_error({break_value_inst}) —— 错误已标 current + target(break_block)
 
     if(info.break_value_inst != INVALID_INST) {
         AnalyzeResult r;   // 累积 target_block 的写入（类型 + 值）
@@ -1563,7 +1532,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Break(CIRInstruction* inst, CI
 std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::TypeAscribe>();
 
-    // propagate_error({info.var_inst, info.type_inst}) 已由 deps_of 短路替代
 
     // 限制:
     // var_inst == VariableDecl
@@ -1623,7 +1591,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Store(CIRInstruction* inst, CI
     auto& store_info = inst->info<CIROperator::Store>();
     CIRInstructionRef var_inst = store_info.var_inst;
     CIRInstructionRef value_inst = store_info.value_inst;
-    // deps 短路替代 propagate_error({var_inst, value_inst})
 
     TypeRef target_type;
     if(is_lvalue(var_inst)) {
@@ -1674,7 +1641,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRInstruction* 
     auto& info = inst->info<CIROperator::DetermineType>();
     auto determined_inst = info.determining_inst;
     auto expected_type_inst = info.type_inst;
-    // deps 短路替代 propagate_error({determined_inst}) + propagate_error({expected_type_inst})
 
     // TODO: HACK
     if(!has_result_type(determined_inst)) {
@@ -1877,7 +1843,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_VariableDecl(CIRInstruction* i
 // handler: EnumDeclInit（写自身 type/value；枚举字段注册副作用保留）
 std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::EnumDeclInit>();
-    // deps 短路替代 propagate_error({info.tag_type_inst}) + 各字段 value_inst
 
     if(!should_eval_for_lazy_eval({info.tag_type_inst})) {
         return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}});
@@ -1952,7 +1917,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIRInstruction* i
 std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& info = inst->info<CIROperator::FinishStruct>();
     auto struct_decl_inst = info.struct_decl_inst;
-    // deps 短路替代 propagate_error({struct_decl_inst}) + propagate_error(info.field_insts)
 
     // 有具体字段值时，完成结构体类型（填字段）
     if(curr_eval_mode() == EvalMode::FullEval || (should_eval_for_lazy_eval({struct_decl_inst}) && should_eval_for_lazy_eval(info.field_insts))) {
@@ -2030,7 +1994,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRInstruction* inst, C
     auto cond_inst = if_info.condition_inst;
     CIRBlockRef true_blk = if_info.true_block;
     CIRBlockRef false_blk = if_info.false_block;
-    // deps 短路替代 propagate_error({cond_inst})
 
     XP_ASSERT_DEFAULT(cond_inst != INVALID_INST);
 
@@ -2089,7 +2052,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRInstruction* i
 
     TypeRef return_type = undefined_type();
     if(func.return_type_inst != INVALID_INST) {
-        // deps 短路替代 propagate_error({func.return_type_inst})
         if(has_result_val(func.return_type_inst)) {
             return_type = ResultValue(func.return_type_inst).type_val();
         }
@@ -2152,7 +2114,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRInstruction* i
 std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& call_info = inst->info<CIROperator::Call>();
     CIRInstructionRef called_inst = call_info.called_thing;
-    // deps 短路替代 propagate_error({called_inst}) + propagate_error(call_info.arg_insts)
 
     TypeRef called_type = ResultType(called_inst);
 
