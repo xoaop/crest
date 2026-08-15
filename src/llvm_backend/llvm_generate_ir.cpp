@@ -121,9 +121,9 @@ xpString register_func_name(CIRInstResultRef key, bool is_extern_c) {
             return base_name;
         }
 
-        Package* pkg = sym ? sym->package : nullptr;
+        PackageRef pkg = sym ? sym->package : -1;
         return xp_string_concat_mid(
-            pkg ? pkg->path : xp_string_c(""),
+            pkg >= 0 ? package_by_ref(pkg)->path : xp_string_c(""),
             base_name,
             xpOption<xpString>(xp_string_c(".")),
             permanent_allocator()
@@ -148,15 +148,16 @@ LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfo *symbol_info, LLV
 
 
 
-void LLVMGenerator::init(Package *pkg, xpAllocator allocator) {
+void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
+    Package *pkg = package_by_ref(pkg_ref);
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
     unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     loop_stack = make_array<LLVMLoopBlocks>(allocator);
     struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
-    this->pkg = pkg;
-    result_ctx = CIRResultContext::create(&this->pkg->cir_package);
+    this->pkg = pkg_ref;
+    result_ctx = CIRResultContext::create(&package_by_ref(pkg_ref)->cir_package);
     this->curr_state = {nullptr, nullptr};
     curr_blk = INVALID_BLOCK;
     syms = IRSymbolTable{
@@ -414,9 +415,9 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
 
 Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerateConfig config) {
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
-    for(Package& pkg: *all_packages) {
+    for(isize i = 0; i < all_packages->count; i++) {
         LLVMGenerator gen;
-        gen.init(&pkg, stage_allocator());
+        gen.init(i, stage_allocator());
         defer(gen.deinit());
         obj_paths.push_back(gen.gen_ir_package(config));
     }
@@ -429,9 +430,10 @@ Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerate
 xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
     // @new — 用迭代器遍历根 Block。每个指令占一个 slot，嵌套 Block（BlockRef/FunctionDecl）
     // 由 gen_ir_inst 内部递归生成，父级只需顺序推进迭代器。
-    auto& root_blk = *pkg->cir_package.block(pkg->cir_package.top_blk);
-    for(auto it = root_blk.insts.begin(); it != root_blk.insts.end(); ++it) {
-        gen_ir_inst(CIRInstructionRef{pkg->cir_package.top_blk, it.subscript()});
+    CIRPackage& cir_pkg = package_by_ref(pkg)->cir_package;
+    auto& root_blk = *cir_pkg.block(cir_pkg.top_blk);
+    for(auto ref : root_blk) {
+        gen_ir_inst(ref);
     }
 
 
@@ -443,7 +445,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
 
     // 输出 .ll 文件
     char *error = nullptr;
-    std::string file_name = to_path(pkg->path).generic_string();
+    std::string file_name = to_path(package_by_ref(pkg)->path).generic_string();
     std::replace(file_name.begin(), file_name.end(), '/', '_');
     std::replace(file_name.begin(), file_name.end(), ':', '_');
 
@@ -831,8 +833,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
 
 
 void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg) {
-    bool is_cross_pkg = (target_cir_pkg != nullptr && target_cir_pkg != &pkg->cir_package);
-    if(target_cir_pkg == nullptr) target_cir_pkg = &pkg->cir_package;
+    bool is_cross_pkg = (target_cir_pkg != nullptr && target_cir_pkg != &package_by_ref(pkg)->cir_package);
+    if(target_cir_pkg == nullptr) target_cir_pkg = &package_by_ref(pkg)->cir_package;
 
     CIRInstruction *func_inst = target_cir_pkg->inst(func_ref);
 
@@ -942,9 +944,8 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
 // TODO: TEMP
 static void gen_ir_scan_nested_funcs(LLVMGenerator &g, CIRBlockRef blk_ref) {
     auto& block_info = *g.result_ctx.pkg()->block(blk_ref);
-    for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
-        CIRInstructionRef pc{blk_ref, it.subscript()};
-        CIRInstruction *body_inst = g.result_ctx.pkg()->inst(pc);
+    for(auto pc : block_info) {
+        CIRInstruction* body_inst = g.result_ctx.pkg()->inst(pc);
         if(body_inst->op == CIROperator::FunctionDecl || body_inst->op == CIROperator::BlockRef) {
             g.gen_ir_inst(pc);
         }
@@ -970,8 +971,8 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRBlockRef blk_ref, bool connect
     Set_Curr_Inst_Pos_At_End_Of_Basic_Block(first_bb);
     curr_blk = blk_ref;
 
-    for(auto it = block_info.insts.begin(); it != block_info.insts.end(); ++it) {
-        gen_ir_inst(CIRInstructionRef{blk_ref, it.subscript()});
+    for(auto ref : block_info) {
+        gen_ir_inst(ref);
     }
 
     LLVMBasicBlockRef last_bb = curr_bb();

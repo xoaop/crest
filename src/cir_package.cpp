@@ -11,7 +11,7 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     CIRPackage cir_package = {};
     cir_package.instructions = StableOrderedArray<CIRInstruction>::make(allocator);
 
-    cir_package.blocks = make_array<CIRBlock2>(allocator);
+    cir_package.blocks = make_array<CIRBlock>(allocator);
 
     cir_package.string_literals = make_array<xpString>(allocator);
     cir_package.results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(allocator);
@@ -31,21 +31,23 @@ const CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) const {
     return &blocks[ref.block_ref].insts[ref.inst_index];
 }
 
-CIRBlock2* CIRPackage::block(CIRBlockRef ref) {
+CIRBlock* CIRPackage::block(CIRBlockRef ref) {
     return &blocks[ref];
 }
 
-const CIRBlock2* CIRPackage::block(CIRBlockRef ref) const {
+const CIRBlock* CIRPackage::block(CIRBlockRef ref) const {
     return &blocks[ref];
 }
 
 CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop) {
-    CIRBlock2 blk = {};
+    CIRBlock blk = {};
     blk.insts = StableOrderedArray<CIRInstruction>::make(permanent_allocator());
     blk.is_comptime = is_comptime;
     blk.immediate_eval = immediate_eval;
     blk.is_loop = is_loop;
     CIRBlockRef ref = blocks.count;
+    blk.self = ref;
+    blk.package_ref = package_ref;
     blocks.push_back(blk);
     return ref;
 }
@@ -127,7 +129,7 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
 }
 
 
-isize CIRBlock2::push_back_inst(CIRInstruction inst) {
+isize CIRBlock::push_back_inst(CIRInstruction inst) {
     return insts.push(inst);
 }
 
@@ -470,8 +472,8 @@ void dump_cir_package(CIRPackage *pkg) {
     println_err("CIRPackage {{");
     for (CIRBlockRef b = 0; b < pkg->blocks.count; b++) {
         auto& blk = pkg->blocks[b];
-        for (auto it = blk.insts.begin(); it != blk.insts.end(); ++it) {
-            dump_inst_compact(pkg, CIRInstructionRef{b, it.subscript()}, true);
+        for (auto ref : blk) {
+            dump_inst_compact(pkg, ref, true);
         }
     }
     println_err("}}");

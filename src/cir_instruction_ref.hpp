@@ -19,15 +19,15 @@ using CIRBlockRef = isize;
 constexpr CIRBlockRef INVALID_BLOCK = -1;
 constexpr isize INVALID_INST_INDEX = -1;
 
-// 指令引用 = 块 + 块内下标，始终指向真实指令：
-//   block_ref != -1 && inst_index >= 0 → 指向 block 内第 inst_index 条指令
-// 块本身（的结果）通过该块尾随的 BlockRef 指令位置寻址（进入 analyze_block 时的 pc 即此位置）
+
+
 struct CIRInstructionRef {
-    CIRBlockRef block_ref;
-    isize       inst_index;
+    isize       pkg_index = -1;
+    CIRBlockRef block_ref = INVALID_BLOCK;
+    isize       inst_index = INVALID_INST_INDEX;
 
     constexpr CIRInstructionRef() : block_ref(INVALID_BLOCK), inst_index(INVALID_INST_INDEX) {}
-    explicit CIRInstructionRef(CIRBlockRef blk, isize idx) : block_ref(blk), inst_index(idx) {
+    explicit CIRInstructionRef(CIRBlockRef blk, isize idx, isize pkg_index = -1) : block_ref(blk), inst_index(idx), pkg_index(pkg_index) {
         ASSERT(blk != INVALID_BLOCK && idx != INVALID_INST_INDEX);
     }
     explicit CIRInstructionRef(CIRBlockRef blk) : block_ref(blk), inst_index(INVALID_INST_INDEX) {
@@ -43,11 +43,11 @@ struct CIRInstructionRef {
         inst_index -= n; 
     }
 
-    CIRInstructionRef next(isize n = 1) const { 
-        return CIRInstructionRef{block_ref, inst_index + n}; 
+    CIRInstructionRef next(isize n = 1) const {
+        return CIRInstructionRef{block_ref, inst_index + n, pkg_index};
     }
-    CIRInstructionRef prev(isize n = 1) const { 
-        return CIRInstructionRef{block_ref, inst_index - n}; 
+    CIRInstructionRef prev(isize n = 1) const {
+        return CIRInstructionRef{block_ref, inst_index - n, pkg_index};
     }
 
     auto operator<=>(const CIRInstructionRef&) const = default;
@@ -60,7 +60,9 @@ const CIRInstructionRef INVALID_INST = CIRInstructionRef{};
 template<>
 struct std::hash<CIRInstructionRef> {
     usize operator()(const CIRInstructionRef& r) const {
-        return xp_hash_combine_u64((u64)r.block_ref, (u64)r.inst_index);
+        u64 h = xp_hash_combine_u64((u64)r.block_ref, (u64)r.inst_index);
+        h = xp_hash_combine_u64(h, (u64)r.pkg_index);
+        return h;
     }
 };
 

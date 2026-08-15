@@ -171,11 +171,11 @@ TypeRef Value::type_val() const {
     return type_value;
 }
 
-void Value::package_val(Package* pkg) {
+void Value::package_val(PackageRef pkg) {
     actual_value_type = ActualValueType::Package;
     package_value = pkg;
 }
-Package* Value::package_val() const {
+PackageRef Value::package_val() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Package);
     return package_value;
 }
@@ -468,7 +468,7 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
             isize ptr;
             memcpy(&ptr, &bytes[offset], (size_t)size);
             Value v = make_value(type);
-            v.package_val((Package*)ptr);
+            v.package_val((PackageRef)ptr);
             return v;
         }
         case Type_function: {

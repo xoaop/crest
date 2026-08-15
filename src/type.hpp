@@ -7,6 +7,8 @@
 #include "common.hpp"
 #include "scope.hpp"
 
+using PackageRef = isize;
+
 #define TYPE_KINDS                                      \
     TYPE_KIND(Undefined)                   \
     TYPE_KIND(i8)                                 \
@@ -144,7 +146,7 @@ struct Type {
         // 联合体
         struct {
             Scope union_fields; // 联合体的字段列表
-            Package *pkg;
+            PackageRef pkg;
             TypeHashKey hash_key;
         } union_info;
 
@@ -153,7 +155,7 @@ struct Type {
         TypeRef self_type_info;
 
         // package类型
-        Package *package_info;
+        PackageRef package_info;
     };
 
     // *重要: 用于hash set比较Type, 不然会出问题
@@ -346,7 +348,7 @@ TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
 TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields);
 TypeRef type_type();
-TypeRef package_type(Package *package_info);
+TypeRef package_type(PackageRef package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 

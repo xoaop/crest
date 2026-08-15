@@ -5,6 +5,7 @@
 
 #include "type.hpp"
 #include "value.hpp"
+#include "context.hpp"
 
 #include "symbol.hpp"
 
@@ -773,7 +774,7 @@ TypeRef type_type() {
     return type_type(undefined_type());
 }
 
-TypeRef package_type(Package *package_info) {
+TypeRef package_type(PackageRef package_info) {
     Type t = {};
     t.kind = Type_package;
     t.package_info = package_info;
@@ -986,7 +987,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         return type_str;
 
     } else if(is_package_type(type)) {
-        return type->package_info->path;
+        return package_by_ref(type->package_info)->path;
     } else if(type->kind == Type_error) {
         return xp_string_c("error");
     } else if(type->kind == Type_Undefined) {
@@ -1098,7 +1099,7 @@ struct std::hash<Type> {
 
         case Type_package: {
             u64 hash_package = Type_package;
-            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(type.package_info->path));
+            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(package_by_ref(type.package_info)->path));
             u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
             return cast(usize)(hash_value);
         } break;

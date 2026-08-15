@@ -18,13 +18,30 @@ struct Package;
 
 
 
-struct CIRBlock2 {
+struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
+    CIRBlockRef self = -1;          // 本块号（create_block 填）
+    isize       package_ref = -1;   // 所属包索引（create_block 填）
+    
     bool is_comptime;
     bool immediate_eval;
     bool is_loop;                // 循环块标记（旧 Loop 指令已合并进 Block）
 
     isize push_back_inst(CIRInstruction inst);
+
+    
+    struct InstRefIter {
+        CIRInstructionRef ref;
+
+        CIRInstructionRef operator*() const { return ref; }
+        InstRefIter& operator++() { ref.advance(); return *this; }
+
+        bool operator!=(const InstRefIter& o) const { return ref != o.ref; }
+        bool operator==(const InstRefIter& o) const { return ref == o.ref; }
+    };
+
+    InstRefIter begin() { return {CIRInstructionRef{self, 0, package_ref}}; }
+    InstRefIter end()   { return {CIRInstructionRef{self, (isize)insts.count(), package_ref}}; }
 };
 
 
@@ -119,13 +136,13 @@ private:
 
 
 struct CIRPackage {
+    isize package_ref = -1;   // 本包在 context()->all_packages 中的全局索引（CIRInstructionRef 自定位用）
 
     // @deprecated
     StableOrderedArray<CIRInstruction>  instructions;   // 全局指令数组（handle 稳定）
 
-    // @new — 每个 Block 独立存储指令
     CIRBlockRef top_blk;
-    Array<CIRBlock2> blocks;
+    Array<CIRBlock> blocks;
 
     Scope *package_scope = nullptr;   // 包级 scope（顶层驱动的初始 scope）
 
@@ -139,14 +156,13 @@ struct CIRPackage {
 
     CIRInstruction* inst(CIRInstructionRef ref);
     const CIRInstruction* inst(CIRInstructionRef ref) const;
-    CIRBlock2* block(CIRBlockRef ref);
-    const CIRBlock2* block(CIRBlockRef ref) const;
+    CIRBlock* block(CIRBlockRef ref);
+    const CIRBlock* block(CIRBlockRef ref) const;
 
     CIRResultInstanceRef get_result_instance(FuncCallKey key);
 
     CIRInstResult& result_of(CIRInstructionRef ref, std::optional<CIRResultInstanceRef> instance = std::nullopt);
 
-    // @new — 创建空 Block，不涉及指令操作；返回 CIRBlockRef
     CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop);
 };
 

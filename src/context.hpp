@@ -27,7 +27,7 @@ struct Context {
     // Package搜索路径 — 按优先级排列
     Array<xpString> package_search_paths;
 
-    Package *global_blank_package = nullptr;
+    PackageRef global_blank_package = -1;
 
     ErrorReporter reporter;
 
@@ -41,7 +41,16 @@ struct Context {
 
 PackageRef add_package(Context *ctx, Package pkg);
 
+Package *package_by_ref(PackageRef ref);   // 全局包表:编号 → Package*
+
+
+CIRInstruction* inst(CIRInstructionRef ref);
+
+
 Context *context();
+
+
+
 
 
 #endif // CREST_CONTEXT_HPP
