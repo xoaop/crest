@@ -138,8 +138,6 @@ private:
 struct CIRPackage {
     isize package_ref = -1;   // 本包在 context()->all_packages 中的全局索引（CIRInstructionRef 自定位用）
 
-    // @deprecated
-    StableOrderedArray<CIRInstruction>  instructions;   // 全局指令数组（handle 稳定）
 
     CIRBlockRef top_blk;
     Array<CIRBlock> blocks;
