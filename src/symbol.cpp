@@ -88,7 +88,7 @@ bool SymbolInfo::is_const_decl_and_func() {
 }
 
 
-SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(xpString name, Value value, PackageRef package, AstFile *file, Ast *ast) {
     SymbolInfo info{};
     info.name = name;
     info.val(value);
@@ -99,7 +99,7 @@ SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *fi
     return info;
 }
 
-SymbolInfo make_symbol(xpString name, Package *package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(xpString name, PackageRef package, AstFile *file, Ast *ast) {
     SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
     info.state = SymbolState::Unsolved;
 

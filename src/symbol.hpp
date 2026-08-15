@@ -14,6 +14,8 @@ struct AstFile;
 struct Package;
 struct Ast;
 
+using PackageRef = isize;
+
 enum class SymbolState {
     Unsolved, // 还未解析
     Solving,  // 正在解析中, 用于检测循环依赖
@@ -39,7 +41,7 @@ enum class ValueStoreType {
 struct SymbolInfo {
     xpString name;
     SymbolState state;
-    Package *package;
+    PackageRef package;
     AstFile *file;
     Ast *ast;
 
@@ -68,8 +70,8 @@ public:
     bool is_const_decl_and_func();
 };
 
-SymbolInfo make_symbol(xpString name, Value value, Package *package, AstFile *file, Ast *ast);
-SymbolInfo make_symbol(xpString name, Package *package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, Value value, PackageRef package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, PackageRef package, AstFile *file, Ast *ast);
 
 
 

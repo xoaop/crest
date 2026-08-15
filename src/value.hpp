@@ -14,6 +14,8 @@ using TypeRef = Type *;
 struct Package;
 struct ValueMemory;  // 前置声明，定义在 cir_builder.hpp
 
+using PackageRef = isize;
+
 
 enum class MemoryKind: u8 {
     Heap,
@@ -130,7 +132,7 @@ public:
     void func_val_key(CIRInstResultRef key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
-    void package_val(Package* pkg);
+    void package_val(PackageRef pkg);
     void ref_val(Value* ref);
 
 
@@ -144,7 +146,7 @@ public:
     Value array_element_val(isize index) const;
     Pointer pointer_val() const;
     TypeRef type_val() const;
-    Package* package_val() const;
+    PackageRef package_val() const;
     FuncValue func_val() const;
     Value* ref_val() const;
     
@@ -169,7 +171,7 @@ private:
 
         TypeRef type_value;        // 类型值
 
-        Package* package_value;    // 包值
+        PackageRef package_value;    // 包值（全局包表编号）
 
         Value* ref_value;
     };
