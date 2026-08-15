@@ -44,15 +44,16 @@ CIRBuilder::~CIRBuilder() {
 
 
 
-void CIRBuilder::build_cir_package(Package *pkg) {
+void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
+    Package *pkg = package_by_ref(pkg_ref);
     curr_scope = &pkg->package_scope;
 
     pkg->cir_package = make_cir_package(permanent_allocator());
     curr_pkg = &pkg->cir_package;
     curr_pkg->package_scope = &pkg->package_scope;
 
-    // @deprecated
-    // curr_instruction_buffer = &pkg->cir_package.instructions;
+    curr_pkg->package_ref = pkg_ref;
+
 
     auto& cir_pkg = pkg->cir_package;
 
@@ -75,10 +76,6 @@ void CIRBuilder::build_cir_package(Package *pkg) {
 
             switch(ast->type) {
                 case AstType_ConstDecl: {
-                    if(ast->ConstDecl.value_ast->type == AstType_Import) {
-                        break;
-                    }
-
                     top_inst = build_inst_for_const_decl(ast);
                 } break;
 
@@ -635,6 +632,13 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             result = inst;
         } break;
 
+        case AstType_Import: {
+            // import "path"  → 发射 ImportPackage，interp 解析出包值
+            result = Make_Instruction<CIROperator::ImportPackage>(expr, {
+                .path = expr->Import.path,
+            });
+        } break;
+
         case AstType_FunctionCallExpr: {
                 // func_type = TypeOfInstResult(func_val)
                 auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
@@ -805,8 +809,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // 创建 IdentVal 引用 string 符号（来自 std/builtin/string.cst），
             // 作为 StringLiteral 的数据依赖，analyze 阶段通过数据流获取类型
             auto string_ident = New_Instruction(CIROperator::IdentVal, expr);
-            SymbolInfo *string_sym = find_symbol_until_global(&context()->global_blank_package->package_scope, xp_string_c("string"));
-            Instruction(string_ident).symbol = SymbolInfoRef{&context()->global_blank_package->package_scope.symbols, xp_string_c("string")};
+            SymbolInfo *string_sym = find_symbol_until_global(&package_by_ref(context()->global_blank_package)->package_scope, xp_string_c("string"));
+            Instruction(string_ident).symbol = SymbolInfoRef{&package_by_ref(context()->global_blank_package)->package_scope.symbols, xp_string_c("string")};
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(expr, {
                 .data = ptr,
@@ -1015,7 +1019,7 @@ CIRInstructionRef CIRBuilder::New_Instruction(CIROperator op, Ast *ast) {
     CIRBlockRef blk = block_stack.back();
     isize inst_index = curr_pkg->block(blk)->push_back_inst(inst);
 
-    return CIRInstructionRef{ blk, inst_index };
+    return CIRInstructionRef{ blk, inst_index, curr_pkg->package_ref };
 }
 
 

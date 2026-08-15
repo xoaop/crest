@@ -7,8 +7,6 @@
 #include "common.hpp"
 #include "scope.hpp"
 
-using PackageRef = isize;
-
 #define TYPE_KINDS                                      \
     TYPE_KIND(Undefined)                   \
     TYPE_KIND(i8)                                 \

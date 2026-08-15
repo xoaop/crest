@@ -3,6 +3,7 @@
 
 #include "print.hpp"
 #include "file.hpp"
+#include "path.hpp"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
@@ -14,10 +15,10 @@
 #include "common.hpp"
 #include "context.hpp"
 #include "cir_interpreter.hpp"
+#include "compile.hpp"
 
 #include "tokenizer.hpp"
 #include "parser.hpp"
-#include "resolve_depend.hpp"
 #include "analyser.hpp"
 #include "cir_builder.hpp"
 #include "llvm_generate_ir.hpp"
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
 
-    auto mark_phase = [&](const char* name) {
+    auto mark_stage = [&](const char* name) {
         auto now = std::chrono::high_resolution_clock::now();
         using Sec = std::chrono::duration<double>;
         auto total = std::chrono::duration_cast<Sec>(now - start_time).count();
@@ -136,11 +137,8 @@ int main(int argc, char** argv) {
     defer(global_allocators_free());
     
 
-    // 关键字表初始化和测试
+    // 关键字表初始化
     init_keyword_map();
-    // test_keyword_map();
-
-
 
     
     // 初始化context
@@ -150,6 +148,8 @@ int main(int argc, char** argv) {
 
     println_out("Compiler path: {}", context()->compiler_path.string());
     println_out("Current working directory: {}", context()->current_working_directory.string());
+
+
 
     // 初始化package搜索路径
     context()->package_search_paths = make_array<xpString>(permanent_allocator());
@@ -164,59 +164,40 @@ int main(int argc, char** argv) {
 
 
     context()->all_packages = make_array<Package>(permanent_allocator());
+    context()->static_mem.init(MemoryKind::String, permanent_allocator());
 
-    // std/builtin 是必需包：提供全局 scope 与基础类型（string 等），必须存在
-    auto builtin_path_opt = resolve_package_path(xp_string_c("std/builtin"), permanent_allocator());
-    if (!builtin_path_opt.has_value()) {
-        err("std/builtin package not found (defines base types)");
+
+
+    // builtin 完整构建+分析（删全局循环后没有 import 会触发它，必须显式做，且在 main 之前）。
+    auto builtin_pkg_opt = compile_package_from_import(xp_string_c("std/builtin"));
+    if(builtin_pkg_opt.is_none()) {
+        err("std/builtin package not found");
         return 1;
     }
-    Package builtin_pkg = tokenize_and_parse_package(builtin_path_opt.unwrap().as_c_str());
-    builtin_pkg.package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
-    context()->all_packages.push_back(builtin_pkg);
 
-    resolve_dependencies(xp_string_c(main_path), context()->all_packages);
-
-    // 在所有 push_back 完成后设置指针，避免 realloc 导致指针失效
-    context()->global_blank_package = &context()->all_packages[0];
-
-
-    DEBUG_TRACE("All packages resolved:");
-    for(auto& pkg : context()->all_packages) {
-        DEBUG_TRACE("Package: {}, ast_files: {}", pkg.path, pkg.ast_files.count);
+    xpString main_dir;
+    if(is_existing_directory(xp_string_c(main_path))) {
+        main_dir = xp_string_c(main_path);
+    } else {
+        std::filesystem::path p{std::string(main_path)};
+        main_dir = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
     }
-
-    
-    mark_phase("resolve dependencies");
-    xp_arena_allocator_clear(stage_allocator());
+    context()->package_search_paths.push_back(main_dir);
+    context()->main_src_dir_path = main_dir;
 
 
-    if(context()->reporter.error_count > 0) {
+    auto main_pkg_opt = compile_package_from_path(xp_string_c(main_path));
+    if(main_pkg_opt.is_none()) {
+        context()->reporter.report_error("main package path '{}' is not a valid directory or file", main_path);
         context()->reporter.print_msg();
         return 0;
     }
 
-    resolve_ast_all_packages(&context()->all_packages);
-    mark_phase("tokenize + parse");
-    xp_arena_allocator_clear(stage_allocator());
-
-    if(context()->reporter.error_count > 0) {
-        context()->reporter.print_msg();
-        return 0;
-    }
+    mark_stage("analyze packages");
 
     if(context()->scope_dump) {
-        print_scope_tree(&context()->global_blank_package->package_scope);
+        print_scope_tree(&package_by_ref(context()->global_blank_package)->package_scope);
     }
-
-
-    context()->static_mem.init(MemoryKind::String, permanent_allocator());
-    for(auto& pkg : context()->all_packages) {
-        CIRBuilder builder{stage_allocator()};
-        builder.build_cir_package(&pkg);
-    }
-    mark_phase("build CIR");
-    xp_arena_allocator_clear(stage_allocator());
 
     if(context()->cir_dump) {
         for(auto& pkg : context()->all_packages) {
@@ -229,16 +210,6 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    for(auto& pkg : context()->all_packages) {
-        analyze_package(&pkg);
-    }
-    mark_phase("analyze CIR");
-    xp_arena_allocator_clear(stage_allocator());
-
-    if(context()->reporter.error_count > 0) {
-        context()->reporter.print_msg();
-        return 0;
-    }
 
     init_llvm();
 
@@ -246,8 +217,8 @@ int main(int argc, char** argv) {
 
     LLVMIRGenerateConfig llvm_config = {};
     Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
-    mark_phase("generate LLVM IR");
-    xp_arena_allocator_clear(stage_allocator());
+    
+    mark_stage("generate LLVM IR");
 
     return 0;
 }

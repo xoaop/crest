@@ -12,18 +12,21 @@ struct Package;
 struct AstFile;
 
 struct Analyser {
-    Package *pkg;
+    PackageRef pkg = -1;
     Scope *current_scope;
     AstFile *curr_ast_file;
 };
 
-Analyser make_analyser(AstFile *curr_ast_file, Package *pkg);
-Analyser make_analyser(Scope *curr_scope, Package *pkg);
-Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg);
+Analyser make_analyser(AstFile *curr_ast_file, PackageRef pkg);
+Analyser make_analyser(Scope *curr_scope, PackageRef pkg);
+Analyser make_analyser(Scope *curr_scope, AstFile *file, PackageRef pkg);
 
-void collect_top_level_symbols_in_package(Package *pkg);
-void resolve_ast_package(Package *pkg);
-void resolve_ast_all_packages(Array<Package> *all_packages);
+
+void resolve_package(PackageRef pkg);
+
+
+// 注册基础类型符号
+void init_global_symbols();
 
 
 #endif // CREST_ANALYSER_HPP

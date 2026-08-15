@@ -3,6 +3,7 @@
 
 
 #include "xoaop.h"
+#include "common.hpp"
 #include "array.hpp"
 #include "cir_instruction_ref.hpp"
 
@@ -13,8 +14,6 @@ struct Type;
 using TypeRef = Type *;
 struct Package;
 struct ValueMemory;  // 前置声明，定义在 cir_builder.hpp
-
-using PackageRef = isize;
 
 
 enum class MemoryKind: u8 {

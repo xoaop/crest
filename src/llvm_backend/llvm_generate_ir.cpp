@@ -1067,7 +1067,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         case CIROperator::FieldTypeOfStruct:
         case CIROperator::FuncParamType:
         case CIROperator::TypeOfInstResult:
-        case CIROperator::FuncType: {
+        case CIROperator::FuncType:
+        case CIROperator::ImportPackage: {
 
         } break;
         

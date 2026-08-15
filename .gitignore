@@ -18,6 +18,7 @@
 # 临时文件
 *.tmp
 temp*
+.ninja_log
 
 # Windows 批处理脚本（构建用 CMake 替代）
 *.bat

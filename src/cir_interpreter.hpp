@@ -9,7 +9,7 @@
 //
 // 公共接口
 //
-void analyze_package(Package *pkg);
+void analyze_package(PackageRef pkg);
 
 
 
@@ -148,11 +148,11 @@ struct Interpreter {
     // === 函数式重构 — 新基础设施 (WIP) ===
     void apply_result(CIRInstructionRef target, const CIRInstResult& result);
 
-    // 新 handler 原型（接受 inst + pc_ref + params，不依赖 curr_inst() 可变状态）
+    // 新 handler 原型（接受 info + pc_ref + params，不依赖 curr_inst() 可变状态）
     // 返回 AnalyzeResult{ writes, next_pc } → dispatch 统一 apply 所有 writes + advance/next_pc
     // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
-    // @new 统一三参签名：analyze_XXX(inst, pc_ref, params) — 声明由 CIR_OPERATORS 宏生成（op 增删自动同步）
-#define X(name) std::optional<AnalyzeResult> analyze_##name(CIRInstruction* inst, CIRInstructionRef pc_ref, const AnalyzeParams& params);
+    // @new 统一三参签名：analyze_XXX(info, pc_ref, params) — 声明由 CIR_OPERATORS 宏生成（op 增删自动同步）
+#define X(name) std::optional<AnalyzeResult> analyze_##name(CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);
     CIR_OPERATORS
 #undef X
 

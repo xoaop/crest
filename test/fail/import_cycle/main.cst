@@ -1,0 +1,9 @@
+// @fail
+// @error "import 循环依赖"
+
+// import 循环依赖：main → a → b → a，应在 b 的 analyze 现场构建时报 "import 循环依赖: ..."
+import "a"
+
+main :: () -> i32 {
+    return 0;
+}

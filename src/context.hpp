@@ -11,9 +11,6 @@
 struct ThreadPool;
 
 
-using PackageRef = isize;
-
-
 struct Context {
     std::filesystem::path compiler_path;
     std::filesystem::path current_working_directory;
