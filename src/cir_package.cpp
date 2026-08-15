@@ -9,7 +9,6 @@
 
 CIRPackage make_cir_package(xpAllocator allocator) {
     CIRPackage cir_package = {};
-    cir_package.instructions = StableOrderedArray<CIRInstruction>::make(allocator);
 
     cir_package.blocks = make_array<CIRBlock>(allocator);
 
