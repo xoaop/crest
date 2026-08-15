@@ -15,6 +15,8 @@ struct CIRPackage;
 struct Package {
     xpString path;
 
+    SymbolState state = SymbolState::Unsolved;
+
 
     //
     // ast build

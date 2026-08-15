@@ -14,8 +14,6 @@ struct AstFile;
 struct Package;
 struct Ast;
 
-using PackageRef = isize;
-
 enum class SymbolState {
     Unsolved, // 还未解析
     Solving,  // 正在解析中, 用于检测循环依赖

@@ -37,7 +37,7 @@ struct CIRBuilder {
     ~CIRBuilder();
 
 
-    void build_cir_package(Package *pkg);
+    void build_cir_package(PackageRef pkg);
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
     CIRInstructionRef build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym);
@@ -56,8 +56,8 @@ struct CIRBuilder {
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 
-    // 便捷：创建指令 + 填充 payload（op 只出现一次；payload 用 designated initializer）
-    // op 是编译期模板参数 → info_type<Op>::type 推导 payload 类型，braced-init 直接构造
+
+    
     template<CIROperator Op>
     CIRInstructionRef Make_Instruction(Ast *ast, const typename info_type<Op>::type& payload) {
         auto ref = New_Instruction(Op, ast);
@@ -83,7 +83,6 @@ public:
     AstFile *curr_ast_file;
 
     CIRPackage *curr_pkg;
-    StableOrderedArray<CIRInstruction> *curr_instruction_buffer;
     CIRFunctionDeclInfo *curr_func;
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;

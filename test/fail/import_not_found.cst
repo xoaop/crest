@@ -1,0 +1,9 @@
+// @fail
+// @error "找不到包 'nonexist_pkg'"
+
+// import 一个不存在的包，import 是编译期求值，应在 analyze_ImportPackage 现场构建时报错
+import "nonexist_pkg"
+
+main :: () -> i32 {
+    return 0;
+}

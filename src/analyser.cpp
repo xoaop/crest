@@ -13,7 +13,6 @@
 
 #include "evaluator.hpp"
 
-#include "resolve_depend.hpp"
 
 #include "common.hpp"
 
@@ -29,7 +28,7 @@
 #include "value_ops.hpp"
 
 
-Analyser make_analyser(AstFile *curr_ast_file, Package *pkg) {
+Analyser make_analyser(AstFile *curr_ast_file, PackageRef pkg) {
     Analyser analyser = {};
     analyser.pkg = pkg;
     analyser.current_scope = &curr_ast_file->file_scope;
@@ -39,7 +38,7 @@ Analyser make_analyser(AstFile *curr_ast_file, Package *pkg) {
     return analyser;
 }
 
-Analyser make_analyser(Scope *curr_scope, Package *pkg) {
+Analyser make_analyser(Scope *curr_scope, PackageRef pkg) {
     Analyser analyser = {};
     analyser.current_scope = curr_scope;
     analyser.pkg = pkg;
@@ -47,7 +46,7 @@ Analyser make_analyser(Scope *curr_scope, Package *pkg) {
     return analyser;
 }
 
-Analyser make_analyser(Scope *curr_scope, AstFile *file, Package *pkg) {
+Analyser make_analyser(Scope *curr_scope, AstFile *file, PackageRef pkg) {
     Analyser analyser = {};
     analyser.current_scope = curr_scope;
     analyser.curr_ast_file = file;
@@ -105,6 +104,7 @@ xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
 // 总流程
 //
 
+// 注册基础类型符号
 void init_global_symbols() {
 
     // basic types
@@ -120,7 +120,7 @@ void init_global_symbols() {
                 nullptr, 
                 nullptr
             );
-            add_symbol_to_scope(&context()->global_blank_package->package_scope, symbol_info);
+            add_symbol_to_scope(&package_by_ref(context()->global_blank_package)->package_scope, symbol_info);
         };
 
         insert_basic_type(Type_void);
@@ -151,43 +151,37 @@ void init_global_symbols() {
             nullptr,
             nullptr
         );
-        add_symbol_to_scope(&context()->global_blank_package->package_scope, type_string, type_symbol);
+        add_symbol_to_scope(&package_by_ref(context()->global_blank_package)->package_scope, type_string, type_symbol);
     }
 }
 
 
-void resolve_ast_package(Package *pkg);
 
-// 语义分析的入口函数
-void resolve_ast_all_packages(Array<Package> *all_packages) {
-
-    init_global_symbols();
-
-    // 第一阶段：收集所有包的顶层符号
-    // 必须先收集所有符号，再解析表达式，否则跨包引用（如 std 中引用 c.malloc）
-    // 会因为被引用包的符号尚未注册而失败
-    for(isize i = 0; i < all_packages->count; i++) {
-        Package *pkg = &(*all_packages)[i];
-        collect_top_level_symbols_in_package(pkg);
-    }
-
-    // TODO: 多线程解析package, 但需要更详细的依赖分析
-    // 第二阶段：逐个包解析AST
-    for(isize i = 0; i < all_packages->count; i++) {
-        Package *pkg = &(*all_packages)[i];
-        resolve_ast_package(pkg);
-    }
-}
-
-void resolve_ast_package(Package *pkg) {
-    for(isize j = 0; j < pkg->ast_files.count; j++) {
-        AstFile *ast_file = &pkg->ast_files[j];
-        
-        resolve_ast_file(ast_file, make_analyser(ast_file, pkg));
+void resolve_ast_package(PackageRef pkg) {
+    Package* p = package_by_ref(pkg);
+    
+    for(AstFile& ast_file: p->ast_files) {
+        resolve_ast_file(&ast_file, make_analyser(&ast_file, pkg));
     }
 }
 
 
+void resolve_package(PackageRef pkg) {
+    Package *p = package_by_ref(pkg);
+
+    // 包 scope 创建属于 resolve 阶段：根包＝Global 根（并注册基础类型符号，须在 collect/resolve 前）；
+    // 其余包＝挂到根下的 Package scope
+    if(pkg == context()->global_blank_package) {
+        p->package_scope = make_scope(NULL, ScopeType::Global, permanent_allocator());
+        init_global_symbols();
+    } else {
+        p->package_scope = make_scope(&package_by_ref(context()->global_blank_package)->package_scope, ScopeType::Package, permanent_allocator());
+        add_sub_scope(&package_by_ref(context()->global_blank_package)->package_scope, &p->package_scope);
+    }
+
+    collect_top_level_symbols_in_package(pkg);
+    resolve_ast_package(pkg);
+}
 
 
 
@@ -241,10 +235,8 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             SymbolInfo *const_info = (ast->ast_symbol)();
             XP_ASSERT_DEFAULT(const_info != NULL);
 
-            // @NOTE: 单独处理import声明
+            // @NOTE: import 的符号求解已移到 CIR 阶段（ImportPackage 指令），这里只收集符号
             if(ast->ConstDecl.value_ast->type == AstType_Import) {
-                const_info->val(eval_import_decl(ast->ConstDecl.value_ast, analyser)); 
-                const_info->state = SymbolState::Solved;
                 break;
             }
 
@@ -812,10 +804,10 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Value parent_value = r.state == CIRResultState::WholeValue ? r.actual_val() : make_value();
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
-        Package *pkg = parent_value.type->package_info;
+        PackageRef pkg = parent_value.type->package_info;
 
         Analyser pkg_analyser = analyser;
-        pkg_analyser.current_scope = &pkg->package_scope;
+        pkg_analyser.current_scope = &package_by_ref(pkg)->package_scope;
         pkg_analyser.curr_ast_file = parent_symbol_info->file;
         pkg_analyser.pkg = parent_symbol_info->package;
 

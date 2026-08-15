@@ -2,35 +2,33 @@
 
 #include "context.hpp"
 #include "value_ops.hpp"
-#include "resolve_depend.hpp"
 
-// 前向声明
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg);
+
+
+void collect_top_level_symbols_in_file(AstFile *ast_file, PackageRef curr_pkg);
+void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
+
+
+
 
 //
 // 1. Symbol Collect
 //
-void collect_top_level_symbols_in_package(Package *pkg) {
-    
-    // NOTE: 别忘了创建package scope
-    // global_blank_package 的 scope 已在 main.cpp 初始化，跳过以免自引用
-    if (pkg != context()->global_blank_package) {
-        pkg->package_scope = make_scope(&context()->global_blank_package->package_scope, ScopeType::Package, permanent_allocator());
-        add_sub_scope(&context()->global_blank_package->package_scope, &pkg->package_scope);
-    }
+void collect_top_level_symbols_in_package(PackageRef pkg) {
+    Package* p = package_by_ref(pkg);
 
-    for(isize i = 0; i < pkg->ast_files.count; i++) {
-        AstFile *ast_file = &pkg->ast_files[i];
+    for(isize i = 0; i < p->ast_files.count; i++) {
+        AstFile *ast_file = &p->ast_files[i];
         collect_top_level_symbols_in_file(ast_file, pkg);
-    }    
+    }
 }
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, Package *curr_pkg) {
+void collect_top_level_symbols_in_file(AstFile *ast_file, PackageRef curr_pkg) {
 
-    ast_file->file_scope = make_scope(&curr_pkg->package_scope, ScopeType::File, permanent_allocator());
-    add_sub_scope(&curr_pkg->package_scope, &ast_file->file_scope);
+    ast_file->file_scope = make_scope(&package_by_ref(curr_pkg)->package_scope, ScopeType::File, permanent_allocator());
+    add_sub_scope(&package_by_ref(curr_pkg)->package_scope, &ast_file->file_scope);
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
         Ast *top_level = ast_file->top_levels[i];
 
@@ -81,37 +79,8 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
     if(value_ast->type == AstType_Import) {
         add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
     } else {
-        add_symbol_to_scope(&analyser.pkg->package_scope, const_decl_ast->ConstDecl.name, new_symbol);
+        add_symbol_to_scope(&package_by_ref(analyser.pkg)->package_scope, const_decl_ast->ConstDecl.name, new_symbol);
     }
 
     return;
 }
-
-
-
-
-
-
-Value eval_import_decl(Ast *import_ast, Analyser analyser) {
-
-    // 查找被import的package
-    xpOption<Package *> imported_package_opt = get_package_by_import(
-        import_ast->Import.path,
-        &context()->all_packages
-    );
-
-    if(imported_package_opt.is_none()) {
-        context()->reporter.report_error(
-            SourceLocation(analyser.curr_ast_file->source_code, import_ast->src_loc.span),
-            "imported package '{}' not found",
-            import_ast->Import.path
-        );    
-        return make_value();
-    }    
-
-    Package *imported_package = imported_package_opt.unwrap();
-    Value import_value = make_value();
-    import_value.set_type(package_type(imported_package));
-
-    return import_value;
-}    
