@@ -17,7 +17,7 @@
 
 
 
-void compile_package(PackageRef pkg_ref);
+bool compile_package(PackageRef pkg_ref);
 
 // 根据package目录路径得到package
 Package tokenize_and_parse_package(const char *path_of_package_dir);
@@ -101,19 +101,26 @@ xpOption<PackageRef> compile_package_from_path(xpString path, xpString *cycle_er
         context()->global_blank_package = ref;
     }
 
+    package_by_ref(ref)->state = SymbolState::Solving;
+
     compile_package(ref);
+    
+    package_by_ref(ref)->state = SymbolState::Solved;
 
     return xpOption<PackageRef>::some(ref);
 }
 
 
 
-void compile_package(PackageRef pkg_ref) {
-    package_by_ref(pkg_ref)->state = SymbolState::Solving;   // 编译中：import 循环检测用
-
+bool compile_package(PackageRef pkg_ref) {
     resolve_package(pkg_ref);
     xp_arena_allocator_clear(stage_allocator());
 
+    // TODO: 分开不同包的错误计数, 目前别的包的错误也在这里统计了, 导致本包即使没有错误也返回false
+    // 相当于直接不解析了
+    if(context()->reporter.error_count > 0) {
+        return false;
+    }
 
     CIRBuilder builder{stage_allocator()};
     builder.build_cir_package(pkg_ref);
@@ -122,7 +129,13 @@ void compile_package(PackageRef pkg_ref) {
 
     analyze_package(pkg_ref);
 
-    package_by_ref(pkg_ref)->state = SymbolState::Solved;   // 编译完成：后续命中正常复用
+    // TODO: 分开不同包的错误计数, 目前别的包的错误也在这里统计了, 导致本包即使没有错误也返回false
+    // 相当于直接不解析了
+    if(context()->reporter.error_count > 0) {
+        return false;
+    }
+
+    return true;
 }
 
 

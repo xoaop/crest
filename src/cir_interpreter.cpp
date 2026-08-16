@@ -2050,9 +2050,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
         // DEBUG_TRACE("to set type and result for func {}", sym ? sym->name : xp_string_c("<anon>"));
 
         r.writes.push_back({pc_ref, CIRInstResult::make_value(v)});
-        // 副作用：函数值同步写进 pkg->results（绕过结果实例，供 LLVM 生成阶段直接取）
-        if(curr_instance()) {
-            pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
+        // 副作用：函数值同步写进 pkg->results（递归引用需在 body 分析前可查）
+        pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
+        if(sym != nullptr) {
+            // 副作用：函数符号签名确定即绑定 FunctionDecl 并置 Solved（递归引用不误判循环依赖）
+            sym->val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
+            sym->state = SymbolState::Solved;
         }
     }
 
@@ -2148,7 +2151,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
 
     // ── 编译期执行（FullEval only）────────────────────────────
     if(curr_eval_mode() == EvalMode::FullEval) {
-        constexpr auto MAX_CALL_DEPTH = 100;
+        // 编译期调用是 C++ 递归，Debug 下 ~63 层即爆 1MB 栈，阈值需远小于此
+        constexpr auto MAX_CALL_DEPTH = 25;
         if(instance_stack.count > MAX_CALL_DEPTH) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH)});
             goto end;
@@ -2302,6 +2306,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRIdentRefInfo& info
 
     if(sym->state == SymbolState::Unsolved) {
         // 副作用：按需分析符号绑定的指令（Unsolved → 递归进入，支持顺序无关声明）
+        // 在符号所属包的全局结果上下文里分析声明（结果落全局，而非触发它的调用实例）
+        auto saved_ctx = decl_ctx;
+        isize saved_depth = decl_ctx_depth;
+        decl_ctx = CIRResultContext::create(&package_by_ref(sym->package)->cir_package);
+        decl_ctx_depth = instance_stack.count;
+        defer(decl_ctx = saved_ctx);
+        defer(decl_ctx_depth = saved_depth);
+
         new_analyze_flow(sym->val_as_inst_key().inst_ref);
         defer(recover_analyze_flow());
 
@@ -2368,6 +2380,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRIdentValInfo& info
     // 以支持顶层constDecl的顺序无关声明
     if(sym->state == SymbolState::Unsolved) {
         // 副作用：按需分析符号绑定的指令（Unsolved → 递归进入，支持顺序无关声明）
+        // 在符号所属包的全局结果上下文里分析声明（结果落全局，而非触发它的调用实例）
+        auto saved_ctx = decl_ctx;
+        isize saved_depth = decl_ctx_depth;
+        decl_ctx = CIRResultContext::create(&package_by_ref(sym->package)->cir_package);
+        decl_ctx_depth = instance_stack.count;
+        defer(decl_ctx = saved_ctx);
+        defer(decl_ctx_depth = saved_depth);
+
         new_analyze_flow(sym->val_as_inst_key().inst_ref);
         defer(recover_analyze_flow());
 
