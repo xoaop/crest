@@ -1452,7 +1452,13 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     // 解析
     char *end = NULL;
     errno = 0;
-    i128 val = strtoumax(str, &end, 0);
+    i128 val = 0;
+    if(str[0] == '0' && str[1] == 'b') {
+        // C 的 strtoumax(base 0) 不认 0b 二进制前缀，手动 base 2
+        val = strtoumax(str + 2, &end, 2);
+    } else {
+        val = strtoumax(str, &end, 0);
+    }
 
     // 检查解析完成
     if(end == str) {
