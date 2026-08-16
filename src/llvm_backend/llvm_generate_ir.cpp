@@ -1045,16 +1045,12 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, b
                 LLVMBuildUnreachable(unit.builder);
             }
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
-            LLVMValueRef phi = LLVMBuildPhi(unit.builder,
-                LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
-            LLVMAddIncoming(phi,
-                blk_mapper.break_vals.data, blk_mapper.break_srcs.data,
-                (unsigned)blk_mapper.break_vals.count);
+            LLVMValueRef phi = LLVMBuildPhi(unit.builder, LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
+            LLVMAddIncoming(phi, blk_mapper.break_vals.data, blk_mapper.break_srcs.data, (unsigned)blk_mapper.break_vals.count);
             save_llvm_val_of_inst(blk_ref_inst, phi);
-        } else {
-            // 自然落出：last_bb → exit_blk
-            llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
         }
+
+        llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
 
         // exit_blk → 父 merge（connect_to_parent 时）
         if(connect_to_parent) {
@@ -1465,8 +1461,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMValueRef cond_val = get_llvm_val_from_inst_ref(info.condition_inst);
 
             // then/else 是独立 Block（各占一个 slot），自身接线由 connect_to_parent=false 处理
-            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block, INVALID_INST_INDEX}, false);
-            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block, INVALID_INST_INDEX}, false);
+            // 用单参构造（inst_index = INVALID_INST_INDEX 的"块级引用"），gen_ir_block_in_func_block 据此跳过 inst 解引用
+            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block}, false);
 
             auto* true_mapper = mapper(info.true_block);
             auto* false_mapper = mapper(info.false_block);
