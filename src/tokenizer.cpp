@@ -45,6 +45,8 @@ isize tokenizer_skip_space(Tokenizer *t);
 void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index);
 void tokenizer_scan_integer(Tokenizer *t);
 void tokenizer_scan_pure_integer_seq(Tokenizer *t);
+void tokenizer_scan_hex_digit_seq(Tokenizer *t);
+void tokenizer_scan_bin_digit_seq(Tokenizer *t);
 xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t);
 isize tokenizer_try_to_fix(Tokenizer *t, const char *str);
 
@@ -555,6 +557,28 @@ void tokenizer_scan_pure_integer_seq(Tokenizer *t) {
     }
 }
 
+void tokenizer_scan_hex_digit_seq(Tokenizer *t) {
+    char c = tokenizer_curr_character(t);
+    while (!tokenizer_end(t)) {
+        if(!xp_is_digit_base_all(c)) {
+            break;
+        }
+        advance_one_character(t);
+        c = tokenizer_curr_character(t);
+    }
+}
+
+void tokenizer_scan_bin_digit_seq(Tokenizer *t) {
+    char c = tokenizer_curr_character(t);
+    while (!tokenizer_end(t)) {
+        if(!(c == '0' || c == '1')) {
+            break;
+        }
+        advance_one_character(t);
+        c = tokenizer_curr_character(t);
+    }
+}
+
 
 void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     TokenType token_type;
@@ -567,7 +591,11 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
         if(tokenizer_curr_character(t) == 'x') {
             advance_one_character(t);
-            tokenizer_scan_pure_integer_seq(t);
+            tokenizer_scan_hex_digit_seq(t);
+            token_type = TokenType::Integer;
+        } else if(tokenizer_curr_character(t) == 'b') {
+            advance_one_character(t);
+            tokenizer_scan_bin_digit_seq(t);
             token_type = TokenType::Integer;
         } else if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
             // 0..5 — range syntax, not float
@@ -577,6 +605,8 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
             tokenizer_scan_pure_integer_seq(t);
             token_type = TokenType::Float;
         } else {
+            // 0 开头（含 077 旧式八进制），后续数字纳入扫描
+            tokenizer_scan_pure_integer_seq(t);
             token_type = TokenType::Integer;
         }
 

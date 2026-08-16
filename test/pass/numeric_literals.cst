@@ -1,0 +1,22 @@
+// @pass
+// @run
+
+import "std/c"
+
+main :: () -> i32 {
+    // hex（含字母）
+    h1 := 0x100;   if h1 != 256 { return 1; }
+    h2 := 0xAB;    if h2 != 171 { return 2; }
+    h3 := 0xff;    if h3 != 255 { return 3; }
+    // 二进制
+    b1 := 0b101;   if b1 != 5   { return 4; }
+    b2 := 0b11111111; if b2 != 255 { return 5; }
+    // 八进制
+    o1 := 077;     if o1 != 63  { return 6; }
+    o2 := 010;     if o2 != 8   { return 7; }
+    // 十进制
+    d1 := 12345;   if d1 != 12345 { return 8; }
+
+    c.printf("h2=0x%x d=%d\n".data, h2, b2);
+    return 0;
+}
