@@ -32,6 +32,8 @@ isize LLVMBasicBlockMapper::frag_count() {
 
 LLVMBasicBlockMapper::LLVMBasicBlockMapper(xpAllocator allocator, LLVMValueRef curr_func, bool create_exit_block) {
     fragments = make_array<LLVMBasicBlockRef>(allocator);
+    break_vals = make_array<LLVMValueRef>(allocator);
+    break_srcs = make_array<LLVMBasicBlockRef>(allocator);
     owner_func = curr_func;
     if(create_exit_block) {
         create_exit();
