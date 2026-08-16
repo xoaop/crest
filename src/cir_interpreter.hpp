@@ -129,9 +129,6 @@ struct Interpreter {
     }
 
     CIRResultContext result_context() const {
-        if(decl_ctx_depth >= 0 && instance_stack.count == decl_ctx_depth) {
-            return decl_ctx;
-        }
         return instance_stack.back().ctx;
     }
 
@@ -156,9 +153,6 @@ struct Interpreter {
 public:
 
     CIRPackage *pkg;
-
-    CIRResultContext decl_ctx;   // 按需符号分析时的包级上下文（结果落全局, 不污染触发它的调用实例）
-    isize decl_ctx_depth = -1;   // 激活时记录 instance_stack 深度; 嵌套调用 push 后失效, 弹回后恢复
 
     Array<EvalInstance> instance_stack; // 嵌套调用栈
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）

@@ -2305,14 +2305,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRIdentRefInfo& info
     }
 
     if(sym->state == SymbolState::Unsolved) {
-        // 副作用：按需分析符号绑定的指令（Unsolved → 递归进入，支持顺序无关声明）
-        // 在符号所属包的全局结果上下文里分析声明（结果落全局，而非触发它的调用实例）
-        auto saved_ctx = decl_ctx;
-        isize saved_depth = decl_ctx_depth;
-        decl_ctx = CIRResultContext::create(&package_by_ref(sym->package)->cir_package);
-        decl_ctx_depth = instance_stack.count;
-        defer(decl_ctx = saved_ctx);
-        defer(decl_ctx_depth = saved_depth);
+        // 临时把当前实例上下文切到符号所属包的全局上下文，结果落全局，不污染触发实例
+
+        CIRResultContext saved_ctx = instance_stack.back().ctx;
+        instance_stack.back().ctx = CIRResultContext::create(sym->inst_key.cir_package);
+        defer(instance_stack.back().ctx = saved_ctx);
 
         new_analyze_flow(sym->val_as_inst_key().inst_ref);
         defer(recover_analyze_flow());
@@ -2379,14 +2376,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRIdentValInfo& info
 
     // 以支持顶层constDecl的顺序无关声明
     if(sym->state == SymbolState::Unsolved) {
-        // 副作用：按需分析符号绑定的指令（Unsolved → 递归进入，支持顺序无关声明）
-        // 在符号所属包的全局结果上下文里分析声明（结果落全局，而非触发它的调用实例）
-        auto saved_ctx = decl_ctx;
-        isize saved_depth = decl_ctx_depth;
-        decl_ctx = CIRResultContext::create(&package_by_ref(sym->package)->cir_package);
-        decl_ctx_depth = instance_stack.count;
-        defer(decl_ctx = saved_ctx);
-        defer(decl_ctx_depth = saved_depth);
+
+        // 临时把当前实例上下文切到符号所属包的全局上下文，结果落全局，不污染触发实例
+        CIRResultContext saved_ctx = instance_stack.back().ctx;
+        instance_stack.back().ctx = CIRResultContext::create(sym->inst_key.cir_package);
+        defer(instance_stack.back().ctx = saved_ctx);
 
         new_analyze_flow(sym->val_as_inst_key().inst_ref);
         defer(recover_analyze_flow());
