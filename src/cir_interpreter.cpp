@@ -442,22 +442,6 @@ void Interpreter::set_lvalue(CIRInstructionRef ref) {
 }
 
 
-bool Interpreter::should_eval(std::initializer_list<CIRInstructionRef> refs) {
-
-    if(curr_eval_mode() == EvalMode::FullEval) {
-        return true;
-    }
-
-
-    for(auto ref: refs) {
-        if(!has_result_val(ref)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 bool Interpreter::should_eval_for_lazy_eval(std::initializer_list<CIRInstructionRef> refs) {
     for(auto& ref: refs) {
         if(!has_result_val(ref)) {

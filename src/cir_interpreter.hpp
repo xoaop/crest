@@ -63,8 +63,6 @@ struct EvalInstance {
     // 用于恢复调用者上下文
     CIRPackage *caller_pkg = nullptr;
     CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
-
-    CIRResultContext result_context() const { return ctx; }
 };
 
 
@@ -111,7 +109,6 @@ struct Interpreter {
     bool propagate_error(std::initializer_list<CIRInstructionRef> refs);
     bool propagate_error(Array<CIRInstructionRef>& refs);
 
-    bool should_eval(std::initializer_list<CIRInstructionRef> refs = {});
     bool should_eval_for_lazy_eval(std::initializer_list<CIRInstructionRef> refs);
     bool should_eval_for_lazy_eval(Array<CIRInstructionRef>& refs);
     bool is_lvalue(CIRInstructionRef ref);
@@ -132,7 +129,7 @@ struct Interpreter {
     }
 
     CIRResultContext result_context() const {
-        return instance_stack.back().result_context();
+        return instance_stack.back().ctx;
     }
 
     void push_eval_instance(EvalInstance inst);
@@ -145,13 +142,10 @@ struct Interpreter {
     }
 
 
-    // === 函数式重构 — 新基础设施 (WIP) ===
     void apply_result(CIRInstructionRef target, const CIRInstResult& result);
 
-    // 新 handler 原型（接受 info + pc_ref + params，不依赖 curr_inst() 可变状态）
-    // 返回 AnalyzeResult{ writes, next_pc } → dispatch 统一 apply 所有 writes + advance/next_pc
-    // 返回 nullopt → handler 自管结果和 pc（旧代码保持）
-    // @new 统一三参签名：analyze_XXX(info, pc_ref, params) — 声明由 CIR_OPERATORS 宏生成（op 增删自动同步）
+
+
 #define X(name) std::optional<AnalyzeResult> analyze_##name(CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);
     CIR_OPERATORS
 #undef X

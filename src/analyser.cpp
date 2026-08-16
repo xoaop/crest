@@ -38,25 +38,6 @@ Analyser make_analyser(AstFile *curr_ast_file, PackageRef pkg) {
     return analyser;
 }
 
-Analyser make_analyser(Scope *curr_scope, PackageRef pkg) {
-    Analyser analyser = {};
-    analyser.current_scope = curr_scope;
-    analyser.pkg = pkg;
-
-    return analyser;
-}
-
-Analyser make_analyser(Scope *curr_scope, AstFile *file, PackageRef pkg) {
-    Analyser analyser = {};
-    analyser.current_scope = curr_scope;
-    analyser.curr_ast_file = file;
-    analyser.pkg = pkg;
-
-    return analyser;
-}
-
-
-
 
 
 //
@@ -79,23 +60,6 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
 SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser);
 SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
-
-
-
-
-xpString get_ident_or_fieldaccess_string(Ast *ast, xpAllocator allocator) {
-
-    if(ast->type == AstType_Ident) {
-        return ast->Ident.name;
-    } else if(ast->type == AstType_FieldAccess) {
-        xpString parent_str = get_ident_or_fieldaccess_string(ast->FieldAccess.parent, allocator);
-        xp_string_append(&parent_str, xp_string_c("."));
-        xp_string_append(&parent_str, ast->FieldAccess.field_name);
-        return parent_str;
-    }
-
-    return xp_string_c("<invalid ident or field access>");
-}
 
 
 
