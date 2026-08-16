@@ -42,6 +42,9 @@ enum class ScopeType {
 
     // enum块
     EnumBlock,
+
+    // union块
+    UnionBlock,
 };
 
 inline const char* to_string(ScopeType t) {
@@ -54,6 +57,7 @@ inline const char* to_string(ScopeType t) {
         case ScopeType::LoopBlock: return "LoopBlock";
         case ScopeType::StructBlock: return "StructBlock";
         case ScopeType::EnumBlock: return "EnumBlock";
+        case ScopeType::UnionBlock: return "UnionBlock";
         default: return "Unknown";
     }
 }
@@ -127,6 +131,7 @@ struct std::formatter<Scope> {
             case ScopeType::LoopBlock: scope_type_string = "LoopBlock"; break;
             case ScopeType::StructBlock: scope_type_string = "StructBlock"; break;
             case ScopeType::EnumBlock: scope_type_string = "EnumBlock"; break;
+            case ScopeType::UnionBlock: scope_type_string = "UnionBlock"; break;
         }
 
         return std::format_to(ctx.out(), "Scope {{ type: {}, symbols: [\n{}] }}",

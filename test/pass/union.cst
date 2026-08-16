@@ -1,0 +1,118 @@
+// @pass
+// @run
+
+import "std/c"
+
+U :: union {
+    a: i32;
+    b: f64;
+    c: bool;
+}
+
+// 嵌入 struct：union 布局与 struct 字段偏移需一致
+S :: struct {
+    id: i32;
+    u: U;
+    tag: u8;
+}
+
+// 按值传 union（拷贝往返 + 字段提取）
+read_u :: (u: U) -> i32 {
+    return u.a;
+}
+
+// 返回 union 值（成员访问走 FieldAccess 而非 FieldPtr）
+make_u :: () -> U {
+    u: U;
+    u.a = 7;
+    return u;
+}
+
+// union 自引用（指针成员与值成员重叠）
+Node :: union {
+    next: *Node;
+    val: i32;
+}
+
+// 对齐边缘：最大成员对齐低（[16]u8 align 1）+ 高对齐小成员（u64 align 8）
+UAlign :: union {
+    raw: [16]u8;
+    word: u64;
+}
+
+// 嵌入 UAlign 的 struct（验证 union 布局与 struct 偏移一致）
+SAlign :: struct {
+    tag: u8;
+    u: UAlign;
+}
+
+// 大成员 union：按值传读大成员（无损拷贝走 max-size 成员）
+Big :: union {
+    small: i32;
+    large: f64;
+}
+
+read_big :: (b: Big) -> f64 {
+    return b.large;
+}
+
+main :: () -> i32 {
+    // 基本读写 + 大成员覆盖小成员
+    u: U;
+    u.a = 42;
+    if u.a != 42 { return 1; }
+    u.b = 3.5;
+    if u.b != 3.5 { return 2; }
+    u.c = true;
+    if u.c != true { return 3; }
+
+    // 嵌入 struct
+    s: S;
+    s.id = 7;
+    s.u.b = 2.5;
+    s.tag = 9;
+    if s.u.b != 2.5 { return 4; }
+    if s.id != 7 || s.tag != 9 { return 5; }
+
+    // 按值传 + 提取
+    v: U;
+    v.a = 100;
+    if read_u(v) != 100 { return 6; }
+
+    // union 值（非左值）成员访问
+    if make_u().a != 7 { return 9; }
+
+    // 自引用 + 重叠语义（写 next 覆盖 val）
+    n: Node;
+    n.val = 5;
+    if n.val != 5 { return 7; }
+    n.next = null;
+    if n.val != 0 { return 8; }
+
+    // 对齐边缘：嵌入 struct（UAlign size=16 align=8）
+    sa: SAlign;
+    sa.u.word = 0x1122334455667788;
+    if sa.u.word != 0x1122334455667788 { return 10; }
+
+    // 数组 of union
+    arr: [4]UAlign;
+    arr[0].word = 42;
+    if arr[0].word != 42 { return 11; }
+
+    // 指针访问 union 字段（自动解引用）
+    up: *UAlign = &sa.u;
+    up.word = 7;
+    if sa.u.word != 7 { return 12; }
+
+    // 按值传读大成员（无损拷贝）
+    b: Big;
+    b.large = 3.5;
+    if read_big(b) != 3.5 { return 13; }
+
+    // 大成员写过后读小成员（重解释）
+    b.small = 12345;
+    b.large = 1.0;
+    if b.large != 1.0 { return 14; }
+
+    return 0;
+}

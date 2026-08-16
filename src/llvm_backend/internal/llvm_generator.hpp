@@ -100,6 +100,7 @@ public:
     Array<LLVMLoopBlocks> loop_stack;
 
     xpHashMap<TypeHashKey, LLVMTypeRef> struct_types;
+    xpHashMap<TypeHashKey, LLVMTypeRef> union_types;
 
 
     PackageRef pkg = -1;

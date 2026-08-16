@@ -49,6 +49,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
 void resolve_struct_decl(Ast *decl, Analyser analyser);
 void resolve_enum_decl(Ast *decl, Analyser analyser);
+void resolve_union_decl(Ast *decl, Analyser analyser);
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
@@ -334,6 +335,32 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
         add_symbol_to_scope(struct_analyser.current_scope, field->StructField.name, field_symbol);
     }
 }
+
+
+
+void resolve_union_decl(Ast *decl, Analyser analyser) {
+    ASSERT(decl->type == AstType_UnionDecl);
+
+    Analyser union_analyser = new_scope(analyser, ScopeType::UnionBlock, decl);
+
+    for(Ast *field: decl->UnionDecl.fields) {
+
+        SymbolInfo *existing = find_symbol_curr(union_analyser.current_scope, field->StructField.name);
+        if(existing) {
+            context()->reporter.report_error(
+                field->src_loc,
+                "duplicate union field '{}'", field->StructField.name
+            );
+        }
+
+        resolve_expr(field->StructField.type_ast, union_analyser);
+
+        SymbolInfo field_symbol = make_symbol(field->StructField.name, analyser.pkg, analyser.curr_ast_file, field);
+        add_symbol_to_scope(union_analyser.current_scope, field->StructField.name, field_symbol);
+    }
+}
+
+
 
 void resolve_enum_decl(Ast *decl, Analyser analyser) {
     Ast *value_ast = decl;
@@ -720,10 +747,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_UnionDecl: {
-            context()->reporter.report_error(
-                expr_ast->src_loc,
-                "union type is not supported yet"
-            );
+            resolve_union_decl(expr_ast, analyser);
         } break;
 
         default: {

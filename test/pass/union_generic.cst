@@ -1,0 +1,72 @@
+// @pass
+// @run
+
+import "std/c"
+
+gen_union :: $(T: type) -> type {
+    return union {
+        a: T;
+        b: T;
+    };
+}
+
+// 成员含数组：布局随 T 变化（[2]T 大小不同）
+gen_arr :: $(T: type) -> type {
+    return union {
+        a: T;
+        b: [2]T;
+    };
+}
+
+// 固定成员 + 泛型成员共存（成员 offset 0 重叠，后写覆盖先写）
+gen_mix :: $(T: type) -> type {
+    return union {
+        a: T;
+        c: f64;
+    };
+}
+
+main :: () -> i32 {
+    union_i32 :: gen_union(i32)
+    union_f32 :: gen_union(f32)
+
+    u_i32 : union_i32;
+    u_f32 : union_f32;
+
+    u_i32.a = 42;
+    u_f32.b = 3.14;
+
+    if u_i32.a != 42 { return 1; }
+    if u_f32.b != 3.14 { return 2; }
+
+    // 数组成员：布局随 T 变化
+    AI :: gen_arr(i32)
+    AF :: gen_arr(f64)
+    ai: AI;
+    af: AF;
+    ai.b[0] = 3;
+    ai.b[1] = 4;
+    af.b[0] = 1.5;
+    af.b[1] = 2.5;
+    if ai.b[0] != 3 || ai.b[1] != 4 { return 3; }
+    if af.b[0] != 1.5 || af.b[1] != 2.5 { return 4; }
+    ai.a = 9;
+    if ai.a != 9 { return 5; }
+
+    // 固定成员 + 泛型成员：写后立即读（后写覆盖先写）
+    MI :: gen_mix(i32)
+    MF :: gen_mix(f32)
+    mi: MI;
+    mf: MF;
+    mi.a = 7;
+    if mi.a != 7 { return 6; }
+    mi.c = 2.0;
+    if mi.c != 2.0 { return 7; }
+    mf.a = 3.14;
+    if mf.a != 3.14 { return 8; }
+    mf.c = 5.0;
+    if mf.c != 5.0 { return 9; }
+
+    c.printf("u_i32.a=%d u_f32.b=%f\n".data, u_i32.a, u_f32.b);
+    return 0;
+}

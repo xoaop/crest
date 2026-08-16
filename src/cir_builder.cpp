@@ -863,6 +863,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // 1. GetOrInitStruct
             auto decl_init = Make_Instruction<CIROperator::GetOrInitStruct>(expr, {
                 .decl_ast = expr,
+                .symbol = curr_const_sym,
             });
 
 
@@ -953,7 +954,40 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_UnionDecl: {
-            XP_TODO();
+            auto scope_guard = ScopeGuard(this, expr);
+
+            auto union_decl_block = Begin_Block(expr, true, false);
+
+            // 1. GetOrInitUnion
+            auto decl_init = Make_Instruction<CIROperator::GetOrInitUnion>(expr, {
+                .decl_ast = expr,
+                .symbol = curr_const_sym,
+                .scope = curr_scope,
+            });
+
+            // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
+            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(stage_allocator());
+            for (Ast *field : expr->UnionDecl.fields) {
+                ASSERT(field->type == AstType_StructField);
+
+                auto type_block = build_block_inst_for_expr(field->StructField.type_ast, true, false);
+
+                auto sf = Make_Instruction<CIROperator::StructField>(field, {
+                    .type_block_inst = type_block,
+                    .name = field->StructField.name,
+                });
+                field_insts.push_back(sf);
+            }
+
+            // 3. FinishUnion — 集中完成所有工作
+            auto finish = Make_Instruction<CIROperator::FinishUnion>(expr, {
+                .union_decl_inst = decl_init,
+                .field_insts = field_insts.copy(permanent_allocator()),
+            });
+            New_Break(union_decl_block, finish, expr);
+            End_Block();
+
+            result = finish;
         } break;
 
         case AstType_FunctionType: {

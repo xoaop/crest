@@ -256,6 +256,26 @@ isize type_serialize_size(TypeRef type) {
             return field_serialize_offset(type, type->struct_info.struct_fields.count - 1)
                  + type_serialize_size(last.type);
         }
+        case Type_union: {
+            Scope *scope = type->union_info.union_scope;
+            if(scope == nullptr) {
+                return 0;
+            }
+            isize max_size = 0;
+            isize max_align = 1;
+            for(const auto& entry : *scope) {
+                TypeRef ft = union_field_type(type, entry.value.name);
+                isize s = type_serialize_size(ft);
+                if(s > max_size) {
+                    max_size = s;
+                }
+                isize a = type_serialize_align(ft);
+                if(a > max_align) {
+                    max_align = a;
+                }
+            }
+            return serialize_align_up(max_size, max_align);
+        }
         default:
             return basic_type_serialize_size(type->kind);
     }
@@ -273,6 +293,19 @@ isize type_serialize_align(TypeRef type) {
         }
         case Type_array:
             return type_serialize_align(type->array_info.element_type);
+        case Type_union: {
+            isize max_align = 1;
+            Scope *scope = type->union_info.union_scope;
+            if(scope != nullptr) {
+                for(const auto& entry : *scope) {
+                    isize a = type_serialize_align(union_field_type(type, entry.value.name));
+                    if(a > max_align) {
+                        max_align = a;
+                    }
+                }
+            }
+            return max_align;
+        }
         default:
             return basic_type_serialize_align(type->kind);
     }
@@ -282,18 +315,21 @@ isize type_serialize_stride(TypeRef type) {
     return type_serialize_size(type);
 }
 
-isize field_serialize_offset(TypeRef struct_type, isize index) {
-    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+isize field_serialize_offset(TypeRef struct_or_union_type, isize index) {
+    if(is_union_type(struct_or_union_type)) {
+        return 0;   // union 成员全部 offset 0
+    }
+    XP_ASSERT_DEFAULT(is_struct_type(struct_or_union_type));
     isize offset = 0;
     for(isize i = 0; i < index; i++) {
-        TypeRef ft = struct_type->struct_info.struct_fields[i].type;
+        TypeRef ft = struct_or_union_type->struct_info.struct_fields[i].type;
         isize align = type_serialize_align(ft);
         offset = serialize_align_up(offset, align);
         offset += type_serialize_size(ft);
     }
     // 对齐当前字段
-    if(index < struct_type->struct_info.struct_fields.count) {
-        TypeRef ft = struct_type->struct_info.struct_fields[index].type;
+    if(index < struct_or_union_type->struct_info.struct_fields.count) {
+        TypeRef ft = struct_or_union_type->struct_info.struct_fields[index].type;
         offset = serialize_align_up(offset, type_serialize_align(ft));
     }
     return offset;
@@ -390,6 +426,23 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
         }
         case ActualValueType::Struct: {
             auto fields = v.struct_fields_val();
+            if(is_union_type(t)) {
+                // union 成员共享 offset 0；写 max-size 成员即覆盖全部语义字节（无损拷贝）
+                Scope *scope = t->union_info.union_scope;
+                isize max_idx = 0;
+                isize max_size = 0;
+                isize i = 0;
+                for(const auto& entry : *scope) {
+                    isize s = type_serialize_size(union_field_type(t, entry.value.name));
+                    if(s > max_size) {
+                        max_size = s;
+                        max_idx = i;
+                    }
+                    i++;
+                }
+                write_value_to_bytes(bytes, offset, fields[max_idx]);
+                break;
+            }
             ASSERT(is_struct_type(t));
             for (isize i = 0; i < fields.count; i++) {
                 isize field_off = field_serialize_offset(t, i);
@@ -502,6 +555,16 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
                 elems[i] = read_value_from_bytes(bytes, offset + i * stride, et, allocator);
             }
             v.array_element_values(elems);
+            return v;
+        }
+        case Type_union: {
+            Scope *scope = type->union_info.union_scope;
+            Value v = make_value(type);
+            Array<Value> fields = make_array<Value>(allocator);
+            for(const auto& entry : *scope) {
+                fields.push_back(read_value_from_bytes(bytes, offset, union_field_type(type, entry.value.name), allocator));   // 全部 offset 0
+            }
+            v.struct_fields_val(fields);
             return v;
         }
         default:

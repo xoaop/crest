@@ -423,9 +423,19 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
         print_err("])");
         break;
     }
-    case CIROperator::UnionDecl:
-        print_err("UnionDecl");
+    case CIROperator::GetOrInitUnion:
+        print_err("GetOrInitUnion");
         break;
+    case CIROperator::FinishUnion: {
+        auto& fu = inst.info<CIROperator::FinishUnion>();
+        print_err("FinishUnion(union=%{}, fields=[", fu.union_decl_inst);
+        for(isize i = 0; i < fu.field_insts.count; i++) {
+            if (i > 0) print_err(", ");
+            print_err("%{}", fu.field_insts[i]);
+        }
+        print_err("])");
+        break;
+    }
     case CIROperator::AddrOf:
         print_err("AddrOf(%{})", inst.info<CIROperator::AddrOf>().lval_inst);
         break;

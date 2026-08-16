@@ -1,0 +1,11 @@
+// @fail
+// @error "包含自身"
+
+Bad :: union {
+    self: Bad;
+    x: i32;
+}
+
+main :: () -> i32 {
+    return 0;
+}
