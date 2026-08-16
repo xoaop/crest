@@ -1423,20 +1423,20 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMValueRef ptr = get_llvm_val_from_inst_ref(info.ptr_inst);
             auto& ptr_result = result_ctx.result_of(info.ptr_inst);
 
-            // ^func_ptr: 函数指针无法在 LLVM 层解引用（opaque pointer），直接透传
-            if(ptr_result.value_kind == CIRValueKind::RValue &&
-               is_pointer_type(ptr_result.actual_type()) &&
-               is_function_type(ptr_result.actual_type()->pointed_type)) {
-                save_llvm_val_of_inst(ref, ptr);
-            } else {
-                auto &load_result = result_ctx.result_of(ref);
-                if(load_result.state == CIRResultState::NothingYet) {
-                    DEBUG_TRACE("Load NothingYet: ref={} ptr_inst={}", ref, info.ptr_inst);
-                }
-                TypeRef val_type = load_result.actual_type();
-                LLVMValueRef loaded = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(val_type), ptr, "loadtmp");
-                save_llvm_val_of_inst(ref, loaded);
+            // // ^func_ptr: 函数指针无法在 LLVM 层解引用（opaque pointer），直接透传
+            // if(ptr_result.value_kind == CIRValueKind::RValue &&
+            //    is_pointer_type(ptr_result.actual_type()) &&
+            //    is_function_type(ptr_result.actual_type()->pointed_type)) {
+            //     save_llvm_val_of_inst(ref, ptr);
+            // } else {
+            auto &load_result = result_ctx.result_of(ref);
+            if(load_result.state == CIRResultState::NothingYet) {
+                DEBUG_TRACE("Load NothingYet: ref={} ptr_inst={}", ref, info.ptr_inst);
             }
+            TypeRef val_type = load_result.actual_type();
+            LLVMValueRef loaded = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(val_type), ptr, "loadtmp");
+            save_llvm_val_of_inst(ref, loaded);
+            // }
         } break;
 
         case CIROperator::Deref: {
