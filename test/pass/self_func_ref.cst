@@ -1,0 +1,9 @@
+import "std/c"
+
+main :: () -> i32 {
+    a := &main;
+
+    c.printf("main address: %p\n".data, a);
+
+    return 0;
+}

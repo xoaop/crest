@@ -15,6 +15,7 @@ struct CIRPackage;
 struct Package {
     xpString path;
 
+    // TODO: 换成公共或独有的枚举, 而不是借用 SymbolState
     SymbolState state = SymbolState::Unsolved;
 
 

@@ -556,6 +556,15 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         return;
     }
 
+    // 无类型标注且显式不初始化（---）→ 类型无法推断, 非法
+    if(var_decl_ast->VariableDecl.no_zero_init && var_decl_ast->VariableDecl.type_ast == NULL) {
+        context()->reporter.report_error(
+            var_decl_ast->src_loc,
+            "无类型声明的变量不能使用 '---'（无法推断类型）"
+        );
+        return;
+    }
+
     resolve_expr(var_decl_ast->VariableDecl.type_ast, analyser);
 
     if(var_decl_ast->VariableDecl.expr != NULL) {
