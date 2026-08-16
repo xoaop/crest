@@ -7,36 +7,38 @@
 #include "common.hpp"
 #include "scope.hpp"
 
-#define TYPE_KINDS                                      \
-    TYPE_KIND(Undefined)                   \
-    TYPE_KIND(i8)                                 \
-    TYPE_KIND(i32)                               \
-    TYPE_KIND(i64)                               \
-    TYPE_KIND(isize)                           \
-    TYPE_KIND(u8)                                 \
-    TYPE_KIND(u32)                               \
-    TYPE_KIND(u64)                               \
-    TYPE_KIND(usize)                             \
-    TYPE_KIND(f32)                               \
-    TYPE_KIND(f64)                               \
-    TYPE_KIND(bool)                             \
-    TYPE_KIND(void)                             \
-    TYPE_KIND(function)                     \
-    TYPE_KIND(pointer)                       \
-    TYPE_KIND(struct)                         \
-    TYPE_KIND(array)                           \
-    TYPE_KIND(enum)                             \
-    TYPE_KIND(union)                           \
-    TYPE_KIND(untyped_int)               \
-    TYPE_KIND(untyped_float)           \
-                                                        \
-    TYPE_KIND(type)                             \
-    TYPE_KIND(package)                       \
-                                                        \
-    TYPE_KIND(var_arg_c)                   \
-                                                        \
-                                                        \
-    TYPE_KIND(error)                           \
+struct CIRResultInstance;   // 前向声明（union_info.creation_instance）
+
+#define TYPE_KINDS                  \
+    TYPE_KIND(Undefined)            \
+    TYPE_KIND(i8)                   \
+    TYPE_KIND(i32)                  \
+    TYPE_KIND(i64)                  \
+    TYPE_KIND(isize)                \
+    TYPE_KIND(u8)                   \
+    TYPE_KIND(u32)                  \
+    TYPE_KIND(u64)                  \
+    TYPE_KIND(usize)                \
+    TYPE_KIND(f32)                  \
+    TYPE_KIND(f64)                  \
+    TYPE_KIND(bool)                 \
+    TYPE_KIND(void)                 \
+    TYPE_KIND(function)             \
+    TYPE_KIND(pointer)              \
+    TYPE_KIND(struct)               \
+    TYPE_KIND(array)                \
+    TYPE_KIND(enum)                 \
+    TYPE_KIND(union)                \
+    TYPE_KIND(untyped_int)          \
+    TYPE_KIND(untyped_float)        \
+                                    \
+    TYPE_KIND(type)                 \
+    TYPE_KIND(package)              \
+                                    \
+    TYPE_KIND(var_arg_c)            \
+                                    \
+                                    \
+    TYPE_KIND(error)                \
 /**/
 
 
@@ -106,7 +108,7 @@ struct std::hash<TypeHashKey> {
 struct Type {
     TypeKind kind;
     xpString type_name;
-    
+
     union {
         
         // 函数
@@ -143,8 +145,8 @@ struct Type {
 
         // 联合体
         struct {
-            Scope union_fields; // 联合体的字段列表
-            PackageRef pkg;
+            Scope *union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
+            CIRResultInstanceRef creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；null = 包级）
             TypeHashKey hash_key;
         } union_info;
 
@@ -210,6 +212,7 @@ bool is_untyped_type(TypeRef type);
 bool is_function_type(TypeRef type);
 bool is_pointer_type(TypeRef type);
 bool is_struct_type(TypeRef type);
+bool is_union_type(TypeRef type);
 bool is_enum_type(TypeRef type);
 bool is_array_type(TypeRef type);
 bool is_type_type(TypeRef type);
@@ -357,6 +360,10 @@ TypeRef unfinished_struct_type(Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
 TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Scope *scope);
+
+TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Scope *scope);
+TypeRef union_field_type(TypeRef union_type, xpString field_name);   // 按创建实例解析字段类型
+bool type_contains_by_value(TypeRef outer, TypeRef inner);   // 判断 outer 是否按值包含 inner（指针处截断）
 
 isize type_size_of(TypeRef type);
 isize type_align_of(TypeRef type);

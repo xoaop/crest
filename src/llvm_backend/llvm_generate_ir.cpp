@@ -12,6 +12,8 @@
 #include "print.hpp"
 #include "error_msg.hpp"
 
+#include "scope.hpp"
+
 
 
 /*
@@ -156,6 +158,7 @@ void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
 
     loop_stack = make_array<LLVMLoopBlocks>(allocator);
     struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
+    union_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
     this->pkg = pkg_ref;
     result_ctx = CIRResultContext::create(&package_by_ref(pkg_ref)->cir_package);
     this->curr_state = {nullptr, nullptr};
@@ -176,6 +179,7 @@ void LLVMGenerator::deinit() {
 
     array_free(&loop_stack);
     xp_hash_map_free(struct_types);
+    xp_hash_map_free(union_types);
     xp_hash_map_free(block_to_bbs);
 }
 
@@ -370,6 +374,51 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             LLVMStructSetBody(*struct_type, field_types.data, field_types.count, 0);
 
             return *struct_type;
+        }
+        case Type_union: {
+            TypeHashKey& key = type->union_info.hash_key;
+
+            LLVMTypeRef *existing_union_type = xp_hash_map_get(union_types, key);
+            if(existing_union_type != nullptr) {
+                return *existing_union_type;
+            }
+
+            auto name_maybe = type->union_info.hash_key.name;
+            xpString name = name_maybe.has_value() ? name_maybe.value() : xp_string_c("anonymous_union");
+
+            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
+            LLVMTypeRef *union_type = xp_hash_map_insert(&union_types, key, struct_ty);
+
+            // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，与解释器布局一致
+            Scope *scope = type->union_info.union_scope;
+            if(scope == nullptr || scope->symbols.symbols.count == 0) {
+                // 空 union：退化空 struct
+                LLVMStructSetBody(*union_type, nullptr, 0, 0);
+                return *union_type;
+            }
+            // 对齐值复用 type_serialize_align（不再重复扫字段），这里只找对齐最大的成员类型
+            isize max_align = type_serialize_align(type);
+            TypeRef align_member = nullptr;
+            for(const auto& entry : *scope) {
+                TypeRef ft = union_field_type(type, entry.value.name);
+                if(type_serialize_align(ft) == max_align) {
+                    align_member = ft;
+                    break;
+                }
+            }
+            XP_ASSERT_DEFAULT(align_member != nullptr);
+
+            isize u_size = type_serialize_size(type);
+            isize t_size = type_serialize_size(align_member);
+            isize pad = u_size - t_size;
+
+            LLVMTypeRef body[2] = {
+                get_llvm_type_from_type(align_member),
+                LLVMArrayType(LLVMInt8TypeInContext(g_llvm_session.ctx), (unsigned)pad),
+            };
+            LLVMStructSetBody(*union_type, body, 2, 0);
+
+            return *union_type;
         }
 
         case Type_enum: {
@@ -1054,7 +1103,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
         // 编译期指令，不生成IR
         case CIROperator::ConstDecl:
-        case CIROperator::UnionDecl:
+        case CIROperator::GetOrInitUnion:
+        case CIROperator::FinishUnion:
         case CIROperator::PointerType:
         case CIROperator::ArrayType:
         case CIROperator::SliceType:
@@ -1140,9 +1190,23 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             TypeRef logical_type = parent_res.type();
             bool is_lval = parent_res.value_kind == CIRValueKind::LValue;
 
-            // ① LValue → load 一层得到逻辑值
+            // ① LValue → load 一层得到逻辑值（union/struct 共用）
             if(is_lval) {
                 parent_val = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(logical_type), parent_val, "loadtmp");
+            }
+
+            // union 值成员访问：取地址 → bitcast 成字段类型指针 → load（所有成员 offset 0）
+            if(is_union_type(logical_type) || (is_pointer_type(logical_type) && is_union_type(logical_type->pointed_type))) {
+                TypeRef union_type = is_union_type(logical_type) ? logical_type : logical_type->pointed_type;
+
+                TypeRef field_type = union_field_type(union_type, info.field_name);
+                XP_ASSERT_DEFAULT(field_type != nullptr);
+
+                LLVMValueRef addr = get_ptr_of_llvm_value(parent_val, true);
+                LLVMValueRef typed_ptr = LLVMBuildBitCast(unit.builder, addr, LLVMPointerType(get_llvm_type_from_type(field_type), 0), "unionfieldptrtmp");
+                LLVMValueRef field_val = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(field_type), typed_ptr, "unionfieldtmp");
+                save_llvm_val_of_inst(ref, field_val);
+                break;
             }
 
             // ② 如果逻辑类型是 *StructType → 再 load 得到结构体值
@@ -1153,6 +1217,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             } else {
                 struct_type = logical_type;
             }
+            ASSERT(struct_type != nullptr);
             XP_ASSERT_DEFAULT(is_struct_type(struct_type));
 
             isize field_idx = -1;
@@ -1179,6 +1244,18 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             if(is_lval && is_pointer_type(actual_type) && is_pointer_type(actual_type->pointed_type)) {
                 struct_ptr = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(actual_type), struct_ptr, "loaddblptr");
                 actual_type = actual_type->pointed_type;
+            }
+
+            // ② union 分支：bitcast 指针（所有成员 offset 0）
+            if((is_pointer_type(actual_type) && is_union_type(actual_type->pointed_type)) || (is_lval && is_union_type(actual_type))) {
+                TypeRef union_type = (is_pointer_type(actual_type) && is_union_type(actual_type->pointed_type)) ? actual_type->pointed_type : actual_type;
+
+                TypeRef field_type = union_field_type(union_type, info.field_name);
+                XP_ASSERT_DEFAULT(field_type != nullptr);
+
+                LLVMValueRef field_ptr = LLVMBuildBitCast(unit.builder, struct_ptr, LLVMPointerType(get_llvm_type_from_type(field_type), 0), "unionfieldptrtmp");
+                save_llvm_val_of_inst(ref, field_ptr);
+                break;
             }
 
             // ② 确定结构体类型并 GEP

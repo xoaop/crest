@@ -1,0 +1,7 @@
+// 顺序无关：bar 引用声明在后的 LATE
+
+bar :: $(n: i32) -> i32 {
+    return LATE + n;
+}
+
+LATE :: 100

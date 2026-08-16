@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+import "foo"
+import "std/c"
+
+main :: () -> i32 {
+    // 跨包顺序无关：LATE 声明在 foo 里 bar 之后，从编译期实例里按需分析
+    // 结果须落 foo 包的全局上下文（sym->inst_key.cir_package），而非根包
+    x := foo.bar(5);
+    y := foo.LATE;
+    c.printf("x=%d y=%d\n".data, x, y);
+    if x != 105 { return 1; }
+    if y != 100 { return 2; }
+    return 0;
+}

@@ -18,6 +18,8 @@
 
 #include "scope.hpp"
 
+#include "cir_package.hpp"
+
 
 
 
@@ -132,6 +134,11 @@ Type copy_type(Type *src) {
         t.enum_info.enum_scope = src->enum_info.enum_scope;
         t.enum_info.hash_key = src->enum_info.hash_key.clone(type_allocator());
     } break;
+    case Type_union: {
+        t.union_info.union_scope = src->union_info.union_scope;
+        t.union_info.creation_instance = src->union_info.creation_instance;
+        t.union_info.hash_key = src->union_info.hash_key.clone(type_allocator());
+    } break;
 
     case Type_array: {
         t.array_info.element_type = src->array_info.element_type;
@@ -241,7 +248,10 @@ bool is_equal_type(Type a, Type b) {
     // 2. decl_ast
     case Type_enum:
         return a.enum_info.hash_key == b.enum_info.hash_key;
-    
+
+    case Type_union:
+        return a.union_info.hash_key == b.union_info.hash_key;
+
     // TODO 更多复杂类型比较
     default:
         return true;
@@ -415,6 +425,10 @@ bool is_pointer_type(TypeRef type) {
 
 bool is_struct_type(TypeRef type) {
     return type->kind == Type_struct;
+}
+
+bool is_union_type(TypeRef type) {
+    return type->kind == Type_union;
 }
 
 bool is_enum_type(TypeRef type) {
@@ -761,6 +775,61 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
     return add_type_unique(t);
 }
 
+TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Scope *scope) {
+    Type t{Type_union};
+
+    t.union_info.hash_key = ident.has_value()
+        ? TypeHashKey{ decl_ast, ident.value() }
+        : TypeHashKey{ decl_ast };
+    t.union_info.union_scope = scope;
+
+    return add_type_unique(t);
+}
+
+TypeRef union_field_type(TypeRef union_type, xpString field_name) {
+    SymbolInfo *field_sym = find_symbol_curr(union_type->union_info.union_scope, field_name);
+    ASSERT(field_sym != nullptr);
+    
+    
+    const CIRInstResultRef &ik = field_sym->inst_key;
+    auto key = CIRInstResultRef::make(ik.cir_package, ik.inst_ref, union_type->union_info.creation_instance);
+    
+    const CIRInstResult *r = key.get_result();
+    ASSERT(r != nullptr);
+
+    return r->actual_val().type_val();
+}
+
+bool type_contains_by_value(TypeRef outer, TypeRef inner) {
+    if(outer == inner) {
+        return true;
+    }
+    switch(outer->kind) {
+        case Type_array:
+            return type_contains_by_value(outer->array_info.element_type, inner);
+        case Type_struct:
+            for(isize i = 0; i < outer->struct_info.struct_fields.count; i++) {
+                if(type_contains_by_value(outer->struct_info.struct_fields[i].type, inner)) {
+                    return true;
+                }
+            }
+            return false;
+        case Type_union: {
+            Scope *scope = outer->union_info.union_scope;
+            for(const auto& entry : *scope) {
+                if(type_contains_by_value(union_field_type(outer, entry.value.name), inner)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case Type_pointer:
+            return false;   // 指针截断：指针指向的类型不按值包含
+        default:
+            return false;
+    }
+}
+
 
 TypeRef type_type(TypeRef self_type_info) {
     Type t = {};
@@ -812,6 +881,9 @@ TypeRef add_type_unique(Type type) {
         break;
     case Type_enum:
         type.enum_info.hash_key.unique_id = g_type_unique_id.fetch_add(1, std::memory_order_relaxed);
+        break;
+    case Type_union:
+        type.union_info.hash_key.unique_id = g_type_unique_id.fetch_add(1, std::memory_order_relaxed);
         break;
     default:
         break;
@@ -1111,6 +1183,16 @@ struct std::hash<Type> {
             u64 hash_decl_ast = type.enum_info.hash_key.hash();
 
             u64 hash_value = xp_hash_combine_u64(hash_enum, hash_decl_ast);
+
+            return cast(usize)(hash_value);
+        } break;
+
+        case Type_union: {
+            u64 hash_union = Type_union;
+
+            u64 hash_decl_ast = type.union_info.hash_key.hash();
+
+            u64 hash_value = xp_hash_combine_u64(hash_union, hash_decl_ast);
 
             return cast(usize)(hash_value);
         } break;

@@ -60,49 +60,49 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
 //
 // operators
 //
-
-#define CIR_OPERATORS \
-    X(ConstDecl) \
-    X(FunctionDecl) \
-    X(UnionDecl) \
-    X(VariableDecl) \
-    X(Binary) \
-    X(Unary) \
-    X(FieldAccess) \
-    X(FieldPtr) \
-    X(Call) \
-    X(ConstantValue) \
-    X(StringLiteral) \
-    X(Cast) \
-    X(StructInit) \
-    X(ArrayInit) \
-    X(Index) \
-    X(IndexPtr) \
-    X(PointerType) \
-    X(ArrayType) \
-    X(SliceType) \
-    X(EnterScope) \
-    X(ExitScope) \
-    X(CondBr) \
-    X(Break) \
-    X(Load) \
-    X(Deref) \
-    X(Store) \
-    X(IdentRef) \
-    X(IdentVal) \
-    X(DetermineType) \
-    X(TypeAscribe) \
-    X(GetOrInitStruct) \
-    X(StructField) \
-    X(FinishStruct) \
-    X(EnumDeclInit) \
-    X(AddrOf) \
-    X(FieldTypeOfStruct) \
-    X(FuncParamType) \
-    X(TypeOfInstResult) \
-    X(FuncType) \
-    X(BlockRef) \
-    X(ImportPackage) \
+#define CIR_OPERATORS           \
+    X(ConstDecl)                \
+    X(FunctionDecl)             \
+    X(GetOrInitUnion)           \
+    X(FinishUnion)              \
+    X(VariableDecl)             \
+    X(Binary)                   \
+    X(Unary)                    \
+    X(FieldAccess)              \
+    X(FieldPtr)                 \
+    X(Call)                     \
+    X(ConstantValue)            \
+    X(StringLiteral)            \
+    X(Cast)                     \
+    X(StructInit)               \
+    X(ArrayInit)                \
+    X(Index)                    \
+    X(IndexPtr)                 \
+    X(PointerType)              \
+    X(ArrayType)                \
+    X(SliceType)                \
+    X(EnterScope)               \
+    X(ExitScope)                \
+    X(CondBr)                   \
+    X(Break)                    \
+    X(Load)                     \
+    X(Deref)                    \
+    X(Store)                    \
+    X(IdentRef)                 \
+    X(IdentVal)                 \
+    X(DetermineType)            \
+    X(TypeAscribe)              \
+    X(GetOrInitStruct)          \
+    X(StructField)              \
+    X(FinishStruct)             \
+    X(EnumDeclInit)             \
+    X(AddrOf)                   \
+    X(FieldTypeOfStruct)        \
+    X(FuncParamType)            \
+    X(TypeOfInstResult)         \
+    X(FuncType)                 \
+    X(BlockRef)                 \
+    X(ImportPackage)            \
 /**/
 
 enum class CIROperator {
@@ -286,6 +286,7 @@ struct CIRSliceTypeInfo {
 
 struct CIRGetOrInitStructInfo {
     Ast *decl_ast;
+    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
 };
 
 struct CIRStructFieldInfo {
@@ -310,6 +311,19 @@ struct CIREnumDeclInitInfo {
     Array<EnumFieldInit> fields;
 
     CIR_REFS(&CIREnumDeclInitInfo::tag_type_inst, &CIREnumDeclInitInfo::fields)
+};
+
+struct CIRGetOrInitUnionInfo {
+    Ast *decl_ast;
+    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
+    Scope *scope;           // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
+};
+
+struct CIRFinishUnionInfo {
+    CIRInstructionRef union_decl_inst;
+    Array<CIRInstructionRef> field_insts;
+
+    CIR_REFS(&CIRFinishUnionInfo::union_decl_inst, &CIRFinishUnionInfo::field_insts)
 };
 
 struct CIRDetermineTypeInfo {
@@ -378,9 +392,6 @@ struct CIRBlockRefInfo {
     CIRBlockRef block_ref;
 };
 
-// 无 payload 的 op 占位
-struct CIRUnionDeclInfo {
-};
 struct CIRIdentRefInfo {
     xpString ident;   // 标识符名（undefined 错误消息用）
 };

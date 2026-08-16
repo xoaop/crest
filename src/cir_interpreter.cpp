@@ -1176,6 +1176,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
         if(is_pointer_type(t) && is_struct_type(t->pointed_type)) return t->pointed_type;
         return nullptr;
     };
+    auto get_union_type = [](TypeRef t) -> TypeRef {
+        if(is_union_type(t)) return t;
+        if(is_pointer_type(t) && is_union_type(t->pointed_type)) return t->pointed_type;
+        return nullptr;
+    };
 
     if(is_package_type(parent_type)) {
         // 包成员访问: pkg.symbol
@@ -1184,6 +1189,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
         if(field_sym == nullptr) {
             return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
         }
+
         auto r = field_sym->result(curr_cache_key());
         if(r.state == CIRResultState::WholeValue) {
             // type = 成员的类型，actual = 成员的实际值（可能来自 value_inst，类型不同）
@@ -1192,17 +1198,42 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
         return make_result(pc_ref, CIRInstResult::make_type_only(r.type()));
 
     } else if(TypeRef struct_type = get_struct_type(parent_type)) {
+
         for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
             if(xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
                 TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
+
                 if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
                     Value field_val = ResultValue(parent_inst).struct_field_val(i);
                     return make_result(pc_ref, CIRInstResult::make_value(field_type, field_val));
                 }
+
                 return make_result(pc_ref, CIRInstResult::make_type_only(field_type));
             }
         }
+
         return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 不存在", info.field_name));
+
+    } else if(TypeRef union_type = get_union_type(parent_type)) {
+
+        Scope *union_scope = union_type->union_info.union_scope;
+        TypeRef field_type = nullptr;
+        for(const auto& entry : *union_scope) {
+            if(xp_string_equal(entry.value.name, info.field_name)) {
+                field_type = union_field_type(union_type, entry.value.name);
+                break;
+            }
+        }
+
+        if(field_type == nullptr) {
+            return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' 不存在", info.field_name));
+        }
+
+        if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
+            context()->reporter.report_error(inst(pc_ref)->src_loc, "联合体字段访问的编译期求值尚未实现");
+        }
+
+        return make_result(pc_ref, CIRInstResult::make_type_only(field_type));
 
     } else if(has_result_val(parent_inst) && is_enum_type(ResultValue(parent_inst).type_val())) {
         // 枚举成员访问: EnumType.Variant
@@ -1232,13 +1263,30 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldPtr(CIRFieldPtrInfo& info
     }
 
     TypeRef parent_type = ResultType(parent_inst);
+
+    // union 分支（所有成员 offset 0）
+    if(is_union_type(parent_type) || (is_pointer_type(parent_type) && is_union_type(parent_type->pointed_type))) {
+        TypeRef union_type = is_union_type(parent_type) ? parent_type : parent_type->pointed_type;
+
+        TypeRef field_type = union_field_type(union_type, info.field_name);
+        if(field_type == nullptr) {
+            return make_result(pc_ref, inst_error(pc_ref, "FieldPtr：联合体字段 '{}' 不存在", info.field_name));
+        }
+
+        if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
+            context()->reporter.report_error(inst(pc_ref)->src_loc, "联合体字段指针访问的编译期求值尚未实现");
+        }
+
+        return make_result(pc_ref, CIRInstResult::make_type_only(field_type, CIRValueKind::LValue));
+    }
+
     TypeRef struct_type = nullptr;
     if(is_struct_type(parent_type)) {
         struct_type = parent_type;
     } else if(is_pointer_type(parent_type) && is_struct_type(parent_type->pointed_type)) {
         struct_type = parent_type->pointed_type;
     } else {
-        return make_result(pc_ref, inst_error(pc_ref, "字段指针访问仅支持结构体类型或指向结构体的指针，实际收到 '{}'", parent_type->name()));
+        return make_result(pc_ref, inst_error(pc_ref, "字段指针访问仅支持结构体/联合体类型或指向它们的指针，实际收到 '{}'", parent_type->name()));
     }
 
     for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
@@ -1908,8 +1956,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRFinishStructIn
                 sf.type = field_type;
                 fields.push_back(sf);
 
-                if(sf.type == st) {
-                    return make_result(pc_ref, inst_error(pc_ref, "结构体 '{}' 直接包含自身（未通过指针间接引用），将导致无限大小", sf.name));
+                if(type_contains_by_value(sf.type, st)) {
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", sf.name));
                 }
             }
 
@@ -1922,22 +1970,100 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRFinishStructIn
     return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}});
 }
 
-// handler: UnionDecl（写自身 type/value；联合体语义未定，保留占位）
-std::optional<AnalyzeResult> Interpreter::analyze_UnionDecl(CIRUnionDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    // 联合体声明：目前只做类型创建
-    // 联合体在 xoaop 语言中尚未完全定义语义，保留占位
-    Type union_t = make_type(Type_union);
-    TypeRef union_type = get_or_add_type(union_t);
-    TypeRef meta = type_type();
 
-    Value v = make_value(meta);
-    v.type_val(union_type);
-    return AnalyzeResult{CIRInstResult::make_value(v), pc_ref};
+
+
+
+
+
+// handler: GetOrInitUnion（写自身 type/value；未完成 union 类型 + 早绑符号）
+std::optional<AnalyzeResult> Interpreter::analyze_GetOrInitUnion(CIRGetOrInitUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    std::optional<xpString> union_name = std::nullopt;
+    SymbolInfo *union_sym = info.symbol();
+    if(union_sym != nullptr) {
+        union_name = union_sym->name;
+    }
+
+    // 未完成 union 类型（带 resolve 建的共享 scope，字段符号值稍后由 FinishUnion 填充）
+    TypeRef st = union_type_impl(info.decl_ast, union_name, info.scope);
+
+    // 保存创建时的调用实例：泛型逐实例解析字段类型用（null = 包级走全局）
+    st->union_info.creation_instance = result_context().call_instance();
+
+    // 副作用：未完成类型创建后立即绑定符号（自引用字段 *U 不再误判循环依赖，镜像函数签名确定即绑定）
+    if(union_sym != nullptr && union_sym->state != SymbolState::Solved) {
+        union_sym->val(CIRInstResultRef{pkg, pc_ref, result_context().call_instance()});
+        union_sym->state = SymbolState::Solved;
+    }
+
+    TypeRef tt = type_type();
+    Value v = make_value(tt);
+    v.type_val(st);
+
+    if(!has_result_type(pc_ref)) {
+        return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(v)}});
+    }
+    return make_result({{pc_ref, CIRInstResult::make_value(v)}});
+}
+
+
+
+
+// handler: FinishUnion（写自身 type/value；填 union_scope 字段符号副作用保留）
+std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    auto union_decl_inst = info.union_decl_inst;
+
+    if(curr_eval_mode() == EvalMode::FullEval || (should_eval_for_lazy_eval({union_decl_inst}) && should_eval_for_lazy_eval(info.field_insts))) {
+        TypeRef ut = ResultValue(union_decl_inst).type_val();
+        Scope *union_scope = ut->union_info.union_scope;
+
+        // 字段符号已由 FinishUnion 填充 → 跳过（重入/缓存命中）
+        bool already_finished = false;
+        for (const auto& entry : *union_scope) {
+            const SymbolInfo& sym = entry.value;
+            if(sym.value_store_type != ValueStoreType::Nothing) {
+                already_finished = true;
+                break;
+            }
+        }
+
+        if(!already_finished) {
+            for(isize i = 0; i < info.field_insts.count; i++) {
+                auto field_inst = info.field_insts[i];
+                auto& field_info = pkg->inst(field_inst)->info<CIROperator::StructField>();
+
+                TypeRef field_type = ResultValue(field_info.type_block_inst).type_val();
+
+                if(type_contains_by_value(field_type, ut)) {
+                    return make_result(pc_ref, inst_error(pc_ref, "联合体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", field_info.name));
+                }
+
+                SymbolInfo *field_sym = find_symbol_curr(union_scope, field_info.name);
+                XP_ASSERT_DEFAULT(field_sym != nullptr);
+
+                // 绑定 InCIRInstruction（镜像 enum）：字段类型由 result(type 的 creation_key) 解析
+                field_sym->val(CIRInstResultRef{pkg, field_info.type_block_inst, std::nullopt});
+                field_sym->state = SymbolState::Solved;
+            }
+        }
+
+        return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(ResultValue(union_decl_inst))}});
+    }
+
+    return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}});
 }
 
 // handler: GetOrInitStruct（写自身 type/value）
 std::optional<AnalyzeResult> Interpreter::analyze_GetOrInitStruct(CIRGetOrInitStructInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto res = eval_GetOrInitStruct(pc_ref);
+
+    // 副作用：未完成类型创建后立即绑定符号（自引用字段 *S 不再误判循环依赖，镜像函数签名确定即绑定）
+    SymbolInfo *sym = info.symbol();
+    if(sym != nullptr && sym->state != SymbolState::Solved) {
+        sym->val(CIRInstResultRef{pkg, pc_ref, result_context().call_instance()});
+        sym->state = SymbolState::Solved;
+    }
+
     if(!has_result_type(pc_ref)) {
         // TODO: type_type(undefined_type())得换成更规范的表示
         return make_result({{pc_ref, CIRInstResult::make_type_only(type_type())}, {pc_ref, CIRInstResult::make_value(res)}});

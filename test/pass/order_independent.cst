@@ -1,0 +1,20 @@
+// @pass
+// @run
+
+import "std/c"
+
+// 顺序无关声明：foo 引用声明在后的 X（从编译期实例里按需分析，结果落 X 所属包全局）
+foo :: $(n: i32) -> i32 {
+    return X + n;
+}
+
+main :: () -> i32 {
+    x := foo(5);   // comptime 调用 → 实例 → 按需分析 X
+    y := X;        // main 再读 X
+    c.printf("x=%d y=%d\n".data, x, y);
+    if x != 105 { return 1; }
+    if y != 100 { return 2; }
+    return 0;
+}
+
+X :: 100
