@@ -4,6 +4,7 @@
 #include "xoaop.h"
 #include "array.hpp"
 #include "print.hpp"
+#include "ref.hpp"
 #include <format>
 #include <functional>
 #include <optional>
@@ -78,18 +79,21 @@ struct std::formatter<CIRInstructionRef> {
 // 引用 CIRPackage 中某个指令的结果值
 // result_instance == nullptr → 值在 cir_package->results[inst_ref] 中
 // result_instance != nullptr → 值在 result_instance->results[inst_ref] 中
-struct CIRInstResultRef {
-    CIRPackage*                            cir_package;
+CIRInstResult* try_access_val(const Ref<CIRInstResult>& r);
+
+template<>
+struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
+    CIRPackage*                            cir_package = nullptr;
     CIRInstructionRef                      inst_ref;
     std::optional<CIRResultInstanceRef>      result_instance;
 
-    static CIRInstResultRef make(CIRPackage* pkg, CIRInstructionRef ref, std::optional<CIRResultInstanceRef> ri = std::nullopt);
+    static Ref make(CIRPackage* pkg, CIRInstructionRef ref, std::optional<CIRResultInstanceRef> ri = std::nullopt);
 
-    const CIRInstResult* get_result() const;
+    CIRInstResult* get_result() const;
 
     const CIRInstruction* inst() const;
 
-    bool operator==(const CIRInstResultRef& other) const {
+    bool operator==(const Ref& other) const {
         return cir_package == other.cir_package
             && inst_ref == other.inst_ref
             && result_instance.has_value() == other.result_instance.has_value()
@@ -98,8 +102,8 @@ struct CIRInstResultRef {
 };
 
 template<>
-struct std::hash<CIRInstResultRef> {
-    usize operator()(const CIRInstResultRef& key) const {
+struct std::hash<Ref<CIRInstResult>> {
+    usize operator()(const Ref<CIRInstResult>& key) const {
         u64 h = (u64)(usize)key.cir_package;
         h = xp_hash_combine_u64(h, (u64)key.inst_ref.block_ref);
         h = xp_hash_combine_u64(h, (u64)key.inst_ref.inst_index);
@@ -112,7 +116,7 @@ struct std::hash<CIRInstResultRef> {
 struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
     std::optional<CIRResultInstanceRef>        func_instance;
-    Array<CIRInstResultRef>                  comptime_arg_refs;
+    Array<Ref<CIRInstResult>>                comptime_arg_refs;
 
     u64 hash() const;
     bool operator==(const FuncCallKey& other) const;

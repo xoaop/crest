@@ -52,7 +52,7 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     return CIRInstResult{};
 }
 
-CIRInstResultRef SymbolInfo::val_as_inst_key() const {
+Ref<CIRInstResult> SymbolInfo::val_as_inst_key() const {
     XP_ASSERT_DEFAULT(value_store_type == ValueStoreType::InCIRInstruction);
     return inst_key;
 }
@@ -61,7 +61,7 @@ void SymbolInfo::val(Value new_val) {
     value_store_type = ValueStoreType::InSymbolInfo;
     value = new_val;
 }
-void SymbolInfo::val(CIRInstResultRef new_key) {
+void SymbolInfo::val(Ref<CIRInstResult> new_key) {
     value_store_type = ValueStoreType::InCIRInstruction;
     inst_key = new_key;
 }

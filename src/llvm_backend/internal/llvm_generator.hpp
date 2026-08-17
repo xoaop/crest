@@ -9,7 +9,7 @@
 #include "xoaop.h"
 #include "array.hpp"
 #include "type.hpp"                  // TypeRef / TypeHashKey
-#include "cir_instruction_ref.hpp"   // CIRInstructionRef / CIRBlockRef / CIRInstResultRef
+#include "cir_instruction_ref.hpp"   // CIRInstructionRef / CIRBlockRef / Ref<CIRInstResult>
 #include "cir_inst.hpp"              // CIRFunctionDeclInfo / CIRInstruction
 #include "cir_package.hpp"           // CIRResultContext
 
@@ -60,7 +60,7 @@ struct LLVMGenerator {
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
     LLVMTypeRef get_llvm_type_from_type(TypeRef type);
     void gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg = nullptr);
-    void gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func);
+    void gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func);
 
     void gen_ir_inst(CIRInstructionRef ref);
     void gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, bool connect_to_parent = false);
@@ -110,7 +110,7 @@ public:
 
     CIRFunctionDeclInfo curr_func_info;
 
-    xpHashMap<CIRInstResultRef, LLVMValueRef> inst_vals;
+    xpHashMap<Ref<CIRInstResult>, LLVMValueRef> inst_vals;
 
     xpHashMap<CIRBlockRef, Array<LLVMBasicBlockMapper>> block_to_bbs;
     xpHashMap<isize, LLVMValueRef> string_globals;  // static_mem offset → @str_N

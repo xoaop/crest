@@ -98,12 +98,12 @@ LLVM IR 生成 —— 核心概念语义定义
 ============================================================================
 */
 
-static xpHashMap<CIRInstResultRef, xpString>& get_global_func_names() {
-    static xpHashMap<CIRInstResultRef, xpString> map = xp_hash_map_make<CIRInstResultRef, xpString>(permanent_allocator());
+static xpHashMap<Ref<CIRInstResult>, xpString>& get_global_func_names() {
+    static xpHashMap<Ref<CIRInstResult>, xpString> map = xp_hash_map_make<Ref<CIRInstResult>, xpString>(permanent_allocator());
     return map;
 }
 
-xpString register_func_name(CIRInstResultRef key, bool is_extern_c) {
+xpString register_func_name(Ref<CIRInstResult> key, bool is_extern_c) {
     auto& map = get_global_func_names();
     return map.get_or_insert(key, [&]{
         CIRInstruction* inst = key.cir_package->inst(key.inst_ref);
@@ -166,7 +166,7 @@ void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
     syms = IRSymbolTable{
         .local_vals = xp_hash_map_make<Ref<SymbolInfo>, LLVMValueRef>(allocator)
     };
-    inst_vals = xp_hash_map_make<CIRInstResultRef, LLVMValueRef>(allocator);
+    inst_vals = xp_hash_map_make<Ref<CIRInstResult>, LLVMValueRef>(allocator);
     block_to_bbs = xp_hash_map_make<CIRBlockRef, Array<LLVMBasicBlockMapper>>(allocator);
     string_globals = xp_hash_map_make<isize, LLVMValueRef>(allocator);
 }
@@ -572,7 +572,7 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
 
 LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)result_ctx.pkg(), (void*)result_ctx.call_instance(), debug_curr_gen_ref);
-    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt};
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt);
     LLVMValueRef *val = xp_hash_map_get(inst_vals, key);
     if(val != nullptr) {
         return *val;
@@ -609,7 +609,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 
     // 当前 call_instance 未命中 → 尝试 null call_instance
     if(result_ctx.call_instance() != nullptr) {
-        CIRInstResultRef null_key{result_ctx.pkg(), ref, std::nullopt};
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, std::nullopt);
         LLVMValueRef *null_cached = xp_hash_map_get(inst_vals, null_key);
         if(null_cached) return *null_cached;
     }
@@ -620,12 +620,12 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
-    CIRInstResultRef key{result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt};
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, result_ctx.call_instance() ? std::optional<CIRResultInstanceRef>(result_ctx.call_instance()) : std::nullopt);
     DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={} op={}", ref, (void*)result_ctx.pkg(), (void*)result_ctx.call_instance(), (int)result_ctx.pkg()->inst(ref)->op);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
     // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
     if(result_ctx.call_instance() != nullptr) {
-        CIRInstResultRef null_key{result_ctx.pkg(), ref, std::nullopt};
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, std::nullopt);
         xp_hash_map_insert(&inst_vals, null_key, llvm_val);
     }
 }
@@ -902,7 +902,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 
     auto& res = result_ctx.result_of(func_ref);
     if(res.state != CIRResultState::WholeValue) return;
-    CIRInstResultRef fk = res.actual_val().func_val().func_key;
+    Ref<CIRInstResult> fk = res.actual_val().func_val().func_key;
 
     // 无状态：inst_vals 命中即已完整处理（声明 + body 原子完成）
     if(xp_hash_map_get(inst_vals, fk)) return;
@@ -923,7 +923,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     gen_func_body(fk, func);
 }
 
-void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) {
+void LLVMGenerator::gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func) {
     auto* func_inst = key.cir_package->inst(key.inst_ref);
     auto& fd = func_inst->info<CIROperator::FunctionDecl>();
     SymbolInfo *func_sym = try_access_val(func_inst->symbol);

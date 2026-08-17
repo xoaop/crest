@@ -112,10 +112,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     });
 
 
-    sym.val({
-        .cir_package = curr_pkg,
-        .inst_ref = const_decl,
-    });
+    sym.val(Ref<CIRInstResult>::make(curr_pkg, const_decl));
 
     return const_decl;
 }
@@ -142,7 +139,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
     func.is_builtin = fd->FunctionDeclValue.is_builtin;
     func.arg_type_insts = make_array<CIRInstructionRef>(permanent_allocator());
     func.arg_decl_insts = make_array<CIRInstructionRef>(permanent_allocator());
-    // func.args = make_array<CIRVariableDeclInfo>(permanent_allocator());
 
 
 
@@ -167,7 +163,6 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
         var.slot = i;                       // 参数槽位: 0, 1, 2, ...
         var.is_var_arg = param->ParamDecl.is_var_arg;
         param_decls.push_back(var);
-        // func.args.push_back(var);
         func.arg_type_insts.push_back(param_type);
     }
 
