@@ -24,7 +24,7 @@ struct CIRPackage;
 
 
 struct IRSymbolTable {
-    xpHashMap<SymbolInfo *, LLVMValueRef> local_vals;
+    xpHashMap<Ref<SymbolInfo>, LLVMValueRef> local_vals;
 };
 
 

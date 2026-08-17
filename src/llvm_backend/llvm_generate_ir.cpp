@@ -109,7 +109,7 @@ xpString register_func_name(CIRInstResultRef key, bool is_extern_c) {
         CIRInstruction* inst = key.cir_package->inst(key.inst_ref);
         ASSERT(inst->op == CIROperator::FunctionDecl);
 
-        SymbolInfo* sym = (inst->symbol)();
+        SymbolInfo* sym = try_access_val(inst->symbol);
         xpString base_name;
         if(sym) {
             base_name = sym->name;
@@ -134,8 +134,8 @@ xpString register_func_name(CIRInstResultRef key, bool is_extern_c) {
 }
 
 
-LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, SymbolInfo *symbol_info) {
-    LLVMValueRef *val = xp_hash_map_get(ir_syms->local_vals, symbol_info);
+LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref) {
+    LLVMValueRef *val = xp_hash_map_get(ir_syms->local_vals, symbol_ref);
     if(val != nullptr) {
         return *val;
     }
@@ -144,8 +144,8 @@ LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, SymbolInfo *symbol_info)
 
 
 
-LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfo *symbol_info, LLVMValueRef val) {
-    return xp_hash_map_insert(&ir_syms->local_vals, symbol_info, val);
+LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, LLVMValueRef val) {
+    return xp_hash_map_insert(&ir_syms->local_vals, symbol_ref, val);
 }
 
 
@@ -164,7 +164,7 @@ void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
     this->curr_state = {nullptr, nullptr};
     curr_blk = INVALID_BLOCK;
     syms = IRSymbolTable{
-        .local_vals = xp_hash_map_make<SymbolInfo *, LLVMValueRef>(allocator)
+        .local_vals = xp_hash_map_make<Ref<SymbolInfo>, LLVMValueRef>(allocator)
     };
     inst_vals = xp_hash_map_make<CIRInstResultRef, LLVMValueRef>(allocator);
     block_to_bbs = xp_hash_map_make<CIRBlockRef, Array<LLVMBasicBlockMapper>>(allocator);
@@ -898,7 +898,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 
     if(is_pure_comptime_func(fd, result_ctx)) return;
 
-    SymbolInfo *func_sym = (func_inst->symbol)();
+    SymbolInfo *func_sym = try_access_val(func_inst->symbol);
 
     auto& res = result_ctx.result_of(func_ref);
     if(res.state != CIRResultState::WholeValue) return;
@@ -926,7 +926,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) {
     auto* func_inst = key.cir_package->inst(key.inst_ref);
     auto& fd = func_inst->info<CIROperator::FunctionDecl>();
-    SymbolInfo *func_sym = (func_inst->symbol)();
+    SymbolInfo *func_sym = try_access_val(func_inst->symbol);
 
     // 上下文切到函数所在包/实例（生成完恢复）
     auto *saved_pkg = result_ctx.pkg();
@@ -957,7 +957,7 @@ void LLVMGenerator::gen_func_body(CIRInstResultRef key, LLVMValueRef llvm_func) 
         }
     });
 
-    add_local_val(&syms, func_sym, llvm_func);
+    add_local_val(&syms, func_inst->symbol, llvm_func);
 
     curr_state.curr_function = llvm_func;
     save_llvm_val_of_inst(key.inst_ref, llvm_func);
@@ -1579,13 +1579,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
 
         case CIROperator::IdentRef: {
-            // 老代码:
-            //     LLVMValueRef alloca = look_up_local_vals(gen->curr_ir_scope, info);
-            //     return alloca;  // is_lvalue_expr 分支
-
-            SymbolInfo *sym = (inst->symbol)();
-            XP_ASSERT_DEFAULT(sym != nullptr);
-            LLVMValueRef alloca = look_up_local_vals(&syms, sym);
+            LLVMValueRef alloca = look_up_local_vals(&syms, inst->symbol);
             XP_ASSERT_DEFAULT(alloca != nullptr);
 
             save_llvm_val_of_inst(ref, alloca);
@@ -1593,12 +1587,11 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
 
         case CIROperator::IdentVal: {
-            SymbolInfo *sym = (inst->symbol)();
-            XP_ASSERT_DEFAULT(sym != nullptr);
+            SymbolInfo &sym = inst->symbol.unwrap();
 
-            auto r = sym->result({});
+            auto r = sym.result();
             if(r.state >= CIRResultState::OnlyType && is_function_type(r.type())) {
-                LLVMValueRef func_val = look_up_local_vals(&syms, sym);
+                LLVMValueRef func_val = look_up_local_vals(&syms, inst->symbol);
                 XP_ASSERT_DEFAULT(func_val != nullptr);
                 save_llvm_val_of_inst(ref, func_val);
             }
@@ -1611,8 +1604,6 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
 void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* inst) {
     XP_ASSERT_DEFAULT(inst->op == CIROperator::VariableDecl);
-
-    SymbolInfo *var_info = (inst->info<CIROperator::VariableDecl>().symbol)();
 
     // 1. 分配空间
     LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(inst->info<CIROperator::VariableDecl>().name, stage_allocator()).c_str, get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
@@ -1648,7 +1639,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* 
     }
 
 
-    add_local_val(&syms, var_info, alloca);
+    add_local_val(&syms, inst->info<CIROperator::VariableDecl>().symbol, alloca);
     save_llvm_val_of_inst(ref, alloca);
 }
 

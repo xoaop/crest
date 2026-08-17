@@ -58,8 +58,8 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
 
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type = nullptr);
-SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser);
-SymbolInfo * resolve_field_access(Ast *field_access_ast, Analyser analyser);
+void resolve_ident(Ast *ident_ast, Analyser analyser);
+void resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
 
 
@@ -197,8 +197,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
         case AstType_ConstDecl: {
             ast->ast_symbol = find_symbol_until_global_ref(analyser.current_scope, ast->ConstDecl.name);
-            SymbolInfo *const_info = (ast->ast_symbol)();
-            XP_ASSERT_DEFAULT(const_info != NULL);
+            ASSERT(ast->ast_symbol != Ref<SymbolInfo>::INVALID_REF);
 
             // @NOTE: import 的符号求解已移到 CIR 阶段（ImportPackage 指令），这里只收集符号
             if(ast->ConstDecl.value_ast->type == AstType_Import) {
@@ -267,9 +266,9 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     if(!(analyser.current_scope->scope_type == ScopeType::File)) {
         SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
         add_symbol_to_scope(analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
-        const_decl_ast->ast_symbol = SymbolInfoRef { 
-            &analyser.current_scope->symbols, 
-            const_decl_ast->ConstDecl.name 
+        const_decl_ast->ast_symbol = Ref<SymbolInfo>{
+            .table = &analyser.current_scope->symbols,
+            .name = const_decl_ast->ConstDecl.name
         };
     }
 }
@@ -417,9 +416,9 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 
         SymbolInfo param_symbol = make_symbol(param->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param);
         add_symbol_to_scope(analyser.current_scope, param->ParamDecl.name, param_symbol);
-        param->ast_symbol = SymbolInfoRef { 
-            &analyser.current_scope->symbols, 
-            param->ParamDecl.name 
+        param->ast_symbol = Ref<SymbolInfo>{
+            .table = &analyser.current_scope->symbols,
+            .name = param->ParamDecl.name
         };
         resolve_expr(param->ParamDecl.type_ast, analyser);
     }
@@ -439,9 +438,9 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
 
     SymbolInfo param_symbol = make_symbol(param_ast->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param_ast);
     add_symbol_to_scope(analyser.current_scope, param_ast->ParamDecl.name, param_symbol);
-    param_ast->ast_symbol = SymbolInfoRef { 
-        &analyser.current_scope->symbols, 
-        param_ast->ParamDecl.name 
+    param_ast->ast_symbol = Ref<SymbolInfo>{
+        .table = &analyser.current_scope->symbols,
+        .name = param_ast->ParamDecl.name
     };
 
     resolve_expr(param_ast->ParamDecl.type_ast, analyser);
@@ -601,9 +600,9 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
     SymbolInfo info = make_symbol(var_decl_ast->VariableDecl.var_name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
     add_symbol_to_scope(analyser.current_scope, var_decl_ast->VariableDecl.var_name, info);
-    var_decl_ast->ast_symbol = SymbolInfoRef { 
-        &analyser.current_scope->symbols, 
-        var_decl_ast->VariableDecl.var_name 
+    var_decl_ast->ast_symbol = Ref<SymbolInfo>{
+        .table = &analyser.current_scope->symbols,
+        .name = var_decl_ast->VariableDecl.var_name
     };
     return;
 }
@@ -629,8 +628,7 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             }
 
 
-            SymbolInfo *info = (expr_ast->FunctionCallExpr.func_ident->ast_symbol)();
-            if(info == NULL) {
+            if(expr_ast->FunctionCallExpr.func_ident->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
                 break; // 说明前面已经报过错了, 这里就不继续解析了
             }
 
@@ -767,7 +765,7 @@ SymbolInfo *resolve_string_as_ident(xpString str, Analyser analyser) {
 }
 
 
-SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser) {
+void resolve_ident(Ast *ident_ast, Analyser analyser) {
     xpString ident_str = ident_ast->Ident.name;
     SymbolInfo *info = resolve_string_as_ident(ident_str, analyser);
 
@@ -780,24 +778,25 @@ SymbolInfo *resolve_ident(Ast *ident_ast, Analyser analyser) {
     }
 
     ident_ast->ast_symbol = find_symbol_until_global_ref(analyser.current_scope, ident_str);
-    return info;
+    
+    return;
 }
 
 
-SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
+void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Ast *parent_ast = field_access_ast->FieldAccess.parent;
     xpString field_name = field_access_ast->FieldAccess.field_name;
 
     resolve_expr2(parent_ast, analyser);
 
 
-    SymbolInfo *parent_symbol_info = (parent_ast->ast_symbol)();
-    if(parent_symbol_info == nullptr) {
-        return nullptr;
+    // @note: 如果父节点的符号解析失败, 那么这里就不再继续解析了, 否则会报错两次
+    if(parent_ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+        return;
     }
 
-
-    auto r = parent_symbol_info->result();
+    SymbolInfo &parent_symbol_info = parent_ast->ast_symbol.unwrap();
+    auto r = parent_symbol_info.result();
     Value parent_value = r.state == CIRResultState::WholeValue ? r.actual_val() : make_value();
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
@@ -805,8 +804,8 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
 
         Analyser pkg_analyser = analyser;
         pkg_analyser.current_scope = &package_by_ref(pkg)->package_scope;
-        pkg_analyser.curr_ast_file = parent_symbol_info->file;
-        pkg_analyser.pkg = parent_symbol_info->package;
+        pkg_analyser.curr_ast_file = parent_symbol_info.file;
+        pkg_analyser.pkg = parent_symbol_info.package;
 
         SymbolInfo *field_sym = resolve_string_as_ident(field_name, pkg_analyser);
 
@@ -814,21 +813,21 @@ SymbolInfo *resolve_field_access(Ast *field_access_ast, Analyser analyser) {
             context()->reporter.report_error(
                 field_access_ast->src_loc,
                 "undefined symbol '{}' in package '{}'",
-                field_name, parent_symbol_info->name
+                field_name, parent_symbol_info.name
             );
 
-            return NULL;
+            return;
         }
 
 
         field_access_ast->ast_symbol = find_symbol_until_global_ref(pkg_analyser.current_scope, field_name);
-        return (field_access_ast->ast_symbol)();
+        return;
     } else {
         // TODO: 结构体字段访问, 枚举字段访问, 放到type_check阶段检查
         // 因为目前还没有类型信息, 没法检查
 
         // 非包字段访问, 目前只有结构体字段访问, 结构体字段访问的合法性在类型检查阶段检查
-        return NULL;
+        return;
     }
 
 

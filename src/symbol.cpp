@@ -146,3 +146,10 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
     return info;
 }
 
+SymbolInfo *try_access_val(const Ref<SymbolInfo> &r) {
+    if(r.table == nullptr) {
+        return nullptr;
+    }
+    return find_symbol(r.table, r.name);
+}
+

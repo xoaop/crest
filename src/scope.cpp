@@ -120,16 +120,19 @@ SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident) {
 }
 
 
-SymbolInfoRef find_symbol_until_global_ref(Scope *scope, xpString symbol_ident) {
+Ref<SymbolInfo> find_symbol_until_global_ref(Scope *scope, xpString symbol_ident) {
     Scope *s = scope;
     while (s != nullptr) {
         SymbolInfo *info = find_symbol(&s->symbols, symbol_ident);
         if (info != nullptr) {
-            return SymbolInfoRef{&s->symbols, symbol_ident};
+            return Ref<SymbolInfo>{
+                .table = &s->symbols, 
+                .name = symbol_ident
+            };
         }
         s = s->parent;
     }
-    return SymbolInfoRef{};
+    return Ref<SymbolInfo>::INVALID_REF;
 }
 
 

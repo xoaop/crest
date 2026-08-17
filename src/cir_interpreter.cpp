@@ -1368,7 +1368,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRAddrOfInfo& info, CI
             got_fv = true;
         } else {
             CIRInstruction* lval_ptr = pkg->inst(lval_inst);
-            SymbolInfo* sym = (lval_ptr->symbol)();
+            SymbolInfo* sym = try_access_val(lval_ptr->symbol);
             if(sym && sym->is_const_decl_and_func()) {
                 auto r = sym->result(curr_cache_key());
                 if(r.state == CIRResultState::WholeValue) {
@@ -1805,17 +1805,16 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
         return std::nullopt;
     }
 
-    SymbolInfo* sym = (info.symbol)();
-    XP_ASSERT_DEFAULT(sym != nullptr);
+    SymbolInfo &sym = info.symbol.unwrap();
 
     CIRInstructionRef value_inst = info.value_inst;
 
-    if(sym->state == SymbolState::Solved) {
+    if(sym.state == SymbolState::Solved) {
         // 已求解过：值已缓存
         return std::nullopt;
     }
 
-    sym->state = SymbolState::Solving;   // 副作用：符号状态 → Solving（求解防重入）
+    sym.state = SymbolState::Solving;   // 副作用：符号状态 → Solving（求解防重入）
 
     // 前置：正常顺序下值块已由前面的 BlockRef 指令分析（immediate_eval=true → FullEval），这里只读。
     // 但前向引用/乱序进入（如函数体在声明前引用此 const）时值块尚未分析，需按需进入。
@@ -1831,8 +1830,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
     if(!has_result_val(info.value_inst)) {
         if(has_result_type(info.value_inst)) {
             // 副作用：符号绑定到本指令结果 + Solved（仅类型，无值）
-            sym->val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
-            sym->state = SymbolState::Solved;
+            sym.val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
+            sym.state = SymbolState::Solved;
             return make_result(pc_ref, CIRInstResult::make_type_only(ResultType(info.value_inst)));
         }
         return std::nullopt;
@@ -1841,8 +1840,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
     Value result = ResultValue(info.value_inst);
     result = clone_value(result, permanent_allocator());
     // 副作用：符号绑定到本指令结果 + Solved（值已缓存）
-    sym->val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
-    sym->state = SymbolState::Solved;
+    sym.val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
+    sym.state = SymbolState::Solved;
 
     return AnalyzeResult{CIRInstResult::make_value(result.type, result), pc_ref};
 }
@@ -1850,12 +1849,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
 // handler: VariableDecl（写自身类型 = undefined + LValue；符号注册副作用保留）
 std::optional<AnalyzeResult> Interpreter::analyze_VariableDecl(CIRVariableDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& vd = inst(pc_ref)->info<CIROperator::VariableDecl>();
-    SymbolInfo *sym = (vd.symbol)();
-    XP_ASSERT_DEFAULT(sym != nullptr);
+    SymbolInfo &sym = vd.symbol.unwrap();
 
     // 副作用：符号绑定到本指令结果 + Solved（类型由 TypeAscribe 后续补全）
-    sym->val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
-    sym->state = SymbolState::Solved;
+    sym.val(CIRInstResultRef{pkg, pc_ref, std::nullopt});
+    sym.state = SymbolState::Solved;
 
     // FullEval 时不分配内存，TypeAscribe 会在类型已知后分配
     return make_result(pc_ref, CIRInstResult::make_type_only(undefined_type(), CIRValueKind::LValue));
@@ -1874,7 +1872,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
     }
 
     std::optional<xpString> enum_name = std::nullopt;
-    SymbolInfo *enum_sym = info.symbol();
+    SymbolInfo *enum_sym = try_access_val(info.symbol);
     if(enum_sym != nullptr) {
         enum_name = enum_sym->name;
     }
@@ -1887,7 +1885,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
 
     {
         // 副作用：枚举符号绑定 type 值 + Solved
-        SymbolInfo *enum_sym2 = info.symbol();
+        SymbolInfo *enum_sym2 = try_access_val(info.symbol);
         if(enum_sym2 != nullptr) {
             enum_sym2->val(v);
             enum_sym2->state = SymbolState::Solved;
@@ -1979,7 +1977,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRFinishStructIn
 // handler: GetOrInitUnion（写自身 type/value；未完成 union 类型 + 早绑符号）
 std::optional<AnalyzeResult> Interpreter::analyze_GetOrInitUnion(CIRGetOrInitUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     std::optional<xpString> union_name = std::nullopt;
-    SymbolInfo *union_sym = info.symbol();
+    SymbolInfo *union_sym = try_access_val(info.symbol);
     if(union_sym != nullptr) {
         union_name = union_sym->name;
     }
@@ -2058,7 +2056,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_GetOrInitStruct(CIRGetOrInitSt
     auto res = eval_GetOrInitStruct(pc_ref);
 
     // 副作用：未完成类型创建后立即绑定符号（自引用字段 *S 不再误判循环依赖，镜像函数签名确定即绑定）
-    SymbolInfo *sym = info.symbol();
+    SymbolInfo *sym = try_access_val(info.symbol);
     if(sym != nullptr && sym->state != SymbolState::Solved) {
         sym->val(CIRInstResultRef{pkg, pc_ref, result_context().call_instance()});
         sym->state = SymbolState::Solved;
@@ -2161,7 +2159,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
         TypeRef func_type_type = function_type(param_types, return_type);
         Value v = make_value(func_type_type);
 
-        SymbolInfo* sym = (inst(pc_ref)->symbol)();
+        SymbolInfo* sym = try_access_val(inst(pc_ref)->symbol);
 
         {
             auto func_key = CIRInstResultRef{pkg, pc_ref, result_context().in_call() ? std::optional<CIRResultInstanceRef>{result_context().call_instance()} : std::nullopt};
@@ -2420,7 +2418,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ExitScope(CIRExitScopeInfo& in
 
 // handler: IdentRef（写自身 LValue 类型/地址；符号按需分析副作用保留）
 std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRIdentRefInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    SymbolInfo *sym = (inst(pc_ref)->symbol)();
+    SymbolInfo *sym = try_access_val(inst(pc_ref)->symbol);
 
     if(sym == nullptr) {
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref)->info<CIROperator::IdentRef>().ident));
@@ -2489,8 +2487,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentVal(CIRIdentValInfo& info
         return std::nullopt;
     }
 
-    SymbolInfoRef info_ref = inst(pc_ref)->symbol;
-    auto sym = info_ref();
+    Ref<SymbolInfo> info_ref = inst(pc_ref)->symbol;
+    auto sym = try_access_val(info_ref);
 
     if(sym == nullptr) {
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref)->info<CIROperator::IdentVal>().ident));

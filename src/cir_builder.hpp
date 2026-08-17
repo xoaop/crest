@@ -40,7 +40,7 @@ struct CIRBuilder {
     void build_cir_package(PackageRef pkg);
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
-    CIRInstructionRef build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym);
+    CIRInstructionRef build_func_decl(Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
     CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
     CIRInstructionRef build_inst_for_stmt(Ast *stmt);
     CIRInstructionRef build_inst_for_expr(Ast *expr);
@@ -87,7 +87,7 @@ public:
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;
     Scope *curr_scope;
-    SymbolInfoRef curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
+    Ref<SymbolInfo> curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
 
 
     // cirbuilder所有的状态, 需要分配
