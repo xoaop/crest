@@ -49,6 +49,13 @@ private:
 template<typename T>
 struct Ref : RefBase<T> {
     isize index = -1;
+
+    bool operator==(const Ref& other) const { return index == other.index; }
+};
+
+template<typename T>
+struct std::hash<Ref<T>> {
+    usize operator()(const Ref<T>& r) const { return (usize)(u64)r.index; }
 };
 
 

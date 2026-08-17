@@ -1830,7 +1830,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
     if(!has_result_val(info.value_inst)) {
         if(has_result_type(info.value_inst)) {
             // 副作用：符号绑定到本指令结果 + Solved（仅类型，无值）
-            sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, std::nullopt));
+            sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
             sym.state = SymbolState::Solved;
             return make_result(pc_ref, CIRInstResult::make_type_only(ResultType(info.value_inst)));
         }
@@ -1840,7 +1840,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ConstDecl(CIRConstDeclInfo& in
     Value result = ResultValue(info.value_inst);
     result = clone_value(result, permanent_allocator());
     // 副作用：符号绑定到本指令结果 + Solved（值已缓存）
-    sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, std::nullopt));
+    sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
     sym.state = SymbolState::Solved;
 
     return AnalyzeResult{CIRInstResult::make_value(result.type, result), pc_ref};
@@ -1852,7 +1852,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_VariableDecl(CIRVariableDeclIn
     SymbolInfo &sym = vd.symbol.unwrap();
 
     // 副作用：符号绑定到本指令结果 + Solved（类型由 TypeAscribe 后续补全）
-    sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, std::nullopt));
+    sym.val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
     sym.state = SymbolState::Solved;
 
     // FullEval 时不分配内存，TypeAscribe 会在类型已知后分配
@@ -1921,7 +1921,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
         SymbolInfo *field_sym = find_symbol_curr(enum_scope, ef.name);
         XP_ASSERT_DEFAULT(field_sym != nullptr);
         if(ef.value_inst != INVALID_INST) {
-            field_sym->val(Ref<CIRInstResult>::make(pkg, ef.value_inst, std::nullopt));
+            field_sym->val(Ref<CIRInstResult>::make(pkg, ef.value_inst, {}));
         } else {
             field_sym->val(field_val);
         }
@@ -2040,7 +2040,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
                 XP_ASSERT_DEFAULT(field_sym != nullptr);
 
                 // 绑定 InCIRInstruction（镜像 enum）：字段类型由 result(type 的 creation_key) 解析
-                field_sym->val(Ref<CIRInstResult>::make(pkg, field_info.type_block_inst, std::nullopt));
+                field_sym->val(Ref<CIRInstResult>::make(pkg, field_info.type_block_inst, {}));
                 field_sym->state = SymbolState::Solved;
             }
         }
@@ -2161,7 +2161,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
         SymbolInfo* sym = try_access_val(inst(pc_ref)->symbol);
 
         {
-            auto func_key = Ref<CIRInstResult>::make(pkg, pc_ref, result_context().in_call() ? std::optional<CIRResultInstanceRef>{result_context().call_instance()} : std::nullopt);
+            auto func_key = Ref<CIRInstResult>::make(pkg, pc_ref, result_context().call_instance());
 
             if (func.is_builtin && sym != nullptr && sym->name == xp_string_c("sizeof")) {
                 v.func_val(func_key, BuiltinKind::SizeOf);
@@ -2177,7 +2177,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
         pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
         if(sym != nullptr) {
             // 副作用：函数符号签名确定即绑定 FunctionDecl 并置 Solved（递归引用不误判循环依赖）
-            sym->val(Ref<CIRInstResult>::make(pkg, pc_ref, std::nullopt));
+            sym->val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
             sym->state = SymbolState::Solved;
         }
     }
@@ -2259,8 +2259,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         auto func_info = fv.func_key.inst()->info<CIROperator::FunctionDecl>();
 
         auto ctx = CIRResultContext::create(fv.func_key.cir_package);
-        if(auto inst_val = fv.func_key.result_instance) {
-            ctx.enter_call_instance(inst_val.value());
+        if(fv.func_key.result_instance.key.func_decl_pc != INVALID_INST) {
+            ctx.enter_call_instance(fv.func_key.result_instance);
         }
         if(is_pure_comptime_func(func_info, ctx)) {
             force_eval = true;
@@ -2315,19 +2315,16 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         // 构建编译期函数调用结果查询键
         FuncCallKey cache_key = {
             .func_decl_pc = func_decl_pc,
-            .func_instance = fv.func_key.result_instance,
             .comptime_arg_refs = make_array<Ref<CIRInstResult>>(permanent_allocator())
         };
-        {
-            std::optional<CIRResultInstanceRef> ri;
-            if(auto* inst_ptr = curr_instance()) { ri = inst_ptr->ctx.call_instance(); }
-            for(isize i = 0; i < call_info.arg_insts.count; i++) {
-                cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::make(pkg, call_info.arg_insts[i], ri));
-            }
+        Ref<CIRResultInstance> parent_instance;
+        if(auto* inst_ptr = curr_instance()) { parent_instance = inst_ptr->ctx.call_instance(); }
+        for(isize i = 0; i < call_info.arg_insts.count; i++) {
+            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::make(pkg, call_info.arg_insts[i], parent_instance));
         }
 
         // 查询编译期函数调用结果缓存
-        CIRResultInstanceRef callee_result_instance = callee_pkg->get_result_instance(cache_key);
+        Ref<CIRResultInstance> callee_result_instance = callee_pkg->get_result_instance(cache_key);
         {
             CIRInstResult *cached_body = callee_result_instance->result_ptr_of(func.body_inst);
             if(cached_body && cached_body->state == CIRResultState::WholeValue) {

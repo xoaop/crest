@@ -112,10 +112,9 @@ private:
 };
 
 
-// TODO: 把指针换成更清晰的引用处理结构
 struct CIRResultInstance {
 
-    static CIRResultInstanceRef make(xpAllocator allocator);
+    static CIRResultInstance make(xpAllocator allocator);
 
     CIRInstResult* result_ptr_of(CIRInstructionRef ref);
     CIRInstResult& result_of(CIRInstructionRef ref);
@@ -148,7 +147,7 @@ struct CIRPackage {
 
 
     xpHashMap<CIRInstructionRef, CIRInstResult> results;
-    xpHashMap<FuncCallKey, CIRResultInstanceRef> result_instances;
+    xpHashMap<FuncCallKey, CIRResultInstance> result_instances;
     Array<FuncCallKey> comptime_func_calls;
 
 
@@ -157,9 +156,9 @@ struct CIRPackage {
     CIRBlock* block(CIRBlockRef ref);
     const CIRBlock* block(CIRBlockRef ref) const;
 
-    CIRResultInstanceRef get_result_instance(FuncCallKey key);
+    Ref<CIRResultInstance> get_result_instance(FuncCallKey key);
 
-    CIRInstResult& result_of(CIRInstructionRef ref, std::optional<CIRResultInstanceRef> instance = std::nullopt);
+    CIRInstResult& result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance = {});
 
     CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop);
 };
@@ -168,7 +167,7 @@ struct CIRPackage {
 
 CIRPackage make_cir_package(xpAllocator allocator);
 
-struct CIRResultContext; // @new — 前向声明，定义在下方
+struct CIRResultContext;
 
 bool is_pure_comptime_func(CIRFunctionDeclInfo& func, const CIRResultContext& ctx);
 void dump_cir_package(CIRPackage *file);
@@ -184,16 +183,16 @@ struct CIRResultContext {
     void set_pkg(CIRPackage *new_pkg) { _pkg = new_pkg; }
 
     void enter_call(FuncCallKey key);
-    void enter_call_instance(CIRResultInstanceRef instance);
+    void enter_call_instance(Ref<CIRResultInstance> instance);
     void exit_call();
-    bool in_call() const { return _call_instance != nullptr; }
-    CIRResultInstanceRef call_instance() const { return _call_instance; }
+    bool in_call() const { return _call_instance.key.func_decl_pc != INVALID_INST; }
+    Ref<CIRResultInstance> call_instance() const { return _call_instance; }
     const FuncCallKey &call_key() const;
 
     CIRInstResult &result_of(CIRInstructionRef ref) const;
 
 private:
     CIRPackage *_pkg = nullptr;
-    CIRResultInstanceRef _call_instance = nullptr;
+    Ref<CIRResultInstance> _call_instance;
     std::optional<FuncCallKey> _call_key;
 };
