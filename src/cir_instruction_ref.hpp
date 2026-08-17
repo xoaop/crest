@@ -13,7 +13,6 @@ struct CIRPackage;
 struct CIRInstResult;
 struct CIRResultInstance;
 struct CIRInstruction;
-using CIRResultInstanceRef = CIRResultInstance*;
 using CIRBlockRef = isize;
 
 
@@ -76,47 +75,11 @@ struct std::formatter<CIRInstructionRef> {
 };
 
 
-// 引用 CIRPackage 中某个指令的结果值
-// result_instance == nullptr → 值在 cir_package->results[inst_ref] 中
-// result_instance != nullptr → 值在 result_instance->results[inst_ref] 中
-CIRInstResult* try_access_val(const Ref<CIRInstResult>& r);
+template<> struct Ref<CIRInstResult>;
 
-template<>
-struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
-    CIRPackage*                            cir_package = nullptr;
-    CIRInstructionRef                      inst_ref;
-    std::optional<CIRResultInstanceRef>      result_instance;
-
-    static Ref make(CIRPackage* pkg, CIRInstructionRef ref, std::optional<CIRResultInstanceRef> ri = std::nullopt);
-
-    CIRInstResult* get_result() const;
-
-    const CIRInstruction* inst() const;
-
-    bool operator==(const Ref& other) const {
-        return cir_package == other.cir_package
-            && inst_ref == other.inst_ref
-            && result_instance.has_value() == other.result_instance.has_value()
-            && (!result_instance.has_value() || result_instance.value() == other.result_instance.value());
-    }
-};
-
-template<>
-struct std::hash<Ref<CIRInstResult>> {
-    usize operator()(const Ref<CIRInstResult>& key) const {
-        u64 h = (u64)(usize)key.cir_package;
-        h = xp_hash_combine_u64(h, (u64)key.inst_ref.block_ref);
-        h = xp_hash_combine_u64(h, (u64)key.inst_ref.inst_index);
-        h = xp_hash_combine_u64(h, (u64)(usize)(key.result_instance ? *key.result_instance : nullptr));
-        return h;
-    }
-};
-
-// 函数调用键：定位一次 comptime 函数调用（声明 + 实例 + 参数引用）
 struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
-    std::optional<CIRResultInstanceRef>        func_instance;
-    Array<Ref<CIRInstResult>>                comptime_arg_refs;
+    Array<Ref<CIRInstResult>>                comptime_arg_refs = {};
 
     u64 hash() const;
     bool operator==(const FuncCallKey& other) const;
@@ -126,6 +89,52 @@ template<>
 struct std::hash<FuncCallKey> {
     usize operator()(const FuncCallKey& key) const {
         return key.hash();
+    }
+};
+
+
+CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r);
+
+template<>
+struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
+    FuncCallKey key;
+
+    bool operator==(const Ref& other) const { return key == other.key; }
+};
+
+
+// 引用 CIRPackage 中某个指令的结果值
+// result_instance == INVALID_REF → 值在 cir_package->results[inst_ref] 中
+// result_instance != INVALID_REF → 值在 result_instance->results[inst_ref] 中
+CIRInstResult* try_access_val(const Ref<CIRInstResult>& r);
+
+template<>
+struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
+    CIRPackage*                            cir_package = nullptr;
+    CIRInstructionRef                      inst_ref;
+    Ref<CIRResultInstance>                 result_instance;
+
+    static Ref make(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
+
+    CIRInstResult* get_result() const;
+
+    const CIRInstruction* inst() const;
+
+    bool operator==(const Ref& other) const {
+        return cir_package == other.cir_package
+            && inst_ref == other.inst_ref
+            && result_instance == other.result_instance;
+    }
+};
+
+template<>
+struct std::hash<Ref<CIRInstResult>> {
+    usize operator()(const Ref<CIRInstResult>& key) const {
+        u64 h = (u64)(usize)key.cir_package;
+        h = xp_hash_combine_u64(h, (u64)key.inst_ref.block_ref);
+        h = xp_hash_combine_u64(h, (u64)key.inst_ref.inst_index);
+        h = xp_hash_combine_u64(h, std::hash<FuncCallKey>{}(key.result_instance.key));
+        return h;
     }
 };
 

@@ -145,7 +145,7 @@ struct Type {
         // 联合体
         struct {
             Scope *union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
-            CIRResultInstanceRef creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；null = 包级）
+            Ref<CIRResultInstance> creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；INVALID = 包级）
             TypeHashKey hash_key;
         } union_info;
 
