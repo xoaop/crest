@@ -191,7 +191,7 @@ struct Ast {
 
     ImplicitConversionTag implicit_conversion_tag;
 
-    SymbolInfoRef ast_symbol = {}; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
+    Ref<SymbolInfo> ast_symbol = Ref<SymbolInfo>::INVALID_REF; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
 
     // 表达式属性
     bool is_const_expr = false; // 该AST是否是一个常量表达式

@@ -96,8 +96,7 @@ void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
 
 CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
-    SymbolInfo *sym = (const_decl_ast->ast_symbol)();
-    XP_ASSERT_DEFAULT(sym != nullptr);
+    SymbolInfo &sym = const_decl_ast->ast_symbol.unwrap();
 
     // 前置：先建值块（发射 BlockRef 指令），再建 ConstDecl。
     // 迭代先分析值块，ConstDecl 只读结果——无感知。
@@ -113,7 +112,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     });
 
 
-    sym->val({
+    sym.val({
         .cir_package = curr_pkg,
         .inst_ref = const_decl,
     });
@@ -124,7 +123,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
 
 
 
-CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoRef> func_sym) {
+CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolInfo>> func_sym) {
     XP_ASSERT_DEFAULT(fd->type == AstType_FunctionDeclValue);
 
     auto saved_curr_func = curr_func;
@@ -198,7 +197,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<SymbolInfoR
     func.body_inst = INVALID_INST;
     auto func_inst = New_Instruction(CIROperator::FunctionDecl, fd);
     
-    Instruction(func_inst).symbol = func_sym.value_or(SymbolInfoRef{});
+    Instruction(func_inst).symbol = func_sym.value_or(Ref<SymbolInfo>::INVALID_REF);
     Instruction(func_inst).info<CIROperator::FunctionDecl>().return_type_inst = func.return_type_inst;
 
     Instruction(func_inst).info<CIROperator::FunctionDecl>() = func;
@@ -617,7 +616,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
     CIRInstructionRef result = INVALID_INST;
     switch(expr->type) {
         case AstType_Ident: {
-            SymbolInfo *sym = (expr->ast_symbol)();
+            SymbolInfo *sym = try_access_val(expr->ast_symbol);
             if(sym && sym->is_var_decl()) {
                 auto ref = New_Instruction(CIROperator::IdentRef, expr);
                 Instruction(ref).symbol = expr->ast_symbol;
@@ -806,11 +805,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             ptr.store_bytes(str.c_str, count_str);
             ptr.mem->write_bytes(ptr.offset + count_str, "\0", 1);
 
-            // 创建 IdentVal 引用 string 符号（来自 std/builtin/string.cst），
-            // 作为 StringLiteral 的数据依赖，analyze 阶段通过数据流获取类型
+
             auto string_ident = New_Instruction(CIROperator::IdentVal, expr);
-            SymbolInfo *string_sym = find_symbol_until_global(&package_by_ref(context()->global_blank_package)->package_scope, xp_string_c("string"));
-            Instruction(string_ident).symbol = SymbolInfoRef{&package_by_ref(context()->global_blank_package)->package_scope.symbols, xp_string_c("string")};
+            Instruction(string_ident).symbol = find_symbol_until_global_ref(&package_by_ref(context()->global_blank_package)->package_scope, xp_string_c("string"));
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(expr, {
                 .data = ptr,
@@ -945,7 +942,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
         case AstType_FunctionDeclValue: {
             if(curr_const_sym.table != nullptr) {
-                SymbolInfoRef func_sym = curr_const_sym;
+                Ref<SymbolInfo> func_sym = curr_const_sym;
                 curr_const_sym = {};
                 result = build_func_decl(expr, func_sym);
             } else {
@@ -1026,7 +1023,7 @@ CIRInstructionRef CIRBuilder::Alloc_Var(xpString name, bool is_var_arg, bool no_
     isize slot = curr_func ? curr_func->slot_count++ : -1;
     auto vd = Make_Instruction<CIROperator::VariableDecl>(ast, {
         .name = name,
-        .symbol = ast ? ast->ast_symbol : SymbolInfoRef{},
+        .symbol = ast ? ast->ast_symbol : Ref<SymbolInfo>::INVALID_REF,
         .slot = slot,
         .is_var_arg = is_var_arg,
         .no_zero_init = no_zero_init,

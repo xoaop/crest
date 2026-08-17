@@ -32,7 +32,7 @@ Ast& Ast::operator=(const Ast& other) {
 Ast ast_make(AstType type) {
     Ast ast = {};
     
-    ast.ast_symbol = {};
+    ast.ast_symbol = Ref<SymbolInfo>::INVALID_REF;
     ast.is_const_expr = false;
     ast.is_lvalue = false;
     ast.is_null = false;

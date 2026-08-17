@@ -128,7 +128,7 @@ inline const char *string(CIROperator op) {
 
 struct CIRConstDeclInfo {
     xpString ident;
-    SymbolInfoRef symbol;
+    Ref<SymbolInfo> symbol;
     CIRInstructionRef value_inst; // 常量值的指令引用
 
     CIR_REFS(&CIRConstDeclInfo::value_inst)
@@ -136,7 +136,7 @@ struct CIRConstDeclInfo {
 
 struct CIRVariableDeclInfo {
     xpString name;
-    SymbolInfoRef symbol;
+    Ref<SymbolInfo> symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
 
@@ -152,7 +152,7 @@ struct EnumFieldInit {
 
 struct CIRFunctionDeclInfo {
     // xpString name;                      // 函数名（symbol_find / call 目标）
-    // SymbolInfoRef symbol;
+    // Ref<SymbolInfo> symbol;
 
     CIRInstructionRef body_inst;
     CIRInstructionRef return_type_inst; // 返回类型 block 引用, nullopt 表示返回类型由返回值推导
@@ -286,7 +286,7 @@ struct CIRSliceTypeInfo {
 
 struct CIRGetOrInitStructInfo {
     Ast *decl_ast;
-    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
+    Ref<SymbolInfo> symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
 };
 
 struct CIRStructFieldInfo {
@@ -306,7 +306,7 @@ struct CIRFinishStructInfo {
 struct CIREnumDeclInitInfo {
     CIRInstructionRef tag_type_inst;
     Ast *decl_ast;
-    SymbolInfoRef symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
+    Ref<SymbolInfo> symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
     Scope *scope;
     Array<EnumFieldInit> fields;
 
@@ -315,7 +315,7 @@ struct CIREnumDeclInitInfo {
 
 struct CIRGetOrInitUnionInfo {
     Ast *decl_ast;
-    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
+    Ref<SymbolInfo> symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
     Scope *scope;           // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
 };
 
@@ -480,7 +480,7 @@ struct CIRInstruction {
 
     
     CIROperator       op;
-    SymbolInfoRef     symbol;
+    Ref<SymbolInfo>     symbol;
 
     SourceLocation src_loc;
 

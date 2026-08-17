@@ -71,8 +71,6 @@ struct std::formatter <TypeKind> : std::formatter<std::string_view> {
 struct Type;
 typedef Type *TypeRef;
 
-bool is_equal_type(Type a, Type b);
-
 
 struct StructField;
 
@@ -104,6 +102,7 @@ struct std::hash<TypeHashKey> {
 };
 
 
+bool is_equal_type(Type a, Type b);
 
 struct Type {
     TypeKind kind;

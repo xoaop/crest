@@ -2,10 +2,13 @@
 #define CREST_SYMBOL_HPP
 
 #include <optional>
+#include <functional>
+#include <type_traits>
 
 #include "xoaop.h"
 #include "common.hpp"
 #include "cir_instruction_ref.hpp"
+#include "ref.hpp"
 
 #include "value.hpp"
 
@@ -59,7 +62,7 @@ public:
     SymbolInfo& operator=(const SymbolInfo& other);
 
     CIRInstResultRef val_as_inst_key() const;
-    CIRInstResult result(std::optional<FuncCallKey> key = {}) const;
+    CIRInstResult result(std::optional<FuncCallKey> key = std::nullopt) const;
     void val(Value new_val);
     void val(CIRInstResultRef new_key);
 
@@ -89,21 +92,28 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name);
 
 
 
-struct SymbolInfoRef {
-    SymbolTable *table;
+SymbolInfo *try_access_val(const Ref<SymbolInfo> &r);
+
+template<>
+struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
+    SymbolTable *table = nullptr;
     xpString name;
 
-
-    SymbolInfo* operator()() const {
-        if(table == nullptr) {
-            return nullptr;
-        }
-        
-        return find_symbol(table, name);
+    // == 也由各 ref 自行实现（协议不提供默认）：按 identity 字段比较，xpString 按内容
+    bool operator==(const Ref<SymbolInfo> &other) const {
+        return table == other.table && name == other.name;
     }
 };
 
 
+template<>
+struct std::hash<Ref<SymbolInfo>> {
+    size_t operator()(const Ref<SymbolInfo> &r) const {
+        u64 h = xp_hash_combine_u64(0, (u64)(usize)r.table);
+        h = xp_hash_combine_u64(h, std::hash<xpString>()(r.name));
+        return h;
+    }
+};
 
 
 // formatter

@@ -368,12 +368,12 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
         print_err("StringLiteral(\"{}\")", inst.info<CIROperator::StringLiteral>().str);
         break;
     case CIROperator::IdentRef: {
-        SymbolInfo *sym = (inst.symbol)();
+        SymbolInfo *sym = try_access_val(inst.symbol);
         print_err("IdentRef({})", sym ? sym->name : xpString{});
         break;
     }
     case CIROperator::IdentVal: {
-        SymbolInfo *sym = (inst.symbol)();
+        SymbolInfo *sym = try_access_val(inst.symbol);
         print_err("IdentVal({})", sym ? sym->name : xpString{});
     }
         break;
