@@ -53,7 +53,7 @@ struct SymbolInfo {
 public: // @NOTE: 注意使用
     union {
         Value value;
-        CIRInstResultRef inst_key; // 该符号是由哪个CIR指令定义的, 用于在求值过程中定位到唯一的符号定义, 以便处理循环依赖等情况
+        Ref<CIRInstResult> inst_key; // 该符号是由哪个CIR指令定义的, 用于在求值过程中定位到唯一的符号定义, 以便处理循环依赖等情况
     };
 
 public:
@@ -61,10 +61,10 @@ public:
     SymbolInfo(const SymbolInfo& other);
     SymbolInfo& operator=(const SymbolInfo& other);
 
-    CIRInstResultRef val_as_inst_key() const;
+    Ref<CIRInstResult> val_as_inst_key() const;
     CIRInstResult result(std::optional<FuncCallKey> key = std::nullopt) const;
     void val(Value new_val);
-    void val(CIRInstResultRef new_key);
+    void val(Ref<CIRInstResult> new_key);
 
     bool is_var_decl();
     bool is_const_decl();

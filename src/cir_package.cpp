@@ -73,19 +73,26 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, std::optional<CIRRes
 
 
 
-CIRInstResultRef CIRInstResultRef::make(CIRPackage* pkg, CIRInstructionRef ref,
-                                        std::optional<CIRResultInstanceRef> ri) {
-    return {pkg, ref, ri};
+Ref<CIRInstResult> Ref<CIRInstResult>::make(CIRPackage* pkg, CIRInstructionRef ref,
+                                            std::optional<CIRResultInstanceRef> ri) {
+    return Ref<CIRInstResult>{.cir_package = pkg, .inst_ref = ref, .result_instance = ri};
 }
 
-const CIRInstResult* CIRInstResultRef::get_result() const {
+CIRInstResult* try_access_val(const Ref<CIRInstResult>& r) {
+    if(r.cir_package == nullptr) {
+        return nullptr;
+    }
+    return r.get_result();
+}
+
+CIRInstResult* Ref<CIRInstResult>::get_result() const {
     if(result_instance.has_value() && result_instance.value()) {
         return result_instance.value()->result_ptr_of(inst_ref);
     }
     return &cir_package->result_of(inst_ref);
 }
 
-const CIRInstruction* CIRInstResultRef::inst() const {
+const CIRInstruction* Ref<CIRInstResult>::inst() const {
     return cir_package->inst(inst_ref);
 }
 
@@ -99,7 +106,7 @@ u64 FuncCallKey::hash() const {
             if(is_type_type(v.type)) {
                 h = xp_hash_combine_u64(h, reinterpret_cast<u64>(v.type_val()));
             } else {
-                h = xp_hash_combine_u64(h, std::hash<CIRInstResultRef>{}(comptime_arg_refs[i]));
+                h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(comptime_arg_refs[i]));
             }
         }
     }

@@ -103,7 +103,7 @@ enum class BuiltinKind : u8 {
 
 
 struct FuncValue {
-    CIRInstResultRef                func_key;
+    Ref<CIRInstResult>                func_key;
     BuiltinKind                     builtin_kind = BuiltinKind::None;
 };
 
@@ -126,9 +126,9 @@ public:
     void bool_val(bool bool_val);
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
-    void func_val(CIRInstResultRef func_key);
-    void func_val(CIRInstResultRef func_key, BuiltinKind builtin_kind);
-    void func_val_key(CIRInstResultRef key);
+    void func_val(Ref<CIRInstResult> func_key);
+    void func_val(Ref<CIRInstResult> func_key, BuiltinKind builtin_kind);
+    void func_val_key(Ref<CIRInstResult> key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
     void package_val(PackageRef pkg);

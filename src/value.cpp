@@ -60,18 +60,18 @@ void Value::array_element_values(Array<Value> elem_values) {
     struct_or_array_fields = elem_values;
 }
 
-void Value::func_val(CIRInstResultRef func_key) {
+void Value::func_val(Ref<CIRInstResult> func_key) {
     actual_value_type = ActualValueType::Function;
     this->func_value.func_key = func_key;
 }
 
-void Value::func_val(CIRInstResultRef func_key, BuiltinKind builtin_kind) {
+void Value::func_val(Ref<CIRInstResult> func_key, BuiltinKind builtin_kind) {
     actual_value_type = ActualValueType::Function;
     this->func_value.func_key = func_key;
     this->func_value.builtin_kind = builtin_kind;
 }
 
-void Value::func_val_key(CIRInstResultRef key) {
+void Value::func_val_key(Ref<CIRInstResult> key) {
     this->func_value.func_key = key;
 }
 
@@ -461,7 +461,7 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             break;
         }
         case ActualValueType::Function: {
-            CIRInstResultRef key = v.func_val().func_key;
+            Ref<CIRInstResult> key = v.func_val().func_key;
             memcpy(&bytes[offset], &key.inst_ref, (size_t)size);
             break;
         }
@@ -528,7 +528,7 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
             CIRInstructionRef inst_ref;
             memcpy(&inst_ref, &bytes[offset], (size_t)size);
             Value v = make_value(type);
-            CIRInstResultRef key = {};
+            Ref<CIRInstResult> key = {};
             key.inst_ref = inst_ref;
             v.func_val_key(key);
             return v;
