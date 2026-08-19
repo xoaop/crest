@@ -1803,8 +1803,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
         }
 
         if(has_val) {
-            result_val = ResultValue(determined_inst);
-            if(is_val_overflow(result_val)) {
+            Value check_val = ResultValue(determined_inst);
+            // untyped 字面量自身不触发 is_val_overflow，先按目标类型模拟检查范围
+            check_val.set_type(expected_type);
+            if(is_val_overflow(check_val)) {
                 context()->reporter.report_error(inst(pc_ref)->src_loc, "类型确定时值溢出（目标类型 '{}'）", expected_type->name());
                 return make_result(pc_ref, CIRInstResult::make_error());
             }

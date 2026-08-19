@@ -1,0 +1,21 @@
+// @pass
+// @run
+
+main :: () -> i32 {
+    a: i16 = 12345;      if a != 12345 { return 1; }
+    b: u16 = 60000;      if b != 60000 { return 2; }
+    sum := a + a;        if sum != 24690 { return 3; }
+    neg: i16 = -20000;   if neg != -20000 { return 4; }
+    maxu: u16 = 65535;   if maxu != 65535 { return 5; }
+    lit1 := 12345i16;    if lit1 != 12345 { return 6; }
+    lit2 := 40000u16;    if lit2 != 40000 { return 7; }
+
+    arr: [3]i16;
+    arr[0] = a;
+    arr[1] = neg;
+    arr[2] = cast(i16)1000;
+    if arr[1] != -20000 { return 8; }
+    if arr[2] != 1000   { return 9; }
+
+    return 0;
+}
