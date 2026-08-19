@@ -268,9 +268,11 @@ bool is_equal_type(Type a, Type b) {
 bool is_basic_type_kind(TypeKind kind) {
     switch(kind) {
     case Type_i8:
+    case Type_i16:
     case Type_i32:
     case Type_i64:
     case Type_u8:
+    case Type_u16:
     case Type_u32:
     case Type_u64:
     case Type_isize:
@@ -313,9 +315,11 @@ bool is_integer_type(TypeRef type) {
     switch(type->kind)
     {
     case Type_i8:
+    case Type_i16:
     case Type_i32:
     case Type_i64:
     case Type_u8:
+    case Type_u16:
     case Type_u32:
     case Type_u64:
     case Type_isize:
@@ -339,6 +343,7 @@ bool is_signed_type(TypeRef type) {
     XP_ASSERT_DEFAULT(is_integer_type(type));
     switch(type->kind) {
     case Type_i8:
+    case Type_i16:
     case Type_i32:
     case Type_i64:
     case Type_isize:
@@ -352,6 +357,7 @@ bool is_signed_or_bool_type(TypeRef type) {
     XP_ASSERT_DEFAULT(is_integer_or_bool_type(type));
     switch(type->kind) {
     case Type_i8:
+    case Type_i16:
     case Type_i32:
     case Type_i64:
     case Type_isize:
@@ -366,6 +372,7 @@ bool is_unsigned_type(TypeRef type) {
     XP_ASSERT_DEFAULT(is_integer_type(type));
     switch(type->kind) {
     case Type_u8:
+    case Type_u16:
     case Type_u32:
     case Type_u64:
     case Type_usize:
@@ -387,11 +394,13 @@ bool is_float_or_untyped_type(TypeRef type) {
 bool is_certain_type(TypeRef type) {
     switch(type->kind) {
         case Type_void:
-        case Type_i8: 
+        case Type_i8:
+        case Type_i16:
         case Type_i32:
         case Type_i64:
         case Type_isize:
         case Type_u8:
+        case Type_u16:
         case Type_u32:
         case Type_u64:
         case Type_usize:
@@ -524,6 +533,7 @@ bool is_named_type(TypeRef type) {
 int get_type_rank(TypeRef t) {
     switch (t->kind) {
         case Type_i8: case Type_u8:  return 8;
+        case Type_i16: case Type_u16: return 16;
         case Type_i32: case Type_u32: return 32;
         case Type_i64: case Type_u64: return 64;
         case Type_f32: return 32;
@@ -564,10 +574,13 @@ TypeRef get_common_type(TypeRef a, TypeRef b) {
 bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
     bool overflowed = false;
     switch(type_kind) {
-        case Type_i8: 
+        case Type_i8:
             overflowed = (result < INT8_MIN || result > INT8_MAX);
             break;
-        case Type_i32: 
+        case Type_i16:
+            overflowed = (result < INT16_MIN || result > INT16_MAX);
+            break;
+        case Type_i32:
             overflowed = (result < INT32_MIN || result > INT32_MAX);
             break;
         case Type_i64:
@@ -575,6 +588,9 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
             break;
         case Type_u8:
             overflowed = (result < 0 || result > UINT8_MAX);
+            break;
+        case Type_u16:
+            overflowed = (result < 0 || result > UINT16_MAX);
             break;
         case Type_u32:
             overflowed = (result < 0 || result > UINT32_MAX);
@@ -613,12 +629,16 @@ bool check_integer_overflow(i128 val, TypeRef type) {
     switch(type->kind) {
         case Type_i8:
             return (val < INT8_MIN || val > INT8_MAX);
+        case Type_i16:
+            return (val < INT16_MIN || val > INT16_MAX);
         case Type_i32:
             return (val < INT32_MIN || val > INT32_MAX);
         case Type_i64:
             return (val < INT64_MIN || val > INT64_MAX);
         case Type_u8:
             return (val < 0 || val > UINT8_MAX);
+        case Type_u16:
+            return (val < 0 || val > UINT16_MAX);
         case Type_u32:
             return (val < 0 || val > UINT32_MAX);
         case Type_u64:
@@ -1105,9 +1125,11 @@ struct std::hash<Type> {
         case Type_error:
 
         case Type_i8:
+        case Type_i16:
         case Type_i32:
         case Type_i64:
         case Type_u8:
+        case Type_u16:
         case Type_u32:
         case Type_u64:
         case Type_isize:
@@ -1223,6 +1245,7 @@ xpAllocator type_allocator() {
 static isize basic_type_size(TypeKind kind) {
     switch(kind) {
         case Type_i8:  case Type_u8:  case Type_bool:  return 1;
+        case Type_i16: case Type_u16:                  return 2;
         case Type_i32: case Type_u32: case Type_f32:    return 4;
         case Type_i64: case Type_u64: case Type_f64:    return 8;
         case Type_untyped_int:  case Type_untyped_float: return 8;

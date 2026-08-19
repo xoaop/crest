@@ -177,9 +177,11 @@ void init_global_symbols() {
         insert_basic_type(Type_void);
         insert_basic_type(Type_bool);
         insert_basic_type(Type_i8);
+        insert_basic_type(Type_i16);
         insert_basic_type(Type_i32);
         insert_basic_type(Type_i64);
         insert_basic_type(Type_u8);
+        insert_basic_type(Type_u16);
         insert_basic_type(Type_u32);
         insert_basic_type(Type_u64);
         insert_basic_type(Type_f32);

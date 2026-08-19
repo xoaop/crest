@@ -12,10 +12,12 @@ struct CIRResultInstance;   // 前向声明（union_info.creation_instance）
 #define TYPE_KINDS                  \
     TYPE_KIND(Undefined)            \
     TYPE_KIND(i8)                   \
+    TYPE_KIND(i16)                  \
     TYPE_KIND(i32)                  \
     TYPE_KIND(i64)                  \
     TYPE_KIND(isize)                \
     TYPE_KIND(u8)                   \
+    TYPE_KIND(u16)                  \
     TYPE_KIND(u32)                  \
     TYPE_KIND(u64)                  \
     TYPE_KIND(usize)                \
@@ -269,12 +271,16 @@ struct std::formatter<TypeRef> {
             return std::format_to(out, "literal");
         case Type_i8:
             return std::format_to(out, "i8");
+        case Type_i16:
+            return std::format_to(out, "i16");
         case Type_i32:
             return std::format_to(out, "i32");
         case Type_i64:
             return std::format_to(out, "i64");
         case Type_u8:
             return std::format_to(out, "u8");
+        case Type_u16:
+            return std::format_to(out, "u16");
         case Type_u32:
             return std::format_to(out, "u32");
         case Type_u64:

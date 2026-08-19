@@ -205,6 +205,9 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
         case Type_i8:
         case Type_u8:
             return LLVMInt8TypeInContext(g_llvm_session.ctx);
+        case Type_i16:
+        case Type_u16:
+            return LLVMInt16TypeInContext(g_llvm_session.ctx);
         case Type_i32:
         case Type_u32:
             return LLVMInt32TypeInContext(g_llvm_session.ctx);
@@ -634,6 +637,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
     switch(value.type->kind) {
         case Type_i8:
         case Type_u8:
+        case Type_i16:
+        case Type_u16:
         case Type_i32:
         case Type_u32:
         case Type_i64:
@@ -1284,6 +1289,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     } else if(
                        arg_type == easy_type(Type_i8) ||
                        arg_type == easy_type(Type_u8) ||
+                       arg_type == easy_type(Type_i16) ||
+                       arg_type == easy_type(Type_u16) ||
                        arg_type == easy_type(Type_bool)
                     ) {
                         arg_val = gen_ir_cast(arg_type, easy_type(Type_i32), arg_val);
