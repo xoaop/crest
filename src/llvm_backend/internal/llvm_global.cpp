@@ -2,6 +2,7 @@
 
 #include "llvm_global.hpp"
 
+#include "context.hpp"
 #include "print.hpp"
 #include "error_msg.hpp"
 
@@ -16,9 +17,13 @@ void init_llvm() {
     LLVMInitializeNativeDisassembler();
 
     // 全局会话创建一次（跨 package 共享）：ctx + target_machine + target_data
+    // target triple：-target 显式指定优先，否则用 LLVM 默认 triple
+    const char *triple = context()->target_triple
+                       ? context()->target_triple
+                       : LLVMGetDefaultTargetTriple();
     LLVMTargetRef target;
     char *error = nullptr;
-    if(LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple(), &target, &error)) {
+    if(LLVMGetTargetFromTriple(triple, &target, &error)) {
         err("Error getting target: {}", error);
         LLVMDisposeMessage(error);
         XP_ASSERT_DEFAULT(0);
@@ -28,7 +33,7 @@ void init_llvm() {
     char *host_features = LLVMGetHostCPUFeatures();
     g_llvm_session.target_machine = LLVMCreateTargetMachine(
         target,
-        LLVMGetDefaultTargetTriple(),
+        triple,
         host_cpu,
         host_features,
         LLVMCodeGenLevelDefault,
