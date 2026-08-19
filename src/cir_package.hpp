@@ -21,7 +21,7 @@ struct Package;
 struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
     CIRBlockRef self = -1;          // 本块号（create_block 填）
-    isize       package_ref = -1;   // 所属包索引（create_block 填）
+    RefN<Package> package_ref;   // 所属包
     
     bool is_comptime;
     bool immediate_eval;
@@ -40,8 +40,8 @@ struct CIRBlock {
         bool operator==(const InstRefIter& o) const { return ref == o.ref; }
     };
 
-    InstRefIter begin() { return {CIRInstructionRef{self, 0, package_ref}}; }
-    InstRefIter end()   { return {CIRInstructionRef{self, (isize)insts.count(), package_ref}}; }
+    InstRefIter begin() { return {CIRInstructionRef{self, 0, package_ref.index}}; }
+    InstRefIter end()   { return {CIRInstructionRef{self, (isize)insts.count(), package_ref.index}}; }
 };
 
 
@@ -135,13 +135,13 @@ private:
 
 
 struct CIRPackage {
-    isize package_ref = -1;   // 本包在 context()->all_packages 中的全局索引（CIRInstructionRef 自定位用）
+    RefN<Package> package_ref;   // 本包在 context()->all_packages 中的编号
 
 
     CIRBlockRef top_blk;
     Array<CIRBlock> blocks;
 
-    Scope *package_scope = nullptr;   // 包级 scope（顶层驱动的初始 scope）
+    RefN<Scope> package_scope;   // 包级 scope（顶层驱动的初始 scope）
 
     Array<xpString>           string_literals;
 

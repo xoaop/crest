@@ -131,7 +131,7 @@ public:
     void func_val_key(Ref<CIRInstResult> key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
-    void package_val(PackageRef pkg);
+    void package_val(Ref<Package> pkg);
     void ref_val(Value* ref);
 
 
@@ -145,7 +145,7 @@ public:
     Value array_element_val(isize index) const;
     Pointer pointer_val() const;
     TypeRef type_val() const;
-    PackageRef package_val() const;
+    Ref<Package> package_val() const;
     FuncValue func_val() const;
     Value* ref_val() const;
     
@@ -170,7 +170,7 @@ private:
 
         TypeRef type_value;        // 类型值
 
-        PackageRef package_value;    // 包值（全局包表编号）
+        Ref<Package> package_value;    // 包值（全局包表编号）
 
         Value* ref_value;
     };

@@ -37,7 +37,7 @@ struct CIRBuilder {
     ~CIRBuilder();
 
 
-    void build_cir_package(PackageRef pkg);
+    void build_cir_package(RefN<Package> pkg);
 
     CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
     CIRInstructionRef build_func_decl(Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
@@ -86,7 +86,7 @@ public:
     CIRFunctionDeclInfo *curr_func;
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;
-    Scope *curr_scope;
+    RefN<Scope> curr_scope;
     Ref<SymbolInfo> curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
 
 

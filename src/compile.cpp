@@ -17,7 +17,7 @@
 
 
 
-bool compile_package(PackageRef pkg_ref);
+bool compile_package(RefN<Package> pkg_ref);
 
 // 根据package目录路径得到package
 Package tokenize_and_parse_package(const char *path_of_package_dir);
@@ -28,7 +28,7 @@ AstFile tokenize_and_parse_file(const char *path);
 xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator allocator);
 
 // 构造循环 import 报错消息
-xpString make_import_cycle_message(PackageRef target);
+xpString make_import_cycle_message(Ref<Package> target);
 
 
 bool check_directory_legel(xpString path);
@@ -37,8 +37,8 @@ bool check_file_legal(xpString path);
 
 
 
-xpString make_import_cycle_message(PackageRef target) {
-    Package *p = package_by_ref(target);
+xpString make_import_cycle_message(Ref<Package> target) {
+    Package *p = &target.unwrap();
     std::string msg = "import 循环依赖: '";
     msg.append(p->path.c_str, (size_t)p->path.length);
     msg += "'";
@@ -46,10 +46,10 @@ xpString make_import_cycle_message(PackageRef target) {
 }
 
 
-xpOption<PackageRef> compile_package_from_import(xpString import_path, xpString *cycle_err) {
+xpOption<Ref<Package>> compile_package_from_import(xpString import_path, xpString *cycle_err) {
     auto resolved = resolve_package_path(import_path, permanent_allocator());
     if(resolved.is_none()) {
-        return xpOption<PackageRef>::none();
+        return xpOption<Ref<Package>>::none();
     }
 
     return compile_package_from_path(resolved.unwrap(), cycle_err);
@@ -57,30 +57,30 @@ xpOption<PackageRef> compile_package_from_import(xpString import_path, xpString 
 
 
 
-xpOption<PackageRef> compile_package_from_path(xpString path, xpString *cycle_err) {
+xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_err) {
     if(!is_existing_directory(path) && !is_existing_file(path)) {
-        return xpOption<PackageRef>::none();
+        return xpOption<Ref<Package>>::none();
     }
 
 
     // TODO: 优化
-    // 如果已经存在于 context()->all_packages 中，则直接返回已有的 PackageRef；
+    // 如果已经存在于 context()->all_packages 中，则直接返回已有的 Ref<Package>；
     // 若该包仍在编译中（state == Solving，尚未编译完成的祖先包）→ import 循环依赖
     xpString abs_path = normalize_path(path, permanent_allocator());
     for(isize i = 0; i < context()->all_packages.count; i++) {
         if(xp_string_equal(context()->all_packages[i].path, abs_path)) {
             if(context()->all_packages[i].state == SymbolState::Solving) {
                 if(cycle_err) {
-                    *cycle_err = make_import_cycle_message(i);
+                    *cycle_err = make_import_cycle_message(Ref<Package>{i});
                 }
-                return xpOption<PackageRef>::none();
+                return xpOption<Ref<Package>>::none();
             }
-            return xpOption<PackageRef>::some(i);
+            return xpOption<Ref<Package>>::some(Ref<Package>{i});
         }
     }
 
     // 根包（首个 add，global_blank_package 尚未设置）＝ builtin：scope/global_blank/基础类型符号特殊处理
-    bool is_root_pkg = (context()->global_blank_package == -1);
+    bool is_root_pkg = (context()->global_blank_package == Ref<Package>::INVALID_REF);
 
     Package pkg;
     if(is_existing_directory(path)) {
@@ -92,25 +92,25 @@ xpOption<PackageRef> compile_package_from_path(xpString path, xpString *cycle_er
         pkg.ast_files.push_back(file);
     }
 
-    PackageRef ref = add_package(context(), pkg);
+    RefN<Package> ref = add_package(context(), pkg);
 
     // 根包注册为 global_blank_package（scope 创建与基础类型符号在 resolve 阶段处理）
     if(is_root_pkg) {
         context()->global_blank_package = ref;
     }
 
-    package_by_ref(ref)->state = SymbolState::Solving;
+    ref.unwrap().state = SymbolState::Solving;
 
     compile_package(ref);
     
-    package_by_ref(ref)->state = SymbolState::Solved;
+    ref.unwrap().state = SymbolState::Solved;
 
-    return xpOption<PackageRef>::some(ref);
+    return xpOption<Ref<Package>>::some(ref);
 }
 
 
 
-bool compile_package(PackageRef pkg_ref) {
+bool compile_package(RefN<Package> pkg_ref) {
     resolve_package(pkg_ref);
     xp_arena_allocator_clear(stage_allocator());
 

@@ -164,6 +164,7 @@ int main(int argc, char** argv) {
 
 
     context()->all_packages = make_array<Package>(permanent_allocator());
+    context()->all_scopes = make_array<Scope>(permanent_allocator());
     context()->static_mem.init(MemoryKind::String, permanent_allocator());
 
 
@@ -196,7 +197,7 @@ int main(int argc, char** argv) {
     mark_stage("analyze packages");
 
     if(context()->scope_dump) {
-        print_scope_tree(&package_by_ref(context()->global_blank_package)->package_scope);
+        print_scope_tree(&context()->global_blank_package.unwrap().package_scope.unwrap());
     }
 
     if(context()->cir_dump) {

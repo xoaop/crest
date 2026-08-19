@@ -1,5 +1,7 @@
 #include "symbol.hpp"
 
+#include "scope.hpp"
+
 #include "ast.hpp"
 
 #include "cir_builder.hpp"
@@ -88,7 +90,7 @@ bool SymbolInfo::is_const_decl_and_func() {
 }
 
 
-SymbolInfo make_symbol(xpString name, Value value, PackageRef package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(xpString name, Value value, RefN<Package> package, AstFile *file, Ast *ast) {
     SymbolInfo info{};
     info.name = name;
     info.val(value);
@@ -99,7 +101,7 @@ SymbolInfo make_symbol(xpString name, Value value, PackageRef package, AstFile *
     return info;
 }
 
-SymbolInfo make_symbol(xpString name, PackageRef package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(xpString name, RefN<Package> package, AstFile *file, Ast *ast) {
     SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
     info.state = SymbolState::Unsolved;
 
@@ -147,9 +149,9 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
 }
 
 SymbolInfo *try_access_val(const Ref<SymbolInfo> &r) {
-    if(r.table == nullptr) {
+    if(r.scope == Ref<Scope>::INVALID_REF) {
         return nullptr;
     }
-    return find_symbol(r.table, r.name);
+    return find_symbol(&r.scope.unwrap().symbols, r.name);
 }
 

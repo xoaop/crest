@@ -44,13 +44,13 @@ CIRBuilder::~CIRBuilder() {
 
 
 
-void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
-    Package *pkg = package_by_ref(pkg_ref);
-    curr_scope = &pkg->package_scope;
+void CIRBuilder::build_cir_package(RefN<Package> pkg_ref) {
+    Package *pkg = &pkg_ref.unwrap();
+    curr_scope = pkg->package_scope;
 
     pkg->cir_package = make_cir_package(permanent_allocator());
     curr_pkg = &pkg->cir_package;
-    curr_pkg->package_scope = &pkg->package_scope;
+    curr_pkg->package_scope = pkg->package_scope;
 
     curr_pkg->package_ref = pkg_ref;
 
@@ -66,10 +66,10 @@ void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
     for(AstFile& ast_file : pkg->ast_files) {
 
         curr_ast_file = &ast_file;
-        curr_scope = &ast_file.file_scope;
+        curr_scope = ast_file.file_scope;
 
         // @new — 顶层 scope 用显式 EnterScope 指令切换（不发 ExitScope，靠下一个 EnterScope 覆盖）
-        auto enter_scope = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = &ast_file.file_scope });
+        auto enter_scope = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = ast_file.file_scope });
 
         for(Ast *ast : ast_file.top_levels) {
             CIRInstructionRef top_inst = INVALID_INST;
@@ -89,7 +89,7 @@ void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
         }
     }
 
-    curr_scope = &pkg->package_scope;
+    curr_scope = pkg->package_scope;
 
 }
 
@@ -802,7 +802,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
             auto string_ident = New_Instruction(CIROperator::IdentVal, expr);
-            Instruction(string_ident).symbol = find_symbol_until_global_ref(&package_by_ref(context()->global_blank_package)->package_scope, xp_string_c("string"));
+            Instruction(string_ident).symbol = find_symbol_until_global_ref(context()->global_blank_package.unwrap().package_scope, xp_string_c("string"));
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(expr, {
                 .data = ptr,
@@ -936,7 +936,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
         case AstType_FunctionDeclValue: {
-            if(curr_const_sym.table != nullptr) {
+            if(curr_const_sym.scope != Ref<Scope>::INVALID_REF) {
                 Ref<SymbolInfo> func_sym = curr_const_sym;
                 curr_const_sym = {};
                 result = build_func_decl(expr, func_sym);
@@ -1045,7 +1045,7 @@ CIRInstructionRef CIRBuilder::New_Instruction(CIROperator op, Ast *ast) {
     CIRBlockRef blk = block_stack.back();
     isize inst_index = curr_pkg->block(blk)->push_back_inst(inst);
 
-    return CIRInstructionRef{ blk, inst_index, curr_pkg->package_ref };
+    return CIRInstructionRef{ blk, inst_index, curr_pkg->package_ref.index };
 }
 
 
@@ -1094,25 +1094,27 @@ void CIRBuilder::End_Loop(CIRInstructionRef loop_inst) {
 
 
 bool CIRBuilder::Enter_Scope(Ast *ast) {
-    Scope *child = try_enter_scope(curr_scope, ast);
-    if(child == nullptr) {
+    Ref<Scope> child = try_enter_scope(&curr_scope.unwrap(), ast);
+    if(child == Ref<Scope>::INVALID_REF) {
         return false;
     }
 
-    auto ref = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = child });
-    curr_scope = child;
+    RefN<Scope> child_n{child};   // 已验证存在
+    auto ref = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = child_n });
+    curr_scope = child_n;
 
     return true;
 }
 
 void CIRBuilder::Exit_Scope() {
-    Scope *parent = try_exit_scope(curr_scope);
-    if(parent == nullptr) {
+    Ref<Scope> parent = try_exit_scope(&curr_scope.unwrap());
+    if(parent == Ref<Scope>::INVALID_REF) {
         return;
     }
 
-    auto ref = Make_Instruction<CIROperator::ExitScope>(nullptr, { .scope = parent });
-    curr_scope = parent;
+    RefN<Scope> parent_n{parent.index};   // 已验证存在
+    auto ref = Make_Instruction<CIROperator::ExitScope>(nullptr, { .scope = parent_n });
+    curr_scope = parent_n;
 }
 
 
