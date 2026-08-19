@@ -86,10 +86,8 @@ xpOption<PackageRef> compile_package_from_path(xpString path, xpString *cycle_er
     if(is_existing_directory(path)) {
         pkg = tokenize_and_parse_package(path.c_str);
     } else {
-        std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-        xpString parent_dir_path = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
-
-        pkg = make_package(parent_dir_path, permanent_allocator());
+        // 单文件包: path 直接用归一化的文件路径(与 dedup 的 abs_path 一致)
+        pkg = make_package(abs_path, permanent_allocator());
         AstFile file = tokenize_and_parse_file(path.c_str);
         pkg.ast_files.push_back(file);
     }

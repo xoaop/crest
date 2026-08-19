@@ -494,7 +494,12 @@ xpString LLVMGenerator::gen_ir_package(LLVMIRGenerateConfig config) {
 
     // 输出 .ll 文件
     char *error = nullptr;
-    std::string file_name = to_path(package_by_ref(pkg)->path).generic_string();
+    std::filesystem::path pkg_path = to_path(package_by_ref(pkg)->path);
+    std::string file_name = pkg_path.generic_string();
+    // 单文件包 path 带扩展名(.cst), 输出文件名不带后缀
+    if(pkg_path.has_extension()) {
+        file_name = pkg_path.stem().generic_string();
+    }
     std::replace(file_name.begin(), file_name.end(), '/', '_');
     std::replace(file_name.begin(), file_name.end(), ':', '_');
 
