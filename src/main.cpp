@@ -40,6 +40,7 @@ static void crest_helper() {
     println_out("  -trace         Enable debug trace output");
     println_out("  -cir_dump      Dump CIR instructions");
     println_out("  -scope_dump    Dump scope tree");
+    println_out("  -target <triple> Override target triple (default: LLVM host)");
 }
 
 
@@ -112,6 +113,15 @@ int main(int argc, char** argv) {
             }
 
             context()->output_path = std::filesystem::path(argv[i]);
+        } else if(strcmp(argv[i], "-target") == 0) {
+            i += 1; // 跳过 "-target" 参数
+
+            if(i >= argc) {
+                err("Missing argument for -target option");
+                return -1;
+            }
+
+            context()->target_triple = argv[i];
         }
         
         else if(main_path == NULL) {

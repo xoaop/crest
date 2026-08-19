@@ -18,6 +18,7 @@ struct Context {
     std::filesystem::path output_path;
     bool cir_dump = false;
     bool scope_dump = false;
+    const char *target_triple = nullptr;   // -target 显式指定；null → 用 LLVM 默认 triple
 
 
     xpString main_src_dir_path;
