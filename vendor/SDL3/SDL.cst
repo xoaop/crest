@@ -1,0 +1,315 @@
+// ==============================================
+// SDL3 Bindings for Crest
+// 覆盖：初始化 + 窗口 + 事件（键盘/鼠标/窗口/文本/拖拽）+ 渲染 + 纹理 + 错误/日志 + 时间
+// 值全部取自 SDL3.4.8 头文件（x86_64-w64-mingw32）
+// ==============================================
+
+// ── SDL_InitFlags (Uint32) ──
+SDL_INIT_AUDIO    :: 0x00000010
+SDL_INIT_VIDEO    :: 0x00000020
+SDL_INIT_JOYSTICK :: 0x00000200
+SDL_INIT_HAPTIC   :: 0x00001000
+SDL_INIT_GAMEPAD  :: 0x00002000
+SDL_INIT_EVENTS   :: 0x00004000
+SDL_INIT_SENSOR   :: 0x00008000
+SDL_INIT_CAMERA   :: 0x00010000
+
+// ── SDL_WindowFlags（Uint64！）──
+SDL_WINDOW_FULLSCREEN         :: 0x0000000000000001
+SDL_WINDOW_RESIZABLE          :: 0x0000000000000020
+SDL_WINDOW_HIGH_PIXEL_DENSITY :: 0x0000000000002000
+
+// ── SDL_EventType（Uint32）──
+SDL_EVENT_QUIT                   :: 0x100
+SDL_EVENT_WINDOW_SHOWN           :: 0x202
+SDL_EVENT_WINDOW_MOVED           :: 0x205
+SDL_EVENT_WINDOW_RESIZED         :: 0x206
+SDL_EVENT_WINDOW_CLOSE_REQUESTED :: 0x210
+SDL_EVENT_KEY_DOWN               :: 0x300
+SDL_EVENT_KEY_UP                 :: 0x301
+SDL_EVENT_TEXT_INPUT             :: 0x302
+SDL_EVENT_MOUSE_MOTION           :: 0x400
+SDL_EVENT_MOUSE_BUTTON_DOWN      :: 0x401
+SDL_EVENT_MOUSE_BUTTON_UP        :: 0x402
+SDL_EVENT_MOUSE_WHEEL            :: 0x403
+SDL_EVENT_DROP_FILE              :: 0x1000
+SDL_EVENT_DROP_TEXT              :: 0x1001
+SDL_EVENT_DROP_BEGIN             :: 0x1002
+SDL_EVENT_DROP_COMPLETE          :: 0x1003
+SDL_EVENT_DROP_POSITION          :: 0x1004
+
+// ── SDL_Keycode（Sint32）──
+SDLK_RETURN :: 0x0d
+SDLK_ESCAPE :: 0x1b
+SDLK_SPACE  :: 0x20
+SDLK_0 :: 0x30
+SDLK_1 :: 0x31
+SDLK_2 :: 0x32
+SDLK_3 :: 0x33
+SDLK_4 :: 0x34
+SDLK_5 :: 0x35
+SDLK_6 :: 0x36
+SDLK_7 :: 0x37
+SDLK_8 :: 0x38
+SDLK_9 :: 0x39
+SDLK_A :: 0x61
+SDLK_B :: 0x62
+SDLK_C :: 0x63
+SDLK_D :: 0x64
+SDLK_E :: 0x65
+SDLK_F :: 0x66
+SDLK_G :: 0x67
+SDLK_H :: 0x68
+SDLK_I :: 0x69
+SDLK_J :: 0x6a
+SDLK_K :: 0x6b
+SDLK_L :: 0x6c
+SDLK_M :: 0x6d
+SDLK_N :: 0x6e
+SDLK_O :: 0x6f
+SDLK_P :: 0x70
+SDLK_Q :: 0x71
+SDLK_R :: 0x72
+SDLK_S :: 0x73
+SDLK_T :: 0x74
+SDLK_U :: 0x75
+SDLK_V :: 0x76
+SDLK_W :: 0x77
+SDLK_X :: 0x78
+SDLK_Y :: 0x79
+SDLK_Z :: 0x7a
+SDLK_RIGHT :: 0x4000004f
+SDLK_LEFT  :: 0x40000050
+SDLK_DOWN  :: 0x40000051
+SDLK_UP    :: 0x40000052
+
+// ── SDL_Scancode（int32）──
+SDL_SCANCODE_A      :: 4
+SDL_SCANCODE_D      :: 7
+SDL_SCANCODE_S      :: 22
+SDL_SCANCODE_W      :: 26
+SDL_SCANCODE_9      :: 38
+SDL_SCANCODE_0      :: 39
+SDL_SCANCODE_ESCAPE :: 41
+SDL_SCANCODE_RIGHT  :: 79
+SDL_SCANCODE_LEFT   :: 80
+SDL_SCANCODE_DOWN   :: 81
+SDL_SCANCODE_UP     :: 82
+
+// ── 鼠标按键 / 按下掩码（SDL_BUTTON_MASK = 1 << (x-1)）──
+SDL_BUTTON_LEFT   :: 1
+SDL_BUTTON_MIDDLE :: 2
+SDL_BUTTON_RIGHT  :: 3
+SDL_BUTTON_X1     :: 4
+SDL_BUTTON_X2     :: 5
+SDL_BUTTON_LMASK  :: 1
+SDL_BUTTON_MMASK  :: 2
+SDL_BUTTON_RMASK  :: 4
+SDL_BUTTON_X1MASK :: 8
+SDL_BUTTON_X2MASK :: 16
+
+// ── 纹理访问 / 缩放 / 混合 / 像素格式 ──
+SDL_TEXTUREACCESS_STATIC    :: 0
+SDL_TEXTUREACCESS_STREAMING :: 1
+SDL_TEXTUREACCESS_TARGET    :: 2
+SDL_SCALEMODE_NEAREST :: 0
+SDL_SCALEMODE_LINEAR  :: 1
+SDL_BLENDMODE_NONE :: 0x0
+SDL_BLENDMODE_BLEND :: 0x1
+SDL_BLENDMODE_ADD :: 0x2
+SDL_BLENDMODE_MOD :: 0x4
+SDL_BLENDMODE_MUL :: 0x8
+SDL_PIXELFORMAT_UNKNOWN  :: 0
+SDL_PIXELFORMAT_ARGB8888 :: 0x16362004
+SDL_PIXELFORMAT_RGBA8888 :: 0x16462004
+
+// ── 滚轮方向 ──
+SDL_MOUSEWHEEL_NORMAL  :: 0
+SDL_MOUSEWHEEL_FLIPPED :: 1
+
+// ── 不透明句柄：只用指针，永远不解引用 ──
+SDL_Window   :: struct {}
+SDL_Renderer :: struct {}
+SDL_Texture  :: struct {}
+SDL_Surface  :: struct {}
+
+// ── 结构体（C 布局，已用 offsetof 探针验证对齐）──
+SDL_Rect :: struct {
+    x: i32;
+    y: i32;
+    w: i32;
+    h: i32;
+}
+
+SDL_FRect :: struct {
+    x: f32;
+    y: f32;
+    w: f32;
+    h: f32;
+}
+
+SDL_FPoint :: struct {
+    x: f32;
+    y: f32;
+}
+
+SDL_CommonEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+}
+
+SDL_QuitEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+}
+
+SDL_WindowEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    data1: i32;
+    data2: i32;
+}
+
+// SDL_KeyboardEvent：mod/raw 是 u16，Crest 暂无 u16，用两个 u8 拼出相同字节布局
+SDL_KeyboardEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    which: u32;
+    scancode: i32;
+    key: i32;
+    mod_lo: u8;
+    mod_hi: u8;
+    raw_lo: u8;
+    raw_hi: u8;
+    down: bool;
+    repeat: bool;
+}
+
+SDL_MouseButtonEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    which: u32;
+    button: u8;
+    down: bool;
+    clicks: u8;
+    padding: u8;
+    x: f32;
+    y: f32;
+}
+
+SDL_MouseMotionEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    which: u32;
+    x: f32;
+    y: f32;
+    xrel: f32;
+    yrel: f32;
+}
+
+SDL_TextInputEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    text: *u8;
+}
+
+SDL_MouseWheelEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    which: u32;
+    x: f32;
+    y: f32;
+    direction: i32;
+    mouse_x: f32;
+    mouse_y: f32;
+    integer_x: i32;
+    integer_y: i32;
+}
+
+SDL_DropEvent :: struct {
+    type: u32;
+    reserved: u32;
+    timestamp: u64;
+    windowID: u32;
+    x: f32;
+    y: f32;
+    source: *u8;
+    data: *u8;
+}
+
+// ── SDL_Event：128 字节 union。bytes 撑尺寸（SDL_PollEvent 写满 128 字节），
+//    其余成员重叠读事件字段。──
+SDL_Event :: union {
+    bytes: [128]u8;
+    type: u32;
+    common: SDL_CommonEvent;
+    quit: SDL_QuitEvent;
+    window: SDL_WindowEvent;
+    key: SDL_KeyboardEvent;
+    button: SDL_MouseButtonEvent;
+    motion: SDL_MouseMotionEvent;
+    text: SDL_TextInputEvent;
+    wheel: SDL_MouseWheelEvent;
+    drop: SDL_DropEvent;
+}
+
+// ── 初始化 / 退出 ──
+SDL_Init :: (flags: u32) -> bool extern_C
+SDL_Quit :: () -> void extern_C
+
+// ── 窗口 ──
+SDL_CreateWindow   :: (title: *u8, w: i32, h: i32, flags: u64) -> *SDL_Window extern_C
+SDL_DestroyWindow  :: (window: *SDL_Window) -> void extern_C
+SDL_GetWindowSize  :: (window: *SDL_Window, w: *i32, h: *i32) -> bool extern_C
+SDL_GetWindowID    :: (window: *SDL_Window) -> u32 extern_C
+SDL_GetWindowTitle :: (window: *SDL_Window) -> *u8 extern_C
+SDL_SetWindowTitle :: (window: *SDL_Window, title: *u8) -> bool extern_C
+
+// ── 渲染 ──
+SDL_CreateRenderer :: (window: *SDL_Window, name: *u8) -> *SDL_Renderer extern_C
+SDL_DestroyRenderer :: (renderer: *SDL_Renderer) -> void extern_C
+SDL_RenderClear :: (renderer: *SDL_Renderer) -> bool extern_C
+SDL_RenderPresent :: (renderer: *SDL_Renderer) -> bool extern_C
+SDL_SetRenderDrawColor :: (renderer: *SDL_Renderer, r: u8, g: u8, b: u8, a: u8) -> bool extern_C
+SDL_RenderFillRect :: (renderer: *SDL_Renderer, rect: *SDL_FRect) -> bool extern_C
+SDL_RenderFillRects :: (renderer: *SDL_Renderer, rects: *SDL_FRect, count: i32) -> bool extern_C
+SDL_RenderLine :: (renderer: *SDL_Renderer, x1: f32, y1: f32, x2: f32, y2: f32) -> bool extern_C
+SDL_RenderLines :: (renderer: *SDL_Renderer, points: *SDL_FPoint, count: i32) -> bool extern_C
+SDL_RenderPoint :: (renderer: *SDL_Renderer, x: f32, y: f32) -> bool extern_C
+SDL_RenderPoints :: (renderer: *SDL_Renderer, points: *SDL_FPoint, count: i32) -> bool extern_C
+
+// ── 纹理 / 图像 ──
+SDL_CreateTexture :: (renderer: *SDL_Renderer, format: u32, access: i32, w: i32, h: i32) -> *SDL_Texture extern_C
+SDL_UpdateTexture :: (texture: *SDL_Texture, rect: *SDL_Rect, pixels: *u8, pitch: i32) -> bool extern_C
+SDL_DestroyTexture :: (texture: *SDL_Texture) -> void extern_C
+SDL_RenderTexture :: (renderer: *SDL_Renderer, texture: *SDL_Texture, srcrect: *SDL_FRect, dstrect: *SDL_FRect) -> bool extern_C
+SDL_SetTextureBlendMode :: (texture: *SDL_Texture, blendMode: i32) -> bool extern_C
+SDL_SetTextureAlphaMod :: (texture: *SDL_Texture, alpha: u8) -> bool extern_C
+SDL_SetTextureScaleMode :: (texture: *SDL_Texture, scaleMode: i32) -> bool extern_C
+SDL_LoadBMP :: (file: *u8) -> *SDL_Surface extern_C
+SDL_DestroySurface :: (surface: *SDL_Surface) -> void extern_C
+
+// ── 事件 ──
+SDL_PollEvent :: (event: *SDL_Event) -> bool extern_C
+
+// ── 错误 / 日志 ──
+SDL_GetError :: () -> *u8 extern_C
+SDL_Log      :: (fmt: *u8, ...) -> void extern_C
+
+// ── 时间 ──
+SDL_GetTicks :: () -> u64 extern_C
+SDL_Delay    :: (ms: u32) -> void extern_C
