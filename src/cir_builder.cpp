@@ -1060,7 +1060,7 @@ CIRInstructionRef CIRBuilder::Begin_Block(Ast *ast, bool is_comptime, bool immed
 
     CIRBlockRef blk = curr_pkg->create_block(is_comptime, immediate_eval, false);
 
-    auto blockref = Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk });
+    auto blockref = Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk, .in_which_block = block_stack.back() });
 
     block_stack.push_back(blk);
 
@@ -1074,15 +1074,22 @@ void CIRBuilder::End_Block() {
 
 CIRInstructionRef CIRBuilder::Begin_Loop(Ast *ast) {
     auto ref = Begin_Block(ast, false, false);   // handle {parent,N}
+    
     CIRBlockRef child = curr_pkg->inst(ref)->info<CIROperator::BlockRef>().block_ref;
     curr_pkg->block(child)->is_loop = true;
+
+    block_stack.push_back(child);
     loop_stack.push_back(ref);
+    
     return ref;
 }
 
 void CIRBuilder::End_Loop(CIRInstructionRef loop_inst) {
     XP_ASSERT_DEFAULT(loop_stack.back() == loop_inst);
+
+    block_stack.pop_back();
     loop_stack.pop_back();
+    
     End_Block();
 }
 

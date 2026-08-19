@@ -130,21 +130,27 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         }
     }
 
-    auto dep_arr = deps_of(inst, permanent_allocator());
+    auto dep_arr = deps_of(inst, stage_allocator());
 
     std::optional<AnalyzeResult> result_opt = std::nullopt;
 
-    // 自动 deps 错误传播：依赖有 error → 自动 Set_ResultError(curr_inst()) + 结果流向的 targets
-    for(isize i = 0; i < dep_arr.count; i++) {
-        if(dep_arr[i] == INVALID_INST) continue;
-        if(has_error(dep_arr[i])) {
+    
+    // 自动 deps 错误传播
+    for(const auto& dependent_inst_ref: dep_arr) {
+        if(dependent_inst_ref == INVALID_INST) {
+            continue;
+        }
+
+        if(has_error(dependent_inst_ref)) {
             Set_ResultError(curr_inst_ref());
 
-            // 与 apply_result 的 Error 分支一致：错误也传播到结果流向的目标
             auto tgt = targets_of(inst, permanent_allocator());
-            for(isize j = 0; j < tgt.count; j++) {
-                if(tgt[j] != INVALID_INST) Set_ResultError(tgt[j]);
+            for(auto& target_inst: tgt) {
+                if(target_inst != INVALID_INST) {
+                    Set_ResultError(target_inst);
+                }
             }
+
             goto end;
         }
     }
@@ -213,9 +219,19 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
 
 void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
     auto& block_info = *pkg->block(blk);
-    while(curr_inst_ref().inst_index < block_info.insts.count()
-          && (!target.has_value() || !has_result_val(*target))) {
-        analyze_instruction();
+
+    for(;;) {
+
+        // @note: 目前假设执行一个block时, 执行完一条指令, package不会被修改, 即使是Call了不同package的function, 执行完了也会回到当前package
+        bool is_in_same_block = curr_inst_ref().block_ref == blk;
+        bool is_in_bounds = curr_inst_ref().inst_index < block_info.insts.count();
+        bool no_target_result = !(target.has_value() && has_result_val(target.value()));
+
+        if(is_in_same_block && is_in_bounds && no_target_result) {
+            analyze_instruction();
+        } else {
+            break;
+        }
     }
 }
 
@@ -1509,6 +1525,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRBinaryInfo& info, CI
 // handler: Break（写目标块 handle 的结果，外层块循环据此退出）
 std::optional<AnalyzeResult> Interpreter::analyze_Break(CIRBreakInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     CIRInstructionRef target_block = info.break_block;
+    CIRBlockRefInfo& block_ref_info = pkg->inst(target_block)->info<CIROperator::BlockRef>();
 
     if(info.break_value_inst != INVALID_INST) {
         AnalyzeResult r;   // 累积 target_block 的写入（类型 + 值）
@@ -1530,8 +1547,17 @@ std::optional<AnalyzeResult> Interpreter::analyze_Break(CIRBreakInfo& info, CIRI
             }
         }
 
+        // @bug: 目前在编译期执行时, 还不存在无target的break, 只有loop block的break才无target, 但是现在还不支持loop block的编译期执行, 2x2的bool矩阵正好只有对角线, 才无问题。
+        // @bug: 如果要修复, 得支持在fulleval时修改curr_inst_ref, 让上层循环可以通过curr_inst_ref来判断是否要退出循环, 而不是目前的通过target_block来判断
         // FullEval：写值到目标块
         if(curr_eval_mode() == EvalMode::FullEval && has_result_val(info.break_value_inst)) {
+
+            // @attention: 测试中
+            auto new_curr_inst_ref = curr_inst_ref();
+            new_curr_inst_ref.block_ref = block_ref_info.in_which_block;
+            new_curr_inst_ref.inst_index = target_block.inst_index;
+            curr_inst_ref() = new_curr_inst_ref;
+
             r.writes.push_back({target_block, CIRInstResult::make_value(ResultValue(info.break_value_inst))});
         }
         if(r.writes.count > 0) {

@@ -143,7 +143,7 @@ struct CIRPackage {
 
     RefN<Scope> package_scope;   // 包级 scope（顶层驱动的初始 scope）
 
-    Array<xpString>           string_literals;
+    Array<xpString> string_literals;
 
 
     xpHashMap<CIRInstructionRef, CIRInstResult> results;
