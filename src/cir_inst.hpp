@@ -390,6 +390,7 @@ struct CIRConstantValueInfo {
 // BlockRef 指令（父→子 Block 引用）
 struct CIRBlockRefInfo {
     CIRBlockRef block_ref;
+    CIRBlockRef in_which_block;
 };
 
 struct CIRIdentRefInfo {
