@@ -16,6 +16,7 @@
 struct AstFile;
 struct Package;
 struct Ast;
+struct Scope;
 
 enum class SymbolState {
     Unsolved, // 还未解析
@@ -42,7 +43,7 @@ enum class ValueStoreType {
 struct SymbolInfo {
     xpString name;
     SymbolState state;
-    PackageRef package;
+    RefN<Package> package;
     AstFile *file;
     Ast *ast;
 
@@ -71,8 +72,8 @@ public:
     bool is_const_decl_and_func();
 };
 
-SymbolInfo make_symbol(xpString name, Value value, PackageRef package, AstFile *file, Ast *ast);
-SymbolInfo make_symbol(xpString name, PackageRef package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, Value value, RefN<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, RefN<Package> package, AstFile *file, Ast *ast);
 
 
 
@@ -96,12 +97,11 @@ SymbolInfo *try_access_val(const Ref<SymbolInfo> &r);
 
 template<>
 struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
-    SymbolTable *table = nullptr;
+    Ref<Scope> scope = Ref<Scope>::INVALID_REF;
     xpString name;
 
-    // == 也由各 ref 自行实现（协议不提供默认）：按 identity 字段比较，xpString 按内容
     bool operator==(const Ref<SymbolInfo> &other) const {
-        return table == other.table && name == other.name;
+        return scope == other.scope && name == other.name;
     }
 };
 
@@ -109,7 +109,7 @@ struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
 template<>
 struct std::hash<Ref<SymbolInfo>> {
     size_t operator()(const Ref<SymbolInfo> &r) const {
-        u64 h = xp_hash_combine_u64(0, (u64)(usize)r.table);
+        u64 h = xp_hash_combine_u64(0, (u64)(usize)r.scope.index);
         h = xp_hash_combine_u64(h, std::hash<xpString>()(r.name));
         return h;
     }

@@ -9,7 +9,7 @@
 //
 // 公共接口
 //
-void analyze_package(PackageRef pkg);
+void analyze_package(RefN<Package> pkg);
 
 
 
@@ -21,19 +21,17 @@ void analyze_package(PackageRef pkg);
 
 struct CIRPackage;
 
-// 一次结果写入：给某指令写一个结果（type/value/lvalue 全在 CIRInstResult 里）
 struct ResultWrite {
     CIRInstructionRef ref;
     CIRInstResult result;
 };
 
-// handler 返回：一组结果写入（通常 1 个=当前指令，可多个=传染/Break 目标）+ 可选 pc 控制
 struct AnalyzeResult {
     Array<ResultWrite> writes;
-    std::optional<CIRInstructionRef> next_pc = std::nullopt;  // 为空 → 调度器 advance()
+    std::optional<CIRInstructionRef> next_pc = std::nullopt;
 
-    AnalyzeResult();   // 空写入（write_result 等构造空）
-    AnalyzeResult(CIRInstResult result, CIRInstructionRef ref);   // 单结果写指定指令
+    AnalyzeResult();
+    AnalyzeResult(CIRInstResult result, CIRInstructionRef ref);
 };
 
 enum class EvalMode {
@@ -63,6 +61,7 @@ struct EvalInstance {
     // 用于恢复调用者上下文
     CIRPackage *caller_pkg = nullptr;
     CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
+    RefN<Scope> caller_scope;
 };
 
 
@@ -78,7 +77,7 @@ struct Interpreter {
 
 
 
-    void set_scope(Scope *scope);
+    void set_scope(RefN<Scope> scope);
 
     void analyze_cir_package(CIRPackage* cir_package);
 
@@ -136,7 +135,6 @@ struct Interpreter {
     void pop_eval_instance();
 
     CIRInstructionRef& curr_inst_ref();   // 当前指令位置 = inst_stack 栈顶
-    Scope*& scope();                      // 当前作用域 = scope_stack 栈顶
     EvalInstance* curr_instance() {
         return instance_stack.count > 1 ? &instance_stack.back() : nullptr;
     }
@@ -154,9 +152,10 @@ public:
 
     CIRPackage *pkg;
 
+    RefN<Scope> scope;
+
     Array<EvalInstance> instance_stack; // 嵌套调用栈
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）
-    Array<Scope*> scope_stack;          // 作用域栈（与 pc 同步压弹，EnterScope/ExitScope 只改栈顶）
     Array<EvalMode> eval_mode_stack;
     Array<CIRInstructionRef> loop_stack; // 当前嵌套的 Loop 指令栈
 

@@ -65,7 +65,6 @@ TypeRef get_compliable_const_type(Value& val) {
 
 Interpreter::Interpreter(xpAllocator allocator) {
     inst_stack = make_array<CIRInstructionRef>(allocator);
-    scope_stack = make_array<Scope*>(allocator);
     eval_mode_stack = make_array<EvalMode>(allocator);
     loop_stack = make_array<CIRInstructionRef>(allocator);
     instance_stack = make_array<EvalInstance>(allocator);
@@ -75,7 +74,6 @@ Interpreter::Interpreter(xpAllocator allocator) {
 
 Interpreter::~Interpreter() {
     array_free(&inst_stack);
-    array_free(&scope_stack);
     array_free(&eval_mode_stack);
     array_free(&instance_stack);
 
@@ -86,21 +84,15 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
     return inst_stack.back();
 }
 
-Scope*& Interpreter::scope() {
-    return scope_stack.back();
-}
-
-
-
 
 //
 // 分析入口
 //
-void analyze_package(PackageRef pkg) {
-    DEBUG_TRACE("start analyzing package {}", package_by_ref(pkg)->path);
+void analyze_package(RefN<Package> pkg) {
+    DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
 
     Interpreter interpreter(permanent_allocator());
-    interpreter.analyze_cir_package(&package_by_ref(pkg)->cir_package);
+    interpreter.analyze_cir_package(&pkg.unwrap().cir_package);
 }
 
 //
@@ -114,9 +106,8 @@ void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
     instance_stack.push_back(root);
 
     inst_stack.clear();
-    inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg->package_ref});
-    scope_stack.clear();
-    scope_stack.push_back(pkg->package_scope);
+    inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg->package_ref.index});
+    scope = pkg->package_scope;
 
     analyze_block(pkg->top_blk, std::nullopt);
 }
@@ -185,7 +176,7 @@ void Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
 void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
     auto& block_info = *pkg->block(blk);
 
-    new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref});
+    new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref.index});
     bool pushed_eval_mode = false;
     if(force_eval_mode.has_value()) {
         eval_mode_stack.push_back(*force_eval_mode);
@@ -206,7 +197,7 @@ void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef
 void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
     auto& block_info = *pkg->block(blk);
 
-    new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref});
+    new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref.index});
 
     
     // TODO: 实现编译期循环
@@ -275,8 +266,7 @@ bool Interpreter::propagate_error(Array<CIRInstructionRef>& refs) {
 void Interpreter::push_eval_instance(EvalInstance inst) {
     inst.caller_pkg = pkg;
     inst.caller_pc = curr_inst_ref();
-    scope_stack.push_back(scope());   // 保存 caller scope
-    scope_stack.push_back(nullptr);   // callee 初始 scope（body 的 EnterScope 会覆盖）
+    inst.caller_scope = scope;
     instance_stack.push_back(std::move(inst));
 }
 
@@ -284,8 +274,7 @@ void Interpreter::pop_eval_instance() {
     ASSERT_MSG(instance_stack.count > 1, "cannot pop root instance");
     auto& inst = instance_stack.back();
     stack_mem.bytes.count = inst.frame_base;
-    scope_stack.pop_back();   // 弹 callee scope
-    scope_stack.pop_back();   // 恢复 caller scope
+    scope = inst.caller_scope;
     pkg = inst.caller_pkg;
     curr_inst_ref() = inst.caller_pc;
     EvalInstance::free(&inst);
@@ -393,8 +382,8 @@ void Interpreter::Set_ResultTypeAndValue(CIRInstructionRef ref, Value val) {
 //
 
 
-void Interpreter::set_scope(Scope *sc) {
-    scope() = sc;
+void Interpreter::set_scope(RefN<Scope> sc) {
+    scope = sc;
 }
 
 
@@ -1184,8 +1173,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
 
     if(is_package_type(parent_type)) {
         // 包成员访问: pkg.symbol
-        PackageRef pkg_val = parent_type->package_info;
-        SymbolInfo *field_sym = find_symbol_curr(&package_by_ref(pkg_val)->package_scope, info.field_name);
+        RefN<Package> pkg_val = parent_type->package_info;
+        SymbolInfo *field_sym = find_symbol_curr(&pkg_val.unwrap().package_scope.unwrap(), info.field_name);
         if(field_sym == nullptr) {
             return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
         }
@@ -1216,7 +1205,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
 
     } else if(TypeRef union_type = get_union_type(parent_type)) {
 
-        Scope *union_scope = union_type->union_info.union_scope;
+        RefN<Scope> union_scope = union_type->union_info.union_scope;
         TypeRef field_type = nullptr;
         for(const auto& entry : *union_scope) {
             if(xp_string_equal(entry.value.name, info.field_name)) {
@@ -1238,7 +1227,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
     } else if(has_result_val(parent_inst) && is_enum_type(ResultValue(parent_inst).type_val())) {
         // 枚举成员访问: EnumType.Variant
         TypeRef enum_type = ResultValue(parent_inst).type_val();
-        SymbolInfo *field_sym = find_symbol_curr(enum_type->enum_info.enum_scope, info.field_name);
+        SymbolInfo *field_sym = find_symbol_curr(&enum_type->enum_info.enum_scope.unwrap(), info.field_name);
         if(field_sym == nullptr) {
             return make_result(pc_ref, inst_error(pc_ref, "枚举变体 '{}' 不存在", info.field_name));
         }
@@ -1893,7 +1882,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
     }
 
     // 注册枚举字段到 enum_scope
-    Scope *enum_scope = enum_type->enum_info.enum_scope;
+    RefN<Scope> enum_scope = enum_type->enum_info.enum_scope;
     i128 next_auto_value = 0;
     for(isize i = 0; i < info.fields.count; i++) {
         auto& ef = info.fields[i];
@@ -1918,7 +1907,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
         field_val.set_type(enum_type);
 
         // 副作用：注册枚举字段符号到 enum_scope + Solved
-        SymbolInfo *field_sym = find_symbol_curr(enum_scope, ef.name);
+        SymbolInfo *field_sym = find_symbol_curr(&enum_scope.unwrap(), ef.name);
         XP_ASSERT_DEFAULT(field_sym != nullptr);
         if(ef.value_inst != INVALID_INST) {
             field_sym->val(Ref<CIRInstResult>::make(pkg, ef.value_inst, {}));
@@ -2013,7 +2002,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
 
     if(curr_eval_mode() == EvalMode::FullEval || (should_eval_for_lazy_eval({union_decl_inst}) && should_eval_for_lazy_eval(info.field_insts))) {
         TypeRef ut = ResultValue(union_decl_inst).type_val();
-        Scope *union_scope = ut->union_info.union_scope;
+        RefN<Scope> union_scope = ut->union_info.union_scope;
 
         // 字段符号已由 FinishUnion 填充 → 跳过（重入/缓存命中）
         bool already_finished = false;
@@ -2036,7 +2025,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
                     return make_result(pc_ref, inst_error(pc_ref, "联合体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", field_info.name));
                 }
 
-                SymbolInfo *field_sym = find_symbol_curr(union_scope, field_info.name);
+                SymbolInfo *field_sym = find_symbol_curr(&union_scope.unwrap(), field_info.name);
                 XP_ASSERT_DEFAULT(field_sym != nullptr);
 
                 // 绑定 InCIRInstruction（镜像 enum）：字段类型由 result(type 的 creation_key) 解析
@@ -2398,17 +2387,15 @@ end:
     return r;
 }
 
-// handler: EnterScope（无自身结果；切换 scope）
 std::optional<AnalyzeResult> Interpreter::analyze_EnterScope(CIREnterScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Scope *scope = inst(pc_ref)->info<CIROperator::EnterScope>().scope;
-    set_scope(scope);   // 副作用：切换当前作用域（scope_stack 栈顶）
+    RefN<Scope> scope = info.scope;
+    set_scope(scope);
     return std::nullopt;
 }
 
-// handler: ExitScope（无自身结果；切换 scope）
 std::optional<AnalyzeResult> Interpreter::analyze_ExitScope(CIRExitScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Scope *scope = inst(pc_ref)->info<CIROperator::ExitScope>().scope;
-    set_scope(scope);   // 副作用：切换当前作用域（scope_stack 栈顶）
+    RefN<Scope> scope = info.scope;
+    set_scope(scope);
     return std::nullopt;
 }
 
@@ -2537,7 +2524,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ImportPackage(CIRImportPackage
         return make_result(pc_ref, inst_error(pc_ref, "找不到包 '{}'", info.path));
     }
 
-    PackageRef pkg_ref = pkg_opt.unwrap();
+    RefN<Package> pkg_ref{pkg_opt.unwrap().index};
     Value v = make_value(package_type(pkg_ref));
     v.package_val(pkg_ref);
     return make_result(pc_ref, CIRInstResult::make_value(v.type, v));

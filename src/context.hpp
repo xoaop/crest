@@ -7,6 +7,7 @@
 #include "error_msg.hpp"
 
 #include "cir_builder.hpp"
+#include "scope.hpp"
 
 struct ThreadPool;
 
@@ -24,11 +25,13 @@ struct Context {
     // Package搜索路径 — 按优先级排列
     Array<xpString> package_search_paths;
 
-    PackageRef global_blank_package = -1;
+    Ref<Package> global_blank_package = Ref<Package>::INVALID_REF;
 
     ErrorReporter reporter;
 
     Array<Package> all_packages;
+
+    Array<Scope> all_scopes;
 
 
     ValueMemory static_mem;
@@ -36,9 +39,7 @@ struct Context {
     ThreadPool *thread_pool;
 };
 
-PackageRef add_package(Context *ctx, Package pkg);
-
-Package *package_by_ref(PackageRef ref);   // 全局包表:编号 → Package*
+RefN<Package> add_package(Context *ctx, Package pkg);
 
 
 CIRInstruction* inst(CIRInstructionRef ref);

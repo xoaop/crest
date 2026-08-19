@@ -8,13 +8,19 @@ Context *context() {
 
 
 
-PackageRef add_package(Context *ctx, Package pkg) {
+RefN<Package> add_package(Context *ctx, Package pkg) {
     ctx->all_packages.push_back(pkg);
-    return ctx->all_packages.count - 1;
+    return RefN<Package>{ctx->all_packages.count - 1};
 }
 
-Package *package_by_ref(PackageRef ref) {
-    return &context()->all_packages[ref];
+Package *try_access_val(const Ref<Package> &r) {
+    if (r.index < 0) return nullptr;
+    return &context()->all_packages[r.index];
+}
+
+Scope *try_access_val(const Ref<Scope> &r) {
+    if (r.index < 0 || r.index >= context()->all_scopes.count) return nullptr;
+    return &context()->all_scopes[r.index];
 }
 
 

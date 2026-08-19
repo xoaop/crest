@@ -760,7 +760,7 @@ void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
 }
 
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Scope *scope) {
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, RefN<Scope> scope) {
     XP_ASSERT_DEFAULT(is_integer_type(elem_type));
 
     Type t{Type_enum};
@@ -775,7 +775,7 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
     return add_type_unique(t);
 }
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Scope *scope) {
+TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, RefN<Scope> scope) {
     Type t{Type_union};
 
     t.union_info.hash_key = ident.has_value()
@@ -787,7 +787,7 @@ TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Scope *sco
 }
 
 TypeRef union_field_type(TypeRef union_type, xpString field_name) {
-    SymbolInfo *field_sym = find_symbol_curr(union_type->union_info.union_scope, field_name);
+    SymbolInfo *field_sym = find_symbol_curr(&union_type->union_info.union_scope.unwrap(), field_name);
     ASSERT(field_sym != nullptr);
     
     
@@ -815,7 +815,7 @@ bool type_contains_by_value(TypeRef outer, TypeRef inner) {
             }
             return false;
         case Type_union: {
-            Scope *scope = outer->union_info.union_scope;
+            RefN<Scope> scope = outer->union_info.union_scope;
             for(const auto& entry : *scope) {
                 if(type_contains_by_value(union_field_type(outer, entry.value.name), inner)) {
                     return true;
@@ -843,7 +843,7 @@ TypeRef type_type() {
     return type_type(undefined_type());
 }
 
-TypeRef package_type(PackageRef package_info) {
+TypeRef package_type(RefN<Package> package_info) {
     Type t = {};
     t.kind = Type_package;
     t.package_info = package_info;
@@ -1059,7 +1059,7 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         return type_str;
 
     } else if(is_package_type(type)) {
-        return package_by_ref(type->package_info)->path;
+        return type->package_info.unwrap().path;
     } else if(type->kind == Type_error) {
         return xp_string_c("error");
     } else if(type->kind == Type_Undefined) {
@@ -1171,7 +1171,7 @@ struct std::hash<Type> {
 
         case Type_package: {
             u64 hash_package = Type_package;
-            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(package_by_ref(type.package_info)->path));
+            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(type.package_info.unwrap().path));
             u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
             return cast(usize)(hash_value);
         } break;

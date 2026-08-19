@@ -2,8 +2,13 @@
 #define CREST_COMMON_H
 
 #include "xoaop.h"
+#include "ref.hpp"
 
-using PackageRef = isize;    // 全局包表编号（唯一定义，各头统一从这取）
+struct Package;
+struct Scope;
+
+Package *try_access_val(const Ref<Package> &r);
+Scope *try_access_val(const Ref<Scope> &r);
 
 
 //

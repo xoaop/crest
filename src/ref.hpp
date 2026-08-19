@@ -25,12 +25,12 @@ struct RefBase {
     }
 
     // ref-> / *ref 为保证非空解包的语法糖（同样断言）
-    T *operator->() const { 
-        return &unwrap(); 
+    T *operator->() const {
+        return &unwrap();
     }
 
-    T &operator*()  const { 
-        return unwrap(); 
+    T &operator*()  const {
+        return unwrap();
     }
 
 private:
@@ -50,12 +50,24 @@ template<typename T>
 struct Ref : RefBase<T> {
     isize index = -1;
 
+    constexpr Ref() = default;
+    explicit constexpr Ref(isize idx) : index(idx) {}
+
     bool operator==(const Ref& other) const { return index == other.index; }
 };
 
 template<typename T>
 struct std::hash<Ref<T>> {
     usize operator()(const Ref<T>& r) const { return (usize)(u64)r.index; }
+};
+
+
+template<typename T>
+struct RefN : Ref<T> {
+    RefN() = default;
+    explicit constexpr RefN(isize idx) : Ref<T>(idx) {}
+
+    explicit RefN(Ref<T> ref) : Ref<T>(ref) {}
 };
 
 

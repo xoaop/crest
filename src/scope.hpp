@@ -67,10 +67,10 @@ struct Scope {
     ScopeType scope_type;
 
     SymbolTable symbols;
-    Scope *parent;
+    Ref<Scope> parent;   // 根 scope 无父，可空
 
-    xpHashMap<Ast*, Scope*> ast_to_scope;
-    Array<Scope *> children;
+    xpHashMap<Ast*, RefN<Scope>> ast_to_scope;
+    Array<RefN<Scope>> children;
 
     auto begin() { return symbols.symbols.begin(); }
     auto end()   { return symbols.symbols.end(); }
@@ -79,11 +79,10 @@ struct Scope {
 };
 
 
-Scope make_scope(Scope *parent, ScopeType type, xpAllocator allocator);
-Scope *alloc_scope(Scope *parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
-void free_scope(Scope *scope);
+Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator);
+RefN<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
 
-void add_sub_scope(Scope *parent, Scope *child, Ast *owner_ast = nullptr);
+void add_sub_scope(Scope *parent, RefN<Scope> child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 
@@ -96,13 +95,11 @@ SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind);
 SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind);
 
-Ref<SymbolInfo> find_symbol_until_global_ref(Scope *scope, xpString symbol_ident);
+Ref<SymbolInfo> find_symbol_until_global_ref(Ref<Scope> scope, xpString symbol_ident);
 
 
-Scope *try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
-Scope *try_exit_scope(Scope *current);
-Scope *enter_scope(Scope *parent, Ast *ast_for_child_scope);
-Scope *exit_scope(Scope *current);
+Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
+Ref<Scope> try_exit_scope(Scope *current);
 
 void print_scope_tree(Scope *scope, int indent = 0);
 
