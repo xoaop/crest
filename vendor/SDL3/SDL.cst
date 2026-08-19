@@ -174,7 +174,6 @@ SDL_WindowEvent :: struct {
     data2: i32;
 }
 
-// SDL_KeyboardEvent：mod/raw 是 u16，Crest 暂无 u16，用两个 u8 拼出相同字节布局
 SDL_KeyboardEvent :: struct {
     type: u32;
     reserved: u32;
@@ -183,10 +182,8 @@ SDL_KeyboardEvent :: struct {
     which: u32;
     scancode: i32;
     key: i32;
-    mod_lo: u8;
-    mod_hi: u8;
-    raw_lo: u8;
-    raw_hi: u8;
+    mod: u16;
+    raw: u16;
     down: bool;
     repeat: bool;
 }
