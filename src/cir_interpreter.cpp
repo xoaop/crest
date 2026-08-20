@@ -2276,7 +2276,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         auto func_info = fv.func_key.inst()->info<CIROperator::FunctionDecl>();
 
         auto ctx = CIRResultContext::create(fv.func_key.cir_package);
-        if(fv.func_key.result_instance.key.func_decl_pc != INVALID_INST) {
+        if(fv.func_key.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
             ctx.enter_call_instance(fv.func_key.result_instance);
         }
         if(is_pure_comptime_func(func_info, ctx)) {
@@ -2399,9 +2399,6 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
             // 副作用：返回结果写入 callee 结果实例缓存（供后续同 key 调用命中）
             callee_result_instance->result_of(func.body_inst).set_val(return_val);
             r.writes.push_back({pc_ref, CIRInstResult::make_value(return_val)});
-
-            // 副作用：记录编译期调用（codegen 据此刻画单态化）
-            pkg->comptime_func_calls.push_back(cache_key);
         }
     }
 
