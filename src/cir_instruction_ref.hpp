@@ -12,6 +12,8 @@
 struct CIRPackage;
 struct CIRInstResult;
 struct CIRResultInstance;
+
+CIRPackage* try_access_val(const Ref<CIRPackage>& r);
 struct CIRInstruction;
 using CIRBlockRef = isize;
 
@@ -97,9 +99,21 @@ CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r);
 
 template<>
 struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
-    FuncCallKey key;
+    Ref<CIRPackage> cir_package;
+    isize index = -1;
 
-    bool operator==(const Ref& other) const { return key == other.key; }
+    bool operator==(const Ref& other) const {
+        return cir_package == other.cir_package && index == other.index;
+    }
+};
+
+template<>
+struct std::hash<Ref<CIRResultInstance>> {
+    usize operator()(const Ref<CIRResultInstance>& r) const {
+        u64 h = (u64)r.cir_package.index;
+        h = xp_hash_combine_u64(h, (u64)r.index);
+        return h;
+    }
 };
 
 
@@ -133,7 +147,7 @@ struct std::hash<Ref<CIRInstResult>> {
         u64 h = (u64)(usize)key.cir_package;
         h = xp_hash_combine_u64(h, (u64)key.inst_ref.block_ref);
         h = xp_hash_combine_u64(h, (u64)key.inst_ref.inst_index);
-        h = xp_hash_combine_u64(h, std::hash<FuncCallKey>{}(key.result_instance.key));
+        h = xp_hash_combine_u64(h, std::hash<Ref<CIRResultInstance>>{}(key.result_instance));
         return h;
     }
 };

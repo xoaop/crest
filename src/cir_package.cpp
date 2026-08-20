@@ -15,7 +15,8 @@ CIRPackage make_cir_package(xpAllocator allocator) {
 
     cir_package.string_literals = make_array<xpString>(allocator);
     cir_package.results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(allocator);
-    cir_package.result_instances = xp_hash_map_make<FuncCallKey, CIRResultInstance>(allocator);
+    cir_package.result_instances = make_array<CIRResultInstance>(allocator);
+    cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, Ref<CIRResultInstance>>(allocator);
     cir_package.comptime_func_calls = make_array<FuncCallKey>(allocator);
     return cir_package;
 }
@@ -53,11 +54,16 @@ CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool
 }
 
 Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
-    result_instances.get_or_insert(key, [&]{
-        return CIRResultInstance::make(permanent_allocator());
-    });
+    Ref<CIRResultInstance> *existing = xp_hash_map_get(result_instance_map, key);
+    if(existing != nullptr) {
+        return *existing;
+    }
+    result_instances.push_back(CIRResultInstance::make(permanent_allocator()));
+    
     Ref<CIRResultInstance> r;
-    r.key = key;
+    r.cir_package = Ref<CIRPackage>(package_ref.index);
+    r.index = (isize)result_instances.count - 1;
+    result_instance_map.insert(key, r);
     return r;
 }
 
@@ -73,18 +79,23 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstanc
 }
 
 
+CIRPackage* try_access_val(const Ref<CIRPackage>& r) {
+    if(r.index < 0) {
+        return nullptr;
+    }
+
+    return &context()->all_packages[r.index].cir_package;
+}
+
 
 
 
 CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r) {
-    if(r.key.func_decl_pc.pkg_index < 0) {
+    if(r.cir_package == Ref<CIRPackage>::INVALID_REF || r.index < 0) {
         return nullptr;
     }
 
-    // TODO: 更规范
-    CIRPackage *pkg = &context()->all_packages[r.key.func_decl_pc.pkg_index].cir_package;
-    
-    return xp_hash_map_get(pkg->result_instances, r.key);
+    return &r.cir_package->result_instances[r.index];
 }
 
 Ref<CIRInstResult> Ref<CIRInstResult>::make(CIRPackage* pkg, CIRInstructionRef ref,
@@ -129,8 +140,12 @@ u64 FuncCallKey::hash() const {
 }
 
 bool FuncCallKey::operator==(const FuncCallKey& other) const {
-    if(func_decl_pc != other.func_decl_pc) return false;
-    if(comptime_arg_refs.count != other.comptime_arg_refs.count) return false;
+    if(func_decl_pc != other.func_decl_pc) {
+        return false;
+    }
+    if(comptime_arg_refs.count != other.comptime_arg_refs.count) {
+        return false;
+    }
     for(isize i = 0; i < comptime_arg_refs.count; i++) {
         auto* ra = comptime_arg_refs[i].get_result();
         auto* rb = other.comptime_arg_refs[i].get_result();
@@ -237,7 +252,7 @@ const FuncCallKey &CIRResultContext::call_key() const {
 }
 
 CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
-    if (_call_instance.key.func_decl_pc != INVALID_INST) {
+    if (_call_instance != Ref<CIRResultInstance>::INVALID_REF) {
         return _pkg->result_of(ref, _call_instance);
     }
     return _pkg->result_of(ref);

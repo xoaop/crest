@@ -39,8 +39,9 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     if(value_store_type == ValueStoreType::InCIRInstruction) {
 
         if(key.has_value()) {
-            auto *instance = xp_hash_map_get(inst_key.cir_package->result_instances, key.value());
-            if(instance) {
+            auto *entry = xp_hash_map_get(inst_key.cir_package->result_instance_map, key.value());
+            if(entry != nullptr) {
+                auto *instance = &inst_key.cir_package->result_instances[entry->index];
                 auto *res = instance->result_ptr_of(inst_key.inst_ref);
                 if(res) {
                     return *res;

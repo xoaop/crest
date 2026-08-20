@@ -147,7 +147,11 @@ struct CIRPackage {
 
 
     xpHashMap<CIRInstructionRef, CIRInstResult> results;
-    xpHashMap<FuncCallKey, CIRResultInstance> result_instances;
+    xpHashMap<FuncCallKey, Ref<CIRResultInstance>> result_instance_map;
+
+    Array<CIRResultInstance> result_instances;
+
+    // @deprecated
     Array<FuncCallKey> comptime_func_calls;
 
 
@@ -167,6 +171,7 @@ struct CIRPackage {
 
 CIRPackage make_cir_package(xpAllocator allocator);
 
+
 struct CIRResultContext;
 
 bool is_pure_comptime_func(CIRFunctionDeclInfo& func, const CIRResultContext& ctx);
@@ -184,9 +189,16 @@ struct CIRResultContext {
 
     void enter_call(FuncCallKey key);
     void enter_call_instance(Ref<CIRResultInstance> instance);
+
     void exit_call();
-    bool in_call() const { return _call_instance.key.func_decl_pc != INVALID_INST; }
-    Ref<CIRResultInstance> call_instance() const { return _call_instance; }
+    bool in_call() const { 
+        return _call_instance != Ref<CIRResultInstance>::INVALID_REF;
+    }
+
+    Ref<CIRResultInstance> call_instance() const { 
+        return _call_instance; 
+    }
+
     const FuncCallKey &call_key() const;
 
     CIRInstResult &result_of(CIRInstructionRef ref) const;
