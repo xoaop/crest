@@ -2124,13 +2124,20 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRCondBrInfo& info, CI
             analyze_block(chosen_blk, pc_ref, params.block_eval_mode);
         }
     } else {
-        // 类型模式：两个分支都检查（非运行分支的指令也要产出类型，codegen 依赖）
-        auto& true_child = *pkg->block(true_blk);
-        analyze_block(true_blk, pc_ref, EvalMode::TypeOnly);
-
-        if(false_blk != INVALID_BLOCK) {
-            auto& false_child = *pkg->block(false_blk);
-            analyze_block(false_blk, pc_ref, EvalMode::TypeOnly);
+        // 类型模式：短路 &&/||（is_short_circuit）且 cond 已知时，只分析活分支——
+        // 死分支（右操作数）整体跳过：常量错误不报，也不产出任何结果
+        // （codegen 端同样跳过该分支，见 CondBr 生成逻辑）。
+        // cond 未知（左操作数为运行时值）时两分支都分析，照常求值定型。
+        if(if_info.is_short_circuit && has_result_val(cond_inst)) {
+            CIRBlockRef live_blk = ResultValue(cond_inst).bool_val() ? true_blk : false_blk;
+            if(live_blk != INVALID_BLOCK) {
+                analyze_block(live_blk, pc_ref, EvalMode::TypeOnly);
+            }
+        } else {
+            analyze_block(true_blk, pc_ref, EvalMode::TypeOnly);
+            if(false_blk != INVALID_BLOCK) {
+                analyze_block(false_blk, pc_ref, EvalMode::TypeOnly);
+            }
         }
     }
     return std::nullopt;
