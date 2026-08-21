@@ -2274,6 +2274,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
     TypeRef return_type = called_type->function_info.return_type;
     r.writes.push_back({pc_ref, CIRInstResult::make_type_only(return_type)});
 
+    // TODO: 递归类型（自引用指针 struct，如链表 next: *Node）编译期求值会死循环——
+    //       实例化 Node(T) 构造 struct 时，next 字段再次求值 Node(T)，泛型实例无"构建中"复用，
+    //       无限递归（与 eval mode 无关）。彻底方案：泛型实例构建中复用。
+
     bool force_eval = false;
 
     // 如果调用的是纯编译期函数, 则强制 FullEval
@@ -2299,7 +2303,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
     // ── 编译期执行（FullEval only）────────────────────────────
     if(curr_eval_mode() == EvalMode::FullEval) {
         // 编译期调用是 C++ 递归，Debug 下 ~63 层即爆 1MB 栈，阈值需远小于此
-        constexpr auto MAX_CALL_DEPTH = 25;
+        constexpr auto MAX_CALL_DEPTH = 15;
         if(instance_stack.count > MAX_CALL_DEPTH) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH)});
             goto end;
