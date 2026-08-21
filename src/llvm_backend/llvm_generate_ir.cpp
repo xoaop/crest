@@ -909,16 +909,29 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, b
     if(is_loop) {
         gen_ir_loop(last_bb, first_bb, blk_mapper, old_curr_blk);
     } else {
-        // 带值 break 汇合：在 exit_blk 开头建 φ（所有离开路径都是 break，last_bb 是死代码）
+        // 带值 break 汇合（break_vals 由 gen_ir_inst 的 Break 分支收集）：
+        // - 函数返回的带值 break 在 Break 分支里单独生成为 ret，不会进 break_vals；
+        // - comptime 值块（const 初始化/类型表达式等）不生成 LLVM IR，也不会到这里；
+        // - 目前唯一会进入这里的运行时块是短路 &&/|| 的 result_blk，恒有 2 条带值 break；
+        //   因此 break_vals.count == 1 暂时不可达，单条透传只是防御性写法。
+        // - 该分支还负责把块结果值 save 到 blk_ref_inst：漏掉的话后续读块值的指令
+        //   会在 get_llvm_val_from_inst_ref 里走到 std::unreachable()。
+        // 所有离开路径都是 break，last_bb 是死代码；多条 break 才需要 φ 汇合，单条直接透传。
         if(blk_mapper.break_vals.count > 0) {
             if(!LLVMGetBasicBlockTerminator(last_bb)) {
                 Set_Curr_Inst_Pos_At_End_Of_Basic_Block(last_bb);
                 LLVMBuildUnreachable(unit.builder);
             }
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(blk_mapper.exit_blk());
-            LLVMValueRef phi = LLVMBuildPhi(unit.builder, LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
-            LLVMAddIncoming(phi, blk_mapper.break_vals.data, blk_mapper.break_srcs.data, (unsigned)blk_mapper.break_vals.count);
-            save_llvm_val_of_inst(blk_ref_inst, phi);
+            LLVMValueRef blk_val;
+            if(blk_mapper.break_vals.count > 1) {
+                LLVMValueRef phi = LLVMBuildPhi(unit.builder, LLVMTypeOf(blk_mapper.break_vals[0]), "break_phi");
+                LLVMAddIncoming(phi, blk_mapper.break_vals.data, blk_mapper.break_srcs.data, (unsigned)blk_mapper.break_vals.count);
+                blk_val = phi;
+            } else {
+                blk_val = blk_mapper.break_vals[0];
+            }
+            save_llvm_val_of_inst(blk_ref_inst, blk_val);
         }
 
         llvm_build_br_when_no_br(last_bb, blk_mapper.exit_blk());
@@ -1326,6 +1339,25 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
         case CIROperator::CondBr: {
             auto &info = inst->info<CIROperator::CondBr>();
+
+            // @todo: hack
+            // 短路 &&/|| 且 cond 编译期已知：死分支不生成（与分析端跳过一致），
+            // 直接无条件跳活分支，活分支的带值 break 由 result_blk 汇合。
+            if(info.is_short_circuit && result_ctx.result_of(info.condition_inst).state == CIRResultState::WholeValue) {
+                bool cond = result_ctx.result_of(info.condition_inst).actual_val().bool_val();
+                CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
+                if(live_blk != INVALID_BLOCK) {
+                    gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
+                    auto* live_mapper = mapper(live_blk);
+                    LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
+
+                    auto& parent_mapper = get_or_create_mapper(curr_blk);
+                    auto merge_bb = parent_mapper.add_frag_blk("condbr.merge");
+                    llvm_build_br_when_no_br(live_mapper->exit_blk(), merge_bb);
+                    Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
+                }
+                break;
+            }
 
             LLVMValueRef cond_val = get_llvm_val_from_inst_ref(info.condition_inst);
 

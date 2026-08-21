@@ -175,6 +175,7 @@ struct CIRCondBrInfo {
     CIRInstructionRef condition_inst;
     CIRBlockRef true_block;    // 直接持有子 Block（不插入父块，避免双引用）
     CIRBlockRef false_block;
+    bool is_short_circuit = false;   // &&/|| 短路 CondBr：cond 已知时死分支（右操作数）整体跳过
 
     CIR_REFS(&CIRCondBrInfo::condition_inst)
 };

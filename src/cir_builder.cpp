@@ -668,15 +668,106 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             } break;
 
         case AstType_BinaryExpr: {
-            auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
-            auto right_inst = build_inst_for_expr(expr->BinaryExpr.right);
 
-            auto bin = Make_Instruction<CIROperator::Binary>(expr, {
-                .op = expr->BinaryExpr.op,
-                .left_inst  = left_inst,
-                .right_inst = right_inst,
-            });
-            result = bin;
+            if(is_logic_operator(expr->BinaryExpr.op)) {
+                auto result_blk = Begin_Block(expr, false, false);   // handle {parent,N}
+                defer(End_Block());
+
+                auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
+
+
+                // @todo 报错很糟糕, 因为要是类型不对, 这些隐式指令没法映射到源码
+                // 是否求值右边表达式的条件
+                CIRInstructionRef cond = INVALID_INST;
+                {
+                    switch(expr->BinaryExpr.op) {
+                        case TokenType::DoubleAnd: {
+                            // &&: 左为真才求值右操作数 → cond = (left == true)
+                            auto true_val = make_value(easy_type(Type_bool));
+                            true_val.bool_val(true);
+                            auto true_const = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = true_val });
+
+                            cond = Make_Instruction<CIROperator::Binary>(expr, {
+                                .op = TokenType::DoubleEqual,
+                                .left_inst  = left_inst,
+                                .right_inst = true_const,
+                            });
+                        } break;
+
+                        case TokenType::DoubleOr: {
+                            // ||: 左为假才求值右操作数 → cond = (left == false)
+                            auto false_val = make_value(easy_type(Type_bool));
+                            false_val.bool_val(false);
+                            auto false_const = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = false_val });
+
+                            cond = Make_Instruction<CIROperator::Binary>(expr, {
+                                .op = TokenType::DoubleEqual,
+                                .left_inst  = left_inst,
+                                .right_inst = false_const,
+                            });
+                        } break;
+
+                        default: {
+                            std::unreachable();
+                        } break;
+                    }
+                }
+
+                CIRBlockRef true_blk = INVALID_BLOCK;
+                {
+                    true_blk = curr_pkg->create_block(false, false, false);
+                    block_stack.push_back(true_blk);
+                    defer(End_Block());
+
+                    auto right_inst = build_inst_for_expr(expr->BinaryExpr.right);
+
+                    auto bin = Make_Instruction<CIROperator::Binary>(expr, {
+                        .op = expr->BinaryExpr.op,
+                        .left_inst  = left_inst,
+                        .right_inst = right_inst,
+                    });
+
+                    // NOTE: 直接返回给外层result_blk
+                    New_Break(result_blk, bin, expr);
+                }
+
+                CIRBlockRef false_blk = INVALID_BLOCK;
+                {
+                    false_blk = curr_pkg->create_block(false, false, false);
+                    block_stack.push_back(false_blk);
+                    defer(End_Block());
+
+                    auto false_val = make_value(easy_type(Type_bool));
+                    false_val.bool_val(expr->BinaryExpr.op == TokenType::DoubleOr); // && → false, || → true
+                    auto false_const = Make_Instruction<CIROperator::ConstantValue>(expr, { .value = false_val });
+
+                    // NOTE: 直接返回给外层result_blk
+                    New_Break(result_blk, false_const, expr);
+                }
+
+                // 判断是否需要求值右边表达式, 如果为真则求值右边表达式, 否则直接返回左边的结果
+                // is_short_circuit：TypeOnly 遍历两分支时，死分支（右操作数）关闭常量折叠，
+                // 活分支 RHS 常量错误（如 10/0）仍照常报出；普通 if/else 不受影响。
+                auto condbr_eval_right = Make_Instruction<CIROperator::CondBr>(expr, {
+                    .condition_inst = cond,
+                    .true_block     = true_blk,
+                    .false_block    = false_blk,
+                    .is_short_circuit = true,
+                });
+                
+                result = result_blk;
+            } else {
+                auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
+                auto right_inst = build_inst_for_expr(expr->BinaryExpr.right);
+    
+                auto bin = Make_Instruction<CIROperator::Binary>(expr, {
+                    .op = expr->BinaryExpr.op,
+                    .left_inst  = left_inst,
+                    .right_inst = right_inst,
+                });
+                result = bin;
+            }
+
         } break;
 
         case AstType_UnaryExpr: {

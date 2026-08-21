@@ -1,0 +1,45 @@
+// @pass
+// @run
+
+import "std/c"
+
+// ── 编译期：死分支右侧常量不被 eager 求值（能编译过即证明，10/0 若被求值会报错）──
+dead_and :: () -> bool { return false && (10/0 == 0); }
+dead_or  :: () -> bool { return true  || (10/0 == 0); }
+
+// ── 运行时：用 rand() 消耗全局 RNG 状态，观测右侧是否真的执行 ──
+// glibc rand() 默认种子序列：1st=1804289383, 2nd=846930886, 3rd=1681692777
+rhs_skipped_and :: () -> bool { return false && (c.rand() == 12345); }  // 死分支：不消耗 rand
+rhs_skipped_or  :: () -> bool { return true  || (c.rand() == 12345); }  // 死分支：不消耗 rand
+rhs_ran_and     :: () -> bool { return true  && (c.rand() == 12345); }  // 活分支：消耗 rand
+rhs_ran_or      :: () -> bool { return false || (c.rand() == 12345); }  // 活分支：消耗 rand
+
+// ── 短路值语义：左侧已知时，右侧是否参与求值 ──
+l_and_f :: (x: bool) -> bool { return false && x; }
+l_and_t :: (x: bool) -> bool { return true && x; }
+l_or_t  :: (x: bool) -> bool { return true  || x; }
+l_or_f  :: (x: bool) -> bool { return false || x; }
+
+main :: () -> i32 {
+    if dead_and() != false { return 1; }
+    if dead_or()  != true  { return 2; }
+
+    // 死分支右侧未执行 → rand 序列未被消耗，r1 仍是第 1 个值
+    if rhs_skipped_and() != false { return 3; }
+    if rhs_skipped_or()  != true  { return 4; }
+    r1 := c.rand();
+    if r1 != 1804289383 { return 5; }
+
+    // 活分支右侧必须执行 → 消耗第 2 个值，r2 是第 3 个值
+    if rhs_ran_and() != false { return 6; }
+    r2 := c.rand();
+    if r2 != 1681692777 { return 7; }
+    if rhs_ran_or() != false { return 8; }
+
+    if l_and_f(true)  != false { return 9; }
+    if l_and_t(false) != false { return 10; }
+    if l_or_t(false)  != true  { return 11; }
+    if l_or_f(true)   != true  { return 12; }
+
+    return 0;
+}
