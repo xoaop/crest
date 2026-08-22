@@ -1345,17 +1345,19 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             // 直接无条件跳活分支，活分支的带值 break 由 result_blk 汇合。
             if(info.is_short_circuit && result_ctx.result_of(info.condition_inst).state == CIRResultState::WholeValue) {
                 bool cond = result_ctx.result_of(info.condition_inst).actual_val().bool_val();
-                CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
-                if(live_blk != INVALID_BLOCK) {
-                    gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
-                    auto* live_mapper = mapper(live_blk);
-                    LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
 
-                    auto& parent_mapper = get_or_create_mapper(curr_blk);
-                    auto merge_bb = parent_mapper.add_frag_blk("condbr.merge");
-                    llvm_build_br_when_no_br(live_mapper->exit_blk(), merge_bb);
-                    Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
-                }
+                CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
+                ASSERT(live_blk != INVALID_BLOCK);
+
+                gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
+                auto* live_mapper = mapper(live_blk);
+                LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
+
+                auto& parent_mapper = get_or_create_mapper(curr_blk);
+                auto merge_bb = parent_mapper.add_frag_blk("condbr.merge");
+                llvm_build_br_when_no_br(live_mapper->exit_blk(), merge_bb);
+                
+                Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
                 break;
             }
 
