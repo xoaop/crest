@@ -14,6 +14,22 @@ struct Parser {
 };
 
 
+struct ParsedParams {
+    Array<Ast*> params;   // 位置参数为裸 type AST，命名参数为 ParamDecl
+    bool is_named;
+    bool must_be_c_fn;
+    Token rb;
+};
+
+struct FunctionTail {
+    Ast *return_type_ast;   // '-> ?' 时为 nullptr
+    bool infer_return_type;
+    bool is_extern_c;
+    bool is_builtin;
+    Token last_token;   // 尾部最右消费的 token（? / 类型 / extern_C / #builtin）
+};
+
+
 void report_unexpected(Parser *p, const char *expected_string);
 void report_unexpected(Parser *p, Token token, const char *expected_string);
 void report_unexpected(Parser *p, Token token, xpString expected_string);
@@ -34,7 +50,11 @@ void advance_to_next_top_level(Parser *p);
 
 
 
-Ast *parse_function_value_or_type(Parser *p);
+ParsedParams parse_param_list(Parser *p);
+bool parse_function_tail(Parser *p, FunctionTail *out);
+Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tail, bool is_comptime_func);
+Ast *parse_function_type(Parser *p, Token lb, ParsedParams pre, FunctionTail tail);
+
 Ast *parse_block(Parser *p);
 
 
@@ -51,8 +71,6 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p);
 
 Ast *parse_array_init_expr(Parser *p);
-
-void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_ast, bool &out_must_be_c_fn, bool &out_has_named_params, Token &out_rb);
 
 Ast *parse_type(Parser *p);
 
@@ -235,53 +253,41 @@ Ast *parse_struct_decl(Parser *p) {
     return a;
 }
 
-// @deprecated
-void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_ast, bool &out_must_be_c_fn, bool &out_has_named_params, Token &out_rb) {
-    expect(p, TokenType::LeftBracket);
+ParsedParams parse_param_list(Parser *p) {
+    ParsedParams out = {};
+    out.params = make_array<Ast*>(ast_allocator());
 
-    bool has_named_params = false;
     if(curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
-        Token curr = curr_token(p);
-        if(curr.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
-            has_named_params = true;
+        Token first = curr_token(p);
+        if(first.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
+            out.is_named = true;
         }
     }
 
-    out_params = make_array<Ast *>(ast_allocator());
-    out_must_be_c_fn = false;
-
-    while(!reach_end(p)) {
-        if(curr_token(p).type == TokenType::RightBracket) {
-            break;
-        }
-
+    while(!reach_end(p) && curr_token(p).type != TokenType::RightBracket) {
         if(curr_token(p).type == TokenType::ThreeDots) {
-            Token dots_token = expect(p, TokenType::ThreeDots);
-            Ast *param_ast = ast_alloc(AstType_ParamDecl, dots_token);
-            param_ast->ParamDecl.name = dots_token.token_str;
-            param_ast->ParamDecl.type_ast = nullptr;
-            param_ast->ParamDecl.is_var_arg = true;
-            out_params.push_back(param_ast);
-            out_must_be_c_fn = true;
+            Token dots = expect(p, TokenType::ThreeDots);
+            Ast *param = ast_alloc(AstType_ParamDecl, dots);
+            param->ParamDecl.name = dots.token_str;
+            param->ParamDecl.type_ast = nullptr;
+            param->ParamDecl.is_var_arg = true;
+            out.params.push_back(param);
+            out.must_be_c_fn = true;
             break;
         }
 
-        if(has_named_params) {
-            Token param_name_token = expect(p, TokenType::Ident);
+        if(out.is_named) {
+            Token name = expect(p, TokenType::Ident);
             expect(p, TokenType::Colon);
-            Ast *param_type_ast = parse_type(p);
+            Ast *type_ast = parse_type(p);
 
-            Ast *param_ast = ast_alloc(AstType_ParamDecl, param_name_token);
-            param_ast->ParamDecl.name = param_name_token.token_str;
-            param_ast->ParamDecl.type_ast = param_type_ast;
-            param_ast->ParamDecl.is_var_arg = false;
-            param_ast->src_loc = merge(param_name_token.src_loc, param_type_ast->src_loc);
-
-            out_params.push_back(param_ast);
+            Ast *param = ast_alloc(AstType_ParamDecl, name);
+            param->ParamDecl.name = name.token_str;
+            param->ParamDecl.type_ast = type_ast;
+            param->src_loc = merge(name.src_loc, type_ast->src_loc);
+            out.params.push_back(param);
         } else {
-            Ast *param_type_ast = parse_type(p);
-
-            out_params.push_back(param_type_ast);
+            out.params.push_back(parse_type(p));
         }
 
         if(curr_token(p).type != TokenType::RightBracket) {
@@ -289,86 +295,113 @@ void parse_func_type(Parser *p, Array<Ast*> &out_params, Ast* &out_return_type_a
         }
     }
 
-    out_rb = expect(p, TokenType::RightBracket);
-
-    out_has_named_params = has_named_params;
-
-    if(curr_token(p).type == TokenType::Arrow) {
-        expect(p, TokenType::Arrow);
-        out_return_type_ast = parse_type(p);
-    } else {
-        out_return_type_ast = nullptr;
-    }
+    out.rb = expect(p, TokenType::RightBracket);
+    return out;
 }
 
-// @deprecated
-Ast *parse_function_value_or_type(Parser *p) {
-    Array<Ast*> params;
-    Ast *return_type_ast;
-    bool must_be_c_fn, has_named_params;
-    Token rb;
-    parse_func_type(p, params, return_type_ast, must_be_c_fn, has_named_params, rb);
+bool parse_function_tail(Parser *p, FunctionTail *out) {
+    if(curr_token(p).type != TokenType::Arrow) {
+        return false;
+    }
+    advance_token(p);
 
-    if(return_type_ast == nullptr) {
-        return_type_ast = ast_alloc(AstType_EasyType, rb);
-        return_type_ast->EasyType.kind = Type_void;
-        return_type_ast->src_loc = rb.src_loc;
+    out->return_type_ast = nullptr;
+    out->infer_return_type = false;
+    if(curr_token(p).type == TokenType::Question) {
+        out->infer_return_type = true;
+        advance_token(p);
+    } else {
+        out->return_type_ast = parse_type(p);
     }
 
-    if(!has_named_params) {
-        for(isize i = 0; i < params.count; i++) {
-            Ast *param_ast = ast_alloc(AstType_ParamDecl, rb);
-            param_ast->ParamDecl.name = xp_string_c("");
-            param_ast->ParamDecl.type_ast = params[i];
-            param_ast->ParamDecl.is_var_arg = false;
-            param_ast->src_loc = params[i]->src_loc;
-            params[i] = param_ast;
-        }
-    }
-
-    bool is_extern_c = false;
+    out->is_extern_c = false;
     if(curr_token(p).type == TokenType::KW_extern_C) {
-        is_extern_c = true;
+        out->is_extern_c = true;
         advance_token(p);
     }
 
-    if(must_be_c_fn && !is_extern_c) {
-        context()->reporter.report_error(
-            merge(rb.src_loc, return_type_ast->src_loc),
-            "functions with variable arguments must be declared as extern C"
-        );
+    out->is_builtin = false;
+    if(curr_token(p).type == TokenType::Hash) {
+        advance_token(p);
+        Token builtin_token = expect(p, TokenType::Ident);
+        if(xp_string_equal(builtin_token.token_str, xp_string_c("builtin"))) {
+            out->is_builtin = true;
+        } else {
+            context()->reporter.report_error(
+                builtin_token.src_loc,
+                "unknown directive '{}', expected 'builtin'",
+                builtin_token.token_str
+            );
+        }
     }
 
-    if(is_extern_c || curr_token(p).type == TokenType::LeftCurlyBracket) {
-        Ast *block_ast = NULL;
-        SourceLocation loc;
-        if(is_extern_c) {
-            loc = merge(rb.src_loc, return_type_ast->src_loc);
-        } else {
-            block_ast = parse_block(p);
-            block_ast->Block.is_function_body = true;
-            loc = merge(rb.src_loc, block_ast->src_loc);
-        }
+    out->last_token = p->tokens[p->curr_token_index - 1];
+    return true;
+}
 
-        Ast *a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
-        a->FunctionDeclValue.params = params;
-        a->FunctionDeclValue.block = block_ast;
-        a->FunctionDeclValue.return_type_ast = return_type_ast;
-        a->FunctionDeclValue.is_extern_c = is_extern_c;
-
+Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tail, bool is_comptime_func) {
+    if(tail.infer_return_type && tail.is_extern_c) {
+        context()->reporter.report_error(pre.rb.src_loc, "extern \"C\" function cannot use '-> ?' to infer return type");
+        Ast *a = ast_alloc(AstType_BadExpr, pre.rb);
+        a->src_loc = pre.rb.src_loc;
         return a;
     }
 
-    Array<Ast *> param_types = make_array<Ast *>(ast_allocator());
-    for(isize i = 0; i < params.count; i++) {
-        param_types.push_back(params[i]->ParamDecl.type_ast);
+    if(!pre.is_named) {
+        for(isize i = 0; i < pre.params.count; i++) {
+            if(pre.params[i]->type != AstType_ParamDecl) {
+                Ast *pd = ast_alloc(AstType_ParamDecl, pre.rb);
+                pd->ParamDecl.name = xp_string_c("");
+                pd->ParamDecl.type_ast = pre.params[i];
+                pd->ParamDecl.is_var_arg = false;
+                pd->src_loc = pre.params[i]->src_loc;
+                pre.params[i] = pd;
+            }
+        }
     }
 
-    SourceLocation loc = merge(rb.src_loc, return_type_ast->src_loc);
-    Ast *a = ast_alloc(AstType_FunctionType, rb, loc);
-    a->FunctionType.param_types = param_types;
-    a->FunctionType.return_type_ast = return_type_ast;
+    Ast *body = nullptr;
+    SourceLocation loc;
+    if(tail.is_extern_c || tail.is_builtin) {
+        loc = merge(lb.src_loc, tail.last_token.src_loc);
+    } else {
+        body = parse_block(p);
+        body->Block.is_function_body = true;
+        loc = merge(lb.src_loc, body->src_loc);
+    }
 
+    Ast *a = ast_alloc(AstType_FunctionDeclValue, pre.rb, loc);
+    a->FunctionDeclValue.params = pre.params;
+    a->FunctionDeclValue.block = body;
+    a->FunctionDeclValue.return_type_ast = tail.return_type_ast;
+    a->FunctionDeclValue.is_extern_c = tail.is_extern_c;
+    a->FunctionDeclValue.is_builtin = tail.is_builtin;
+    a->FunctionDeclValue.infer_return_type = tail.infer_return_type;
+    a->FunctionDeclValue.is_comptime = is_comptime_func;
+    return a;
+}
+
+Ast *parse_function_type(Parser *p, Token lb, ParsedParams pre, FunctionTail tail) {
+    if(tail.infer_return_type) {
+        context()->reporter.report_error(pre.rb.src_loc, "pure function type cannot use '-> ?' to infer return type");
+        Ast *a = ast_alloc(AstType_BadExpr, pre.rb);
+        a->src_loc = pre.rb.src_loc;
+        return a;
+    }
+
+    Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
+    if(pre.is_named) {
+        for(isize i = 0; i < pre.params.count; i++) {
+            param_types.push_back(pre.params[i]->ParamDecl.type_ast);
+        }
+    } else {
+        param_types = pre.params;
+    }
+
+    Ast *a = ast_alloc(AstType_FunctionType, lb);
+    a->FunctionType.param_types = param_types;
+    a->FunctionType.return_type_ast = tail.return_type_ast;
+    a->src_loc = merge(lb.src_loc, tail.return_type_ast->src_loc);
     return a;
 }
 
@@ -976,169 +1009,44 @@ Ast *parse_expr_factor(Parser *p) {
         } break;
         
 
-        // TODO: CLEAN 
         // (expr)
-        // (ident, ...) -> ident
-        // (<$> ident: ident, ...) -> ident/? { ...(body) }
+        // (params...) -> type
+        // $(params...) -> type { ... }
         case TokenType::LeftBracket:
         case TokenType::Dollar: {
             bool is_comptime_func = false;
-            if (curr.type == TokenType::Dollar) {
+            if(curr.type == TokenType::Dollar) {
                 advance_token(p);
                 is_comptime_func = true;
             }
             Token lb = expect(p, TokenType::LeftBracket);
 
-            bool is_named = false;
-            if (curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
-                Token first = curr_token(p);
-                if (first.type == TokenType::Ident && peek_token(p, 1).type == TokenType::Colon) {
-                    is_named = true;
-                }
-            }
+            ParsedParams pre = parse_param_list(p);
 
-            Array<Ast*> params = make_array<Ast*>(ast_allocator());
-            bool must_be_c_fn = false;
+            FunctionTail tail = {};
+            bool has_arrow = parse_function_tail(p, &tail);
 
-            while (!reach_end(p) && curr_token(p).type != TokenType::RightBracket) {
-                if (curr_token(p).type == TokenType::ThreeDots) {
-                    Token dots = expect(p, TokenType::ThreeDots);
-                    Ast *param = ast_alloc(AstType_ParamDecl, dots);
-                    param->ParamDecl.name = dots.token_str;
-                    param->ParamDecl.type_ast = nullptr;
-                    param->ParamDecl.is_var_arg = true;
-                    params.push_back(param);
-                    must_be_c_fn = true;
-                    break;
-                }
-
-                if (is_named) {
-                    Token name = expect(p, TokenType::Ident);
-                    expect(p, TokenType::Colon);
-                    Ast *type_ast = parse_type(p);
-
-                    Ast *param = ast_alloc(AstType_ParamDecl, name);
-                    param->ParamDecl.name = name.token_str;
-                    param->ParamDecl.type_ast = type_ast;
-                    param->src_loc = merge(name.src_loc, type_ast->src_loc);
-                    params.push_back(param);
+            if(!has_arrow) {
+                if(pre.params.count == 1 && !pre.must_be_c_fn && !pre.is_named) {
+                    a = pre.params[0];  // (expr)
                 } else {
-                    params.push_back(parse_type(p));
+                    report_unexpected(p, "-> (function type) or single expression");
+                    a = ast_alloc(AstType_BadExpr, pre.rb);
+                    a->src_loc = pre.rb.src_loc;
                 }
-
-                if (curr_token(p).type != TokenType::RightBracket) {
-                    expect(p, TokenType::Comma);
-                }
-            }
-
-            Token rb = expect(p, TokenType::RightBracket);
-
-            if (curr_token(p).type == TokenType::Arrow) {
-                advance_token(p);
-
-                Ast *return_type_ast = nullptr;
-                bool infer_return_type = false;
-                if(curr_token(p).type == TokenType::Question) {
-                    infer_return_type = true;
-                    advance_token(p);
-                } else {
-                    return_type_ast = parse_type(p);
-                }
-
-                bool is_extern_c = false;
-                if (curr_token(p).type == TokenType::KW_extern_C) {
-                    is_extern_c = true;
-                    advance_token(p);
-                }
-
-                bool is_builtin = false;
-                if (curr_token(p).type == TokenType::Hash) {
-                    advance_token(p);
-                    Token builtin_token = expect(p, TokenType::Ident);
-                    if (xp_string_equal(builtin_token.token_str, xp_string_c("builtin"))) {
-                        is_builtin = true;
-                    } else {
-                        context()->reporter.report_error(
-                            builtin_token.src_loc,
-                            "unknown directive '{}', expected 'builtin'",
-                            builtin_token.token_str
-                        );
-                    }
-                }
-
-                if (must_be_c_fn && !is_extern_c) {
+            } else {
+                if(pre.must_be_c_fn && !tail.is_extern_c) {
                     context()->reporter.report_error(
-                        merge(rb.src_loc, return_type_ast->src_loc),
+                        merge(pre.rb.src_loc, tail.last_token.src_loc),
                         "functions with variable arguments must be declared as extern C"
                     );
                 }
 
-                if (is_extern_c || is_builtin || curr_token(p).type == TokenType::LeftCurlyBracket) {
-                    if(infer_return_type && is_extern_c) {
-                        context()->reporter.report_error(rb.src_loc, "extern \"C\" function cannot use '-> ?' to infer return type");
-                        a = ast_alloc(AstType_BadExpr, rb);
-                        a->src_loc = rb.src_loc;
-                        break;
-                    }
-                    if (!is_named) {
-                        for (isize i = 0; i < params.count; i++) {
-                            if (params[i]->type != AstType_ParamDecl) {
-                                Ast *pd = ast_alloc(AstType_ParamDecl, rb);
-                                pd->ParamDecl.name = xp_string_c("");
-                                pd->ParamDecl.type_ast = params[i];
-                                pd->ParamDecl.is_var_arg = false;
-                                pd->src_loc = params[i]->src_loc;
-                                params[i] = pd;
-                            }
-                        }
-                    }
-
-                    Ast *body = nullptr;
-                    SourceLocation loc;
-                    if (is_extern_c || is_builtin) {
-                        loc = merge(lb.src_loc, return_type_ast->src_loc);
-                    } else {
-                        body = parse_block(p);
-                        body->Block.is_function_body = true;
-                        loc = merge(lb.src_loc, body->src_loc);
-                    }
-
-                    a = ast_alloc(AstType_FunctionDeclValue, rb, loc);
-                    a->FunctionDeclValue.params = params;
-                    a->FunctionDeclValue.block = body;
-                    a->FunctionDeclValue.return_type_ast = return_type_ast;
-                    a->FunctionDeclValue.is_extern_c = is_extern_c;
-                    a->FunctionDeclValue.is_builtin = is_builtin;
-                    a->FunctionDeclValue.infer_return_type = infer_return_type;
-
-                    a->FunctionDeclValue.is_comptime = is_comptime_func;
+                if(tail.is_extern_c || tail.is_builtin || curr_token(p).type == TokenType::LeftCurlyBracket) {
+                    a = parse_function_decl(p, lb, pre, tail, is_comptime_func);
                 } else {
-                    if(infer_return_type) {
-                        context()->reporter.report_error(rb.src_loc, "pure function type cannot use '-> ?' to infer return type");
-                        a = ast_alloc(AstType_BadExpr, rb);
-                        a->src_loc = rb.src_loc;
-                    } else {
-                        Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
-                        if (is_named) {
-                            for (isize i = 0; i < params.count; i++) {
-                                param_types.push_back(params[i]->ParamDecl.type_ast);
-                            }
-                        } else {
-                            param_types = params;
-                        }
-
-                        a = ast_alloc(AstType_FunctionType, lb);
-                        a->FunctionType.param_types = param_types;
-                        a->FunctionType.return_type_ast = return_type_ast;
-                        a->src_loc = merge(lb.src_loc, return_type_ast->src_loc);
-                    }
+                    a = parse_function_type(p, lb, pre, tail);
                 }
-            } else if (params.count == 1 && !must_be_c_fn && !is_named) {
-                a = params[0];  // (expr)
-            } else {
-                report_unexpected(p, "-> (function type) or single expression");
-                a = ast_alloc(AstType_BadExpr, rb);
-                a->src_loc = rb.src_loc;
             }
         } break;
 
