@@ -980,8 +980,26 @@ Ast *parse_expr_factor(Parser *p) {
         // (expr)
         // (ident, ...) -> ident
         // (<$> ident: ident, ...) -> ident/? { ...(body) }
-        case TokenType::LeftBracket:
+        // $T → generic type param reference
         case TokenType::Dollar: {
+            // Check if this is $Ident (generic type param) vs $(/[$ (comptime func)
+            if(peek_token(p, 0).type == TokenType::Ident) {
+                // Check if it's $Ident: (param decl) — still comptime func
+                // vs $Ident (type param ref)
+                if(peek_token(p, 1).type != TokenType::Colon) {
+                    // $T → generic type param reference
+                    Token dollar = curr;
+                    advance_token(p); // consume $
+                    Token ident = expect(p, TokenType::Ident);
+                    a = ast_alloc(AstType_GenericTypeParam, dollar);
+                    a->GenericTypeParam.name = ident.token_str;
+                    a->src_loc = merge(dollar.src_loc, ident.src_loc);
+                    break;
+                }
+            }
+            // fall through to comptime func parsing
+        }
+        case TokenType::LeftBracket: {
             bool is_comptime_func = false;
             if (curr.type == TokenType::Dollar) {
                 advance_token(p);
@@ -1112,6 +1130,91 @@ Ast *parse_expr_factor(Parser *p) {
                     a->FunctionDeclValue.infer_return_type = infer_return_type;
 
                     a->FunctionDeclValue.is_comptime = is_comptime_func;
+
+                    // ── 泛型脱糖：$T 参数 → 隐藏的 $(T: type) comptime 参数 ──
+                    // 检测是否有 $T 类型的参数
+                    Array<xpString> generic_names = make_array<xpString>(ast_allocator());
+                    {
+                        Array<xpString> seen = make_array<xpString>(ast_allocator());
+                        for(isize i = 0; i < params.count; i++) {
+                            Ast *p = params[i];
+                            if(p->type != AstType_ParamDecl) continue;
+                            Ast *ty = p->ParamDecl.type_ast;
+                            if(ty != nullptr && ty->type == AstType_GenericTypeParam) {
+                                xpString gname = ty->GenericTypeParam.name;
+                                bool found = false;
+                                for(auto& n : seen) { if(n == gname) { found = true; break; } }
+                                if(!found) {
+                                    seen.push_back(gname);
+                                    generic_names.push_back(gname);
+                                }
+                            }
+                        }
+                    }
+
+                    if(generic_names.count > 0) {
+                        // 0. 记录每个泛型名对应的首个用户参数下标（用于调用点推断）
+                        a->FunctionDeclValue.generic_source_arg_indices = make_array<isize>(ast_allocator());
+                        for(isize g = 0; g < generic_names.count; g++) {
+                            xpString gname = generic_names[g];
+                            isize source_idx = -1;
+                            for(isize i = 0; i < params.count; i++) {
+                                Ast *pp = params[i];
+                                if(pp->type != AstType_ParamDecl) continue;
+                                Ast *ty = pp->ParamDecl.type_ast;
+                                if(ty != nullptr && ty->type == AstType_GenericTypeParam && ty->GenericTypeParam.name == gname) {
+                                    source_idx = i;
+                                    break;
+                                }
+                            }
+                            a->FunctionDeclValue.generic_source_arg_indices.push_back(source_idx);
+                        }
+
+                        // 1. 替换所有 GenericTypeParam 节点为 Ident（让 CIRBuilder 能正常解析）
+                        for(isize i = 0; i < params.count; i++) {
+                            Ast *p = params[i];
+                            if(p->type != AstType_ParamDecl) continue;
+                            Ast *ty = p->ParamDecl.type_ast;
+                            if(ty != nullptr && ty->type == AstType_GenericTypeParam) {
+                                Ast *ident = ast_alloc(AstType_Ident, ty->token);
+                                ident->Ident.name = ty->GenericTypeParam.name;
+                                ident->src_loc = ty->src_loc;
+                                p->ParamDecl.type_ast = ident;
+                            }
+                        }
+                        // 返回类型中的 $T 也要替换
+                        if(return_type_ast != nullptr && return_type_ast->type == AstType_GenericTypeParam) {
+                            Ast *ident = ast_alloc(AstType_Ident, return_type_ast->token);
+                            ident->Ident.name = return_type_ast->GenericTypeParam.name;
+                            ident->src_loc = return_type_ast->src_loc;
+                            return_type_ast = ident;
+                            a->FunctionDeclValue.return_type_ast = return_type_ast;
+                        }
+
+                        // 2. 在 params 头部插入隐藏的 (T: type) 参数
+                        Array<Ast*> new_params = make_array<Ast*>(ast_allocator());
+                        for(isize g = 0; g < generic_names.count; g++) {
+                            xpString gname = generic_names[g];
+                            Ast *type_node = ast_alloc(AstType_EasyType);
+                            type_node->EasyType.kind = Type_type;
+                            type_node->src_loc = a->src_loc;
+
+                            Ast *hidden_param = ast_alloc(AstType_ParamDecl, a->token);
+                            hidden_param->ParamDecl.name = gname;
+                            hidden_param->ParamDecl.type_ast = type_node;
+                            hidden_param->ParamDecl.is_var_arg = false;
+                            hidden_param->src_loc = a->src_loc;
+
+                            new_params.push_back(hidden_param);
+                        }
+                        for(isize i = 0; i < params.count; i++) {
+                            new_params.push_back(params[i]);
+                        }
+                        a->FunctionDeclValue.params = new_params;
+
+                        // 3. 标记为 comptime
+                        a->FunctionDeclValue.is_comptime = true;
+                    }
                 } else {
                     if(infer_return_type) {
                         context()->reporter.report_error(rb.src_loc, "pure function type cannot use '-> ?' to infer return type");

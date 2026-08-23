@@ -2248,6 +2248,56 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
 
     auto& param_types = called_type->function_info.param_types;
 
+    // ── 泛型函数推断：如果实参数量 < 形参数量，且首个形参是 type，
+    //    说明是 $T 泛型调用，从指定的实参推断类型并插入 ──
+    bool is_generic_call = false;
+    Array<CIRInstructionRef> synthetic_arg_insts = call_info.arg_insts;  // 可能被修改的副本
+    if(has_result_val(called_inst) && !param_types.empty() && param_types[0] == easy_type(Type_type)) {
+        isize arg_count = call_info.arg_insts.count;
+        isize user_param_count = 0;  // 用户可见的参数数量（不含隐藏的 type 参数）
+        for(isize i = 1; i < param_types.count; i++) {
+            if(param_types[i] != easy_type(Type_var_arg_c)) user_param_count++;
+        }
+        if(arg_count == user_param_count || arg_count == param_types.count - 1) {
+            // 泛型调用：从第一个实参推断类型
+            is_generic_call = true;
+        }
+    }
+
+    // 如果是泛型调用，构建合成参数列表（类型参数 + 原始实参）
+    Array<CIRInstructionRef> effective_arg_insts = call_info.arg_insts;
+    if(is_generic_call) {
+        // 获取函数信息以确定从哪个实参推断类型
+        Value called_val = ResultValue(called_inst);
+        FuncValue fv = called_val.func_val();
+        CIRFunctionDeclInfo& func_info = fv.func_key.inst()->info<CIROperator::FunctionDecl>();
+
+        // 确定推断源参数下标（默认0，即第一个用户参数）
+        isize infer_from_user_arg = 0;
+        if(!func_info.generic_source_arg_indices.empty()) {
+            infer_from_user_arg = func_info.generic_source_arg_indices[0];
+        }
+
+        // 从指定的实参推断类型
+        CIRInstructionRef source_arg = call_info.arg_insts[infer_from_user_arg];
+        TypeRef inferred_type = ResultType(source_arg);
+
+        // 构造类型常量指令：将 inferred_type 包装为 type 类型的值
+        Value type_val = make_value(type_type());
+        type_val.type_val(inferred_type);
+        auto type_const = Make_Instruction<CIROperator::ConstantValue>(inst(pc_ref), { .value = type_val });
+
+        // 手动写入分析结果，使 has_result_val 通过
+        result_context().result_of(type_const).set_val(type_val);
+
+        // 合成参数列表：[type_const, arg0, arg1, ...]
+        effective_arg_insts = make_array<CIRInstructionRef>(stage_allocator());
+        effective_arg_insts.push_back(type_const);
+        for(isize i = 0; i < call_info.arg_insts.count; i++) {
+            effective_arg_insts.push_back(call_info.arg_insts[i]);
+        }
+    }
+
     // 参数数量检查
     isize non_var_arg_count = 0;
     bool has_var_arg = false;
@@ -2259,7 +2309,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         }
     }
 
-    isize arg_count = call_info.arg_insts.count;
+    isize arg_count = effective_arg_insts.count;
     if(has_var_arg) {
         if(arg_count < non_var_arg_count) {
             return make_result(pc_ref, inst_error(pc_ref, "实参过少：至少需要 {} 个，实际 {} 个", non_var_arg_count, arg_count));
@@ -2322,7 +2372,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
             switch(fv.builtin_kind) {
                 case BuiltinKind::None: break;
                 case BuiltinKind::SizeOf: {
-                    Value arg_val = ResultValue(call_info.arg_insts[0]);
+                    Value arg_val = ResultValue(effective_arg_insts[0]);
                     TypeRef target_type = arg_val.type_val();
                     isize size = type_size_of(target_type);
                     Value result = make_value(easy_type(Type_usize));
@@ -2335,7 +2385,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         isize var_count = func.slot_count;
         isize func_arg_count = func.arg_decl_insts.count;
 
-        if(!has_result_val(call_info.arg_insts)) {
+        if(!has_result_val(effective_arg_insts)) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用实参不是常量的函数")});
             goto end;
         }
@@ -2347,8 +2397,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         };
         Ref<CIRResultInstance> parent_instance;
         if(auto* inst_ptr = curr_instance()) { parent_instance = inst_ptr->ctx.call_instance(); }
-        for(isize i = 0; i < call_info.arg_insts.count; i++) {
-            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::make(pkg, call_info.arg_insts[i], parent_instance));
+        for(isize i = 0; i < effective_arg_insts.count; i++) {
+            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::make(pkg, effective_arg_insts[i], parent_instance));
         }
 
         // 查询编译期函数调用结果缓存
@@ -2371,13 +2421,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         eval_inst.ctx.enter_call(cache_key);
 
         for(isize i = 0; i < func_arg_count; i++) {
-            TypeRef arg_type = ResultType(call_info.arg_insts[i]);
+            TypeRef arg_type = ResultType(effective_arg_insts[i]);
             isize size  = type_serialize_size(arg_type);
             isize align = type_serialize_align(arg_type);
 
             // 副作用：参数内存分配 + 写值（stack_mem 帧内）
             auto ptr = stack_mem.alloc_bytes(size, align);
-            ptr.store(ResultValue(call_info.arg_insts[i]));
+            ptr.store(ResultValue(effective_arg_insts[i]));
 
             eval_inst.var_ptrs[i] = ptr;
         }
@@ -2386,6 +2436,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         push_eval_instance(std::move(eval_inst));
         pkg = callee_pkg;
         // callee 初始 scope 已由 push_eval_instance 压入（nullptr，body 的 EnterScope 会覆盖）
+
+        // ── 递归类型支持：分析函数体前先写入"构建中"占位符 ──
+        // 若函数体递归引用自身（如 HashMapEntry 引用 HashMapEntry），
+        // 递归调用命中缓存时读到此占位符，直接返回 null Value，
+        // 避免无限递归。函数完成后用实际值覆盖。
+        callee_result_instance->result_of(func.body_inst).set_val(Value());
 
         // 副作用：分析 callee 函数体（dispatch 循环，结果写 callee 的 result instance）
         analyze_instruction_at(func.body_inst);

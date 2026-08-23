@@ -163,6 +163,7 @@ struct CIRFunctionDeclInfo {
     bool is_extern_c;                      // 是否是 extern "C" 函数
     bool is_comptime;                      // 是否是编译期函数
     bool is_builtin;                       // 是否是 #builtin 内置函数
+    Array<isize> generic_source_arg_indices; // 泛型脱糖: 每个隐藏 type 参数对应的用户实参下标
 
 
     isize slot_count;               // 局部变量数量（包括参数）

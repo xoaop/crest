@@ -1,0 +1,81 @@
+// @pass
+// @run
+
+// ─── 基本泛型函数：$T 类型参数自动推断 ─────────────────
+
+identity :: (val: $T) -> T {
+    return val;
+}
+
+add :: (a: $T, b: T) -> T {
+    return a + b;
+}
+
+// ─── 多个 $T 参数（同类型）───────────────────────────────
+
+max_val :: (a: $T, b: T) -> T {
+    if a > b {
+        return a;
+    }
+    return b;
+}
+
+// ─── 泛型 + 常规参数混用 ────────────────────────────────
+
+scale :: (val: $T, factor: i32) -> T {
+    return val * cast(T)factor;
+}
+
+// ─── 泛型函数调用另一个泛型函数 ──────────────────────────
+
+double :: (val: $T) -> T {
+    return add(val, val);
+}
+
+main :: () -> i32 {
+    // ─── identity 测试 ──────────────────────────────
+    i_val := identity(42);
+    f_val := identity(3.14);
+    b_val := identity(true);
+    if i_val != 42 { return 1; }
+    if f_val != 3.14 { return 2; }
+    if !b_val { return 3; }
+
+    // ─── add 测试 ───────────────────────────────────
+    sum_i := add(10, 20);
+    sum_f := add(1.5, 2.5);
+    if sum_i != 30 { return 4; }
+    if sum_f != 4.0 { return 5; }
+
+    // ─── max_val 测试 ───────────────────────────────
+    mx_i := max_val(5, 10);
+    mx_f := max_val(3.14, 2.71);
+    if mx_i != 10 { return 6; }
+    if mx_f != 3.14 { return 7; }
+
+    // ─── scale 测试 ─────────────────────────────────
+    s1 := scale(5, 3);
+    s2 := scale(2.0, 4);
+    if s1 != 15 { return 8; }
+    if s2 != 8.0 { return 9; }
+
+    // ─── double（泛型调用泛型）──────────────────────
+    d1 := double(7);
+    d2 := double(2.5);
+    if d1 != 14 { return 10; }
+    if d2 != 5.0 { return 11; }
+
+    // ─── 已有 comptime 泛型仍然正常 ────────────────
+    Array :: $(T: type) -> type {
+        return struct {
+            data: *T;
+            len: i32;
+        };
+    }
+
+    arr: Array(i32);
+    arr.len = 42;
+    if arr.len != 42 { return 12; }
+
+    return 0;
+}

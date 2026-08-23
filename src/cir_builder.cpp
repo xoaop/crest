@@ -137,6 +137,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
     func.is_extern_c = fd->FunctionDeclValue.is_extern_c;
     func.is_comptime = fd->FunctionDeclValue.is_comptime;
     func.is_builtin = fd->FunctionDeclValue.is_builtin;
+    func.generic_source_arg_indices = fd->FunctionDeclValue.generic_source_arg_indices;
     func.arg_type_insts = make_array<CIRInstructionRef>(permanent_allocator());
     func.arg_decl_insts = make_array<CIRInstructionRef>(permanent_allocator());
 

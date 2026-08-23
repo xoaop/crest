@@ -1,0 +1,25 @@
+// @pass
+// 递归类型定义：HashMapEntry 自引用
+
+HashMapEntry :: $(key_type: type, value_type: type) -> type {
+    return struct {
+        key: key_type;
+        value: value_type;
+        next: *HashMapEntry(key_type, value_type);
+    };
+}
+
+main :: () -> i32 {
+    // 使用递归类型
+    Entry := HashMapEntry(i32, i32);
+
+    e: Entry;
+    e.key = 1;
+    e.value = 100;
+    e.next = null;
+
+    if e.key != 1 { return 1; }
+    if e.value != 100 { return 2; }
+
+    return 0;
+}

@@ -40,6 +40,9 @@ struct Ast;
         Array<Ast *> param_types;                                           \
         Ast *return_type_ast;                                               \
     })                                                                      \
+    AST_INFO(GenericTypeParam, "generic type param", struct {              \
+        xpString name;                                                      \
+    })                                                                      \
     AST_INFO(Ident, "ident", struct {                                       \
         xpString name;                                                      \
     })                                                                      \
@@ -131,6 +134,7 @@ struct Ast;
         bool is_comptime;                                                   \
         bool infer_return_type;                                             \
         bool is_builtin;                                                    \
+        Array<isize> generic_source_arg_indices; /* 泛型脱糖: 每个隐藏 type 参数对应的用户实参下标 */ \
     })                                                                      \
     AST_INFO(StructDeclValue, "struct decl value", struct {                 \
         Array<Ast *> fields;                                                \
