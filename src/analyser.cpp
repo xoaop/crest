@@ -27,13 +27,13 @@
 
 
 struct Analyser {
-    RefN<Package> pkg;
-    RefN<Scope> current_scope;
+    Ref<Package> pkg;
+    Ref<Scope> current_scope;
     AstFile *curr_ast_file;
 };
 
 
-Analyser make_analyser(AstFile *curr_ast_file, RefN<Package> pkg) {
+Analyser make_analyser(AstFile *curr_ast_file, Ref<Package> pkg) {
     Analyser analyser = {};
     analyser.pkg = pkg;
     analyser.current_scope = curr_ast_file->file_scope;
@@ -45,7 +45,7 @@ Analyser make_analyser(AstFile *curr_ast_file, RefN<Package> pkg) {
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, RefN<Package> curr_pkg);
+void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg);
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
 
 
@@ -54,7 +54,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
 //
 // Symbol Collect
 //
-void collect_top_level_symbols_in_package(RefN<Package> pkg) {
+void collect_top_level_symbols_in_package(Ref<Package> pkg) {
     Package* p = &pkg.unwrap();
 
     for(isize i = 0; i < p->ast_files.count; i++) {
@@ -65,7 +65,7 @@ void collect_top_level_symbols_in_package(RefN<Package> pkg) {
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, RefN<Package> curr_pkg) {
+void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg) {
 
     ast_file->file_scope = alloc_scope(&context()->all_scopes, curr_pkg.unwrap().package_scope, ScopeType::File, permanent_allocator());
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
@@ -156,7 +156,7 @@ bool may_fall_through(Ast *ast);
 
 // 注册基础类型符号
 void init_global_symbols() {
-    RefN<Package> blank_pkg{context()->global_blank_package.index};
+    Ref<Package> blank_pkg{context()->global_blank_package.index};
 
     // basic types
     {
@@ -210,7 +210,7 @@ void init_global_symbols() {
 
 
 
-void resolve_ast_package(RefN<Package> pkg) {
+void resolve_ast_package(Ref<Package> pkg) {
     Package* p = &pkg.unwrap();
     
     for(AstFile& ast_file: p->ast_files) {
@@ -219,7 +219,7 @@ void resolve_ast_package(RefN<Package> pkg) {
 }
 
 
-void resolve_package(RefN<Package> pkg) {
+void resolve_package(Ref<Package> pkg) {
     Package *p = &pkg.unwrap();
 
     // 包 scope 创建属于 resolve 阶段：根包＝Global 根（并注册基础类型符号，须在 collect/resolve 前）；
@@ -246,7 +246,7 @@ void resolve_package(RefN<Package> pkg) {
 
 
 Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast, std::optional<Ref<Scope>> parent_scope = std::nullopt) {
-    RefN<Scope> new_scope = alloc_scope(
+    Ref<Scope> new_scope = alloc_scope(
         &context()->all_scopes,
         parent_scope.has_value() ? parent_scope.value() : old_state.current_scope,
         type,
@@ -888,7 +888,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Value parent_value = r.state == CIRResultState::WholeValue ? r.actual_val() : make_value();
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
-        RefN<Package> pkg = parent_value.type->package_info;
+        Ref<Package> pkg = parent_value.type->package_info;
 
         Analyser pkg_analyser = analyser;
         pkg_analyser.current_scope = pkg.unwrap().package_scope;

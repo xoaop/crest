@@ -10,7 +10,7 @@
 //Ast文件定义 - 同时也是单文件级编译单元
 struct AstFile {
     Array<Ast *> top_levels;
-    RefN<Scope> file_scope;
+    Ref<Scope> file_scope;
 
     SourceCode source_code;
 

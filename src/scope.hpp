@@ -69,8 +69,8 @@ struct Scope {
     SymbolTable symbols;
     Ref<Scope> parent;   // 根 scope 无父，可空
 
-    xpHashMap<Ast*, RefN<Scope>> ast_to_scope;
-    Array<RefN<Scope>> children;
+    xpHashMap<Ast*, Ref<Scope>> ast_to_scope;
+    Array<Ref<Scope>> children;
 
     auto begin() { return symbols.symbols.begin(); }
     auto end()   { return symbols.symbols.end(); }
@@ -80,9 +80,9 @@ struct Scope {
 
 
 Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator);
-RefN<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
+Ref<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
 
-void add_sub_scope(Scope *parent, RefN<Scope> child, Ast *owner_ast = nullptr);
+void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 

@@ -19,15 +19,15 @@ Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator) {
     sc.scope_type = type;
     sc.parent = parent;
     sc.symbols = make_symbol_table(allocator);
-    sc.ast_to_scope = xp_hash_map_make<Ast*, RefN<Scope>>(allocator);
-    sc.children = make_array<RefN<Scope>>(allocator);
+    sc.ast_to_scope = xp_hash_map_make<Ast*, Ref<Scope>>(allocator);
+    sc.children = make_array<Ref<Scope>>(allocator);
     return sc;
 }
 
 
-RefN<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast *owner_ast) {
+Ref<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast *owner_ast) {
     all_scopes->push_back(make_scope(parent, type, allocator));
-    RefN<Scope> self{all_scopes->count - 1};
+    Ref<Scope> self{all_scopes->count - 1};
 
     if(parent != Ref<Scope>::INVALID_REF) {
         add_sub_scope(&(*all_scopes)[parent.index], self, owner_ast);
@@ -35,7 +35,7 @@ RefN<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType t
     return self;
 }
 
-void add_sub_scope(Scope *parent, RefN<Scope> child, Ast *owner_ast) {
+void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast) {
     if(owner_ast != nullptr) {
         xp_hash_map_insert(&parent->ast_to_scope, owner_ast, child);
     }
@@ -154,7 +154,7 @@ SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpS
 Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
     XP_ASSERT_DEFAULT(parent != NULL && ast_for_child_scope != NULL);
 
-    RefN<Scope> *child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
+    Ref<Scope> *child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
     if(child_scope != nullptr) {
         return *child_scope;
     }
@@ -179,7 +179,7 @@ void print_scope_tree(Scope *scope, int indent) {
     print_indent(indent);
     println_err("{}", *scope);
 
-    for(RefN<Scope> sub_scope : scope->children) {
+    for(Ref<Scope> sub_scope : scope->children) {
         print_scope_tree(&sub_scope.unwrap(), indent + 1);
     }
 #endif

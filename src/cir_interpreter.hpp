@@ -9,7 +9,7 @@
 //
 // 公共接口
 //
-void analyze_package(RefN<Package> pkg);
+void analyze_package(Ref<Package> pkg);
 
 
 
@@ -61,7 +61,7 @@ struct EvalInstance {
     // 用于恢复调用者上下文
     CIRPackage *caller_pkg = nullptr;
     CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
-    RefN<Scope> caller_scope;
+    Ref<Scope> caller_scope;
 };
 
 
@@ -77,7 +77,7 @@ struct Interpreter {
 
 
 
-    void set_scope(RefN<Scope> scope);
+    void set_scope(Ref<Scope> scope);
 
     void analyze_cir_package(CIRPackage* cir_package);
 
@@ -152,7 +152,7 @@ public:
 
     CIRPackage *pkg;
 
-    RefN<Scope> scope;
+    Ref<Scope> scope;
 
     Array<EvalInstance> instance_stack; // 嵌套调用栈
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）

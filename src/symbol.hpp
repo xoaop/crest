@@ -43,7 +43,7 @@ enum class ValueStoreType {
 struct SymbolInfo {
     xpString name;
     SymbolState state;
-    RefN<Package> package;
+    Ref<Package> package;
     AstFile *file;
     Ast *ast;
 
@@ -72,8 +72,8 @@ public:
     bool is_const_decl_and_func();
 };
 
-SymbolInfo make_symbol(xpString name, Value value, RefN<Package> package, AstFile *file, Ast *ast);
-SymbolInfo make_symbol(xpString name, RefN<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, Value value, Ref<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *ast);
 
 
 

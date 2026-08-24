@@ -21,7 +21,7 @@ struct Package;
 struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
     CIRBlockRef self = -1;          // 本块号（create_block 填）
-    RefN<Package> package_ref;   // 所属包
+    Ref<Package> package_ref;   // 所属包
     
     bool is_comptime;
     bool immediate_eval;
@@ -135,13 +135,13 @@ private:
 
 
 struct CIRPackage {
-    RefN<Package> package_ref;   // 本包在 context()->all_packages 中的编号
+    Ref<Package> package_ref;   // 本包在 context()->all_packages 中的编号
 
 
     CIRBlockRef top_blk;
     Array<CIRBlock> blocks;
 
-    RefN<Scope> package_scope;   // 包级 scope（顶层驱动的初始 scope）
+    Ref<Scope> package_scope;   // 包级 scope（顶层驱动的初始 scope）
 
     Array<xpString> string_literals;
 

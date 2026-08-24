@@ -88,7 +88,7 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
 //
 // 分析入口
 //
-void analyze_package(RefN<Package> pkg) {
+void analyze_package(Ref<Package> pkg) {
     DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
 
     Interpreter interpreter(permanent_allocator());
@@ -398,7 +398,7 @@ void Interpreter::Set_ResultTypeAndValue(CIRInstructionRef ref, Value val) {
 //
 
 
-void Interpreter::set_scope(RefN<Scope> sc) {
+void Interpreter::set_scope(Ref<Scope> sc) {
     scope = sc;
 }
 
@@ -1189,7 +1189,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
 
     if(is_package_type(parent_type)) {
         // 包成员访问: pkg.symbol
-        RefN<Package> pkg_val = parent_type->package_info;
+        Ref<Package> pkg_val = parent_type->package_info;
         SymbolInfo *field_sym = find_symbol_curr(&pkg_val.unwrap().package_scope.unwrap(), info.field_name);
         if(field_sym == nullptr) {
             return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
@@ -1221,7 +1221,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
 
     } else if(TypeRef union_type = get_union_type(parent_type)) {
 
-        RefN<Scope> union_scope = union_type->union_info.union_scope;
+        Ref<Scope> union_scope = union_type->union_info.union_scope;
         TypeRef field_type = nullptr;
         for(const auto& entry : *union_scope) {
             if(xp_string_equal(entry.value.name, info.field_name)) {
@@ -1910,7 +1910,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
     }
 
     // 注册枚举字段到 enum_scope
-    RefN<Scope> enum_scope = enum_type->enum_info.enum_scope;
+    Ref<Scope> enum_scope = enum_type->enum_info.enum_scope;
     i128 next_auto_value = 0;
     for(isize i = 0; i < info.fields.count; i++) {
         auto& ef = info.fields[i];
@@ -2030,7 +2030,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
 
     if(curr_eval_mode() == EvalMode::FullEval || (should_eval_for_lazy_eval({union_decl_inst}) && should_eval_for_lazy_eval(info.field_insts))) {
         TypeRef ut = ResultValue(union_decl_inst).type_val();
-        RefN<Scope> union_scope = ut->union_info.union_scope;
+        Ref<Scope> union_scope = ut->union_info.union_scope;
 
         // 字段符号已由 FinishUnion 填充 → 跳过（重入/缓存命中）
         bool already_finished = false;
@@ -2424,13 +2424,13 @@ end:
 }
 
 std::optional<AnalyzeResult> Interpreter::analyze_EnterScope(CIREnterScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    RefN<Scope> scope = info.scope;
+    Ref<Scope> scope = info.scope;
     set_scope(scope);
     return std::nullopt;
 }
 
 std::optional<AnalyzeResult> Interpreter::analyze_ExitScope(CIRExitScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    RefN<Scope> scope = info.scope;
+    Ref<Scope> scope = info.scope;
     set_scope(scope);
     return std::nullopt;
 }
@@ -2560,7 +2560,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_ImportPackage(CIRImportPackage
         return make_result(pc_ref, inst_error(pc_ref, "找不到包 '{}'", info.path));
     }
 
-    RefN<Package> pkg_ref{pkg_opt.unwrap().index};
+    Ref<Package> pkg_ref{pkg_opt.unwrap().index};
     Value v = make_value(package_type(pkg_ref));
     v.package_val(pkg_ref);
     return make_result(pc_ref, CIRInstResult::make_value(v.type, v));

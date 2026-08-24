@@ -17,7 +17,7 @@
 
 
 
-bool compile_package(RefN<Package> pkg_ref);
+bool compile_package(Ref<Package> pkg_ref);
 
 // 根据package目录路径得到package
 Package tokenize_and_parse_package(const char *path_of_package_dir);
@@ -92,7 +92,7 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
         pkg.ast_files.push_back(file);
     }
 
-    RefN<Package> ref = add_package(context(), pkg);
+    Ref<Package> ref = add_package(context(), pkg);
 
     // 根包注册为 global_blank_package（scope 创建与基础类型符号在 resolve 阶段处理）
     if(is_root_pkg) {
@@ -110,7 +110,7 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
 
 
 
-bool compile_package(RefN<Package> pkg_ref) {
+bool compile_package(Ref<Package> pkg_ref) {
     resolve_package(pkg_ref);
     xp_arena_allocator_clear(stage_allocator());
 

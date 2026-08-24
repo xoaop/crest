@@ -62,13 +62,3 @@ struct std::hash<Ref<T>> {
 };
 
 
-template<typename T>
-struct RefN : Ref<T> {
-    RefN() = default;
-    explicit constexpr RefN(isize idx) : Ref<T>(idx) {}
-
-    explicit RefN(Ref<T> ref) : Ref<T>(ref) {}
-};
-
-
-
