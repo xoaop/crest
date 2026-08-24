@@ -780,7 +780,7 @@ void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
 }
 
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, RefN<Scope> scope) {
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Ref<Scope> scope) {
     XP_ASSERT_DEFAULT(is_integer_type(elem_type));
 
     Type t{Type_enum};
@@ -795,7 +795,7 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
     return add_type_unique(t);
 }
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, RefN<Scope> scope) {
+TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope> scope) {
     Type t{Type_union};
 
     t.union_info.hash_key = ident.has_value()
@@ -835,7 +835,7 @@ bool type_contains_by_value(TypeRef outer, TypeRef inner) {
             }
             return false;
         case Type_union: {
-            RefN<Scope> scope = outer->union_info.union_scope;
+            Ref<Scope> scope = outer->union_info.union_scope;
             for(const auto& entry : *scope) {
                 if(type_contains_by_value(union_field_type(outer, entry.value.name), inner)) {
                     return true;
@@ -863,7 +863,7 @@ TypeRef type_type() {
     return type_type(undefined_type());
 }
 
-TypeRef package_type(RefN<Package> package_info) {
+TypeRef package_type(Ref<Package> package_info) {
     Type t = {};
     t.kind = Type_package;
     t.package_info = package_info;

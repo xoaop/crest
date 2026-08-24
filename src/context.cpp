@@ -8,9 +8,9 @@ Context *context() {
 
 
 
-RefN<Package> add_package(Context *ctx, Package pkg) {
+Ref<Package> add_package(Context *ctx, Package pkg) {
     ctx->all_packages.push_back(pkg);
-    return RefN<Package>{ctx->all_packages.count - 1};
+    return Ref<Package>{ctx->all_packages.count - 1};
 }
 
 Package *try_access_val(const Ref<Package> &r) {

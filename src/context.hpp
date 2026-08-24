@@ -40,7 +40,7 @@ struct Context {
     ThreadPool *thread_pool;
 };
 
-RefN<Package> add_package(Context *ctx, Package pkg);
+Ref<Package> add_package(Context *ctx, Package pkg);
 
 
 CIRInstruction* inst(CIRInstructionRef ref);

@@ -23,7 +23,7 @@ struct Package {
     // ast build
     //
     Array<AstFile> ast_files;
-    RefN<Scope> package_scope;
+    Ref<Scope> package_scope;
 
 
     //

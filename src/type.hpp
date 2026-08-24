@@ -139,14 +139,14 @@ struct Type {
         // 枚举
         struct {
             TypeRef element_type; // 枚举成员的类型
-            RefN<Scope> enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
+            Ref<Scope> enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
             TypeHashKey hash_key;
         } enum_info;
 
 
         // 联合体
         struct {
-            RefN<Scope> union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
+            Ref<Scope> union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
             Ref<CIRResultInstance> creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；INVALID = 包级）
             TypeHashKey hash_key;
         } union_info;
@@ -156,7 +156,7 @@ struct Type {
         TypeRef self_type_info;
 
         // package类型
-        RefN<Package> package_info;
+        Ref<Package> package_info;
     };
 
     // *重要: 用于hash set比较Type, 不然会出问题
@@ -340,7 +340,7 @@ TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
 TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields);
 TypeRef type_type();
-TypeRef package_type(RefN<Package> package_info);
+TypeRef package_type(Ref<Package> package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 
@@ -350,9 +350,9 @@ TypeRef unfinished_anonymous_struct_type(Ast *decl);
 TypeRef unfinished_struct_type(Ast *decl, xpString ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, RefN<Scope> scope);
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Ref<Scope> scope);
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, RefN<Scope> scope);
+TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope> scope);
 TypeRef union_field_type(TypeRef union_type, xpString field_name);   // 按创建实例解析字段类型
 bool type_contains_by_value(TypeRef outer, TypeRef inner);   // 判断 outer 是否按值包含 inner（指针处截断）
 

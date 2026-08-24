@@ -61,7 +61,7 @@ LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, 
     return xp_hash_map_insert(&ir_syms->local_vals, symbol_ref, val);
 }
 
-void LLVMGenerator::init(RefN<Package> pkg_ref, xpAllocator allocator) {
+void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     Package *pkg = &pkg_ref.unwrap();
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
     unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
@@ -274,7 +274,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             LLVMTypeRef *union_type = xp_hash_map_insert(&union_types, key, struct_ty);
 
             // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，与解释器布局一致
-            RefN<Scope> scope = type->union_info.union_scope;
+            Ref<Scope> scope = type->union_info.union_scope;
             if(scope->symbols.symbols.count == 0) {
                 // 空 union：退化空 struct
                 LLVMStructSetBody(*union_type, nullptr, 0, 0);
@@ -347,7 +347,7 @@ Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerate
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
     for(isize i = 0; i < all_packages->count; i++) {
         LLVMGenerator gen;
-        gen.init(RefN<Package>{i}, stage_allocator());
+        gen.init(Ref<Package>{i}, stage_allocator());
         defer(gen.deinit());
         obj_paths.push_back(gen.gen_ir_package(config));
     }

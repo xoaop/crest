@@ -258,7 +258,7 @@ isize type_serialize_size(TypeRef type) {
                  + type_serialize_size(last.type);
         }
         case Type_union: {
-            RefN<Scope> scope = type->union_info.union_scope;
+            Ref<Scope> scope = type->union_info.union_scope;
             isize max_size = 0;
             isize max_align = 1;
             for(const auto& entry : *scope) {
@@ -293,7 +293,7 @@ isize type_serialize_align(TypeRef type) {
             return type_serialize_align(type->array_info.element_type);
         case Type_union: {
             isize max_align = 1;
-            RefN<Scope> scope = type->union_info.union_scope;
+            Ref<Scope> scope = type->union_info.union_scope;
             for(const auto& entry : *scope) {
                 isize a = type_serialize_align(union_field_type(type, entry.value.name));
                 if(a > max_align) {
@@ -424,7 +424,7 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             auto fields = v.struct_fields_val();
             if(is_union_type(t)) {
                 // union 成员共享 offset 0；写 max-size 成员即覆盖全部语义字节（无损拷贝）
-                RefN<Scope> scope = t->union_info.union_scope;
+                Ref<Scope> scope = t->union_info.union_scope;
                 isize max_idx = 0;
                 isize max_size = 0;
                 isize i = 0;
@@ -555,7 +555,7 @@ Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, 
             return v;
         }
         case Type_union: {
-            RefN<Scope> scope = type->union_info.union_scope;
+            Ref<Scope> scope = type->union_info.union_scope;
             Value v = make_value(type);
             Array<Value> fields = make_array<Value>(allocator);
             for(const auto& entry : *scope) {

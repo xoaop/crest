@@ -53,7 +53,7 @@ struct LLVMModuleState {
 // 目前一个Module就代表一个package
 struct LLVMGenerator {
 
-    void init(RefN<Package> pkg, xpAllocator allocator);
+    void init(Ref<Package> pkg, xpAllocator allocator);
     void deinit();
 
     int size_of_type(TypeRef type);
@@ -103,7 +103,7 @@ public:
     xpHashMap<TypeHashKey, LLVMTypeRef> union_types;
 
 
-    RefN<Package> pkg;
+    Ref<Package> pkg;
 
 
     IRSymbolTable syms;

@@ -308,7 +308,7 @@ struct CIREnumDeclInitInfo {
     CIRInstructionRef tag_type_inst;
     Ast *decl_ast;
     Ref<SymbolInfo> symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
-    RefN<Scope> scope;
+    Ref<Scope> scope;
     Array<EnumFieldInit> fields;
 
     CIR_REFS(&CIREnumDeclInitInfo::tag_type_inst, &CIREnumDeclInitInfo::fields)
@@ -317,7 +317,7 @@ struct CIREnumDeclInitInfo {
 struct CIRGetOrInitUnionInfo {
     Ast *decl_ast;
     Ref<SymbolInfo> symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
-    RefN<Scope> scope;      // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
+    Ref<Scope> scope;      // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
 };
 
 struct CIRFinishUnionInfo {
@@ -418,11 +418,11 @@ struct CIRIndexPtrInfo {
 };
 
 struct CIREnterScopeInfo {
-    RefN<Scope> scope;
+    Ref<Scope> scope;
 };
 
 struct CIRExitScopeInfo {
-    RefN<Scope> scope;
+    Ref<Scope> scope;
 };
 
 struct CIRImportPackageInfo {

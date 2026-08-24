@@ -44,7 +44,7 @@ CIRBuilder::~CIRBuilder() {
 
 
 
-void CIRBuilder::build_cir_package(RefN<Package> pkg_ref) {
+void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
     Package *pkg = &pkg_ref.unwrap();
     curr_scope = pkg->package_scope;
 
@@ -1197,7 +1197,7 @@ bool CIRBuilder::Enter_Scope(Ast *ast) {
         return false;
     }
 
-    RefN<Scope> child_n{child};   // 已验证存在
+    Ref<Scope> child_n{child};   // 已验证存在
     auto ref = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = child_n });
     curr_scope = child_n;
 
@@ -1210,7 +1210,7 @@ void CIRBuilder::Exit_Scope() {
         return;
     }
 
-    RefN<Scope> parent_n{parent.index};   // 已验证存在
+    Ref<Scope> parent_n{parent.index};   // 已验证存在
     auto ref = Make_Instruction<CIROperator::ExitScope>(nullptr, { .scope = parent_n });
     curr_scope = parent_n;
 }
