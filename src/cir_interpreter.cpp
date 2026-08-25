@@ -2248,51 +2248,57 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
 
     auto& param_types = called_type->function_info.param_types;
 
-    // ── 泛型函数推断：如果实参数量 < 形参数量，且首个形参是 type，
-    //    说明是 $T 泛型调用，从指定的实参推断类型并插入 ──
+    // ── 泛型函数推断：如果形参前缀有连续的 type 形参（隐藏的泛型类型参数），
+    //    说明是 $T 泛型调用，从实参推断类型并插入 ──
     bool is_generic_call = false;
-    Array<CIRInstructionRef> synthetic_arg_insts = call_info.arg_insts;  // 可能被修改的副本
+    isize hidden_type_param_count = 0;  // 前缀连续 type 形参的数量
     if(has_result_val(called_inst) && !param_types.empty() && param_types[0] == easy_type(Type_type)) {
-        isize arg_count = call_info.arg_insts.count;
-        isize user_param_count = 0;  // 用户可见的参数数量（不含隐藏的 type 参数）
-        for(isize i = 1; i < param_types.count; i++) {
-            if(param_types[i] != easy_type(Type_var_arg_c)) user_param_count++;
+        for(isize i = 0; i < param_types.count; i++) {
+            if(param_types[i] == easy_type(Type_type)) {
+                hidden_type_param_count++;
+            } else {
+                break;  // 遇到非 type 形参即停止
+            }
         }
-        if(arg_count == user_param_count || arg_count == param_types.count - 1) {
-            // 泛型调用：从第一个实参推断类型
-            is_generic_call = true;
+        if(hidden_type_param_count > 0) {
+            isize arg_count = call_info.arg_insts.count;
+            isize user_param_count = param_types.count - hidden_type_param_count;
+            // 用户传入的实参数 = 用户形参数（普通调用）或少一个（首个 $T 未传类型）
+            if(arg_count == user_param_count || arg_count == param_types.count - 1) {
+                is_generic_call = true;
+            }
         }
     }
 
-    // 如果是泛型调用，构建合成参数列表（类型参数 + 原始实参）
+    // 如果是泛型调用，构建合成参数列表（[type_const_0, ..., type_const_N, arg0, arg1, ...]）
     Array<CIRInstructionRef> effective_arg_insts = call_info.arg_insts;
     if(is_generic_call) {
-        // 获取函数信息以确定从哪个实参推断类型
         Value called_val = ResultValue(called_inst);
         FuncValue fv = called_val.func_val();
         CIRFunctionDeclInfo& func_info = fv.func_key.inst()->info<CIROperator::FunctionDecl>();
 
-        // 确定推断源参数下标（默认0，即第一个用户参数）
-        isize infer_from_user_arg = 0;
-        if(!func_info.generic_source_arg_indices.empty()) {
-            infer_from_user_arg = func_info.generic_source_arg_indices[0];
-        }
-
-        // 从指定的实参推断类型
-        CIRInstructionRef source_arg = call_info.arg_insts[infer_from_user_arg];
-        TypeRef inferred_type = ResultType(source_arg);
-
-        // 构造类型常量指令：将 inferred_type 包装为 type 类型的值
-        Value type_val = make_value(type_type());
-        type_val.type_val(inferred_type);
-        auto type_const = Make_Instruction<CIROperator::ConstantValue>(inst(pc_ref), { .value = type_val });
-
-        // 手动写入分析结果，使 has_result_val 通过
-        result_context().result_of(type_const).set_val(type_val);
-
-        // 合成参数列表：[type_const, arg0, arg1, ...]
         effective_arg_insts = make_array<CIRInstructionRef>(stage_allocator());
-        effective_arg_insts.push_back(type_const);
+
+        // 为每个隐藏 type 形参推断类型并插入 type_const
+        for(isize g = 0; g < hidden_type_param_count; g++) {
+            isize infer_from_user_arg = 0;  // 默认从第一个用户实参推断
+            if(g < func_info.generic_source_arg_indices.count) {
+                infer_from_user_arg = func_info.generic_source_arg_indices[g];
+            }
+            // 下标合法性检查
+            if(infer_from_user_arg < 0 || infer_from_user_arg >= call_info.arg_insts.count) {
+                infer_from_user_arg = 0;
+            }
+
+            TypeRef inferred_type = ResultType(call_info.arg_insts[infer_from_user_arg]);
+
+            Value type_val = make_value(type_type());
+            type_val.type_val(inferred_type);
+            auto type_const = Make_Instruction<CIROperator::ConstantValue>(inst(pc_ref), { .value = type_val });
+            result_context().result_of(type_const).set_val(type_val);
+            effective_arg_insts.push_back(type_const);
+        }
+        // 追加原始用户实参
         for(isize i = 0; i < call_info.arg_insts.count; i++) {
             effective_arg_insts.push_back(call_info.arg_insts[i]);
         }

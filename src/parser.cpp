@@ -1170,26 +1170,43 @@ Ast *parse_expr_factor(Parser *p) {
                             a->FunctionDeclValue.generic_source_arg_indices.push_back(source_idx);
                         }
 
-                        // 1. 替换所有 GenericTypeParam 节点为 Ident（让 CIRBuilder 能正常解析）
-                        for(isize i = 0; i < params.count; i++) {
-                            Ast *p = params[i];
-                            if(p->type != AstType_ParamDecl) continue;
-                            Ast *ty = p->ParamDecl.type_ast;
-                            if(ty != nullptr && ty->type == AstType_GenericTypeParam) {
+                        // 1. 递归替换所有 GenericTypeParam 节点为 Ident（让 CIRBuilder 能正常解析）
+                        //    支持嵌套：*\$T、[$T]T、fn($T)->T 等复杂类型
+                        auto replace_generic_in_type = [&](Ast *&ty, auto& self) -> void {
+                            if(ty == nullptr) return;
+                            if(ty->type == AstType_GenericTypeParam) {
                                 Ast *ident = ast_alloc(AstType_Ident, ty->token);
                                 ident->Ident.name = ty->GenericTypeParam.name;
                                 ident->src_loc = ty->src_loc;
-                                p->ParamDecl.type_ast = ident;
+                                ty = ident;
+                                return;
                             }
+                            switch(ty->type) {
+                                case AstType_PointerType:
+                                    self(ty->PointerType.pointed_type_ast, self);
+                                    break;
+                                case AstType_ArrayType:
+                                    self(ty->ArrayType.element_type_ast, self);
+                                    break;
+                                case AstType_SliceType:
+                                    self(ty->SliceType.element_type_ast, self);
+                                    break;
+                                case AstType_FunctionType:
+                                    for(auto& pt : ty->FunctionType.param_types) self(pt, self);
+                                    self(ty->FunctionType.return_type_ast, self);
+                                    break;
+                                default:
+                                    break;
+                            }
+                        };
+                        for(isize i = 0; i < params.count; i++) {
+                            Ast *p = params[i];
+                            if(p->type != AstType_ParamDecl) continue;
+                            replace_generic_in_type(p->ParamDecl.type_ast, replace_generic_in_type);
                         }
-                        // 返回类型中的 $T 也要替换
-                        if(return_type_ast != nullptr && return_type_ast->type == AstType_GenericTypeParam) {
-                            Ast *ident = ast_alloc(AstType_Ident, return_type_ast->token);
-                            ident->Ident.name = return_type_ast->GenericTypeParam.name;
-                            ident->src_loc = return_type_ast->src_loc;
-                            return_type_ast = ident;
-                            a->FunctionDeclValue.return_type_ast = return_type_ast;
-                        }
+                        // 返回类型中的 $T 也要递归替换
+                        replace_generic_in_type(return_type_ast, replace_generic_in_type);
+                        a->FunctionDeclValue.return_type_ast = return_type_ast;
 
                         // 2. 在 params 头部插入隐藏的 (T: type) 参数
                         Array<Ast*> new_params = make_array<Ast*>(ast_allocator());

@@ -32,6 +32,18 @@ double :: (val: $T) -> T {
     return add(val, val);
 }
 
+// ─── 多泛型类型参数 ──────────────────────────────────────
+
+swap_pair :: (a: $T, b: $U) -> type {
+    return U;
+}
+
+// ─── 嵌套类型 *$T ───────────────────────────────────────
+
+get_deref :: (ptr: *$T) -> T {
+    return ^ptr;
+}
+
 main :: () -> i32 {
     // ─── identity 测试 ──────────────────────────────
     i_val := identity(42);
@@ -65,6 +77,17 @@ main :: () -> i32 {
     if d1 != 14 { return 10; }
     if d2 != 5.0 { return 11; }
 
+    // ─── 多泛型类型参数 ─────────────────────────────
+    v1 := swap_pair(42, cast(i64)100);
+    v2 := swap_pair(1.0f32, true);
+    if v1 != cast(i64)100 { return 12; }
+    if !v2 { return 13; }
+
+    // ─── 嵌套类型 *$T ──────────────────────────────
+    x: i32 = 99;
+    y := get_deref(&x);
+    if y != 99 { return 14; }
+
     // ─── 已有 comptime 泛型仍然正常 ────────────────
     Array :: $(T: type) -> type {
         return struct {
@@ -75,7 +98,7 @@ main :: () -> i32 {
 
     arr: Array(i32);
     arr.len = 42;
-    if arr.len != 42 { return 12; }
+    if arr.len != 42 { return 15; }
 
     return 0;
 }
