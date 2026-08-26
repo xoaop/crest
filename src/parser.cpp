@@ -1012,13 +1012,40 @@ Ast *parse_expr_factor(Parser *p) {
         // (expr)
         // (params...) -> type
         // $(params...) -> type { ... }
+        // $T
         case TokenType::LeftBracket:
         case TokenType::Dollar: {
             bool is_comptime_func = false;
+
             if(curr.type == TokenType::Dollar) {
-                advance_token(p);
-                is_comptime_func = true;
+                expect(p, TokenType::Dollar);
+
+                auto curr_tk = curr_token(p);
+
+                // $(...) ... or $T
+                if(curr_tk.type == TokenType::LeftBracket) {
+
+                    is_comptime_func = true;
+
+                } else if(curr_tk.type == TokenType::Ident) {
+                    expect(p, TokenType::Ident);
+
+                    a = ast_alloc(AstType_TypeVariableDeclInParam, curr_tk);
+                    a->TypeVariableDeclInParam.name = curr_tk.token_str;
+                    a->src_loc = merge(curr.src_loc, curr_tk.src_loc);
+                    
+                    break;
+                } else {
+
+                    // @todo: 不太准
+                    report_unexpected(p, "'(' after '$'");
+
+                    a = ast_alloc(AstType_BadExpr, curr_tk);
+                    break;
+                }
+
             }
+
             Token lb = expect(p, TokenType::LeftBracket);
 
             ParsedParams pre = parse_param_list(p);
