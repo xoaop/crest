@@ -75,16 +75,6 @@ void Value::func_val_key(Ref<CIRInstResult> key) {
     this->func_value.func_key = key;
 }
 
-Value* Value::ref_val() const {
-    ASSERT(actual_value_type == ActualValueType::Reference);
-    return ref_value;
-}
-
-void Value::ref_val(Value* ref) {
-    actual_value_type = ActualValueType::Reference;
-    ref_value = ref;
-}
-
 
 i128 Value::integer_val() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Integer);
@@ -217,7 +207,6 @@ Value clone_value(const Value& v, xpAllocator allocator) {
             copy.array_element_values(elems);
         } break;
         case ActualValueType::Nothing: break;
-        case ActualValueType::Reference: ASSERT(false && "Reference not implemented"); break;
     }
     return copy;
 }
@@ -465,9 +454,6 @@ void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
             if (size > 0) memset(&bytes[offset], 0, (size_t)size);
             break;
         }
-        case ActualValueType::Reference: {
-            ASSERT(false && "Reference not implemented");
-        } break;
     }
 }
 

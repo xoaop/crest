@@ -16,6 +16,8 @@ Scope *try_access_val(const Ref<Scope> &r);
 //
 xpAllocator permanent_allocator();
 xpAllocator temp_allocator();
+
+// @deprecated: 现在只有 llvm backend 使用了, 后面换成Package的stage_allocator即可
 xpAllocator stage_allocator();
 
 void global_allocators_init();

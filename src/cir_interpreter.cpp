@@ -88,21 +88,23 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
 //
 // 分析入口
 //
-void analyze_package(Ref<Package> pkg) {
+void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
     DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
 
-    Interpreter interpreter(permanent_allocator());
-    interpreter.analyze_cir_package(&pkg.unwrap().cir_package);
+    Interpreter interpreter(allocator);
+    interpreter.analyze_cir_package(pkg);
 }
 
 //
 // interp 入口
 //
-void Interpreter::analyze_cir_package(CIRPackage* cir_package) {
-    pkg = cir_package;
+void Interpreter::analyze_cir_package(Ref<Package> pkg_ref) {
+    this->pkg_ref = pkg_ref;
+
+    pkg = &pkg_ref->cir_package;
 
     auto root = EvalInstance{};
-    root.ctx = CIRResultContext::create(cir_package);
+    root.ctx = CIRResultContext::create(pkg);
     instance_stack.push_back(root);
 
     inst_stack.clear();
@@ -130,7 +132,7 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         }
     }
 
-    auto dep_arr = deps_of(inst, stage_allocator());
+    auto dep_arr = deps_of(inst, pkg_ref->stage_allocator);
 
     std::optional<AnalyzeResult> result_opt = std::nullopt;
 

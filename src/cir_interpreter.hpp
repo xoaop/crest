@@ -9,7 +9,7 @@
 //
 // 公共接口
 //
-void analyze_package(Ref<Package> pkg);
+void analyze_package(Ref<Package> pkg, xpAllocator allocator);
 
 
 
@@ -79,7 +79,7 @@ struct Interpreter {
 
     void set_scope(Ref<Scope> scope);
 
-    void analyze_cir_package(CIRPackage* cir_package);
+    void analyze_cir_package(Ref<Package> pkg_ref);
 
     void analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
     void analyze_instruction_at(CIRInstructionRef at_ref);
@@ -150,6 +150,7 @@ struct Interpreter {
 
 public:
 
+    Ref<Package> pkg_ref;
     CIRPackage *pkg;
 
     Ref<Scope> scope;

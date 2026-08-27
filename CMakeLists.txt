@@ -13,6 +13,7 @@ endif()
 
 file(GLOB CREST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/value/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/thread_pool/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/internal/*.cpp"
@@ -24,6 +25,7 @@ add_executable(crest ${CREST_SOURCES})
 # main.cpp 直接引 llvm_generate_ir.hpp
 target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend")
 
 # 所有配置：禁用异常 + i128 支持
