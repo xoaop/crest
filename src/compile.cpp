@@ -111,28 +111,36 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
 
 
 bool compile_package(Ref<Package> pkg_ref) {
+    auto& pkg = pkg_ref.unwrap();
+
+    xp_arena_init_default(&pkg.stage_arena);
+    pkg.stage_allocator = xp_arena_allocator(&pkg.stage_arena);
+
     resolve_package(pkg_ref);
-    xp_arena_allocator_clear(stage_allocator());
+    xp_arena_allocator_clear(pkg.stage_allocator);
 
     // TODO: 分开不同包的错误计数, 目前别的包的错误也在这里统计了, 导致本包即使没有错误也返回false
     // 相当于直接不解析了
     if(context()->reporter.error_count > 0) {
+        xp_arena_allocator_clear(pkg.stage_allocator);
         return false;
     }
 
-    CIRBuilder builder{stage_allocator()};
+    CIRBuilder builder{pkg.stage_allocator};
     builder.build_cir_package(pkg_ref);
-    xp_arena_allocator_clear(stage_allocator());
+    xp_arena_allocator_clear(pkg.stage_allocator);
 
-
-    analyze_package(pkg_ref);
+    analyze_package(pkg_ref, pkg.stage_allocator);
+    xp_arena_allocator_clear(pkg.stage_allocator);
 
     // TODO: 分开不同包的错误计数, 目前别的包的错误也在这里统计了, 导致本包即使没有错误也返回false
     // 相当于直接不解析了
     if(context()->reporter.error_count > 0) {
+        xp_arena_allocator_clear(pkg.stage_allocator);
         return false;
     }
 
+    xp_arena_allocator_clear(pkg.stage_allocator);
     return true;
 }
 

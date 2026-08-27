@@ -16,6 +16,7 @@
 
 
 #include "cir_package.hpp"
+#include "package.hpp"
 
 
 //
@@ -83,6 +84,7 @@ public:
     AstFile *curr_ast_file;
 
     CIRPackage *curr_pkg;
+    Ref<Package> curr_pkg_ref;
     CIRFunctionDeclInfo *curr_func;
     CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     CIRInstructionRef curr_block_inst;

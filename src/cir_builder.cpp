@@ -45,6 +45,8 @@ CIRBuilder::~CIRBuilder() {
 
 
 void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
+    curr_pkg_ref = pkg_ref;
+
     Package *pkg = &pkg_ref.unwrap();
     curr_scope = pkg->package_scope;
 
@@ -147,7 +149,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
 
 
     // 1. 每个参数：类型 block + 分配 slot
-    auto param_decls = make_array<CIRVariableDeclInfo>(stage_allocator());
+    auto param_decls = make_array<CIRVariableDeclInfo>(curr_pkg_ref->stage_allocator);
     for(isize i = 0; i < fd->FunctionDeclValue.params.count; i++) {
         Ast *param = fd->FunctionDeclValue.params[i];
         XP_ASSERT_DEFAULT(param->type == AstType_ParamDecl);
@@ -641,7 +643,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 });
 
                 // 每个实参: FunParamType + DetermineType
-                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(stage_allocator());
+                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
                 for (isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
                     Ast *arg = expr->FunctionCallExpr.args[i];
                     auto arg_inst = build_inst_for_expr(arg);
@@ -813,7 +815,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_StructInitExpr: {
             auto struct_type_inst = build_block_inst_for_expr(expr->StructInitExpr.struct_type_ident, true, true);
 
-            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(stage_allocator());
+            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
             for (isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
                 Ast *field_init = expr->StructInitExpr.field_inits[i];
 
@@ -851,7 +853,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_ArrayInitExpr: {
-            Array<CIRInstructionRef> element_insts = make_array<CIRInstructionRef>(stage_allocator());
+            Array<CIRInstructionRef> element_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
             for (Ast *elem : expr->ArrayInitExpr.elements) {
                 element_insts.push_back(build_inst_for_expr(elem));
             }
@@ -951,7 +953,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
-            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(stage_allocator());
+            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
             for (Ast *field : expr->StructDeclValue.fields) {
                 XP_ASSERT_DEFAULT(field->type == AstType_StructField);
 
@@ -1049,7 +1051,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             });
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
-            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(stage_allocator());
+            Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
             for (Ast *field : expr->UnionDecl.fields) {
                 ASSERT(field->type == AstType_StructField);
 
@@ -1074,7 +1076,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_FunctionType: {
-            Array<CIRInstructionRef> param_type_insts = make_array<CIRInstructionRef>(stage_allocator());
+            Array<CIRInstructionRef> param_type_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
             for(Ast *param_type: expr->FunctionType.param_types) {
                 param_type_insts.push_back(build_inst_for_expr(param_type));
             }

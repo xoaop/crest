@@ -91,7 +91,6 @@ enum class ActualValueType {
     Pointer,   // comptime 指针：Pointer{mem, offset}，type 字段指向 *T
     Type,      // 类型值：TypeRef 存储在 union 中
     Package,   // 包值：Package* 存储在 union 中
-    Reference, // 引用值：Value* 存储在 union 中
 };
 
 
@@ -132,7 +131,6 @@ public:
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);
     void package_val(Ref<Package> pkg);
-    void ref_val(Value* ref);
 
 
     i128 integer_val() const;
@@ -147,7 +145,6 @@ public:
     TypeRef type_val() const;
     Ref<Package> package_val() const;
     FuncValue func_val() const;
-    Value* ref_val() const;
     
 
 
@@ -171,8 +168,6 @@ private:
         TypeRef type_value;        // 类型值
 
         Ref<Package> package_value;    // 包值（全局包表编号）
-
-        Value* ref_value;
     };
 
 public:

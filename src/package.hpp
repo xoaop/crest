@@ -6,7 +6,7 @@
 #include "ast.hpp"
 #include "ast_file.hpp"
 #include "scope.hpp"
-#include "cir_builder.hpp"
+#include "cir_package.hpp"
 
 
 struct CIRPackage;
@@ -18,6 +18,8 @@ struct Package {
     // TODO: 换成公共或独有的枚举, 而不是借用 SymbolState
     SymbolState state = SymbolState::Unsolved;
 
+    xpArena stage_arena;
+    xpAllocator stage_allocator;
 
     //
     // ast build
