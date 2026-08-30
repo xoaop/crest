@@ -273,34 +273,40 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
             LLVMTypeRef *union_type = xp_hash_map_insert(&union_types, key, struct_ty);
 
-            // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，与解释器布局一致
+            // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，运行期布局
             Ref<Scope> scope = type->union_info.union_scope;
             if(scope->symbols.symbols.count == 0) {
                 // 空 union：退化空 struct
                 LLVMStructSetBody(*union_type, nullptr, 0, 0);
                 return *union_type;
             }
-            // 对齐值复用 type_serialize_align（不再重复扫字段），这里只找对齐最大的成员类型
-            isize max_align = type_serialize_align(type);
+
+
+            // 对齐值复用 type_align_of（不再重复扫字段），这里只找对齐最大的成员类型
+            isize max_align = type_align_of(type);
+
+            // 找到对齐值最大的成员, 以此为结构体成员, 让llvm推对齐
             TypeRef align_member = nullptr;
             for(const auto& entry : *scope) {
                 TypeRef ft = union_field_type(type, entry.value.name);
-                if(type_serialize_align(ft) == max_align) {
+                if(type_align_of(ft) == max_align) {
                     align_member = ft;
                     break;
                 }
             }
-            XP_ASSERT_DEFAULT(align_member != nullptr);
+            ASSERT(align_member != nullptr);
 
-            isize u_size = type_serialize_size(type);
-            isize t_size = type_serialize_size(align_member);
-            isize pad = u_size - t_size;
+
+            const isize union_size = type_size_of(type);
+            const isize max_align_member_size = type_size_of(align_member);
+            const isize pad = union_size - max_align_member_size;
 
             LLVMTypeRef body[2] = {
                 get_llvm_type_from_type(align_member),
                 LLVMArrayType(LLVMInt8TypeInContext(g_llvm_session.ctx), (unsigned)pad),
             };
             LLVMStructSetBody(*union_type, body, 2, 0);
+
 
             return *union_type;
         }
@@ -768,12 +774,16 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
         result_ctx.set_pkg(saved_ctx_pkg);
     });
 
-    if(is_pure_comptime_func(fd, result_ctx)) return;
+    if(is_pure_comptime_func(fd, result_ctx)) {
+        return;
+    }
 
     SymbolInfo *func_sym = try_access_val(func_inst->symbol);
 
     auto& res = result_ctx.result_of(func_ref);
-    if(res.state != CIRResultState::WholeValue) return;
+    if(res.state != CIRResultState::WholeValue) {
+        return;
+    }
     Ref<CIRInstResult> fk = res.actual_val().func_val().func_key;
 
     // 无状态：inst_vals 命中即已完整处理（声明 + body 原子完成）

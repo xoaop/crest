@@ -1,0 +1,16 @@
+// @fail
+// @error 包含自身
+
+// 泛型递归类型直接自包含（未经指针）必须报错，
+// 不能被"提前登记返回值中断递归"掩盖成无限大小的类型
+Bad :: $(T: type) -> type {
+    return struct {
+        val: T;
+        self: Bad(T);
+    };
+}
+
+main :: () -> i32 {
+    b: Bad(i32);
+    return 0;
+}

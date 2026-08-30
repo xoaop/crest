@@ -510,7 +510,9 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
     XP_ASSERT_DEFAULT(return_stmt_ast->type == AstType_ReturnStmt);
     CIRInstructionRef value_inst = INVALID_INST;
     if(return_stmt_ast->ReturnStmt.expr != nullptr) {
+        building_return_type_decl = is_type_decl_ast(return_stmt_ast->ReturnStmt.expr);
         value_inst = build_inst_for_expr(return_stmt_ast->ReturnStmt.expr);
+        building_return_type_decl = false;
     }
 
     if(value_inst != INVALID_INST) {
@@ -951,6 +953,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 .symbol = curr_const_sym,
             });
 
+            // return <type-decl>: 类型身份已定, 提前登记返回值以中断递归
+            if(building_return_type_decl) {
+                building_return_type_decl = false;
+                Make_Instruction<CIROperator::PublishReturnValue>(expr, {
+                    .target_block = curr_func_body_block,
+                    .value_inst = decl_init,
+                });
+            }
+
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
@@ -1049,6 +1060,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                 .symbol = curr_const_sym,
                 .scope = curr_scope,
             });
+
+            // return <type-decl>: 类型身份已定, 提前登记返回值以中断递归
+            if(building_return_type_decl) {
+                building_return_type_decl = false;
+                Make_Instruction<CIROperator::PublishReturnValue>(expr, {
+                    .target_block = curr_func_body_block,
+                    .value_inst = decl_init,
+                });
+            }
 
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
@@ -1235,6 +1255,12 @@ ScopeGuard::~ScopeGuard() {
 
 bool is_cir_binary_op(TokenType type) {
     return is_binary_op(type);
+}
+
+bool is_type_decl_ast(Ast *expr) {
+    return expr->type == AstType_StructDeclValue
+        || expr->type == AstType_UnionDecl
+        || expr->type == AstType_EnumDecl;
 }
 
 bool is_cir_unary_op(TokenType type) {
