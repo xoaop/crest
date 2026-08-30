@@ -116,6 +116,18 @@ Ref<SymbolInfo> find_symbol_until_global_ref(Ref<Scope> scope, xpString symbol_i
     return Ref<SymbolInfo>::INVALID_REF;
 }
 
+Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, xpString symbol_ident) {
+    Scope &s = scope.unwrap();
+    SymbolInfo *info = find_symbol(&s.symbols, symbol_ident);
+    if (info != nullptr) {
+        return Ref<SymbolInfo>{
+            .scope = scope,
+            .name = symbol_ident
+        };
+    }
+    return Ref<SymbolInfo>::INVALID_REF;
+}
+
 
 
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind) {

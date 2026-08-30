@@ -103,6 +103,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(FuncType)                 \
     X(BlockRef)                 \
     X(ImportPackage)            \
+    X(PublishReturnValue)       \
 /**/
 
 enum class CIROperator {
@@ -427,6 +428,15 @@ struct CIRExitScopeInfo {
 
 struct CIRImportPackageInfo {
     xpString path;
+};
+
+// 提前登记返回值（return <type-decl> 用）
+struct CIRPublishReturnValueInfo {
+    CIRInstructionRef target_block;
+    CIRInstructionRef value_inst;
+
+    CIR_REFS(&CIRPublishReturnValueInfo::value_inst)
+    CIR_TARGETS(&CIRPublishReturnValueInfo::target_block)
 };
 
 //
