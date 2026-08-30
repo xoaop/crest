@@ -1,0 +1,100 @@
+// @pass
+// @run
+
+// 泛型递归 struct: 通过指针自引用（issue #4）
+Node :: $(T: type) -> type {
+    return struct {
+        val: T;
+        next: *Node(T);
+    };
+}
+
+// 两个类型参数 + 自引用
+HashMapEntry :: $(K: type, V: type) -> type {
+    return struct {
+        key: K;
+        value: V;
+        next: *HashMapEntry(K, V);
+    };
+}
+
+// 泛型递归 union
+UNode :: $(T: type) -> type {
+    return union {
+        val: T;
+        next: *UNode(T);
+    };
+}
+
+// 互递归：A 引用 B，B 引用 A
+A :: $(T: type) -> type {
+    return struct {
+        val: T;
+        peer: *B(T);
+    };
+}
+
+B :: $(T: type) -> type {
+    return struct {
+        val: T;
+        peer: *A(T);
+    };
+}
+
+// 递归类型作为泛型实参
+Box :: $(T: type) -> type {
+    return struct {
+        inner: T;
+    };
+}
+
+main :: () -> i32 {
+    n: Node(i32);
+    n.val = 42;
+    n.next = null;
+    if n.val != 42 { return 1; }
+
+    // 同一实例复用（缓存命中）
+    n2: Node(i32);
+    n2.val = 7;
+    if n2.val != 7 { return 2; }
+
+    // 不同实例
+    nf: Node(f64);
+    nf.val = 2.5;
+    if nf.val != 2.5 { return 3; }
+
+    // 跨指针一跳：验证两处 *Node(i32) 是同一个类型
+    head: Node(i32);
+    tail: Node(i32);
+    head.val = 1;
+    tail.val = 2;
+    tail.next = null;
+    head.next = &tail;
+    if head.next.val != 2 { return 4; }
+
+    e: HashMapEntry(i32, f64);
+    e.key = 3;
+    e.value = 1.5;
+    e.next = null;
+    if e.key != 3 { return 5; }
+    if e.value != 1.5 { return 6; }
+
+    u: UNode(i32);
+    u.val = 9;
+    if u.val != 9 { return 7; }
+    u.next = null;
+
+    a: A(i32);
+    a.val = 11;
+    a.peer = null;
+    if a.val != 11 { return 8; }
+
+    // 递归类型嵌进另一个泛型
+    b: Box(Node(i32));
+    b.inner.val = 5;
+    b.inner.next = null;
+    if b.inner.val != 5 { return 9; }
+
+    return 0;
+}
