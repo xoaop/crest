@@ -231,5 +231,9 @@ int main(int argc, char** argv) {
     
     mark_stage("generate LLVM IR");
 
+    for(auto& pkg: context()->all_packages) {
+        xp_free_all(pkg.stage_allocator);
+    }
+
     return 0;
 }

@@ -21,9 +21,75 @@ void analyze_package(Ref<Package> pkg, xpAllocator allocator);
 
 struct CIRPackage;
 
+// 轻量结果描述：handler 产出的临时结果（不持池槽），apply_result 时统一落进目标结果槽
+struct ResultDesc {
+    CIRResultState state = CIRResultState::NothingYet;
+    CIRValueKind value_kind = CIRValueKind::RValue;
+
+    std::optional<TypeRef> implicit_type = std::nullopt;
+
+    static ResultDesc make_value(TypeRef t, Value v, CIRValueKind vk = CIRValueKind::RValue) {
+        ResultDesc r;
+        r.state = CIRResultState::WholeValue;
+        r.outstanding_type = t;
+        r.val = v;
+        r.value_kind = vk;
+        return r;
+    }
+
+    static ResultDesc make_value(Value v) {
+        ResultDesc r;
+        r.state = CIRResultState::WholeValue;
+        r.outstanding_type = v.type;
+        r.val = v;
+        r.value_kind = CIRValueKind::RValue;
+        return r;
+    }
+
+    static ResultDesc make_type_only(TypeRef t, CIRValueKind vk = CIRValueKind::RValue) {
+        ResultDesc r;
+        r.state = CIRResultState::OnlyType;
+        r.outstanding_type = t;
+        r.val.type = t;
+        r.value_kind = vk;
+        return r;
+    }
+
+    static ResultDesc make_error() {
+        ResultDesc r;
+        r.state = CIRResultState::Error;
+        return r;
+    }
+
+    TypeRef type() const { return outstanding_type; }
+    TypeRef actual_type() const { return val.type; }
+    const Value& val_ref() const { return val; }
+
+    void set_type(TypeRef new_type) {
+        outstanding_type = new_type;
+        val.type = new_type;
+        if(state == CIRResultState::NothingYet) {
+            state = CIRResultState::OnlyType;
+        }
+    }
+    void set_actual_type(TypeRef new_type) {
+        val.type = new_type;
+    }
+    void set_val(Value new_val) {
+        val = new_val;
+        if(state == CIRResultState::NothingYet || state == CIRResultState::OnlyType) {
+            state = CIRResultState::WholeValue;
+        }
+    }
+
+private:
+    Value val;                     // 临时值（WholeValue 携带；OnlyType 时 .type 作实际类型）
+    TypeRef outstanding_type = nullptr;
+};
+
 struct ResultWrite {
     CIRInstructionRef ref;
-    CIRInstResult result;
+    ResultDesc result;
 };
 
 struct AnalyzeResult {
@@ -31,7 +97,7 @@ struct AnalyzeResult {
     std::optional<CIRInstructionRef> next_pc = std::nullopt;
 
     AnalyzeResult();
-    AnalyzeResult(CIRInstResult result, CIRInstructionRef ref);
+    AnalyzeResult(ResultDesc result, CIRInstructionRef ref);
 };
 
 enum class EvalMode {
@@ -88,7 +154,7 @@ struct Interpreter {
     void analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);  // 进入块 blk 分析；target = 块的 handle（结果位置，可选：无结果位置的块传 nullopt）
     void analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 循环块分析（完全独立）：入口 + 迭代 + 编译时检查 + 恢复
     void analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
-    
+    bool analyze_symbol_of_package(Ref<SymbolInfo> sym_ref);
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 
@@ -140,7 +206,7 @@ struct Interpreter {
     }
 
 
-    void apply_result(CIRInstructionRef target, const CIRInstResult& result);
+    void apply_result(CIRInstructionRef target, const ResultDesc& result);
 
 
 

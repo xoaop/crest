@@ -1272,6 +1272,23 @@ isize type_size_of(TypeRef type) {
             return field_offset_in_struct(type, type->struct_info.struct_fields.count - 1)
                  + type_size_of(last.type);
         }
+        case Type_union: {
+            Ref<Scope> scope = type->union_info.union_scope;
+            isize max_size = 0;
+            isize max_align = 1;
+            for(const auto& entry : *scope) {
+                TypeRef ft = union_field_type(type, entry.value.name);
+                isize s = type_size_of(ft);
+                if(s > max_size) {
+                    max_size = s;
+                }
+                isize a = type_align_of(ft);
+                if(a > max_align) {
+                    max_align = a;
+                }
+            }
+            return xp_align_up_isize(max_size, max_align);
+        }
         default:
             return basic_type_size(type->kind);
     }
@@ -1283,6 +1300,15 @@ isize type_align_of(TypeRef type) {
             isize max_align = 1;
             for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
                 isize a = type_align_of(type->struct_info.struct_fields[i].type);
+                if(a > max_align) max_align = a;
+            }
+            return max_align;
+        }
+        case Type_union: {
+            Ref<Scope> scope = type->union_info.union_scope;
+            isize max_align = 1;
+            for(const auto& entry : *scope) {
+                isize a = type_align_of(union_field_type(type, entry.value.name));
                 if(a > max_align) max_align = a;
             }
             return max_align;

@@ -48,6 +48,7 @@ struct CIRBlock {
 enum class CIRResultState: u32 {
     NothingYet,  // 还没有计算结果
     OnlyType,   // 仅仅只有类型推导
+    InProgress,  // 值已提前登记, 求值未完成（递归调用命中此态中断）
     WholeValue,  // 计算出实际值了
     Error        // 本指令分析出错，结果不可用，下游应跳过
 };
@@ -64,40 +65,6 @@ struct CIRInstResult {
 
     std::optional<TypeRef> implicit_type = std::nullopt;
 
-    static CIRInstResult make_value(TypeRef t, Value v, CIRValueKind vk = CIRValueKind::RValue) {
-        CIRInstResult r;
-        r.state = CIRResultState::WholeValue;
-        r.outstanding_type = t;
-        r.val = v;
-        r.value_kind = vk;
-        return r;
-    }
-
-    static CIRInstResult make_value(Value v) {
-        CIRInstResult r;
-        r.state = CIRResultState::WholeValue;
-        r.outstanding_type = v.type;
-        r.val = v;
-        r.value_kind = CIRValueKind::RValue;
-        return r;
-    }
-
-    static CIRInstResult make_type_only(TypeRef t, CIRValueKind vk = CIRValueKind::RValue) {
-        CIRInstResult r;
-        r.state = CIRResultState::OnlyType;
-        r.outstanding_type = t;
-        r.val.type = t;
-        r.value_kind = vk;
-        return r;
-    }
-
-
-    static CIRInstResult make_error() {
-        CIRInstResult r;
-        r.state = CIRResultState::Error;
-        return r;
-    }
-
     TypeRef type() const;
     TypeRef actual_type() const;
     Value actual_val() const;
@@ -105,6 +72,7 @@ struct CIRInstResult {
     void set_type(TypeRef new_type);
     void set_actual_type(TypeRef new_type);
     void set_val(Value new_val);
+    void set_val_in_progress(Value new_val);
 
 private:
     Value val;

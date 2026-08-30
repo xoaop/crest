@@ -59,7 +59,7 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
         return *existing;
     }
     result_instances.push_back(CIRResultInstance::make(permanent_allocator()));
-    
+
     Ref<CIRResultInstance> r;
     r.cir_package = Ref<CIRPackage>(package_ref.index);
     r.index = (isize)result_instances.count - 1;
@@ -168,20 +168,20 @@ isize CIRBlock::push_back_inst(CIRInstruction inst) {
 }
 
 TypeRef CIRInstResult::type() const {
-    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue);
+    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
 
     return outstanding_type;
 }
 
 TypeRef CIRInstResult::actual_type() const {
-    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue);
+    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
 
     return val.type;
 }
 
 
 Value CIRInstResult::actual_val() const {
-    ASSERT(state == CIRResultState::WholeValue);
+    ASSERT(state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
 
     return val;
 }
@@ -203,10 +203,20 @@ void CIRInstResult::set_actual_type(TypeRef new_type) {
 void CIRInstResult::set_val(Value new_val) {
     val = new_val;
 
-
-    if(state == CIRResultState::NothingYet || state == CIRResultState::OnlyType) {
+    if(state == CIRResultState::NothingYet || state == CIRResultState::OnlyType || state == CIRResultState::InProgress) {
         state = CIRResultState::WholeValue;
     }
+}
+
+void CIRInstResult::set_val_in_progress(Value new_val) {
+
+    if(!is_type_type(new_val.type)) {
+        DEBUG_PANIC("set_val_in_progress: 可以提前登记的值的类型必须是类型值(自带引用语义), 不然无意义");
+    }
+
+    outstanding_type = new_val.type;
+    val = new_val;
+    state = CIRResultState::InProgress;
 }
 
 
@@ -294,6 +304,9 @@ static void dump_result(CIRInstResult& res) {
             break;
         case CIRResultState::OnlyType:
             print_err(" -> {}", get_type_kind_str(res.type()->kind));
+            break;
+        case CIRResultState::InProgress:
+            print_err(" -> <in-progress>");
             break;
         case CIRResultState::WholeValue:
             print_err(" -> {} = {}", get_type_kind_str(res.type()->kind), res.actual_val());

@@ -90,6 +90,7 @@ public:
     CIRInstructionRef curr_block_inst;
     Ref<Scope> curr_scope;
     Ref<SymbolInfo> curr_const_sym;   // 当前正在构建的 ConstDecl 符号，供嵌套表达式使用
+    bool building_return_type_decl = false;   // 正在构建 return <type-decl>，声明块内发 PublishReturnValue
 
 
     // cirbuilder所有的状态, 需要分配
@@ -101,3 +102,4 @@ public:
 
 bool is_cir_binary_op(TokenType type);
 bool is_cir_unary_op(TokenType type);
+bool is_type_decl_ast(Ast *expr);
