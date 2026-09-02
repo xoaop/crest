@@ -18,4 +18,5 @@ TypeRef get_compliable_float_type(double value);
 
 
 
+std::optional<TypeRef> default_certain_type_for_untyped_type_opt(TypeRef untyped_type);
 TypeRef default_certain_type_for_untyped_type(TypeRef untyped_type);
