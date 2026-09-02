@@ -1736,7 +1736,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
     }
 
     // 写 determined_inst 的类型
-    r.writes.push_back({determined_inst, ResultDesc::make_type_only(expected_type)});
+    auto& determined_inst_result = r.writes.push_back({determined_inst, ResultDesc::make_type_only(expected_type)})->result;
 
     if(expected_type_inst != INVALID_INST) {
         // 编译期类型的字段值本身是 type（如 enum { Variant :: TypeExpr }），跳过标签类型兼容检查
@@ -1797,13 +1797,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
 
         if(!is_implicit_cast) {
             // 覆盖写类型
-            r.writes.clear();
-            r.writes.push_back({determined_inst, ResultDesc::make_type_only(expected_type)});
+            determined_inst_result = ResultDesc::make_type_only(expected_type);
         } else {
-            // 副作用：直接写 determined_inst 的 implicit_type（绕过 apply_result，供 codegen 隐式转换识别）
-            result_context().result_of(determined_inst).implicit_type = expected_type;
+            determined_inst_result.implicit_type = expected_type;
         }
 
+        // 这里其实算有点抽象泄漏, 因为真正的覆盖类型得在返回AnalyzeResult后才会生效
+        // 所以得提前构造个determine类型之后的值拿来做溢出检查
         if(has_val) {
             Value check_val = ResultValue(determined_inst);
             // untyped 字面量自身不触发 is_val_overflow，先按目标类型模拟检查范围

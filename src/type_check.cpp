@@ -102,13 +102,21 @@ TypeRef get_compliable_float_type(double value) {
 
 }
 
-
-
-TypeRef default_certain_type_for_untyped_type(TypeRef untyped_type) {
+std::optional<TypeRef> default_certain_type_for_untyped_type_opt(TypeRef untyped_type) {
     if(untyped_type == easy_type(Type_untyped_int)) {
         return easy_type(Type_i32);
     } else if(untyped_type == easy_type(Type_untyped_float)) {
         return easy_type(Type_f64);
+    }
+
+    return std::nullopt;
+}
+
+
+TypeRef default_certain_type_for_untyped_type(TypeRef untyped_type) {
+    const auto type = default_certain_type_for_untyped_type_opt(untyped_type);
+    if(type.has_value()) {
+        return type.value();
     }
     
     DEBUG_PANIC("untyped_type {} is not untyped int or untyped float", untyped_type->name());
