@@ -1679,8 +1679,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Store(CIRStoreInfo& info, CIRI
 
 // handler: DetermineType（写 determined_inst 的类型 + 元素传染）
 std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto determined_inst = info.determining_inst;
-    auto expected_type_inst = info.type_inst;
+    const auto determined_inst = info.determining_inst;
+    const auto expected_type_inst = info.type_inst;
 
     // TODO: HACK
     if(!has_result_type(determined_inst)) {
@@ -1700,10 +1700,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
             expected_type = get_compliable_const_type(result_val);
         }
     } else {
-        if(determined_type == easy_type(Type_untyped_int)) {
-            expected_type = easy_type(Type_i32);
-        } else if(determined_type == easy_type(Type_untyped_float)) {
-            expected_type = easy_type(Type_f64);
+        const auto expected_type_maybe = default_certain_type_for_untyped_type_opt(determined_type);
+        if(expected_type_maybe) {
+            expected_type = expected_type_maybe.value();
         }
     }
 
@@ -1727,9 +1726,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
         expected_type = array_type(elem_t, expected_type->array_info.count);
 
         // 同步更新所有元素指令的类型，防止 LLVM 生成器遇到 untyped
-        auto& elems_info = pkg->inst(determined_inst)->info<CIROperator::ArrayInit>();
+        const auto& elems_info = pkg->inst(determined_inst)->info<CIROperator::ArrayInit>();
         for(isize i = 0; i < elems_info.element_insts.count; i++) {
-            auto ei = elems_info.element_insts[i];
+            const auto ei = elems_info.element_insts[i];
             if(is_untyped_type(ResultType(ei))) {
                 r.writes.push_back({ei, ResultDesc::make_type_only(elem_t)});
             }
