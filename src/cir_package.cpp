@@ -123,8 +123,23 @@ const CIRInstruction* Ref<CIRInstResult>::inst() const {
 }
 
 u64 FuncCallKey::hash() const {
+
+    // TODO: AI SLOP
     u64 h = xp_hash_combine_u64((u64)func_decl_pc.pkg_index, (u64)func_decl_pc.block_ref);
     h = xp_hash_combine_u64(h, (u64)func_decl_pc.inst_index);
+    h = xp_hash_combine_u64(h, (u64)is_generic_instance);
+
+    // $T 实例: 按实参结果的类型去重(TypeRef 是 interned 指针), 与指令身份无关
+    if(is_generic_instance) {
+        for(isize i = 0; i < comptime_arg_refs.count; i++) {
+            auto* res = comptime_arg_refs[i].get_result();
+            if(res && res->state >= CIRResultState::OnlyType) {
+                h = xp_hash_combine_u64(h, reinterpret_cast<u64>(res->actual_type()));
+            }
+        }
+        return h;
+    }
+
     for(isize i = 0; i < comptime_arg_refs.count; i++) {
         auto* res = comptime_arg_refs[i].get_result();
         if(res && res->state >= CIRResultState::WholeValue) {
@@ -140,12 +155,30 @@ u64 FuncCallKey::hash() const {
 }
 
 bool FuncCallKey::operator==(const FuncCallKey& other) const {
+
+    // TODO: AI SLOP
     if(func_decl_pc != other.func_decl_pc) {
+        return false;
+    }
+    if(is_generic_instance != other.is_generic_instance) {
         return false;
     }
     if(comptime_arg_refs.count != other.comptime_arg_refs.count) {
         return false;
     }
+
+    // $T 实例: 同上, 比类型不比指令身份
+    if(is_generic_instance) {
+        for(isize i = 0; i < comptime_arg_refs.count; i++) {
+            auto* ra = comptime_arg_refs[i].get_result();
+            auto* rb = other.comptime_arg_refs[i].get_result();
+            if(!ra || !rb) return false;
+            if(ra->state < CIRResultState::OnlyType || rb->state < CIRResultState::OnlyType) return false;
+            if(ra->actual_type() != rb->actual_type()) return false;
+        }
+        return true;
+    }
+
     for(isize i = 0; i < comptime_arg_refs.count; i++) {
         auto* ra = comptime_arg_refs[i].get_result();
         auto* rb = other.comptime_arg_refs[i].get_result();
@@ -210,8 +243,9 @@ void CIRInstResult::set_val(Value new_val) {
 
 void CIRInstResult::set_val_in_progress(Value new_val) {
 
-    if(!is_type_type(new_val.type)) {
-        DEBUG_PANIC("set_val_in_progress: 可以提前登记的值的类型必须是类型值(自带引用语义), 不然无意义");
+    // 类型值指向未完成的类型壳子, 函数值指向 FunctionDecl 的结果槽 — 都是引用语义, 补完后登记者可见
+    if(!is_type_type(new_val.type) && !is_function_type(new_val.type)) {
+        DEBUG_PANIC("set_val_in_progress: 可以提前登记的值的类型必须自带引用语义, 不然无意义");
     }
 
     outstanding_type = new_val.type;

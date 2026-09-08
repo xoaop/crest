@@ -1,16 +1,40 @@
 
-
+// @pass
+// @run
 
 func :: (a: $T) -> T {
-
-    T := 1; // 报错
 
     return a;
 }
 
+add :: (a: $T, b: T) -> T {
+
+    return a + b;
+}
+
+pick_second :: (a: $A, b: $B) -> B {
+
+    return b;
+}
+
 main :: () -> i32 {
 
-    a := $T; // 报错
+    add_i32 := add(1i32, 2i32);
+    add_f32 := add(1.0f32, 2.0f32);
+    add_i64 := add(1i64, 2i64);
+
+    if add_i32 != 3i32 { return 1; }
+    if add_f32 != 3.0f32 { return 2; }
+    if add_i64 != 3i64 { return 3; }
+
+    id_i32 := func(7i32);
+    id_bool := func(true);
+
+    if id_i32 != 7i32 { return 4; }
+    if !id_bool { return 5; }
+
+    second := pick_second(1i32, 9i64);
+    if second != 9i64 { return 6; }
 
     return 0;
 }

@@ -1,0 +1,26 @@
+// @pass
+// @run
+
+// untyped 字面量作实参: 推导位是 untyped 时 T 取默认类型;
+// 非推导位是 untyped 时应适配到已定的 T
+add :: (a: $T, b: T) -> T {
+
+    return a + b;
+}
+
+main :: () -> i32 {
+
+    // 推导位是 untyped int → T 取默认 i32
+    r1 := add(1, 2);
+    if r1 != 3 { return 1; }
+
+    // 推导位是 untyped float → T 取默认 f64
+    f1 := add(1.5, 2.5);
+    if f1 != 4.0 { return 2; }
+
+    // 推导位有明确类型, 非推导位是 untyped → 适配到 i64
+    r2 := add(1i64, 2);
+    if r2 != 3i64 { return 3; }
+
+    return 0;
+}

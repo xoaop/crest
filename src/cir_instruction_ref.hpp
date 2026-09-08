@@ -83,6 +83,11 @@ struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
     Array<Ref<CIRInstResult>>                comptime_arg_refs = {};
 
+    // $T 实例: comptime_arg_refs 按其结果的类型去重, 而非按指令身份 ——
+    // sum_down(3i32) 和递归里的 sum_down(n-1i32) 是不同指令, 必须落同一实例。
+    // 也让泛型实例与同一函数的编译期调用实例不互相命中。
+    bool                                     is_generic_instance = false;
+
     u64 hash() const;
     bool operator==(const FuncCallKey& other) const;
 };

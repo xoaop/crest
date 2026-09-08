@@ -115,7 +115,7 @@ struct AnalyzeParams {
 // 求值实例 — 每次编译期函数调用创建一个
 struct EvalInstance {
 
-    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, xpAllocator allocator);
+    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, isize frame_base, xpAllocator allocator);
 
     static void free(EvalInstance *inst);
 
@@ -213,6 +213,20 @@ struct Interpreter {
 #define X(name) std::optional<AnalyzeResult> analyze_##name(CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);
     CIR_OPERATORS
 #undef X
+
+    // 用目标类型确定 determined_inst 的类型（含数组元素传染）；无目标类型则补默认类型。
+    // writes 收进 out_writes；返回结果类型，nullptr = 已报错（错误记在 error_inst 上）
+    TypeRef determine_type_of(CIRInstructionRef determined_inst,
+                              std::optional<TypeRef> expected_type,
+                              CIRInstructionRef error_inst,
+                              Array<ResultWrite>& out_writes);
+
+    // $T 实例化: 用类型实参开一个独立 CIRResultInstance, 重跑签名块 + FunctionDecl,
+    // 得到本次调用的具体函数值
+    std::optional<Value> instantiate_generic_func(
+        FuncValue fv,
+        Array<Ref<CIRInstResult>> key_refs,
+        Array<TypeRef> type_args);
 
 public:
 

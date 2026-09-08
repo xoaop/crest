@@ -1,0 +1,12 @@
+// @fail
+// @error "编译期调用未产出返回值"
+
+// 编译期函数返回类型变量 T，但 T 只在被调实例里，实例外拿不到值 —— 必须报错而非静默崩到 codegen
+ret_t :: $(val: $T) -> type {
+    return T;
+}
+
+main :: () -> i32 {
+    x : ret_t(1i32) = 7;
+    return 0;
+}

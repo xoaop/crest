@@ -130,6 +130,10 @@ bool compile_package(Ref<Package> pkg_ref) {
     builder.build_cir_package(pkg_ref);
     xp_arena_allocator_clear(pkg.stage_allocator);
 
+    if(context()->cir_dump) {
+        dump_cir_package(&pkg.cir_package);
+    }
+
     analyze_package(pkg_ref, pkg.stage_allocator);
     xp_arena_allocator_clear(pkg.stage_allocator);
 
