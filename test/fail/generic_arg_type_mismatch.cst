@@ -1,0 +1,15 @@
+// @fail
+// @error "无法确定类型"
+
+add :: (a: $T, b: T) -> T {
+
+    return a + b;
+}
+
+main :: () -> i32 {
+
+    // T 由第一个实参定为 i32, 第二个实参对不上
+    r := add(1, 2i64);
+
+    return 0;
+}

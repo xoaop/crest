@@ -141,6 +141,16 @@ FuncValue Value::func_val() const {
     return func_value;
 }
 
+bool Value::is_unresolved_func_val() const {
+    return actual_value_type == ActualValueType::Function && type == undefined_type();
+}
+
+FuncValue Value::unresolved_func_val() const {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
+    XP_ASSERT_DEFAULT(type == undefined_type());
+    return func_value;
+}
+
 void Value::pointer_val(Pointer ptr) {
     actual_value_type = ActualValueType::Pointer;
     pointer_value = ptr;

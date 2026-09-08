@@ -11,6 +11,13 @@ struct Parser {
     Array<Token> tokens;
     Array<Ast *> top_levels;
     SourceCode *src_code;
+
+    // ! State
+    struct {
+        bool is_parsing_param_list = false;
+        bool is_encountered = false;
+        Ast *type_var_ast = nullptr;
+    } type_var_info;
 };
 
 
@@ -19,6 +26,9 @@ struct ParsedParams {
     bool is_named;
     bool must_be_c_fn;
     Token rb;
+
+    std::optional<Array<Ast *>> type_var_asts_opt; // 泛型参数类型, 如果有的话
+    Array<isize> type_var_param_indices;           // 与 type_var_asts_opt 等长: 各类型变量首次出现在第几个参数上
 };
 
 struct FunctionTail {
@@ -256,6 +266,8 @@ Ast *parse_struct_decl(Parser *p) {
 ParsedParams parse_param_list(Parser *p) {
     ParsedParams out = {};
     out.params = make_array<Ast*>(ast_allocator());
+    out.type_var_asts_opt = std::nullopt;
+    out.type_var_param_indices = make_array<isize>(ast_allocator());
 
     if(curr_token(p).type != TokenType::RightBracket && curr_token(p).type != TokenType::ThreeDots) {
         Token first = curr_token(p);
@@ -264,6 +276,10 @@ ParsedParams parse_param_list(Parser *p) {
         }
     }
 
+    // TODO: 状态机不好
+    p->type_var_info.is_parsing_param_list = true;
+    defer(p->type_var_info.is_parsing_param_list = false);
+    
     while(!reach_end(p) && curr_token(p).type != TokenType::RightBracket) {
         if(curr_token(p).type == TokenType::ThreeDots) {
             Token dots = expect(p, TokenType::ThreeDots);
@@ -280,6 +296,23 @@ ParsedParams parse_param_list(Parser *p) {
             Token name = expect(p, TokenType::Ident);
             expect(p, TokenType::Colon);
             Ast *type_ast = parse_type(p);
+
+            // !NOTE: 这里一定得消费掉 type_var_info.is_encountered, 否则把状态带到后面
+            // 所以说为什么状态机不好, 这里的逻辑很容易出错
+            if(p->type_var_info.is_encountered) {
+                auto& type_var_info = p->type_var_info;
+
+                if(!out.type_var_asts_opt) {
+                    out.type_var_asts_opt = make_array<Ast*>(ast_allocator());
+                }
+
+                out.type_var_asts_opt->push_back(type_var_info.type_var_ast);
+                out.type_var_param_indices.push_back(out.params.count);
+
+                // ! Clean State
+                type_var_info.is_encountered = false;
+                type_var_info.type_var_ast = nullptr;
+            }
 
             Ast *param = ast_alloc(AstType_ParamDecl, name);
             param->ParamDecl.name = name.token_str;
@@ -378,6 +411,17 @@ Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
     a->FunctionDeclValue.is_builtin = tail.is_builtin;
     a->FunctionDeclValue.infer_return_type = tail.infer_return_type;
     a->FunctionDeclValue.is_comptime = is_comptime_func;
+
+    // TODO: 丑
+    a->FunctionDeclValue.has_generic_param_type = false;
+    a->FunctionDeclValue.type_var_asts = {};
+    a->FunctionDeclValue.type_var_param_indices = {};
+    if(pre.type_var_asts_opt) {
+        a->FunctionDeclValue.has_generic_param_type = true;
+        a->FunctionDeclValue.type_var_asts = pre.type_var_asts_opt.value();
+        a->FunctionDeclValue.type_var_param_indices = pre.type_var_param_indices;
+    }
+
     return a;
 }
 
@@ -1012,13 +1056,44 @@ Ast *parse_expr_factor(Parser *p) {
         // (expr)
         // (params...) -> type
         // $(params...) -> type { ... }
+        // $T
         case TokenType::LeftBracket:
         case TokenType::Dollar: {
             bool is_comptime_func = false;
+
             if(curr.type == TokenType::Dollar) {
-                advance_token(p);
-                is_comptime_func = true;
+                expect(p, TokenType::Dollar);
+
+                auto curr_tk = curr_token(p);
+
+                // $(...) ... or $T
+                if(curr_tk.type == TokenType::LeftBracket) {
+
+                    is_comptime_func = true;
+
+                } else if(curr_tk.type == TokenType::Ident) {
+                    expect(p, TokenType::Ident);
+
+                    a = ast_alloc(AstType_TypeVariableDeclInParam, curr_tk);
+                    a->TypeVariableDeclInParam.name = curr_tk.token_str;
+                    a->src_loc = merge(curr.src_loc, curr_tk.src_loc);
+                    
+                    // TODO: 状态机不好
+                    p->type_var_info.is_encountered = true;
+                    p->type_var_info.type_var_ast = a;
+
+                    break;
+                } else {
+
+                    // @todo: 不太准
+                    report_unexpected(p, "'(' after '$'");
+
+                    a = ast_alloc(AstType_BadExpr, curr_tk);
+                    break;
+                }
+
             }
+
             Token lb = expect(p, TokenType::LeftBracket);
 
             ParsedParams pre = parse_param_list(p);

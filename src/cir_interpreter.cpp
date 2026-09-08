@@ -194,6 +194,11 @@ void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef
         pushed_eval_mode = true;
     }
 
+    DEBUG_TRACE("analyze_block: blk={}, immediate_eval={}, forced={}, pushed={}, curr_eval_mode={}, stack_depth={}",
+        blk, block_info.immediate_eval,
+        force_eval_mode.has_value() ? (int)*force_eval_mode : -1,
+        pushed_eval_mode, (int)curr_eval_mode(), eval_mode_stack.count);
+
     analyze_block_insts(blk, target);
 
     if(pushed_eval_mode) {
@@ -477,13 +482,14 @@ bool Interpreter::should_eval_for_lazy_eval(Array<CIRInstructionRef>& refs) {
 //
 
 
-EvalInstance EvalInstance::make(CIRPackage *callee_pkg, isize var_count, xpAllocator allocator) {
+EvalInstance EvalInstance::make(CIRPackage *callee_pkg, isize var_count, isize frame_base, xpAllocator allocator) {
     EvalInstance inst{};
     inst.ctx = CIRResultContext::create(callee_pkg);
     inst.var_ptrs = make_array_count<Pointer>(allocator, var_count);
     for(isize i = 0; i < var_count; i++) {
         inst.var_ptrs[i] = Pointer::make_null();
     }
+    inst.frame_base = frame_base;
 
     return inst;
 }
@@ -911,6 +917,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeOfInstResult(CIRTypeOfInst
 
     auto target_inst = inst(pc_ref)->info<CIROperator::TypeOfInstResult>().target_inst;
 
+    // 目标是 $T 模板的未解析函数值：签名待实例化，类型未知，依赖未就绪 → 等
+    if(has_result_val(target_inst) && ResultValue(target_inst).is_unresolved_func_val()) {
+        return make_result(pc_ref, ResultDesc::make_type_only(type_type()));
+    }
 
     TypeRef target_type = ResultType(target_inst);
     // 如果目标结果本身就是 type value（如泛型 Call 返回的编译期类型），
@@ -956,7 +966,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_FuncParamType(CIRFuncParamType
         return std::nullopt;
     }
 
-
+    // 依赖未就绪，等下一轮（同 FieldTypeOfStruct）
+    if(!has_result_val(info.type_of_func_type_inst)) {
+        return std::nullopt;
+    }
 
     TypeRef func_type = ResultValue(info.type_of_func_type_inst).type_val();
 
@@ -1050,23 +1063,19 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRArrayInitInfo& in
 
     // 找第一个有具体类型的元素作为数组元素类型
     // 都没有则用第一个元素的 untyped 类型，留给 DetermineType 决定
-    TypeRef elem_type = nullptr;
-
-    if(info.element_insts.count > 0) {
-        elem_type = ResultType(info.element_insts[0]);
-
-        for(isize i = 0; i < info.element_insts.count; i++) {
-            TypeRef t = ResultType(info.element_insts[i]);
-            if(!is_untyped_type(t)) {
-                elem_type = t;
-                break;
-            }
+    ASSERT(info.element_insts.count > 0);
+    TypeRef elem_type = ResultType(info.element_insts[0]);
+    for(const auto elem_inst: info.element_insts) {
+        TypeRef t = ResultType(elem_inst);
+        if(!is_untyped_type(t)) {
+            elem_type = t;
+            break;
         }
     }
 
     // 有具体类型则将其他 untyped 元素传染为该类型（副作用进 writes；溢出检查用传染后的类型）
     AnalyzeResult r;   // 累积 writes：传染 + 自身结果
-    if(elem_type != nullptr && !is_untyped_type(elem_type)) {
+    if(!is_untyped_type(elem_type)) {
         for(isize i = 0; i < info.element_insts.count; i++) {
             auto ei = info.element_insts[i];
             TypeRef t = ResultType(ei);
@@ -1075,16 +1084,23 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRArrayInitInfo& in
                 Value v = ResultValue(ei);
                 v.set_type(elem_type);   // 模拟传染后的类型做溢出检查
                 if(is_val_overflow(v)) {
-                    return make_result(pc_ref, inst_error(pc_ref, "数组初始化元素值溢出（元素 {}）", i));
+                    return make_result(pc_ref, inst_error(pc_ref, 
+                        "数组初始化元素值溢出（元素 {}）", 
+                        i
+                    ));
                 }
+
                 r.writes.push_back({ei, ResultDesc::make_type_only(elem_type)});   // 传染
             } else if(t != elem_type) {
-                return make_result(pc_ref, inst_error(pc_ref, "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", i, t->name(), elem_type->name()));
+                return make_result(pc_ref, inst_error(pc_ref, 
+                    "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", 
+                    i, t->name(), elem_type->name()
+                ));
             }
         }
     }
 
-    usize count = info.element_insts.count;
+    const usize count = info.element_insts.count;
 
     TypeRef arr_type = array_type(elem_type, count);
 
@@ -1094,12 +1110,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRArrayInitInfo& in
         Array<Value> elem_values = make_array<Value>(permanent_allocator());
         for(isize i = 0; i < info.element_insts.count; i++) {
             Value ev = ResultValue(info.element_insts[i]);
+
             if(is_untyped_type(ev.type) && elem_type != nullptr) {
                 ev.set_type(elem_type);   // 传染延迟生效：模拟元素值传染
             }
             elem_values.push_back(ev);
         }
         v.array_element_values(elem_values);
+
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
     } else {
         r.writes.push_back({pc_ref, ResultDesc::make_type_only(arr_type)});
@@ -1199,6 +1217,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
         }
 
         auto r = field_sym->result(curr_cache_key());
+        if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", info.field_name));
+        }
         if(r.state == CIRResultState::WholeValue) {
             // type = 成员的类型，actual = 成员的实际值（可能来自 value_inst，类型不同）
             return make_result(pc_ref, ResultDesc::make_value(r.type(), r.actual_val()));
@@ -1362,6 +1383,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_IndexPtr(CIRIndexPtrInfo& info
 // handler: AddrOf
 std::optional<AnalyzeResult> Interpreter::analyze_AddrOf(CIRAddrOfInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     CIRInstructionRef lval_inst = info.lval_inst;
+
+    // 泛型函数没有具体签名，取地址会得到指向未定类型的指针
+    if(has_result_val(lval_inst) && ResultValue(lval_inst).is_unresolved_func_val()) {
+        return make_result(pc_ref, inst_error(pc_ref, "不能对泛型函数取地址，泛型函数必须直接调用"));
+    }
 
     TypeRef lval_type = ResultType(lval_inst);
     if(!is_lvalue(lval_inst) && !is_function_type(lval_type)) {
@@ -1579,6 +1605,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo
     // type_inst.result is type_type
     XP_ASSERT_DEFAULT(pkg->inst(info.var_inst)->op == CIROperator::VariableDecl);
 
+    // 类型标注表达式求值出错：传播错误（Error 态晚于 OnlyType，下面那个 >= OnlyType 会误把它当有类型）
+    if(has_error(info.type_inst)) {
+        return make_result(pc_ref, ResultDesc::make_error());
+    }
+
+
     if(!has_result_val(info.type_inst)) {
         // 类型位置无 type 值：可能是泛型运行时调用，只报"非类型标注"错误
         if(result_context().result_of(info.type_inst).state >= CIRResultState::OnlyType) {
@@ -1598,6 +1630,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo
 
     TypeRef declared_type = ResultValue(info.type_inst).type_val();
     CIRVariableDeclInfo& vd = pkg->inst(info.var_inst)->info<CIROperator::VariableDecl>();
+
+    // type 是元类型，没有存储布局，不能作为变量类型。函数形参（含类型形参 $T）除外
+    if(declared_type == type_type() && !vd.is_param) {
+        return make_result(pc_ref, inst_error(pc_ref, "变量类型不能是 'type'"));
+    }
 
     AnalyzeResult r;   // 写 var_inst（变量恒为 LValue，保留 VariableDecl 设置的 lvalue 语义）
     TypeRef existing = ResultType(info.var_inst);
@@ -1677,7 +1714,132 @@ std::optional<AnalyzeResult> Interpreter::analyze_Store(CIRStoreInfo& info, CIRI
     return std::nullopt;
 }
 
-// handler: DetermineType（写 determined_inst 的类型 + 元素传染）
+// 用目标类型确定 determined_inst 的类型（含数组元素传染）；无目标类型则补默认类型。
+// writes 收进 out_writes；返回结果类型，nullptr = 已报错（错误记在 error_inst 上）
+TypeRef Interpreter::determine_type_of(CIRInstructionRef determined_inst,
+                                       std::optional<TypeRef> expected_type,
+                                       CIRInstructionRef error_inst,
+                                       Array<ResultWrite>& out_writes) {
+    const TypeRef determined_type = ResultType(determined_inst);
+    const bool has_val = has_result_val(determined_inst);
+    Value result_val;
+    if(has_val) {
+        result_val = ResultValue(determined_inst);
+    }
+
+    TypeRef write_type = determined_type;   // 落进结果槽的类型
+    std::optional<TypeRef> implicit_to;     // 有值则不覆盖 write_type，只记隐式转换目标
+
+    if(expected_type.has_value()) {
+        // 有目标类型：拿它消掉 untyped，不补默认类型
+        const TypeRef target_type = expected_type.value();
+        if(is_untyped_type(target_type)) {
+            // 目标类型不应该是 untyped（原为断言，改正常报错）
+            out_writes.push_back({error_inst, inst_error(error_inst, "类型确定的目标类型不能是未定类型，实际 '{}'", target_type->name())});
+            return nullptr;
+        }
+
+        bool ok = false;
+        if(has_val) {
+            if(result_val.is_null && is_pointer_type(target_type)) {
+                ok = true;
+            }
+        }
+
+        bool is_implicit_cast = false;
+
+        if(is_pointer_type(determined_type) && target_type == pointer_type(easy_type(Type_void))) {
+            ok = true;
+        } else if(is_array_type(determined_type) && is_slice_struct_type(target_type)) {
+            if(target_type->struct_info.struct_fields[0].type->pointed_type == determined_type->array_info.element_type) {
+                is_implicit_cast = true;
+                ok = true;
+            }
+        } else if(is_untyped_type(determined_type) && is_certain_type(target_type)) {
+            if((determined_type == easy_type(Type_untyped_int) && is_integer_type(target_type)) ||
+               (determined_type == easy_type(Type_untyped_float) && is_float_type(target_type))) {
+                ok = true;
+            }
+        } else if(is_function_type(determined_type)) {
+            if(is_pointer_type(target_type) && target_type->pointed_type == determined_type) {
+                out_writes.push_back({error_inst, inst_error(error_inst,
+                    "implicit conversion from function type to function pointer is not allowed, use '&' to take address explicitly")});
+                return nullptr;
+            }
+        } else if(determined_type == target_type) {
+            ok = true;
+        }
+
+        if(!ok) {
+            out_writes.push_back({error_inst, inst_error(error_inst, "无法确定类型：期望 {}，实际 {}",
+                target_type->t_name(), determined_type->t_name())});
+            return nullptr;
+        }
+
+        // 这里其实算有点抽象泄漏, 因为真正的覆盖类型得在返回AnalyzeResult后才会生效
+        // 所以得提前构造个determine类型之后的值拿来做溢出检查
+        if(has_val) {
+            // untyped 字面量自身不触发 is_val_overflow，先按目标类型模拟检查范围
+            Value check_val = result_val;
+            check_val.set_type(target_type);
+            if(is_val_overflow(check_val)) {
+                out_writes.push_back({error_inst, inst_error(error_inst, "类型确定时值溢出（目标类型 '{}'）", target_type->name())});
+                return nullptr;
+            }
+        }
+
+        if(is_implicit_cast) {
+            implicit_to = target_type;
+        } else {
+            // 覆盖写类型
+            write_type = target_type;
+        }
+    } else {
+        // 无目标类型：untyped 自己定不下来，补默认类型
+        if(is_untyped_type(determined_type)) {
+            if(has_val) {
+                write_type = get_compliable_const_type(result_val);
+            } else {
+                write_type = default_certain_type_for_untyped_type(determined_type);
+            }
+        } else if(is_array_type(determined_type) && is_untyped_type(determined_type->array_info.element_type)) {
+            // 数组元素类型包含 untyped 时递归解析
+            TypeRef elem_t = determined_type->array_info.element_type;
+            if(has_val) {
+                Array<Value> elems = result_val.array_element_values();
+                if(elems.count > 0) {
+                    elem_t = get_compliable_const_type(elems[0]);
+                    for(isize i = 0; i < elems.count; i++) {
+                        elems[i].type = elem_t;
+                    }
+                    result_val.array_element_values(elems);
+                    out_writes.push_back({determined_inst, ResultDesc::make_value(result_val)});
+                }
+            } else {
+                elem_t = default_certain_type_for_untyped_type(elem_t);
+            }
+            write_type = array_type(elem_t, determined_type->array_info.count);
+
+            // 同步更新所有元素指令的类型，防止 LLVM 生成器遇到 untyped
+            const auto& elems_info = pkg->inst(determined_inst)->info<CIROperator::ArrayInit>();
+            for(const auto ei: elems_info.element_insts) {
+                if(is_untyped_type(ResultType(ei))) {
+                    out_writes.push_back({ei, ResultDesc::make_type_only(elem_t)});
+                }
+            }
+        }
+    }
+
+    // 唯一出口：所有路径都落到这里，determined_inst 必定拿到类型
+    auto& res = out_writes.push_back({determined_inst, ResultDesc::make_type_only(write_type)})->result;
+    if(implicit_to.has_value()) {
+        res.implicit_type = implicit_to.value();
+    }
+
+    return write_type;
+}
+
+
 std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     const auto determined_inst = info.determining_inst;
     const auto expected_type_inst = info.type_inst;
@@ -1687,134 +1849,23 @@ std::optional<AnalyzeResult> Interpreter::analyze_DetermineType(CIRDetermineType
         return std::nullopt;
     }
 
-    TypeRef determined_type = ResultType(determined_inst);
-    bool has_val = has_result_val(determined_inst);
-    Value result_val;
-    if(has_val) {
-        result_val = ResultValue(determined_inst);
-    }
+    const TypeRef determined_type = ResultType(determined_inst);
 
-    TypeRef expected_type = determined_type;
-    if(has_val) {
-        if(is_untyped_type(determined_type)) {
-            expected_type = get_compliable_const_type(result_val);
-        }
-    } else {
-        const auto expected_type_maybe = default_certain_type_for_untyped_type_opt(determined_type);
-        if(expected_type_maybe) {
-            expected_type = expected_type_maybe.value();
-        }
-    }
-
-    AnalyzeResult r;   // 累积 writes 到 determined_inst + 元素传染
-    // 数组元素类型包含 untyped 时递归解析
-    if(is_array_type(expected_type) && is_untyped_type(expected_type->array_info.element_type)) {
-        TypeRef elem_t = expected_type->array_info.element_type;
-        if(has_val) {
-            Array<Value> elems = result_val.array_element_values();
-            if(elems.count > 0) {
-                elem_t = get_compliable_const_type(elems[0]);
-                for(isize i = 0; i < elems.count; i++) {
-                    elems[i].type = elem_t;
-                }
-                result_val.array_element_values(elems);
-                r.writes.push_back({determined_inst, ResultDesc::make_value(result_val)});
-            }
+    // 目标类型：type_inst 存在时以它为准，非类型标签、非 var_arg 才有约束力
+    std::optional<TypeRef> expected_type;
+    if(expected_type_inst != INVALID_INST && determined_type != type_type()) {
+        if(!has_result_val(expected_type_inst)) {
+            return std::nullopt;   // 依赖未就绪，等下一轮
         } else {
-            elem_t = default_certain_type_for_untyped_type(elem_t);
-        }
-        expected_type = array_type(elem_t, expected_type->array_info.count);
-
-        // 同步更新所有元素指令的类型，防止 LLVM 生成器遇到 untyped
-        const auto& elems_info = pkg->inst(determined_inst)->info<CIROperator::ArrayInit>();
-        for(isize i = 0; i < elems_info.element_insts.count; i++) {
-            const auto ei = elems_info.element_insts[i];
-            if(is_untyped_type(ResultType(ei))) {
-                r.writes.push_back({ei, ResultDesc::make_type_only(elem_t)});
+            const TypeRef target_type = ResultValue(expected_type_inst).type_val();
+            if(target_type != easy_type(Type_var_arg_c)) {
+                expected_type = target_type;
             }
         }
     }
 
-    // 写 determined_inst 的类型
-    auto& determined_inst_result = r.writes.push_back({determined_inst, ResultDesc::make_type_only(expected_type)})->result;
-
-    if(expected_type_inst != INVALID_INST) {
-        // 编译期类型的字段值本身是 type（如 enum { Variant :: TypeExpr }），跳过标签类型兼容检查
-        if(determined_type == type_type()) {
-            return r;
-        }
-        if(!has_result_val(info.type_inst)) {
-            return r;
-        }
-
-        expected_type = ResultValue(info.type_inst).type_val();
-        if(is_untyped_type(expected_type)) {
-            // 目标类型不应该是 untyped（原为断言，改正常报错）
-            return make_result(pc_ref, inst_error(pc_ref, "类型确定的目标类型不能是未定类型，实际 '{}'", expected_type->name()));
-        }
-
-        // var_arg: 不约束类型
-        if(expected_type == easy_type(Type_var_arg_c)) {
-            return r;
-        }
-
-        bool ok = false;
-        bool is_implicit_cast = false;
-        if(has_val) {
-            if(result_val.is_null) {
-                if(is_pointer_type(expected_type)) {
-                    ok = true;
-                }
-            }
-        }
-
-        if(is_pointer_type(determined_type) && expected_type == pointer_type(easy_type(Type_void))) {
-            ok = true;
-        } else if(is_array_type(determined_type) && is_slice_struct_type(expected_type)) {
-            if(expected_type->struct_info.struct_fields[0].type->pointed_type == determined_type->array_info.element_type) {
-                is_implicit_cast = true;
-                ok = true;
-            }
-        } else if(is_untyped_type(determined_type) && is_certain_type(expected_type)) {
-            if((determined_type == easy_type(Type_untyped_int) && is_integer_type(expected_type)) ||
-               (determined_type == easy_type(Type_untyped_float) && is_float_type(expected_type))) {
-                ok = true;
-            }
-        } else if(is_function_type(determined_type)) {
-            if(is_pointer_type(expected_type) && expected_type->pointed_type == determined_type) {
-                context()->reporter.report_error(inst(pc_ref)->src_loc,
-                    "implicit conversion from function type to function pointer is not allowed, use '&' to take address explicitly");
-                return make_result(pc_ref, ResultDesc::make_error());
-            }
-        } else if(determined_type == expected_type) {
-            ok = true;
-        }
-
-        if(!ok) {
-            context()->reporter.report_error(inst(pc_ref)->src_loc, "无法确定类型：期望 {}，实际 {}", expected_type->t_name(), determined_type->t_name());
-            return make_result(pc_ref, ResultDesc::make_error());
-        }
-
-        if(!is_implicit_cast) {
-            // 覆盖写类型
-            determined_inst_result = ResultDesc::make_type_only(expected_type);
-        } else {
-            determined_inst_result.implicit_type = expected_type;
-        }
-
-        // 这里其实算有点抽象泄漏, 因为真正的覆盖类型得在返回AnalyzeResult后才会生效
-        // 所以得提前构造个determine类型之后的值拿来做溢出检查
-        if(has_val) {
-            Value check_val = ResultValue(determined_inst);
-            // untyped 字面量自身不触发 is_val_overflow，先按目标类型模拟检查范围
-            check_val.set_type(expected_type);
-            if(is_val_overflow(check_val)) {
-                context()->reporter.report_error(inst(pc_ref)->src_loc, "类型确定时值溢出（目标类型 '{}'）", expected_type->name());
-                return make_result(pc_ref, ResultDesc::make_error());
-            }
-        }
-    }
-
+    AnalyzeResult r;
+    determine_type_of(determined_inst, expected_type, pc_ref, r.writes);
     return r;
 }
 
@@ -2149,9 +2200,38 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRCondBrInfo& info, CI
 std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& func = inst(pc_ref)->info<CIROperator::FunctionDecl>();
 
+    // $T 泛型: 形参/返回类型都是 IdentVal(T), T 未填值时整份签名算不出来。
+    // 判断条件是"T 有没有值"而非 has_generic_param_type —— 实例化会重跑本指令,
+    // 用静态标记会第二次早退, 真签名永远算不出来。
+    bool has_unresolved_type_var = false;
+    for(auto type_var_inst : func.generic_param_type_var_insts) {
+        if(!has_result_val(type_var_inst)) {
+            has_unresolved_type_var = true;
+            break;
+        }
+    }
+
+    if(has_unresolved_type_var) {
+        // 发一个 type 未定但带 func_key 的函数值: 调用点据此找回本指令去实例化。
+        // 裸 undefined 而非假函数类型 —— 漏掉的消费点会报可读的错, 不会静默通过检查。
+        Value v = make_value();
+        v.func_val(Ref<CIRInstResult>::make(pkg, pc_ref, result_context().call_instance()));
+
+        AnalyzeResult r;
+        r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
+
+        // 符号照常绑定并 Solved: 否则 IdentVal(add) 命中 Solving 会误报循环依赖
+        if(SymbolInfo* sym = try_access_val(inst(pc_ref)->symbol)) {
+            sym->val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
+            sym->state = SymbolState::Solved;
+        }
+
+        r.next_pc = pc_ref.next(2);   // 跳过紧随的 body BlockRef, 同下面两支
+        return r;
+    }
+
     // 解析参数类型
     Array<TypeRef> param_types = make_array<TypeRef>(permanent_allocator());
-    defer(array_free(&param_types));
 
     for(isize i = 0; i < func.arg_type_insts.count; i++) {
         if(func.arg_type_insts[i] != INVALID_INST) {
@@ -2200,7 +2280,14 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
 
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
         // 副作用：函数值同步写进 pkg->results（递归引用需在 body 分析前可查）
-        pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
+        if(func.has_generic_param_type) {
+            // 泛型实例的真签名只落本实例: 写包全局会冲掉模板那份 undefined 标记,
+            // 别的调用点就不再触发实例化。这里也是自递归的断点 —— body 在下面的
+            // handler 内部分析, 那时 r.writes 还没被 dispatch 应用, 只有这一句可见。
+            result_context().result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
+        } else {
+            pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
+        }
         if(sym != nullptr) {
             // 副作用：函数符号签名确定即绑定 FunctionDecl 并置 Solved（递归引用不误判循环依赖）
             sym->val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
@@ -2230,6 +2317,128 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
         }
     }
 
+    return r;
+}
+
+// $T 实例化: 用类型实参开一个独立 CIRResultInstance, 把类型变量的值填进去,
+// 然后重跑签名块 + FunctionDecl —— 签名怎么算、body 怎么分析全部复用现成路径。
+// 流程与 analyze_Call 的编译期调用段同构, 差别只在: 类型变量不占内存(不走 stack_mem),
+// 入口是签名块+FunctionDecl 而非 body(要的是签名不是返回值)。
+// 工具函数: 失败一律返回 nullopt, 递归深度检查与报错都由调用方负责。
+std::optional<Value> Interpreter::instantiate_generic_func(
+        FuncValue fv,
+        Array<Ref<CIRInstResult>> key_refs,
+        Array<TypeRef> type_args) {
+
+    CIRPackage *callee_pkg = fv.func_key.cir_package;
+    CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
+    CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc)->info<CIROperator::FunctionDecl>();
+
+    ASSERT(type_args.count == func.generic_param_type_var_insts.count);
+
+    FuncCallKey cache_key = {
+        .func_decl_pc = func_decl_pc,
+        .comptime_arg_refs = key_refs,
+        .is_generic_instance = true,
+    };
+    Ref<CIRResultInstance> callee_result_instance = callee_pkg->get_result_instance(cache_key);
+
+    // 已实例化 / 自递归重入 → 复用。真签名在 body 分析之前已登记（analyze_FunctionDecl
+    // 的泛型支），所以递归重入时必然命中。result_ptr_of 不 insert，新实例这里是干净的 miss
+    if(CIRInstResult *cached = callee_result_instance->result_ptr_of(func_decl_pc)) {
+        if(cached->state == CIRResultState::WholeValue) {
+            return cached->actual_val();
+        }
+    }
+
+    auto eval_inst = EvalInstance::make(callee_pkg, func.slot_count, stack_mem.bytes.count, permanent_allocator());
+    eval_inst.ctx.enter_call(cache_key);
+
+    // 副作用：压入实例（保存 caller pkg/scope/pc，切到 callee）
+    push_eval_instance(std::move(eval_inst));
+    defer(pop_eval_instance());   // 恢复 caller pkg/scope/pc + 回收 stack_mem 帧
+    pkg = callee_pkg;
+
+    // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
+    // 查 result_instance_map 命中本实例的这个槽
+    for(isize k = 0; k < func.generic_param_type_var_insts.count; k++) {
+        Value tv = make_value(type_type());
+        tv.type_val(type_args[k]);
+        result_context().result_of(func.generic_param_type_var_insts[k])
+            .set_val(clone_value(tv, permanent_allocator()));
+    }
+
+    // 两步分开：FunctionDecl 要读签名块算出的 arg_type_insts 结果
+    analyze_instruction_at(func.all_param_type_and_return_type_inst_blk_ref);
+    analyze_instruction_at(func_decl_pc);
+
+    if(!has_result_val(func_decl_pc)) {
+        return std::nullopt;
+    }
+
+    return ResultValue(func_decl_pc);
+}
+
+// handler: Call（写自身返回值；编译期调用 push/pop instance 副作用保留）
+// handler: InstantiateFunc（$T 模板按实参类型具化）
+// 与 DetermineType 同模式：不写自身结果，靠 CIR_TARGETS(called_thing) 把状态传播到被调对象
+std::optional<AnalyzeResult> Interpreter::analyze_InstantiateFunc(CIRInstantiateFuncInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    CIRInstructionRef called_inst = info.called_thing;
+
+    if(!has_result_val(called_inst)) {
+        return std::nullopt;
+    }
+
+    // 只处理未解析的 $T 模板；其余（普通函数、运行期函数指针）原样不动
+    const Value called_val = ResultValue(called_inst);
+    if(!called_val.is_unresolved_func_val()) {
+        return std::nullopt;
+    }
+    const FuncValue fv = called_val.unresolved_func_val();
+    const CIRFunctionDeclInfo& generic_func = fv.func_key.cir_package
+                                                ->inst(fv.func_key.inst_ref)->info<CIROperator::FunctionDecl>();
+
+    // TODO: REPEAT
+    // 模板没有可查的签名，arity 直接用形参个数比
+    if(info.arg_insts.count != generic_func.arg_type_insts.count) {
+        return make_result(called_inst, inst_error(pc_ref, "实参数量不匹配：期望 {} 个，实际 {} 个",
+            generic_func.arg_type_insts.count, info.arg_insts.count));
+    }
+
+    // // TODO: REPEAT
+    // // 实例化是 C++ 递归，阈值与编译期调用一致
+    // constexpr auto MAX_CALL_DEPTH = 15;
+    // if(instance_stack.count > MAX_CALL_DEPTH) {
+    //     return make_result(called_inst, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH));
+    // }
+
+    AnalyzeResult r;
+    auto type_args = make_array<TypeRef>(permanent_allocator());
+    auto key_refs = make_array<Ref<CIRInstResult>>(permanent_allocator());
+    Ref<CIRResultInstance> parent_instance;
+    if(auto* inst_ptr = curr_instance()) {
+        parent_instance = inst_ptr->ctx.call_instance();
+    }
+
+    // $T 由声明位实参决定：untyped 实参在此补默认类型（复用 DetermineType 的类型确定化）
+    for(isize type_var_index = 0; type_var_index < generic_func.generic_param_type_var_param_indices.count; type_var_index++) {
+        const isize decl_arg_index = generic_func.generic_param_type_var_param_indices[type_var_index];
+        const CIRInstructionRef decl_arg_inst = info.arg_insts[decl_arg_index];
+
+        const TypeRef type_arg = determine_type_of(decl_arg_inst, std::nullopt, decl_arg_inst, r.writes);
+        if(type_arg == nullptr) {
+            return r;
+        }
+        type_args.push_back(type_arg);
+        key_refs.push_back(Ref<CIRInstResult>::make(pkg, decl_arg_inst, parent_instance));
+    }
+
+    const auto instantiated = instantiate_generic_func(fv, key_refs, type_args);
+    if(!instantiated.has_value()) {
+        return make_result(called_inst, inst_error(pc_ref, "泛型函数实例化失败：签名无法确定"));
+    }
+
+    r.writes.push_back({called_inst, ResultDesc::make_value(instantiated.value())});
     return r;
 }
 
@@ -2295,6 +2504,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         if(is_pure_comptime_func(func_info, ctx)) {
             force_eval = true;
         }
+
+        DEBUG_TRACE("Call force_eval: pc={}, callee_decl={}, is_comptime={}, return_type_inst={}, force_eval={}",
+            pc_ref, fv.func_key.inst_ref, func_info.is_comptime, func_info.return_type_inst, force_eval);
+    } else {
+        DEBUG_TRACE("Call force_eval: pc={}, called_inst={} has no value -> force_eval stays false",
+            pc_ref, called_inst);
     }
 
     if(force_eval) {
@@ -2354,7 +2569,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         }
 
         // 查询编译期函数调用结果缓存
-        Ref<CIRResultInstance> callee_result_instance = callee_pkg->get_result_instance(cache_key);
+        Ref<CIRResultInstance> callee_result_instance =
+            callee_pkg->get_result_instance(cache_key);
         {
             CIRInstResult *cached_body = callee_result_instance->result_ptr_of(func.body_inst);
             // InProgress: 递归重入, 命中提前登记的返回值以中断递归
@@ -2370,8 +2586,7 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
             goto end;
         }
 
-        auto eval_inst = EvalInstance::make(callee_pkg, var_count, permanent_allocator());
-        eval_inst.frame_base = stack_mem.bytes.count;
+        auto eval_inst = EvalInstance::make(callee_pkg, var_count, stack_mem.bytes.count, permanent_allocator());
         eval_inst.ctx.enter_call(cache_key);
 
         for(isize i = 0; i < func_arg_count; i++) {
@@ -2414,6 +2629,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
             // 副作用：返回结果写入 callee 结果实例缓存（供后续同 key 调用命中）
             callee_result_instance->result_of(func.body_inst).set_val(return_val);
             r.writes.push_back({pc_ref, ResultDesc::make_value(return_val)});
+        } else if(!body_has_error && return_type != easy_type(Type_void)) {
+            // 编译期调用没产出返回值（返回类型非 void）——调用方拿不到值，必须报错
+            r.writes.push_back({pc_ref, inst_error(pc_ref,
+                "编译期调用未产出返回值（返回类型 '{}'）", return_type->name())});
         }
     }
 
@@ -2470,6 +2689,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_IdentRef(CIRIdentRefInfo& info
         if(sym->is_var_decl()) {
             Ref<CIRInstResult> var_key = sym->val_as_inst_key();
             CIRVariableDeclInfo& vd = var_key.cir_package->inst(var_key.inst_ref)->info<CIROperator::VariableDecl>();
+
+            // slot < 0 = 不占槽的编译期变量（$T 的类型变量），只能经 IdentVal 读值
+            ASSERT_MSG(vd.slot >= 0, "IdentRef 作用于不占 var_ptrs 槽位的变量");
             auto ptr = curr_instance()->var_ptrs[vd.slot];
             ASSERT(!ptr.is_null());
 
@@ -2562,11 +2784,15 @@ std::optional<AnalyzeResult> Interpreter::analyze_PublishReturnValue(CIRPublishR
     return std::nullopt;
 }
 
-
 bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
     if(sym->state == SymbolState::Unsolved) {
-        // 临时把当前实例上下文切到符号所属包的全局上下文，结果落全局，不污染触发实例
+        // 符号尚未绑定指令（其 CIR 未建/未分析）：无 CIR 可跑，放行走调用点的
+        // "无可用结果"检查报错（返回 false 会被译成"循环依赖"，不准确）
+        if(sym->value_store_type == ValueStoreType::Nothing) {
+            return true;
+        }
 
+        // 临时把当前实例上下文切到符号所属包的全局上下文，结果落全局，不污染触发实例
         CIRResultContext saved_ctx = instance_stack.back().ctx;
         instance_stack.back().ctx = CIRResultContext::create(sym->inst_key.cir_package);
         defer(instance_stack.back().ctx = saved_ctx);

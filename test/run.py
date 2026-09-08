@@ -101,10 +101,19 @@ def main():
                 capture_output=True, text=True,
             )
             combined = result.stdout + result.stderr
-            has_error = result.returncode != 0 or "error(s)" in combined
+            # 编译器自身崩溃（断言/panic/段错误）不是"预期的编译错误"，
+            # 任何类别下都判失败 —— 否则 fail 测试会把 assert 吞成 PASS
+            crashed = ("Assert FAILED" in combined or "PANIC" in combined
+                       or "Assertion failed" in combined or result.returncode < 0)
+            has_error = "error(s)" in combined
 
             if is_fail:
-                if not has_error:
+                if crashed:
+                    msg = f"compiler crashed instead of reporting an error\n  output: {combined[:400]}"
+                    print(f"  [FAIL] {item}  (compiler crash)")
+                    failed += 1
+                    failures.append((str(item), msg))
+                elif not has_error:
                     print(f"  [FAIL] {item}  (expected error, got none)")
                     failed += 1
                     failures.append((str(item), "expected compilation error but none reported"))
@@ -117,7 +126,12 @@ def main():
                     print(f"  [PASS] {item}  (error as expected)")
                     passed += 1
             else:
-                if has_error:
+                if crashed:
+                    msg = f"compiler crashed\n  output: {combined[:400]}"
+                    print(f"  [FAIL] {item}  (compiler crash)")
+                    failed += 1
+                    failures.append((str(item), msg))
+                elif has_error:
                     tail = combined[-300:]
                     print(f"  [FAIL] {item}")
                     failed += 1

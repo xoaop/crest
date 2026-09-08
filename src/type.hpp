@@ -177,10 +177,6 @@ struct StructField {
 
 
 
-enum class ImplicitConversionTag {
-    None,
-    ArrayToSliceStruct,
-};
 
 
 

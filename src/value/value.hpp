@@ -145,7 +145,12 @@ public:
     TypeRef type_val() const;
     Ref<Package> package_val() const;
     FuncValue func_val() const;
-    
+
+    // $T 泛型模板的函数值: payload 是函数, 但 type 未定(签名要等调用点推导出类型变量)。
+    // func_val() 断言 is_function_type(type), 这种值过不了, 故另开一对明确语义的访问器。
+    bool is_unresolved_func_val() const;
+    FuncValue unresolved_func_val() const;
+
 
 
 
