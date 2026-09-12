@@ -1,0 +1,15 @@
+// @fail
+// @error "无法确定类型"
+
+// union 按值参与类型推导时不能缺类型名。
+// 曾经在此处触发 type.cpp:1090 的 DEBUG_PANIC（union 是唯一没走类型名生成分支的 kind）
+U :: union {
+    a: i32;
+    b: f64;
+}
+
+main :: () -> i32 {
+    u: U;
+    v: i32 = u;
+    return 0;
+}
