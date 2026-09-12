@@ -1023,14 +1023,17 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
 
         return base_str;
 
-    } else if(is_struct_type(type) || type->kind == Type_enum) {
+    } else if(is_struct_type(type) || type->kind == Type_enum || is_union_type(type)) {
 
         // 如果是纯类型名, 就直接返回类型的kind字符串, 否则返回类型名
         if(is_pure_type_name) {
             return get_type_kind_str(type->kind);
         }
-        
-        // 直接用类型名
+
+        // 直接用类型名；匿名 union 未设 type_name，给个可读的兜底
+        if(type->type_name.capacity == 0) {
+            return xp_make_string(allocator, "union");
+        }
         return type->type_name;
 
     } else if(is_array_type(type)) {
