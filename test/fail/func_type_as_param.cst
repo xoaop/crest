@@ -1,0 +1,13 @@
+// @fail
+// @error "函数形参"
+
+// C 会自动把函数类型形参降级成指针；Crest 要求显式写 '*CB'
+CB :: (x: i32) -> void
+
+call :: (cb: CB) -> void {
+    return;
+}
+
+main :: () -> i32 {
+    return 0;
+}

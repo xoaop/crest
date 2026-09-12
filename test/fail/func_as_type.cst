@@ -1,0 +1,16 @@
+// @fail
+// @error "类型不能是函数"
+
+// 具名函数不是类型：当类型用拿到的是函数值，不是类型值。
+// 曾经在此处触发 value.cpp:170 断言崩溃
+real :: (x: i32) -> void {
+    return;
+}
+
+S :: struct {
+    cb: real;
+}
+
+main :: () -> i32 {
+    return 0;
+}

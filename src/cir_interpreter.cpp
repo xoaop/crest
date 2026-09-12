@@ -1628,13 +1628,15 @@ std::optional<AnalyzeResult> Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo
         return make_result(pc_ref, ResultDesc::make_error());
     }
 
-    TypeRef declared_type = ResultValue(info.type_inst).type_val();
     CIRVariableDeclInfo& vd = pkg->inst(info.var_inst)->info<CIROperator::VariableDecl>();
 
-    // type 是元类型，没有存储布局，不能作为变量类型。函数形参（含类型形参 $T）除外
-    if(declared_type == type_type() && !vd.is_param) {
-        return make_result(pc_ref, inst_error(pc_ref, "变量类型不能是 'type'"));
+    // 类型位置必须是真类型、且有存储布局。函数形参例外（类型形参 $T 的类型就是 'type'）
+    const Value& type_val = ResultValue(info.type_inst);
+    if(auto e = check_var_type(type_val, vd.is_param)) {
+        return make_result(pc_ref, inst_error(pc_ref, "变量{}", e.value()));
     }
+
+    TypeRef declared_type = type_val.type_val();
 
     AnalyzeResult r;   // 写 var_inst（变量恒为 LValue，保留 VariableDecl 设置的 lvalue 语义）
     TypeRef existing = ResultType(info.var_inst);
@@ -2017,6 +2019,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishStruct(CIRFinishStructIn
                 auto field_inst = info.field_insts[i];
                 auto& field_info = pkg->inst(field_inst)->info<CIROperator::StructField>();
 
+                if(auto e = check_var_type(ResultValue(field_info.type_block_inst))) {
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' {}", field_info.name, e.value()));
+                }
                 TypeRef field_type = ResultValue(field_info.type_block_inst).type_val();
 
                 StructField sf;
@@ -2100,6 +2105,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
                 auto field_inst = info.field_insts[i];
                 auto& field_info = pkg->inst(field_inst)->info<CIROperator::StructField>();
 
+                if(auto e = check_var_type(ResultValue(field_info.type_block_inst))) {
+                    return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' {}", field_info.name, e.value()));
+                }
                 TypeRef field_type = ResultValue(field_info.type_block_inst).type_val();
 
                 if(type_contains_by_value(field_type, ut)) {
@@ -2235,6 +2243,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
 
     for(isize i = 0; i < func.arg_type_insts.count; i++) {
         if(func.arg_type_insts[i] != INVALID_INST) {
+            if(auto e = check_var_type(ResultValue(func.arg_type_insts[i]), true /*is_param*/)) {
+                return make_result(pc_ref, inst_error(pc_ref, "函数形参 {}", e.value()));
+            }
             param_types.push_back(ResultValue(func.arg_type_insts[i]).type_val());
         } else {
             // var_arg
@@ -2254,6 +2265,12 @@ std::optional<AnalyzeResult> Interpreter::analyze_FunctionDecl(CIRFunctionDeclIn
     TypeRef return_type = undefined_type();
     if(func.return_type_inst != INVALID_INST) {
         if(has_result_val(func.return_type_inst)) {
+            // 纯编译期函数返回的是类型/值本身，不受存储布局限制
+            if(!is_pure_comptime_func(func, result_context())) {
+                if(auto e = check_var_type(ResultValue(func.return_type_inst))) {
+                    return make_result(pc_ref, inst_error(pc_ref, "函数返回 {}", e.value()));
+                }
+            }
             return_type = ResultValue(func.return_type_inst).type_val();
         }
     }
@@ -2517,9 +2534,9 @@ std::optional<AnalyzeResult> Interpreter::analyze_Call(CIRCallInfo& info, CIRIns
         eval_mode_stack.push_back(EvalMode::FullEval);
     }
 
-    // ── 编译期执行（FullEval only）────────────────────────────
+    // 编译期执行
     if(curr_eval_mode() == EvalMode::FullEval) {
-        // 编译期调用是 C++ 递归，Debug 下 ~63 层即爆 1MB 栈，阈值需远小于此
+        
         constexpr auto MAX_CALL_DEPTH = 15;
         if(instance_stack.count > MAX_CALL_DEPTH) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH)});

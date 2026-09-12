@@ -1,0 +1,46 @@
+// @pass
+// @run
+
+// 函数指针：Crest 要求显式 '*'，所以 typedef 写成纯函数类型、用的时候加 '*'
+CB :: (x: i32) -> i32
+
+// 结构体字段持有函数指针
+S :: struct {
+    cb: *CB;
+    id: i32;
+}
+
+// 形参也是函数指针
+apply :: (cb: *CB, v: i32) -> i32 {
+    return cb(v);
+}
+
+double :: (x: i32) -> i32 {
+    return x * 2;
+}
+
+add_one :: (x: i32) -> i32 {
+    return x + 1;
+}
+
+main :: () -> i32 {
+    // 局部函数指针变量
+    f: *CB = &double;
+    if f(21) != 42 { return 1; }
+
+    // 函数指针作实参
+    if apply(&add_one, 41) != 42 { return 2; }
+
+    // 结构体字段里的函数指针
+    s: S;
+    s.cb = &double;
+    s.id = 7;
+    if s.cb(5) != 10 { return 3; }
+    if s.id != 7 { return 4; }
+
+    // 取地址后调用
+    g := &add_one;
+    if g(1) != 2 { return 5; }
+
+    return 0;
+}
