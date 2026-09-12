@@ -131,6 +131,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
 
 void resolve_ast_file(AstFile *ast_file, Analyser analyser);
 void resolve_top_stmt(Ast *ast, Analyser analyser);
+void resolve_fn_param_list(Array<Ast *>, Analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
 void resolve_struct_decl(Ast *decl, Analyser analyser);
 void resolve_enum_decl(Ast *decl, Analyser analyser);
@@ -368,21 +369,18 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
 void resolve_function_decl(Ast *decl, Analyser analyser) {
     XP_ASSERT_DEFAULT(decl->type == AstType_FunctionDeclValue);
 
-
-    // 先在当前作用域解析函数的返回类型和参数类型
-    if(decl->FunctionDeclValue.return_type_ast != nullptr) {
-        resolve_expr(decl->FunctionDeclValue.return_type_ast, analyser);
-    }
     
     // // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
     Ref<Scope> parent_scope = analyser.current_scope;
 
     Analyser new_sc = new_scope(analyser, ScopeType::Function, decl, parent_scope);
-    
-    void resolve_fn_param_list(Array<Ast *>, Analyser);
-    
-    // 再在函数作用域内解析参数列表
+   
     resolve_fn_param_list(decl->FunctionDeclValue.params, new_sc);
+
+
+    if(decl->FunctionDeclValue.return_type_ast != nullptr) {
+        resolve_expr(decl->FunctionDeclValue.return_type_ast, new_sc);
+    }
 
 
     if(decl->FunctionDeclValue.block != NULL) {
@@ -486,6 +484,8 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
     for(isize i = 0; i < params.count; i++) {
         Ast *param = params[i];
 
+        ASSERT(param->type == AstType_ParamDecl);
+
         SymbolInfo *existing = find_symbol_curr(&analyser.current_scope.unwrap(), param->ParamDecl.name);
         if(existing != nullptr) {
             context()->reporter.report_error(
@@ -508,7 +508,41 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             .scope = analyser.current_scope,
             .name = param->ParamDecl.name
         };
-        resolve_expr(param->ParamDecl.type_ast, analyser);
+
+        
+        if(param->ParamDecl.is_var_arg) {
+            return;
+        }
+        
+        const auto type_ast = param->ParamDecl.type_ast;
+        switch(type_ast->type) {
+            case AstType_TypeVariableDeclInParam: {
+                const auto& type_var_name = type_ast->TypeVariableDeclInParam.name;
+
+                if(find_symbol_ref_curr(analyser.current_scope, type_var_name) != Ref<SymbolInfo>::INVALID_REF) {
+                    context()->reporter.report_error(
+                        type_ast->src_loc,
+                        "type variable '{}' already declared in the same scope",
+                        type_var_name
+                    );
+                    break;
+                }
+
+
+                SymbolInfo info = make_symbol(type_var_name, analyser.pkg, analyser.curr_ast_file, type_ast);
+                add_symbol_to_scope(&analyser.current_scope.unwrap(), type_var_name, info);
+                type_ast->ast_symbol = Ref<SymbolInfo>{
+                    .scope = analyser.current_scope,
+                    .name = type_var_name
+                };
+
+            } break;
+
+            default: {
+                resolve_expr(type_ast, analyser);
+            } break;
+
+        }
     }
 }
 
@@ -754,6 +788,13 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_ArrayInitExpr: {
+            if(expr_ast->ArrayInitExpr.elements.count <= 0) {
+                context()->reporter.report_error(
+                    expr_ast->src_loc,
+                    "数组初始化必须至少有一个元素, 不能为空, 不然没意义"
+                );
+            }
+
             for(isize i = 0; i < expr_ast->ArrayInitExpr.elements.count; i++) {
                 resolve_expr2(expr_ast->ArrayInitExpr.elements[i], analyser);
             }
@@ -796,19 +837,26 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             resolve_expr2(expr_ast->FunctionType.return_type_ast, analyser);
         } break;
 
-    case AstType_BadExpr: {
-        std::unreachable();
-    } break;
-    
-    case AstType_Undefined: {
-        std::unreachable();
-    } break;
+        case AstType_TypeVariableDeclInParam: {
+            context()->reporter.report_error(
+                expr_ast->src_loc,
+                "type variable declaration is only allowed in function parameter"
+            );
+        } break;
 
-    default: {
-        DEBUG_LOG("unhandled expr type: {}", ast_string(expr_ast->type));
+        case AstType_BadExpr: {
+            std::unreachable();
+        } break;
+        
+        case AstType_Undefined: {
+            std::unreachable();
+        } break;
 
-        std::unreachable();
-    } break;
+        default: {
+            DEBUG_LOG("unhandled expr type: {}", ast_string(expr_ast->type));
+
+            std::unreachable();
+        } break;
     
     }
 }

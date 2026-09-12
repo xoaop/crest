@@ -1,0 +1,9 @@
+// @fail
+// @error "type variable declaration is only allowed in function parameter"
+
+main :: () -> i32 {
+
+    a := $T;
+
+    return 0;
+}

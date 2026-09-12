@@ -99,6 +99,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(AddrOf)                   \
     X(FieldTypeOfStruct)        \
     X(FuncParamType)            \
+    X(InstantiateFunc)          \
     X(TypeOfInstResult)         \
     X(FuncType)                 \
     X(BlockRef)                 \
@@ -140,6 +141,7 @@ struct CIRVariableDeclInfo {
     Ref<SymbolInfo> symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
+    bool is_param;                // 是否函数形参（含类型形参：其类型可以是 type）
 
     bool no_zero_init;
 };
@@ -157,7 +159,6 @@ struct CIRFunctionDeclInfo {
 
     CIRInstructionRef body_inst;
     CIRInstructionRef return_type_inst; // 返回类型 block 引用, nullopt 表示返回类型由返回值推导
-    // Array<CIRVariableDeclInfo> args;           // 参数名 + slot + is_var_arg
     Array<CIRInstructionRef> arg_type_insts; // 每个参数的类型 block 引用（与 args 平行，var_arg 为 INVALID_INST）
     Array<CIRInstructionRef> arg_decl_insts; // 每个参数的 VariableDecl 指令引用
     isize return_count;                    // 返回值数量
@@ -167,6 +168,12 @@ struct CIRFunctionDeclInfo {
 
 
     isize slot_count;               // 局部变量数量（包括参数）
+
+    // $T 泛型: 类型变量是函数自己的槽, 值由调用点按实参类型填, 每个实例一份
+    bool has_generic_param_type;
+    Array<CIRInstructionRef> generic_param_type_var_insts;   // 各类型变量的 VariableDecl
+    Array<isize> generic_param_type_var_param_indices;       // 各类型变量从第几个实参推导
+    CIRInstructionRef all_param_type_and_return_type_inst_blk_ref;   // 签名块(形参+返回类型), 实例化只重跑它
 
     CIR_REFS(&CIRFunctionDeclInfo::body_inst, &CIRFunctionDeclInfo::return_type_inst,
              &CIRFunctionDeclInfo::arg_type_insts, &CIRFunctionDeclInfo::arg_decl_insts)
@@ -215,6 +222,17 @@ struct CIRCallInfo {
     Array<CIRInstructionRef> arg_insts;
 
     CIR_REFS(&CIRCallInfo::called_thing, &CIRCallInfo::arg_insts)
+};
+
+// $T 实例化：把 called_thing 的未实例化模板按实参类型具化，结果写回 called_thing 的结果槽。
+// 与 DetermineType 同模式（不写自身结果，靠 CIR_TARGETS 传播）。排在
+// TypeOfInstResult/FuncParamType/DetermineType 之前，使后续环节拿到的都是真签名，无需推迟或重跑
+struct CIRInstantiateFuncInfo {
+    CIRInstructionRef called_thing;
+    Array<CIRInstructionRef> arg_insts;
+
+    CIR_REFS(&CIRInstantiateFuncInfo::called_thing, &CIRInstantiateFuncInfo::arg_insts)
+    CIR_TARGETS(&CIRInstantiateFuncInfo::called_thing)
 };
 
 struct CIRBinaryInfo {

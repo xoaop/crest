@@ -53,7 +53,7 @@ struct CIRBuilder {
     void build_inst_for_for_stmt(Ast *stmt);
 
     CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
-    CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast);
+    CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param = false);
     CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     CIRInstruction& Instruction(CIRInstructionRef ref);
 

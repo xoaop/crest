@@ -1,0 +1,21 @@
+// @pass
+// @run
+
+// 返回具体类型的编译期函数可以当类型标注用（非 $T 的返回类型值）
+make_type :: $() -> type {
+    return i32;
+}
+
+identity_type :: $(val: $T) -> type {
+    return i32;
+}
+
+main :: () -> i32 {
+    a : make_type() = 7;
+    if a != 7 { return 1; }
+
+    b : identity_type(42) = 8;
+    if b != 8 { return 2; }
+
+    return 0;
+}

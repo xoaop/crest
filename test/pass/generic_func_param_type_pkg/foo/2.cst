@@ -1,0 +1,9 @@
+add :: (a: $T, b: T) -> T {
+
+    return a + b;
+}
+
+pick_second :: (a: $A, b: $B) -> B {
+
+    return b;
+}

@@ -1,0 +1,31 @@
+// @pass
+// @run
+
+// 泛型调泛型: 嵌套实例化, 内层的类型变量从外层已实例化的形参类型推导
+inner :: (a: $T, b: T) -> T {
+
+    return a + b;
+}
+
+outer :: (x: $U) -> U {
+
+    return inner(x, x);
+}
+
+// 三层
+outer2 :: (x: $V) -> V {
+
+    return outer(x);
+}
+
+main :: () -> i32 {
+
+    if outer(3i32) != 6i32 { return 1; }
+    if outer(2i64) != 4i64 { return 2; }
+    if outer2(5i32) != 10i32 { return 3; }
+
+    f := outer(1.5f64);
+    if f != 3.0f64 { return 4; }
+
+    return 0;
+}
