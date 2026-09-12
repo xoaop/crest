@@ -153,8 +153,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
         for(Ast *type_var_ast : fd->FunctionDeclValue.type_var_asts) {
             ASSERT(type_var_ast->type == AstType_TypeVariableDeclInParam);
 
-            // 类型变量不占 slot: 占了会把参数槽号后移, 与 LLVM 形参索引错位。
-            // T 只经 IdentVal 读结果, 从不 Load, 所以不需要 var_ptrs 槽位。
+
             auto type_var_inst = Make_Instruction<CIROperator::VariableDecl>(type_var_ast, {
                 .name = type_var_ast->TypeVariableDeclInParam.name,
                 .symbol = type_var_ast->ast_symbol,
@@ -165,6 +164,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
             });
             func.generic_param_type_var_insts.push_back(type_var_inst);
 
+            
             const xpString type_str = "type";
             auto ident_val_for_type_type = Make_Instruction<CIROperator::IdentVal>(type_var_ast, {
                 .ident = type_str
