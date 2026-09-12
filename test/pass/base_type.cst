@@ -1,7 +1,7 @@
 
 
 // @pass
-// (run: expected exit 0 — requires link phase)
+// @run
 
 main :: () -> i32 {
 
