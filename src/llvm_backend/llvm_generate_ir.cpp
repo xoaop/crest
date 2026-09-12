@@ -19,7 +19,13 @@ static xpHashMap<Ref<CIRInstResult>, xpString>& get_global_func_names() {
     return map;
 }
 
-xpString register_func_name(Ref<CIRInstResult> key, bool is_extern_c) {
+// $T 实例（而非模板本身）：实例由调用点创建，被调包遍历时看不到它
+static bool is_generic_func_instance(const CIRFunctionDeclInfo& fd, Ref<CIRInstResult> key) {
+    return fd.has_generic_param_type
+        && key.result_instance != Ref<CIRResultInstance>::INVALID_REF;
+}
+
+xpString register_func_name(Ref<CIRInstResult> key, bool is_extern_c, TypeRef func_type) {
     auto& map = get_global_func_names();
     return map.get_or_insert(key, [&]{
         CIRInstruction* inst = key.cir_package->inst(key.inst_ref);
@@ -33,6 +39,18 @@ xpString register_func_name(Ref<CIRInstResult> key, bool is_extern_c) {
             static isize anon_counter = 0;
             base_name = xp_string_copy(permanent_allocator(), xp_string_c("__anon_"));
             xp_string_append(&base_name, xp_isize_to_string(anon_counter++, permanent_allocator()));
+        }
+
+        // $T 实例：名字里带上形参类型。否则各实例同名，只靠 LLVMAddFunction 自动加的
+        // .1/.2 后缀区分 —— 那个编号跨模块不保证一致，COMDAT 会把不同签名误当同名去重
+        if(key.result_instance != Ref<CIRResultInstance>::INVALID_REF
+           && inst->info<CIROperator::FunctionDecl>().has_generic_param_type
+           && func_type != nullptr && is_function_type(func_type)) {
+            base_name = xp_string_copy(permanent_allocator(), base_name);
+            for(isize i = 0; i < func_type->function_info.param_types.count; i++) {
+                xp_string_append(&base_name, xp_string_c("$"));
+                xp_string_append(&base_name, func_type->function_info.param_types[i]->t_name());
+            }
         }
 
         if(xp_string_equal(base_name, xp_string_c("main")) || is_extern_c) {
@@ -784,6 +802,12 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     if(res.state != CIRResultState::WholeValue) {
         return;
     }
+
+    // $T 模板的签名未定，本身不生成 IR；各实例由调用点的 gen_ir_function(fk, pkg) 触发
+    if(res.actual_val().is_unresolved_func_val()) {
+        return;
+    }
+
     Ref<CIRInstResult> fk = res.actual_val().func_val().func_key;
 
     // 无状态：inst_vals 命中即已完整处理（声明 + body 原子完成）
@@ -791,7 +815,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
 
     // 创建声明 + 落库（生成即稳定）
     LLVMTypeRef fn_type = get_llvm_type_from_type(res.actual_val().type);
-    xpString func_full_name = register_func_name(fk, fd.is_extern_c);
+    xpString func_full_name = register_func_name(fk, fd.is_extern_c, res.actual_val().type);
     const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
     LLVMValueRef func = LLVMAddFunction(unit.module, c_name, fn_type);
     xp_hash_map_insert(&inst_vals, fk, func);
@@ -800,7 +824,8 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     if(fd.is_extern_c || fd.is_builtin) return;
 
     // 跨包命名函数：只声明（body 由所属包生成），匿名函数即使跨包也生成（COMDAT 去重）
-    if(is_cross_pkg && func_sym) return;
+    // $T 实例例外：body 只能在这里生成
+    if(is_cross_pkg && func_sym && !is_generic_func_instance(fd, fk)) return;
 
     gen_func_body(fk, func);
 }
@@ -865,7 +890,8 @@ void LLVMGenerator::gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func
     }
 
     // 匿名函数可能被多个模块引用，用 COMDAT (any) 去重，避免 COFF 弱外部 .default. 冲突
-    if(!func_sym) {
+    // $T 实例同理：多个包各自调 foo.add(1i32, 2i32) 会各生成一份同名 define
+    if(!func_sym || is_generic_func_instance(fd, key)) {
         LLVMComdatRef comdat = LLVMGetOrInsertComdat(unit.module, LLVMGetValueName(llvm_func));
         LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
         LLVMSetComdat(llvm_func, comdat);
@@ -1033,6 +1059,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         case CIROperator::FieldTypeOfStruct:
         case CIROperator::FuncParamType:
         case CIROperator::TypeOfInstResult:
+        case CIROperator::InstantiateFunc:
+        case CIROperator::PublishReturnValue:
         case CIROperator::FuncType:
         case CIROperator::ImportPackage: {
 

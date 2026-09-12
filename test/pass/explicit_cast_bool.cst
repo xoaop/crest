@@ -1,5 +1,5 @@
 // @pass
-// (run: expected exit 0)
+// @run
 
 main :: () -> i32 {
 

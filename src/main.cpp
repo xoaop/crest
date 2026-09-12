@@ -177,7 +177,12 @@ int main(int argc, char** argv) {
     context()->all_scopes = make_array<Scope>(permanent_allocator());
     context()->static_mem.init(MemoryKind::String, permanent_allocator());
 
-
+    // 各包的 stage arena 统一在退出时回收（含以下所有报错早退路径）
+    defer({
+        for(auto& pkg: context()->all_packages) {
+            xp_free_all(pkg.stage_allocator);
+        }
+    });
 
     // builtin 完整构建+分析（删全局循环后没有 import 会触发它，必须显式做，且在 main 之前）。
     auto builtin_pkg_opt = compile_package_from_import(xp_string_c("std/builtin"));
@@ -196,7 +201,6 @@ int main(int argc, char** argv) {
     context()->package_search_paths.push_back(main_dir);
     context()->main_src_dir_path = main_dir;
 
-
     auto main_pkg_opt = compile_package_from_path(xp_string_c(main_path));
     if(main_pkg_opt.is_none()) {
         context()->reporter.report_error("main package path '{}' is not a valid directory or file", main_path);
@@ -204,17 +208,18 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+
     mark_stage("analyze packages");
 
     if(context()->scope_dump) {
         print_scope_tree(&context()->global_blank_package.unwrap().package_scope.unwrap());
     }
 
-    if(context()->cir_dump) {
-        for(auto& pkg : context()->all_packages) {
-            dump_cir_package(&pkg.cir_package);
-        }
-    }
+    // if(context()->cir_dump) {
+    //     for(auto& pkg : context()->all_packages) {
+    //         dump_cir_package(&pkg.cir_package);
+    //     }
+    // }
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
@@ -230,10 +235,6 @@ int main(int argc, char** argv) {
     Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
     
     mark_stage("generate LLVM IR");
-
-    for(auto& pkg: context()->all_packages) {
-        xp_free_all(pkg.stage_allocator);
-    }
 
     return 0;
 }

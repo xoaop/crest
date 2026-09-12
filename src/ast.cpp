@@ -33,10 +33,7 @@ Ast ast_make(AstType type) {
     Ast ast = {};
     
     ast.ast_symbol = Ref<SymbolInfo>::INVALID_REF;
-    ast.is_const_expr = false;
-    ast.is_lvalue = false;
     ast.is_null = false;
-    ast.implicit_conversion_tag = ImplicitConversionTag::None;
 
 
     ast.type = type;

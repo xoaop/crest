@@ -134,6 +134,10 @@ struct Ast;
         bool is_comptime;                                                            \
         bool infer_return_type;                                                      \
         bool is_builtin;                                                             \
+        Array<Ast *> type_var_asts;                                                  \
+        Array<isize> type_var_param_indices;                                         \
+        bool has_generic_param_type;                                                 \
+        isize generic_value_param_count;                                             \
     })                                                                               \
     AST_INFO(StructDeclValue, "struct decl value", struct {                          \
         Array<Ast *> fields;                                                         \
@@ -192,13 +196,9 @@ struct Ast {
 
     Token token; // 记录该AST对应的第一个token
 
-    ImplicitConversionTag implicit_conversion_tag;
-
     Ref<SymbolInfo> ast_symbol = Ref<SymbolInfo>::INVALID_REF; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
 
     // 表达式属性
-    bool is_const_expr = false; // 该AST是否是一个常量表达式
-    bool is_lvalue = false;     // 该AST是否是一个左值表达式
     bool is_null = false;       // 该AST是否是一个null值(仅用于常量表达式)
 
     Ast();

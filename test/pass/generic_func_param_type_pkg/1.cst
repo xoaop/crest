@@ -1,0 +1,19 @@
+// @pass
+// @run
+
+import "foo"
+
+// 被调方在别的包: 泛型信息随 CIR FunctionDecl 走, 调用点在解释期才实例化
+main :: () -> i32 {
+
+    r := foo.add(1i32, 2i32);
+    if r != 3i32 { return 1; }
+
+    f := foo.add(1.5f64, 2.5f64);
+    if f != 4.0f64 { return 2; }
+
+    s := foo.pick_second(1i32, 9i64);
+    if s != 9i64 { return 3; }
+
+    return 0;
+}

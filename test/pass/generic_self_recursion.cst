@@ -1,0 +1,18 @@
+// @pass
+// @run
+
+// 同一类型实参复用同一个泛型实例, 自递归靠提前登记的函数值中断
+sum_down :: (n: $T) -> T {
+
+    if n <= 0i32 { return 0i32; }
+
+    return n + sum_down(n - 1i32);
+}
+
+main :: () -> i32 {
+
+    if sum_down(3i32) != 6i32 { return 1i32; }
+    if sum_down(10i32) != 55i32 { return 2i32; }
+
+    return 0i32;
+}

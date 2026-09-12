@@ -1,0 +1,33 @@
+// @pass
+// @run
+
+// T 是 struct 类型; 返回类型不是 T 而是 bool
+Point :: struct {
+    x: i32;
+    y: i32;
+}
+
+id :: (a: $T) -> T {
+
+    return a;
+}
+
+is_same :: (a: $T, b: T) -> bool {
+
+    return a == b;
+}
+
+main :: () -> i32 {
+
+    p := Point.{1, 2};
+    q := id(p);
+    if q.x != 1 { return 1; }
+    if q.y != 2 { return 2; }
+
+    // 返回类型与 T 无关
+    if !is_same(5i32, 5i32) { return 3; }
+    if is_same(5i64, 6i64) { return 4; }
+    if !is_same(true, true) { return 5; }
+
+    return 0;
+}

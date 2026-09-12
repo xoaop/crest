@@ -141,12 +141,47 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
     func.is_builtin = fd->FunctionDeclValue.is_builtin;
     func.arg_type_insts = make_array<CIRInstructionRef>(permanent_allocator());
     func.arg_decl_insts = make_array<CIRInstructionRef>(permanent_allocator());
-
+    func.has_generic_param_type = fd->FunctionDeclValue.has_generic_param_type;
+    func.generic_param_type_var_insts = make_array<CIRInstructionRef>(permanent_allocator());
+    func.generic_param_type_var_param_indices = fd->FunctionDeclValue.type_var_param_indices;
 
 
     curr_func = &func;
 
 
+    if(fd->FunctionDeclValue.has_generic_param_type) {
+        for(Ast *type_var_ast : fd->FunctionDeclValue.type_var_asts) {
+            ASSERT(type_var_ast->type == AstType_TypeVariableDeclInParam);
+
+            // 类型变量不占 slot: 占了会把参数槽号后移, 与 LLVM 形参索引错位。
+            // T 只经 IdentVal 读结果, 从不 Load, 所以不需要 var_ptrs 槽位。
+            auto type_var_inst = Make_Instruction<CIROperator::VariableDecl>(type_var_ast, {
+                .name = type_var_ast->TypeVariableDeclInParam.name,
+                .symbol = type_var_ast->ast_symbol,
+                .slot = -1,
+                .is_var_arg = false,
+                .is_param = true,   // 类型形参：其类型就是 type
+                .no_zero_init = false,
+            });
+            func.generic_param_type_var_insts.push_back(type_var_inst);
+
+            const xpString type_str = "type";
+            auto ident_val_for_type_type = Make_Instruction<CIROperator::IdentVal>(type_var_ast, {
+                .ident = type_str
+            });
+            Instruction(ident_val_for_type_type).symbol = find_symbol_ref_curr(context()->global_blank_package->cir_package.package_scope, type_str);
+
+            auto type_ascribe_inst = Make_Instruction<CIROperator::TypeAscribe>(type_var_ast, {
+                .var_inst  = type_var_inst,
+                .type_inst = ident_val_for_type_type
+            });
+        }
+    }
+
+
+    // 签名(形参类型 + 返回类型)单独成块: 结构上把签名与声明/函数体分开,
+    // 也让 $T 实例化能只重跑这一块
+    func.all_param_type_and_return_type_inst_blk_ref = Begin_Block(fd, true, true);
 
     // 1. 每个参数：类型 block + 分配 slot
     auto param_decls = make_array<CIRVariableDeclInfo>(curr_pkg_ref->stage_allocator);
@@ -166,6 +201,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
         var.is_var_arg = param->ParamDecl.is_var_arg;
         param_decls.push_back(var);
         func.arg_type_insts.push_back(param_type);
+
     }
 
 
@@ -187,10 +223,9 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
 
         func.return_type_inst = rt_block;
     }
-    
-    
-    
-    
+
+    End_Block();   // 签名块
+
     func.body_inst = INVALID_INST;
     auto func_inst = New_Instruction(CIROperator::FunctionDecl, fd);
     
@@ -213,7 +248,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
                 auto& var = param_decls[i];
 
                 // NOTE: 函数参数变量的no_zero_init为false, 因为一定有值, 没必要
-                auto vd = Alloc_Var(var.name, var.is_var_arg, false, fd->FunctionDeclValue.params[i]);
+                auto vd = Alloc_Var(var.name, var.is_var_arg, false, fd->FunctionDeclValue.params[i], true /*is_param*/);
                 func.arg_decl_insts.push_back(vd);
 
                 auto param_type = func.arg_type_insts[i];
@@ -638,18 +673,31 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_FunctionCallExpr: {
-                // func_type = TypeOfInstResult(func_val)
                 auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
+
+                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
+                for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                    arg_insts.push_back(build_inst_for_expr(expr->FunctionCallExpr.args[i]));
+                }
+
+                // 实例化排在签名消费方之前：$T 模板在此具化，后续拿到的都是真签名
+                auto instantiate = Make_Instruction<CIROperator::InstantiateFunc>(expr, {
+                    .called_thing = called_thing_inst,
+                    .arg_insts = arg_insts.copy(permanent_allocator()),
+                });
+
+                // func_type = TypeOfInstResult(被调对象)。InstantiateFunc 已把 $T 模板具化并
+                // 写回 called_thing 的结果，这里读到的就是真函数值
                 auto typeof_func = Make_Instruction<CIROperator::TypeOfInstResult>(expr, {
                     .target_inst = called_thing_inst
                 });
 
                 // 每个实参: FunParamType + DetermineType
-                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
-                for (isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                for(isize i = 0; i < arg_insts.count; i++) {
                     Ast *arg = expr->FunctionCallExpr.args[i];
-                    auto arg_inst = build_inst_for_expr(arg);
+                    auto arg_inst = arg_insts[i];
 
+                    // 获取函数参数类型
                     auto fpt = Make_Instruction<CIROperator::FuncParamType>(arg, {
                         .type_of_func_type_inst = typeof_func,
                         .param_index = i,
@@ -659,8 +707,6 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                         .determining_inst = arg_inst,
                         .type_inst = fpt,
                     });
-
-                    arg_insts.push_back(arg_inst);
                 }
 
                 auto call_inst = Make_Instruction<CIROperator::Call>(expr, {
@@ -1109,6 +1155,12 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             });
         } break;
 
+        case AstType_TypeVariableDeclInParam: {
+            auto as_ident_val_inst = Make_Instruction<CIROperator::IdentVal>(expr, { .ident = expr->TypeVariableDeclInParam.name });
+            Instruction(as_ident_val_inst).symbol = expr->ast_symbol;
+            result = as_ident_val_inst;
+        } break;
+
         default: {
 
             DEBUG_LOG("Unsupported AST type for CIR generation: {}", ast_string(expr->type));
@@ -1127,13 +1179,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
 
-CIRInstructionRef CIRBuilder::Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast) {
+CIRInstructionRef CIRBuilder::Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param) {
     isize slot = curr_func ? curr_func->slot_count++ : -1;
     auto vd = Make_Instruction<CIROperator::VariableDecl>(ast, {
         .name = name,
         .symbol = ast ? ast->ast_symbol : Ref<SymbolInfo>::INVALID_REF,
         .slot = slot,
         .is_var_arg = is_var_arg,
+        .is_param = is_param,
         .no_zero_init = no_zero_init,
     });
     return vd;
