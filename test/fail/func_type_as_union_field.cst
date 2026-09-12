@@ -1,0 +1,12 @@
+// @fail
+// @error "联合体字段"
+
+// 联合体字段同样有存储位置
+U :: union {
+    cb: (x: i32) -> bool;
+    x: i32;
+}
+
+main :: () -> i32 {
+    return 0;
+}

@@ -102,6 +102,29 @@ TypeRef get_compliable_float_type(double value) {
 
 }
 
+std::optional<xpString> check_var_type(const Value& val, bool is_param) {
+    // 类型位置拿到的是函数值：写的是函数声明当类型用，比如 field: some_func
+    if(val.actual_type() == ActualValueType::Function) {
+        return xp_make_string(temp_allocator(), "类型不能是函数（函数不是类型，也没有存储布局），请用函数指针 '*...' 或改用具名函数类型");
+    }
+    const TypeRef type = val.type_val();
+    // $T 类型形参的类型就是 'type'，是唯一合法的例外
+    if(type == type_type() && !is_param) {
+        return xp_make_string(temp_allocator(), "类型不能是 'type'（类型类型没有存储空间）");
+    }
+    if(is_function_type(type)) {
+        // C 会自动把函数类型降级成指针；这里要显式的 '*'，所以按错误报出去
+        return xp_string_concat_mid(
+            xp_make_string(temp_allocator(), "类型不能是函数类型（没有存储布局），请用函数指针 '*"),
+            type->name(),
+            xpOption<xpString>(xp_string_c("'")),
+            temp_allocator()
+        );
+    }
+    return std::nullopt;
+}
+
+
 std::optional<TypeRef> default_certain_type_for_untyped_type_opt(TypeRef untyped_type) {
     if(untyped_type == easy_type(Type_untyped_int)) {
         return easy_type(Type_i32);
