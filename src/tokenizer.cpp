@@ -286,6 +286,9 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             if(tokenizer_curr_character(t) == '=') {
                 token.type = TokenType::GreaterEqual;
                 advance_one_character(t);
+            } else if(tokenizer_curr_character(t) == '>') {
+                token.type = TokenType::ShiftRight;
+                advance_one_character(t);
             }
             break;
         case '<':
@@ -294,6 +297,9 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
 
             if(tokenizer_curr_character(t) == '=') {
                 token.type = TokenType::LessEqual;
+                advance_one_character(t);
+            } else if(tokenizer_curr_character(t) == '<') {
+                token.type = TokenType::ShiftLeft;
                 advance_one_character(t);
             }
             break;
@@ -307,13 +313,17 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             }
             break;
         case '|':
-            token.type = TokenType::DoubleOr;
+            token.type = TokenType::Pipe;
             advance_one_character(t);
 
             if(tokenizer_curr_character(t) == '|') {
                 token.type = TokenType::DoubleOr;
                 advance_one_character(t);
             }
+            break;
+        case '~':
+            token.type = TokenType::Tilde;
+            advance_one_character(t);
             break;
         case ':':
             token.type = TokenType::Colon;

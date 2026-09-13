@@ -1240,9 +1240,22 @@ isize precedence(TokenType op, bool is_unary_op = false) {
     case TokenType::LessEqual:
         prec = 6;
         break;
+    case TokenType::ShiftLeft:
+    case TokenType::ShiftRight:
+        prec = 5;
+        break;
     case TokenType::DoubleEqual:
     case TokenType::ExclamationEqual:
         prec = 7;
+        break;
+    case TokenType::And:
+        prec = 8;
+        break;
+    case TokenType::Caret:
+        prec = 9;
+        break;
+    case TokenType::Pipe:
+        prec = 10;
         break;
     case TokenType::DoubleAnd:
         prec = 11;

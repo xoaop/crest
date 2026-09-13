@@ -84,6 +84,11 @@ bool is_binary_op(TokenType type) {
     case ExclamationEqual:
     case DoubleAnd:
     case DoubleOr:
+    case Pipe:        // |
+    case Caret:       // ^ (二元：按位异或；一元时是解引用)
+    case And:         // & (二元：按位与；一元时是取地址)
+    case ShiftLeft:   // <<
+    case ShiftRight:  // >>
         return true;
     default:
         return false;
@@ -97,7 +102,8 @@ bool is_unary_op(TokenType type) {
     {
     case TokenType::Minus: // -
     case TokenType::Exclamation: // !
-    
+    case TokenType::Tilde: // ~ 按位取反
+
     // 指针运算
     case TokenType::And: // &
     case TokenType::Caret: // ^
@@ -136,6 +142,16 @@ bool is_logic_operator(TokenType t) {
     return t == TokenType::DoubleAnd ||
            t == TokenType::DoubleOr  ||
            t == TokenType::Exclamation;
+}
+
+// 按位/移位：只接受整数操作数，结果为操作数类型（不返回 bool）
+bool is_bitwise_operator(TokenType t) {
+    return t == TokenType::And ||        // & (二元)
+           t == TokenType::Pipe ||       // |
+           t == TokenType::Caret ||      // ^ (二元)
+           t == TokenType::Tilde ||      // ~ (一元)
+           t == TokenType::ShiftLeft ||  // <<
+           t == TokenType::ShiftRight;   // >>
 }
 
 bool is_return_bool_operator(TokenType t) {

@@ -1744,6 +1744,26 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
         case TokenType::DoubleOr: { // ||
             result = LLVMBuildOr(unit.builder, left, right, "ortmp");
         } break;
+        case TokenType::Pipe: { // |
+            result = LLVMBuildOr(unit.builder, left, right, "bortmp");
+        } break;
+        case TokenType::And: { // & (二元)
+            result = LLVMBuildAnd(unit.builder, left, right, "bandtmp");
+        } break;
+        case TokenType::Caret: { // ^ (二元)
+            result = LLVMBuildXor(unit.builder, left, right, "bxortmp");
+        } break;
+        case TokenType::ShiftLeft: { // <<
+            result = LLVMBuildShl(unit.builder, left, right, "shltmp");
+        } break;
+        case TokenType::ShiftRight: { // >>
+            // 有符号用算术右移，无符号用逻辑右移
+            if(is_signed_type(left_type)) {
+                result = LLVMBuildAShr(unit.builder, left, right, "ashrtmp");
+            } else {
+                result = LLVMBuildLShr(unit.builder, left, right, "lshrtmp");
+            }
+        } break;
 
         default: {
             std::unreachable();
@@ -1782,6 +1802,12 @@ void LLVMGenerator::gen_ir_unary(CIRInstructionRef inst) {
         }
 
         result = LLVMBuildNot(unit.builder, operand, "nottmp");
+    } else if(op == TokenType::Tilde) {
+        if(is_float_type(operand_type)) {
+            DEBUG_PANIC("不支持对浮点数使用按位取反运算符");
+        }
+
+        result = LLVMBuildNot(unit.builder, operand, "bnottmp");
     }
     
   

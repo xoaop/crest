@@ -179,6 +179,46 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
 
         } break;
 
+        case TokenType::Pipe: {          // |
+            if(is_int_or_untyped) {
+                result.integer_val( v1.integer_val() | v2.integer_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
+        case TokenType::And: {           // & (二元)
+            if(is_int_or_untyped) {
+                result.integer_val( v1.integer_val() & v2.integer_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
+        case TokenType::Caret: {         // ^ (二元)
+            if(is_int_or_untyped) {
+                result.integer_val( v1.integer_val() ^ v2.integer_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
+        case TokenType::ShiftLeft: {     // <<
+            if(is_int_or_untyped) {
+                result.integer_val( v1.integer_val() << v2.integer_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
+        case TokenType::ShiftRight: {    // >>
+            if(is_int_or_untyped) {
+                result.integer_val( v1.integer_val() >> v2.integer_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
         default: {
             return ValueResult::err(ValueErrorKind::OperatorError);
         } break;
@@ -261,6 +301,27 @@ ValueResult exec_unary(Value &operand, TokenType op) {
         case TokenType::Exclamation: {
             if(is_bool) {
                 result.bool_val( !operand.bool_val());
+            } else {
+                return ValueResult::err(ValueErrorKind::TypeError);
+            }
+        } break;
+
+        case TokenType::Tilde: {         // ~
+            if(is_int_or_untyped) {
+                // 按操作数位宽取反，否则高位全 1 会误报溢出。
+                // 有符号类型还要做符号扩展（~0i32 应为 -1 而非 4294967295）
+                i128 x = operand.integer_val();
+                if(is_certain_type(operand.type)) {
+                    isize bits = type_size_of(operand.type) * 8;
+                    i128 mask = (((i128)1) << bits) - 1;
+                    x = ~x & mask;
+                    if(is_signed_type(operand.type) && (x & (((i128)1) << (bits - 1)))) {
+                        x = x - (mask + 1);
+                    }
+                } else {
+                    x = ~x;
+                }
+                result.integer_val(x);
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);
             }
