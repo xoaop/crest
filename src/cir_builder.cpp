@@ -646,7 +646,13 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(Ast *expr) {
 
 
 CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
-    
+    RecursionGuard depth_guard;
+    if(depth_guard.exceeded) {
+        // 返回 error 类型占位，让下游走正常类型检查报错
+        auto err_val = make_value(error_type());
+        return Make_Instruction<CIROperator::ConstantValue>(expr, { .value = err_val });
+    }
+
     CIRInstructionRef result = INVALID_INST;
     switch(expr->type) {
         case AstType_Ident: {

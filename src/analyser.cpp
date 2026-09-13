@@ -867,6 +867,11 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
         return;
     }
 
+    RecursionGuard depth_guard;
+    if(depth_guard.exceeded) {
+        return;
+    }
+
     switch (expr_ast->type) {
         case AstType_FunctionDeclValue: {
             resolve_function_decl(expr_ast, analyser);

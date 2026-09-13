@@ -25,4 +25,19 @@ void global_allocators_free();
 
 
 
+// 递归深度守卫
+constexpr isize MAX_RECURSION_DEPTH = 100;
+
+extern isize recursion_depth;
+extern bool recursion_limit_reported;
+
+struct RecursionGuard {
+    bool exceeded;
+
+    RecursionGuard();
+    ~RecursionGuard();
+};
+
+
+
 #endif

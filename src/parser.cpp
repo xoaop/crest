@@ -1006,6 +1006,13 @@ Ast *parse_string_literal(Parser *p) {
 }
 
 Ast *parse_expr_factor(Parser *p) {
+    RecursionGuard depth_guard;
+    if(depth_guard.exceeded) {
+        Ast *bad = ast_alloc(AstType_BadExpr, curr_token(p));
+        bad->src_loc = curr_token(p).src_loc;
+        return bad;
+    }
+
     Ast *a = NULL;
     defer(XP_ASSERT_DEFAULT(a != NULL));
 
@@ -1271,6 +1278,13 @@ isize precedence(TokenType op, bool is_unary_op = false) {
 }
 
 Ast *parse_expr(Parser *p, isize min_prec) {
+    RecursionGuard depth_guard;
+    if(depth_guard.exceeded) {
+        Ast *bad = ast_alloc(AstType_BadExpr, curr_token(p));
+        bad->src_loc = curr_token(p).src_loc;
+        return bad;
+    }
+
     Ast *left = parse_expr_factor(p);
 
     Token curr;

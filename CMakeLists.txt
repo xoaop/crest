@@ -44,6 +44,15 @@ endif()
 
 target_link_libraries(crest PRIVATE "${LLVM_C_LIB}")
 
+# 主线程栈大小。Windows PE 头默认只保留 1MB（Linux/macOS 是 8MB），
+# 而编译器是递归下降，1MB 只够约 54 层嵌套。
+if(WIN32)
+    # clang++ 是 GNU 风格驱动，需 -Wl, 转义
+    target_link_options(crest PRIVATE -Wl,/stack:16777216)
+else()
+    target_link_options(crest PRIVATE -Wl,-z,stacksize=16777216)
+endif()
+
 # Windows：编译后把 LLVM-C.dll 复制到可执行文件同目录（运行依赖）
 if(WIN32)
     add_custom_command(TARGET crest POST_BUILD
