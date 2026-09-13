@@ -95,8 +95,9 @@ SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind);
 SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind);
 
-Ref<SymbolInfo> find_symbol_until_global_ref(Ref<Scope> scope, xpString symbol_ident);
+Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, xpString symbol_ident);
 Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, xpString symbol_ident);
+Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, xpString symbol_ident);
 
 
 Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope);

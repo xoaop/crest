@@ -94,18 +94,18 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
     Ast *value_ast = const_decl_ast->ConstDecl.value_ast;
     
     // 先检查有没有重复符号
-    SymbolInfo *info = NULL;
+    Ref<SymbolInfo> info = Ref<SymbolInfo>::INVALID_REF;
     if(value_ast->type == AstType_Import) {
         // Import符号在文件作用域
 
-        info = find_symbol_curr(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name);
+        info = find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
     } else {
         // 其他符号在包作用域
 
-        info = find_symbol_until(ScopeType::Package, &analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name);
+        info = find_symbol_ref_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
     }    
 
-    if(info != NULL) {
+    if(info != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
             SourceLocation(analyser.curr_ast_file->source_code, const_decl_ast->src_loc.span),
             "symbol '{}' repeated definition",
@@ -285,7 +285,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
     switch (ast->type) {
 
         case AstType_ConstDecl: {
-            ast->ast_symbol = find_symbol_until_global_ref(analyser.current_scope, ast->ConstDecl.name);
+            ast->ast_symbol = find_symbol_ref_until_global(analyser.current_scope, ast->ConstDecl.name);
             ASSERT(ast->ast_symbol != Ref<SymbolInfo>::INVALID_REF);
 
             // @NOTE: import 的符号求解已移到 CIR 阶段（ImportPackage 指令），这里只收集符号
@@ -325,8 +325,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     xpString const_ident = const_decl_ast->ConstDecl.name;
 
     if(!(analyser.current_scope->scope_type == ScopeType::File)) {
-        SymbolInfo *exist = find_symbol_curr(&analyser.current_scope.unwrap(), const_ident);
-        if(exist != NULL) {
+        Ref<SymbolInfo> exist = find_symbol_ref_curr(analyser.current_scope, const_ident);
+        if(exist != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 const_decl_ast->src_loc,
                 "symbol '{}' already declared in the same scope",
@@ -406,8 +406,8 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
     for(isize i = 0; i < value_ast->StructDeclValue.fields.count; i++) {
         auto field = value_ast->StructDeclValue.fields[i];
 
-        SymbolInfo *existing = find_symbol_curr(&struct_analyser.current_scope.unwrap(), field->StructField.name);
-        if(existing != NULL) {
+        Ref<SymbolInfo> existing = find_symbol_ref_curr(struct_analyser.current_scope, field->StructField.name);
+        if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
                 "duplicate struct field '{}'", field->StructField.name
@@ -430,8 +430,8 @@ void resolve_union_decl(Ast *decl, Analyser analyser) {
 
     for(Ast *field: decl->UnionDecl.fields) {
 
-        SymbolInfo *existing = find_symbol_curr(&union_analyser.current_scope.unwrap(), field->StructField.name);
-        if(existing) {
+        Ref<SymbolInfo> existing = find_symbol_ref_curr(union_analyser.current_scope, field->StructField.name);
+        if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
                 "duplicate union field '{}'", field->StructField.name
@@ -465,8 +465,8 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
         } else {
             xpString field_name = field->Ident.name;
 
-            SymbolInfo *existing = find_symbol_curr(&enum_analyser.current_scope.unwrap(), field_name);
-            if(existing != NULL) {
+            Ref<SymbolInfo> existing = find_symbol_ref_curr(enum_analyser.current_scope, field_name);
+            if(existing != Ref<SymbolInfo>::INVALID_REF) {
                 context()->reporter.report_error(
                     field->src_loc,
                     "duplicate enum field '{}'", field_name
@@ -486,8 +486,8 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 
         ASSERT(param->type == AstType_ParamDecl);
 
-        SymbolInfo *existing = find_symbol_curr(&analyser.current_scope.unwrap(), param->ParamDecl.name);
-        if(existing != nullptr) {
+        Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, param->ParamDecl.name);
+        if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 param->src_loc,
                 "duplicate parameter name '{}'",
@@ -549,8 +549,8 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     XP_ASSERT_DEFAULT(param_ast->type == AstType_ParamDecl);
 
-    SymbolInfo *existing = find_symbol_curr(&analyser.current_scope.unwrap(), param_ast->ParamDecl.name);
-    if(existing != nullptr) {
+    Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, param_ast->ParamDecl.name);
+    if(existing != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
             param_ast->src_loc,
             "duplicate parameter name '{}'",
@@ -693,8 +693,8 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
-    SymbolInfo *existing = find_symbol_curr(&analyser.current_scope.unwrap(), var_decl_ast->VariableDecl.var_name);
-    if(existing != NULL) {
+    Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, var_decl_ast->VariableDecl.var_name);
+    if(existing != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
             "symbol '{}' already declared in the same scope",
@@ -913,7 +913,7 @@ void resolve_ident(Ast *ident_ast, Analyser analyser) {
         );
     }
 
-    ident_ast->ast_symbol = find_symbol_until_global_ref(analyser.current_scope, ident_str);
+    ident_ast->ast_symbol = find_symbol_ref_until_global(analyser.current_scope, ident_str);
     
     return;
 }
@@ -956,7 +956,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
         }
 
 
-        field_access_ast->ast_symbol = find_symbol_until_global_ref(pkg_analyser.current_scope, field_name);
+        field_access_ast->ast_symbol = find_symbol_ref_until_global(pkg_analyser.current_scope, field_name);
         return;
     } else {
         // TODO: 结构体字段访问, 枚举字段访问, 放到type_check阶段检查

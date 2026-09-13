@@ -943,7 +943,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
 
             auto string_ident = New_Instruction(CIROperator::IdentVal, expr);
-            Instruction(string_ident).symbol = find_symbol_until_global_ref(context()->global_blank_package.unwrap().package_scope, xp_string_c("string"));
+            Instruction(string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, xp_string_c("string"));
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(expr, {
                 .data = ptr,
