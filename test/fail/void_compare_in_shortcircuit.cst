@@ -1,0 +1,13 @@
+// @fail
+// @error "二元运算符要求两个操作数类型相同"
+
+// void 值和 bool 比较：应当报类型错误，不能崩在 ResultType 断言。
+// 曾经的问题：加上 `&&` 后短路 lowering 把条件做成 BlockRef，
+// 该块排在本指令之后尚未分析，analyze_CondBr 直接读它的类型就断言炸了。
+
+F :: () -> void extern_C
+
+main :: () -> i32 {
+    if F() == false && 1 != 0 { return 1; }
+    return 0;
+}

@@ -2181,6 +2181,17 @@ std::optional<AnalyzeResult> Interpreter::analyze_CondBr(CIRCondBrInfo& info, CI
 
     XP_ASSERT_DEFAULT(cond_inst != INVALID_INST);
 
+    // 条件未就绪：&&/|| 的 lowering 把条件做成一个 BlockRef，而它可能排在
+    // 本指令之后（同块靠后），线性扫描到这时还没分析。按需进入求值，
+    // 否则 ResultType 会断言（正确行为见无短路的 `if F() == false`：那时
+    // 条件是同块靠前的 Binary，已就绪，能正常报"操作数类型不同"）。
+    if(!has_result_type(cond_inst)) {
+        analyze_instruction_at(cond_inst);
+    }
+    if(!has_result_type(cond_inst)) {
+        return std::nullopt;
+    }
+
     TypeRef cond_type = ResultType(cond_inst);
     if(cond_type != easy_type(Type_bool)) {
         return make_result(pc_ref, inst_error(pc_ref, "if 语句的条件表达式必须是布尔类型，实际类型 '{}'", cond_type->name()));
