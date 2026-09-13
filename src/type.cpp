@@ -807,10 +807,9 @@ TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope>
 }
 
 TypeRef union_field_type(TypeRef union_type, xpString field_name) {
-    SymbolInfo *field_sym = find_symbol_curr(&union_type->union_info.union_scope.unwrap(), field_name);
-    ASSERT(field_sym != nullptr);
-    
-    
+    Ref<SymbolInfo> field_sym = find_symbol_ref_curr(union_type->union_info.union_scope, field_name);
+    ASSERT(field_sym != Ref<SymbolInfo>::INVALID_REF);
+
     const Ref<CIRInstResult> &ik = field_sym->inst_key;
     auto key = Ref<CIRInstResult>::make(ik.cir_package, ik.inst_ref, union_type->union_info.creation_instance);
     
@@ -1272,8 +1271,10 @@ isize type_size_of(TypeRef type) {
         case Type_struct: {
             if(type->struct_info.struct_fields.count == 0) return 0;
             auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
-            return field_offset_in_struct(type, type->struct_info.struct_fields.count - 1)
-                 + type_size_of(last.type);
+            isize raw = field_offset_in_struct(type, type->struct_info.struct_fields.count - 1)
+                      + type_size_of(last.type);
+                      
+            return xp_align_up_isize(raw, type_align_of(type));
         }
         case Type_union: {
             Ref<Scope> scope = type->union_info.union_scope;
