@@ -46,7 +46,9 @@ static void crest_helper() {
 
 
 int main(int argc, char** argv) {
-    
+    // 诊断输出不做缓冲
+    setvbuf(stderr, nullptr, _IONBF, 0);
+
     defer(DEBUG_LOG("\n\nEXIT!"));
 
     auto start_time = std::chrono::high_resolution_clock::now();

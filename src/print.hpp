@@ -39,8 +39,18 @@ void println_err(std::format_string<Args...> fmt, Args&&... args) {
 #if defined(CREST_DEBUG)
     #include <source_location>
     #include <cstdlib>
+    #include <stacktrace>
 
     inline bool g_trace_enabled = false;
+
+
+    inline void dump_stacktrace() {
+        auto st = std::stacktrace::current(/*skip=*/2);
+        println_err("--- stacktrace ({} frames) ---", st.size());
+        for (std::size_t i = 0; i < st.size(); i++) {
+            println_err("  #{} {}", i, st[i]);
+        }
+    }
 
     template <typename... Args>
     inline void debug_impl(
@@ -61,6 +71,7 @@ void println_err(std::format_string<Args...> fmt, Args&&... args) {
     #define DEBUG_PANIC(fmt, ...) \
         do { \
             ::debug_impl("PANIC", std::source_location::current(), fmt, ##__VA_ARGS__); \
+            ::dump_stacktrace(); \
             std::abort(); \
         } while(0)
 
@@ -68,6 +79,7 @@ void println_err(std::format_string<Args...> fmt, Args&&... args) {
         do { \
             if (!(cond)) { \
                 ::debug_impl("ASSERT_MSG", std::source_location::current(), fmt, ##__VA_ARGS__); \
+                ::dump_stacktrace(); \
                 std::abort(); \
             } \
         } while(0)
@@ -76,6 +88,7 @@ void println_err(std::format_string<Args...> fmt, Args&&... args) {
         do { \
             if (!(cond)) { \
                 ::debug_impl("ASSERT", std::source_location::current(), "Assertion failed: {}", #cond); \
+                ::dump_stacktrace(); \
                 std::abort(); \
             } \
         } while(0)
