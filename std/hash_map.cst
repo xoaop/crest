@@ -1,0 +1,218 @@
+// HashMap —— 开放寻址 + 线性探测，对齐 xoaop_hashmap.h 的设计
+//
+// 与 C++ 版的差异（Crest 没有的东西）：
+//   - 没有 std::hash<K>：用逐字节哈希（hash_of），适用于整数 / 指针 / POD
+//     struct。字符串键哈希的是指针而非内容；要按内容做键请先转成整数
+//   - 没有构造 / 析构：条目是 POD，直接赋值覆盖，不需要 placement new
+//   - 没有 std::move：rehash 直接整体拷贝条目
+//
+// 保持一致的部分：2 的幂容量、负载因子 0.7 触发扩容（8 起，之后翻倍）、
+// 墓碑标记删除、探测时记录 first_tombstone / first_empty。
+
+import "std/c"
+
+// ── 槽位状态 ──
+HashMapSlotState :: enum u8 {
+    Empty :: 0;
+    Used :: 1;
+    Tombstone :: 2;
+}
+
+// ── 条目 ──
+HashMapEntry :: $(K: type, V: type) -> type {
+    return struct {
+        state: HashMapSlotState;
+        key: K;
+        value: V;
+    };
+}
+
+// ── 表 ──
+HashMap :: $(K: type, V: type) -> type {
+    return struct {
+        allocator: Allocator;
+        entries: []HashMapEntry(K, V);
+        count: isize;      // 已用槽位数（不含墓碑）
+        capacity: isize;   // 槽位总数，2 的幂
+    };
+}
+
+// ── 哈希 ──
+// 逐字节 FNV-1a。整数 / 指针 / POD struct 都适用。
+hash_of :: $(K: type) -> ? {
+    return (key: K) -> u64 {
+        bytes: []u8;
+        bytes.data = cast(*u8)(&key);
+        bytes.count = cast(isize)sizeof(K);
+        h: u64 = 1469598103934665603;
+        i: isize = 0;
+        for i < bytes.count {
+            h = (h ^ cast(u64)bytes[i]) * 1099511628211;
+            i = i + 1;
+        }
+        return h;
+    };
+}
+
+// ── 建表 ──
+make_hash_map :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (allocator: Allocator) -> MapType {
+        m: MapType;
+        m.allocator = allocator;
+        m.entries.data = null;
+        m.entries.count = 0;
+        m.count = 0;
+        m.capacity = 0;
+        return m;
+    };
+}
+
+// ── 扩容：开新槽数组，把所有已用条目重新探测插入 ──
+hash_map_extend :: $(K: type, V: type) -> ? {
+    Entry :: HashMapEntry(K, V)
+    MapType :: HashMap(K, V)
+    return (map: *MapType, new_capacity: isize) -> bool {
+        if new_capacity <= map.capacity { return false; }
+
+        raw := alloc(&map.allocator, new_capacity * cast(isize)sizeof(Entry));
+        if raw == null { return false; }
+
+        new_entries: []Entry;
+        new_entries.data = cast(*Entry) raw;
+        new_entries.count = new_capacity;
+
+        i: isize = 0;
+        for i < new_capacity {
+            new_entries[i].state = HashMapSlotState.Empty;
+            i = i + 1;
+        }
+
+        if map.entries.data != null {
+            mask: u64 = cast(u64)(new_capacity - 1);
+            j: isize = 0;
+            for j < map.capacity {
+                old := map.entries[j];
+                if old.state == HashMapSlotState.Used {
+                    idx := cast(isize)(hash_of(K)(old.key) & mask);
+                    for new_entries[idx].state == HashMapSlotState.Used {
+                        idx = cast(isize)((cast(u64)idx + 1) & mask);
+                    }
+                    new_entries[idx] = old;
+                    new_entries[idx].state = HashMapSlotState.Used;
+                }
+                j = j + 1;
+            }
+            free(&map.allocator, cast(*void) map.entries.data);
+        }
+
+        map.entries = new_entries;
+        map.capacity = new_capacity;
+        return true;
+    };
+}
+
+// ── 查找：返回槽位下标，找不到 -1 ──
+hash_map_find :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (map: *MapType, key: K) -> isize {
+        if map.capacity == 0 || map.entries.data == null { return -1; }
+
+        mask: u64 = cast(u64)(map.capacity - 1);
+        idx := cast(isize)(hash_of(K)(key) & mask);
+        start := idx;
+        for {
+            st := map.entries[idx].state;
+            if st == HashMapSlotState.Empty {
+                return -1;                        // 探测链终点
+            }
+            if st == HashMapSlotState.Used && map.entries[idx].key == key {
+                return idx;
+            }
+            idx = cast(isize)((cast(u64)idx + 1) & mask);
+            if idx == start { return -1; }        // 绕回起点：表满且无此键
+        }
+        return -1;
+    };
+}
+
+// ── 插入 / 更新：返回值的地址；键已存在则覆盖 ──
+hash_map_insert :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (map: *MapType, key: K, value: V) -> *V {
+        // 空表或负载因子 >= 0.7 就扩容
+        if map.capacity == 0
+           || cast(f64)map.count / cast(f64)map.capacity >= 0.7 {
+            new_cap := map.capacity * 2;
+            if map.capacity == 0 { new_cap = 8; }
+            if hash_map_extend(K, V)(map, new_cap) == false { return null; }
+        }
+
+        mask: u64 = cast(u64)(map.capacity - 1);
+        idx := cast(isize)(hash_of(K)(key) & mask);
+        start := idx;
+        first_tombstone: isize = -1;
+
+        for {
+            st := map.entries[idx].state;
+            if st == HashMapSlotState.Used {
+                if map.entries[idx].key == key {
+                    map.entries[idx].value = value;    // 已存在：覆盖
+                    return &map.entries[idx].value;
+                }
+            } else if st == HashMapSlotState.Tombstone {
+                if first_tombstone == -1 { first_tombstone = idx; }
+            } else {
+                break;                                 // Empty：探测链终点
+            }
+            idx = cast(isize)((cast(u64)idx + 1) & mask);
+            if idx == start { break; }
+        }
+
+        slot := idx;
+        if first_tombstone != -1 { slot = first_tombstone; }   // 优先复用墓碑
+
+        map.entries[slot].key = key;
+        map.entries[slot].value = value;
+        map.entries[slot].state = HashMapSlotState.Used;
+        map.count = map.count + 1;
+        return &map.entries[slot].value;
+    };
+}
+
+// ── 查值：找不到返回 null ──
+hash_map_get :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (map: *MapType, key: K) -> *V {
+        idx := hash_map_find(K, V)(map, key);
+        if idx == -1 { return null; }
+        return &map.entries[idx].value;
+    };
+}
+
+// ── 删除：标墓碑（不缩容） ──
+hash_map_remove :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (map: *MapType, key: K) -> bool {
+        idx := hash_map_find(K, V)(map, key);
+        if idx == -1 { return false; }
+        map.entries[idx].state = HashMapSlotState.Tombstone;
+        map.count = map.count - 1;
+        return true;
+    };
+}
+
+// ── 清空：释放槽数组，回到初始状态 ──
+hash_map_free :: $(K: type, V: type) -> ? {
+    MapType :: HashMap(K, V)
+    return (map: *MapType) -> void {
+        if map.entries.data != null {
+            free(&map.allocator, cast(*void) map.entries.data);
+            map.entries.data = null;
+        }
+        map.entries.count = 0;
+        map.count = 0;
+        map.capacity = 0;
+        return;
+    };
+}
