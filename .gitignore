@@ -44,3 +44,9 @@ build_ubsan*/
 # 测试：源码要提交，但排除测试构建产物
 test/build_test/
 test/__pycache__/
+
+# SDL3 示例/构建产物
+build_sdl/
+build_sdl_test/
+build_sdl_test.*
+*.log
