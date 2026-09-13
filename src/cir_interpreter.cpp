@@ -1270,11 +1270,13 @@ std::optional<AnalyzeResult> Interpreter::analyze_FieldAccess(CIRFieldAccessInfo
 
         return make_result(pc_ref, ResultDesc::make_type_only(field_type));
 
-    } else if(has_result_val(parent_inst) && is_enum_type(ResultValue(parent_inst).type_val())) {
+    } else if(has_result_val(parent_inst)
+              && is_type_type(ResultValue(parent_inst).type)   // 值本身必须是类型值，否则 type_val() 断言
+              && is_enum_type(ResultValue(parent_inst).type_val())) {
         // 枚举成员访问: EnumType.Variant
         TypeRef enum_type = ResultValue(parent_inst).type_val();
-        SymbolInfo *field_sym = find_symbol_curr(&enum_type->enum_info.enum_scope.unwrap(), info.field_name);
-        if(field_sym == nullptr) {
+        Ref<SymbolInfo> field_sym = find_symbol_ref_curr(enum_type->enum_info.enum_scope, info.field_name);
+        if(field_sym == Ref<SymbolInfo>::INVALID_REF) {
             return make_result(pc_ref, inst_error(pc_ref, "枚举变体 '{}' 不存在", info.field_name));
         }
         auto r = field_sym->result(curr_cache_key());
@@ -2001,8 +2003,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_EnumDeclInit(CIREnumDeclInitIn
         field_val.set_type(enum_type);
 
         // 副作用：注册枚举字段符号到 enum_scope + Solved
-        SymbolInfo *field_sym = find_symbol_curr(&enum_scope.unwrap(), ef.name);
-        XP_ASSERT_DEFAULT(field_sym != nullptr);
+        Ref<SymbolInfo> field_sym = find_symbol_ref_curr(enum_scope, ef.name);
+        XP_ASSERT_DEFAULT(field_sym != Ref<SymbolInfo>::INVALID_REF);
         if(ef.value_inst != INVALID_INST) {
             field_sym->val(Ref<CIRInstResult>::make(pkg, ef.value_inst, {}));
         } else {
@@ -2125,8 +2127,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_FinishUnion(CIRFinishUnionInfo
                     return make_result(pc_ref, inst_error(pc_ref, "联合体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", field_info.name));
                 }
 
-                SymbolInfo *field_sym = find_symbol_curr(&union_scope.unwrap(), field_info.name);
-                XP_ASSERT_DEFAULT(field_sym != nullptr);
+                Ref<SymbolInfo> field_sym = find_symbol_ref_curr(union_scope, field_info.name);
+                XP_ASSERT_DEFAULT(field_sym != Ref<SymbolInfo>::INVALID_REF);
 
                 // 绑定 InCIRInstruction（镜像 enum）：字段类型由 result(type 的 creation_key) 解析
                 field_sym->val(Ref<CIRInstResult>::make(pkg, field_info.type_block_inst, {}));

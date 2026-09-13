@@ -1,0 +1,15 @@
+// @fail
+// @error "字段访问不支持的类型的值"
+
+// 指针类型的编译期常量取字段：应当报"字段访问不支持"，不能崩在
+// type_val() 断言（analyze_FieldAccess 的 enum 分支原先直接 type_val()，
+// 没先确认 parent 的值本身就是个类型值）。
+//
+// "hello".data 是 *u8（string 结构体的 data 字段），不是类型值。
+
+SRC :: "hello".data
+
+main :: () -> i32 {
+    x := SRC.count;
+    return 0;
+}
