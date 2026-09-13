@@ -1,0 +1,518 @@
+// SDL_pixels.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  A structure that represents a color as RGBA components. The bits of this structure can be
+//   directly reinterpreted as an integer-packed color which uses the SDL_PIXELFORMAT_RGBA32 format
+//   (SDL_PIXELFORMAT_ABGR8888 on little-endian systems and SDL_PIXELFORMAT_RGBA8888 on big-endian
+//   systems).
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_Color :: struct {
+    r: u8;
+    g: u8;
+    b: u8;
+    a: u8;
+}
+//  The bits of this structure can be directly reinterpreted as a float-packed color which uses the
+//   SDL_PIXELFORMAT_RGBA128_FLOAT format
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_FColor :: struct {
+    r: f32;
+    g: f32;
+    b: f32;
+    a: f32;
+}
+//  A set of indexed colors representing a palette.
+//
+//  \since This struct is available since SDL 3.2.0.
+//
+//  \sa SDL_SetPaletteColors
+SDL_Palette :: struct {
+    //  number of elements in `colors`.
+    ncolors: i32;
+    //  an array of colors, `ncolors` long.
+    colors: *SDL_Color;
+    //  internal use only, do not touch.
+    version: u32;
+    //  internal use only, do not touch.
+    refcount: i32;
+}
+//  Details about the format of a pixel.
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_PixelFormatDetails :: struct {
+    format: SDL_PixelFormat;
+    bits_per_pixel: u8;
+    bytes_per_pixel: u8;
+    padding: [2]u8;
+    Rmask: u32;
+    Gmask: u32;
+    Bmask: u32;
+    Amask: u32;
+    Rbits: u8;
+    Gbits: u8;
+    Bbits: u8;
+    Abits: u8;
+    Rshift: u8;
+    Gshift: u8;
+    Bshift: u8;
+    Ashift: u8;
+}
+SDL_ArrayOrder :: i32
+SDL_BitmapOrder :: i32
+SDL_ChromaLocation :: i32
+SDL_ColorPrimaries :: i32
+SDL_ColorRange :: i32
+SDL_ColorType :: i32
+SDL_Colorspace :: i32
+SDL_MatrixCoefficients :: i32
+SDL_PackedLayout :: i32
+SDL_PackedOrder :: i32
+SDL_PixelFormat :: i32
+SDL_PixelType :: i32
+SDL_TransferCharacteristics :: i32
+
+// ── 常量 ──
+//  In JPEG/JFIF, H.261, and MPEG-1, Cb and Cr are taken at the center of the 2x2 square. In
+//   other words, they are offset one-half pixel to the right and one-half pixel down compared
+//   to the top-left pixel.
+SDL_CHROMA_LOCATION_CENTER :: 2
+//  In MPEG-2, MPEG-4, and AVC, Cb and Cr are taken on midpoint of the left-edge of the 2x2
+//   square. In other words, they have the same horizontal location as the top-left pixel, but
+//   is shifted one-half pixel down vertically.
+SDL_CHROMA_LOCATION_LEFT :: 1
+//  RGB, no chroma sampling
+SDL_CHROMA_LOCATION_NONE :: 0
+//  In HEVC for BT.2020 and BT.2100 content (in particular on Blu-rays), Cb and Cr are sampled
+//   at the same location as the group's top-left Y pixel ("co-sited", "co-located").
+SDL_CHROMA_LOCATION_TOPLEFT :: 3
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P2020
+SDL_COLORSPACE_BT2020_FULL :: 571483657
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P2020
+SDL_COLORSPACE_BT2020_LIMITED :: 554706441
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P601
+SDL_COLORSPACE_BT601_FULL :: 571480262
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P601
+SDL_COLORSPACE_BT601_LIMITED :: 554703046
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709
+SDL_COLORSPACE_BT709_FULL :: 571474977
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709
+SDL_COLORSPACE_BT709_LIMITED :: 554697761
+//  Equivalent to DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+SDL_COLORSPACE_HDR10 :: 301999616
+//  Equivalent to DXGI_COLOR_SPACE_YCBCR_FULL_G22_NONE_P709_X601
+SDL_COLORSPACE_JPEG :: 570426566
+//  The default colorspace for RGB surfaces if no colorspace is specified
+SDL_COLORSPACE_RGB_DEFAULT :: 301991328
+//  Equivalent to DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709
+SDL_COLORSPACE_SRGB :: 301991328
+//  Equivalent to DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
+SDL_COLORSPACE_SRGB_LINEAR :: 301991168
+//  The default colorspace for YUV surfaces if no colorspace is specified
+SDL_COLORSPACE_YUV_DEFAULT :: 554703046
+//  ITU-R BT.2020-2 / ITU-R BT.2100-0
+SDL_COLOR_PRIMARIES_BT2020 :: 9
+//  ITU-R BT.470-6 System B, G / ITU-R BT.601-7 625
+SDL_COLOR_PRIMARIES_BT470BG :: 5
+//  ITU-R BT.470-6 System M
+SDL_COLOR_PRIMARIES_BT470M :: 4
+//  ITU-R BT.601-7 525, SMPTE 170M
+SDL_COLOR_PRIMARIES_BT601 :: 6
+//  ITU-R BT.709-6
+SDL_COLOR_PRIMARIES_BT709 :: 1
+//  EBU Tech. 3213-E
+SDL_COLOR_PRIMARIES_EBU3213 :: 22
+//  Generic film (color filters using Illuminant C)
+SDL_COLOR_PRIMARIES_GENERIC_FILM :: 8
+//  SMPTE 240M, functionally the same as SDL_COLOR_PRIMARIES_BT601
+SDL_COLOR_PRIMARIES_SMPTE240 :: 7
+//  SMPTE RP 431-2
+SDL_COLOR_PRIMARIES_SMPTE431 :: 11
+//  SMPTE EG 432-1 / DCI P3
+SDL_COLOR_PRIMARIES_SMPTE432 :: 12
+//  SMPTE ST 428-1
+SDL_COLOR_PRIMARIES_XYZ :: 10
+//  Full range, e.g. 0-255 for 8-bit RGB and luma, and 1-255 for 8-bit chroma
+SDL_COLOR_RANGE_FULL :: 2
+//  Narrow range, e.g. 16-235 for 8-bit RGB and luma, and 16-240 for 8-bit chroma
+SDL_COLOR_RANGE_LIMITED :: 1
+//  ITU-R BT.2020-2 constant luminance
+SDL_MATRIX_COEFFICIENTS_BT2020_CL :: 10
+//  ITU-R BT.2020-2 non-constant luminance
+SDL_MATRIX_COEFFICIENTS_BT2020_NCL :: 9
+//  ITU-R BT.470-6 System B, G / ITU-R BT.601-7 625, functionally the same as
+//   SDL_MATRIX_COEFFICIENTS_BT601
+SDL_MATRIX_COEFFICIENTS_BT470BG :: 5
+//  ITU-R BT.601-7 525
+SDL_MATRIX_COEFFICIENTS_BT601 :: 6
+//  ITU-R BT.709-6
+SDL_MATRIX_COEFFICIENTS_BT709 :: 1
+//  US FCC Title 47
+SDL_MATRIX_COEFFICIENTS_FCC :: 4
+//  ITU-R BT.2100-0 ICTCP
+SDL_MATRIX_COEFFICIENTS_ICTCP :: 14
+//  SMPTE ST 2085
+SDL_MATRIX_COEFFICIENTS_SMPTE2085 :: 11
+//  SMPTE 240M
+SDL_MATRIX_COEFFICIENTS_SMPTE240 :: 7
+//  Android video texture format
+SDL_PIXELFORMAT_EXTERNAL_OES :: 542328143
+//  Planar mode: Y + U + V (3 planes)
+SDL_PIXELFORMAT_IYUV :: 1448433993
+//  Motion JPEG
+SDL_PIXELFORMAT_MJPG :: 1196444237
+//  Planar mode: Y + U/V interleaved (2 planes)
+SDL_PIXELFORMAT_NV12 :: 842094158
+//  Planar mode: Y + V/U interleaved (2 planes)
+SDL_PIXELFORMAT_NV21 :: 825382478
+//  Planar mode: Y + U/V interleaved (2 planes)
+SDL_PIXELFORMAT_P010 :: 808530000
+//  Packed mode: U0+Y0+V0+Y1 (1 plane)
+SDL_PIXELFORMAT_UYVY :: 1498831189
+//  Packed mode: Y0+U0+Y1+V0 (1 plane)
+SDL_PIXELFORMAT_YUY2 :: 844715353
+//  Planar mode: Y + V + U (3 planes)
+SDL_PIXELFORMAT_YV12 :: 842094169
+//  Packed mode: Y0+V0+Y1+U0 (1 plane)
+SDL_PIXELFORMAT_YVYU :: 1431918169
+//  ITU-R BT1361 Extended Colour Gamut
+SDL_TRANSFER_CHARACTERISTICS_BT1361 :: 12
+//  ITU-R BT2020 for 10-bit system
+SDL_TRANSFER_CHARACTERISTICS_BT2020_10BIT :: 14
+//  ITU-R BT2020 for 12-bit system
+SDL_TRANSFER_CHARACTERISTICS_BT2020_12BIT :: 15
+//  SMPTE ST 170M / ITU-R BT.601-7 525 or 625
+SDL_TRANSFER_CHARACTERISTICS_BT601 :: 6
+//  Rec. ITU-R BT.709-6 / ITU-R BT1361
+SDL_TRANSFER_CHARACTERISTICS_BT709 :: 1
+//  ITU-R BT.470-6 System M / ITU-R BT1700 625 PAL & SECAM
+SDL_TRANSFER_CHARACTERISTICS_GAMMA22 :: 4
+//  ITU-R BT.470-6 System B, G
+SDL_TRANSFER_CHARACTERISTICS_GAMMA28 :: 5
+//  ARIB STD-B67, known as "hybrid log-gamma" (HLG)
+SDL_TRANSFER_CHARACTERISTICS_HLG :: 18
+//  IEC 61966-2-4
+SDL_TRANSFER_CHARACTERISTICS_IEC61966 :: 11
+//  SMPTE ST 2084 for 10-, 12-, 14- and 16-bit systems
+SDL_TRANSFER_CHARACTERISTICS_PQ :: 16
+//  SMPTE ST 240M
+SDL_TRANSFER_CHARACTERISTICS_SMPTE240 :: 7
+//  SMPTE ST 428-1
+SDL_TRANSFER_CHARACTERISTICS_SMPTE428 :: 17
+//  IEC 61966-2-1 (sRGB or sYCC)
+SDL_TRANSFER_CHARACTERISTICS_SRGB :: 13
+SDL_ALPHA_OPAQUE :: 255
+SDL_ALPHA_OPAQUE_FLOAT :: 1.000000
+SDL_ALPHA_TRANSPARENT :: 0
+SDL_ALPHA_TRANSPARENT_FLOAT :: 0.000000
+SDL_ARRAYORDER_ABGR :: 6
+SDL_ARRAYORDER_ARGB :: 3
+SDL_ARRAYORDER_BGR :: 4
+SDL_ARRAYORDER_BGRA :: 5
+SDL_ARRAYORDER_NONE :: 0
+SDL_ARRAYORDER_RGB :: 1
+SDL_ARRAYORDER_RGBA :: 2
+SDL_BITMAPORDER_1234 :: 2
+SDL_BITMAPORDER_4321 :: 1
+SDL_BITMAPORDER_NONE :: 0
+SDL_COLORSPACE_UNKNOWN :: 0
+SDL_COLOR_PRIMARIES_CUSTOM :: 31
+SDL_COLOR_PRIMARIES_UNKNOWN :: 0
+SDL_COLOR_PRIMARIES_UNSPECIFIED :: 2
+SDL_COLOR_RANGE_UNKNOWN :: 0
+SDL_COLOR_TYPE_RGB :: 1
+SDL_COLOR_TYPE_UNKNOWN :: 0
+SDL_COLOR_TYPE_YCBCR :: 2
+SDL_MATRIX_COEFFICIENTS_CHROMA_DERIVED_CL :: 13
+SDL_MATRIX_COEFFICIENTS_CHROMA_DERIVED_NCL :: 12
+SDL_MATRIX_COEFFICIENTS_CUSTOM :: 31
+SDL_MATRIX_COEFFICIENTS_IDENTITY :: 0
+SDL_MATRIX_COEFFICIENTS_UNSPECIFIED :: 2
+SDL_MATRIX_COEFFICIENTS_YCGCO :: 8
+SDL_PACKEDLAYOUT_1010102 :: 8
+SDL_PACKEDLAYOUT_1555 :: 3
+SDL_PACKEDLAYOUT_2101010 :: 7
+SDL_PACKEDLAYOUT_332 :: 1
+SDL_PACKEDLAYOUT_4444 :: 2
+SDL_PACKEDLAYOUT_5551 :: 4
+SDL_PACKEDLAYOUT_565 :: 5
+SDL_PACKEDLAYOUT_8888 :: 6
+SDL_PACKEDLAYOUT_NONE :: 0
+SDL_PACKEDORDER_ABGR :: 7
+SDL_PACKEDORDER_ARGB :: 3
+SDL_PACKEDORDER_BGRA :: 8
+SDL_PACKEDORDER_BGRX :: 6
+SDL_PACKEDORDER_NONE :: 0
+SDL_PACKEDORDER_RGBA :: 4
+SDL_PACKEDORDER_RGBX :: 2
+SDL_PACKEDORDER_XBGR :: 5
+SDL_PACKEDORDER_XRGB :: 1
+SDL_PIXELFORMAT_ABGR128_FLOAT :: 459309072
+SDL_PIXELFORMAT_ABGR1555 :: 359862274
+SDL_PIXELFORMAT_ABGR2101010 :: 376905732
+SDL_PIXELFORMAT_ABGR32 :: 373694468
+SDL_PIXELFORMAT_ABGR4444 :: 359796738
+SDL_PIXELFORMAT_ABGR64 :: 408961032
+SDL_PIXELFORMAT_ABGR64_FLOAT :: 442515464
+SDL_PIXELFORMAT_ABGR8888 :: 376840196
+SDL_PIXELFORMAT_ARGB128_FLOAT :: 456163344
+SDL_PIXELFORMAT_ARGB1555 :: 355667970
+SDL_PIXELFORMAT_ARGB2101010 :: 372711428
+SDL_PIXELFORMAT_ARGB32 :: 377888772
+SDL_PIXELFORMAT_ARGB4444 :: 355602434
+SDL_PIXELFORMAT_ARGB64 :: 405815304
+SDL_PIXELFORMAT_ARGB64_FLOAT :: 439369736
+SDL_PIXELFORMAT_ARGB8888 :: 372645892
+SDL_PIXELFORMAT_BGR24 :: 390076419
+SDL_PIXELFORMAT_BGR48 :: 406859782
+SDL_PIXELFORMAT_BGR48_FLOAT :: 440414214
+SDL_PIXELFORMAT_BGR565 :: 357896194
+SDL_PIXELFORMAT_BGR96_FLOAT :: 457203724
+SDL_PIXELFORMAT_BGRA128_FLOAT :: 458260496
+SDL_PIXELFORMAT_BGRA32 :: 372645892
+SDL_PIXELFORMAT_BGRA4444 :: 360845314
+SDL_PIXELFORMAT_BGRA5551 :: 360976386
+SDL_PIXELFORMAT_BGRA64 :: 407912456
+SDL_PIXELFORMAT_BGRA64_FLOAT :: 441466888
+SDL_PIXELFORMAT_BGRA8888 :: 377888772
+SDL_PIXELFORMAT_BGRX32 :: 370546692
+SDL_PIXELFORMAT_BGRX8888 :: 375789572
+SDL_PIXELFORMAT_INDEX1LSB :: 286261504
+SDL_PIXELFORMAT_INDEX1MSB :: 287310080
+SDL_PIXELFORMAT_INDEX2LSB :: 470811136
+SDL_PIXELFORMAT_INDEX2MSB :: 471859712
+SDL_PIXELFORMAT_INDEX4LSB :: 303039488
+SDL_PIXELFORMAT_INDEX4MSB :: 304088064
+SDL_PIXELFORMAT_INDEX8 :: 318769153
+SDL_PIXELFORMAT_RGB24 :: 386930691
+SDL_PIXELFORMAT_RGB332 :: 336660481
+SDL_PIXELFORMAT_RGB48 :: 403714054
+SDL_PIXELFORMAT_RGB48_FLOAT :: 437268486
+SDL_PIXELFORMAT_RGB565 :: 353701890
+SDL_PIXELFORMAT_RGB96_FLOAT :: 454057996
+SDL_PIXELFORMAT_RGBA128_FLOAT :: 455114768
+SDL_PIXELFORMAT_RGBA32 :: 376840196
+SDL_PIXELFORMAT_RGBA4444 :: 356651010
+SDL_PIXELFORMAT_RGBA5551 :: 356782082
+SDL_PIXELFORMAT_RGBA64 :: 404766728
+SDL_PIXELFORMAT_RGBA64_FLOAT :: 438321160
+SDL_PIXELFORMAT_RGBA8888 :: 373694468
+SDL_PIXELFORMAT_RGBX32 :: 374740996
+SDL_PIXELFORMAT_RGBX8888 :: 371595268
+SDL_PIXELFORMAT_UNKNOWN :: 0
+SDL_PIXELFORMAT_XBGR1555 :: 357764866
+SDL_PIXELFORMAT_XBGR2101010 :: 374808580
+SDL_PIXELFORMAT_XBGR32 :: 371595268
+SDL_PIXELFORMAT_XBGR4444 :: 357698562
+SDL_PIXELFORMAT_XBGR8888 :: 374740996
+SDL_PIXELFORMAT_XRGB1555 :: 353570562
+SDL_PIXELFORMAT_XRGB2101010 :: 370614276
+SDL_PIXELFORMAT_XRGB32 :: 375789572
+SDL_PIXELFORMAT_XRGB4444 :: 353504258
+SDL_PIXELFORMAT_XRGB8888 :: 370546692
+SDL_PIXELTYPE_ARRAYF16 :: 10
+SDL_PIXELTYPE_ARRAYF32 :: 11
+SDL_PIXELTYPE_ARRAYU16 :: 8
+SDL_PIXELTYPE_ARRAYU32 :: 9
+SDL_PIXELTYPE_ARRAYU8 :: 7
+SDL_PIXELTYPE_INDEX1 :: 1
+SDL_PIXELTYPE_INDEX2 :: 12
+SDL_PIXELTYPE_INDEX4 :: 2
+SDL_PIXELTYPE_INDEX8 :: 3
+SDL_PIXELTYPE_PACKED16 :: 5
+SDL_PIXELTYPE_PACKED32 :: 6
+SDL_PIXELTYPE_PACKED8 :: 4
+SDL_PIXELTYPE_UNKNOWN :: 0
+SDL_TRANSFER_CHARACTERISTICS_CUSTOM :: 31
+SDL_TRANSFER_CHARACTERISTICS_LINEAR :: 8
+SDL_TRANSFER_CHARACTERISTICS_LOG100 :: 9
+SDL_TRANSFER_CHARACTERISTICS_LOG100_SQRT10 :: 10
+SDL_TRANSFER_CHARACTERISTICS_UNKNOWN :: 0
+SDL_TRANSFER_CHARACTERISTICS_UNSPECIFIED :: 2
+
+// ── 函数 ──
+//  Get the human readable name of a pixel format.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param format — the pixel format to query.
+//
+//  \returns the human readable name of the specified pixel format or "SDL_PIXELFORMAT_UNKNOWN" if
+//   the format isn't recognized.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetPixelFormatName :: (format: SDL_PixelFormat) -> *u8 extern_C
+//  Convert one of the enumerated pixel formats to a bpp value and RGBA masks.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param format — one of the SDL_PixelFormat values.
+//  \param bpp — a bits per pixel value; usually 15, 16, or 32.
+//  \param Rmask — a pointer filled in with the red mask for the format.
+//  \param Gmask — a pointer filled in with the green mask for the format.
+//  \param Bmask — a pointer filled in with the blue mask for the format.
+//  \param Amask — a pointer filled in with the alpha mask for the format.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPixelFormatForMasks
+SDL_GetMasksForPixelFormat :: (format: SDL_PixelFormat, bpp: *i32, Rmask: *u32, Gmask: *u32, Bmask: *u32, Amask: *u32) -> bool extern_C
+//  Convert a bpp value and RGBA masks to an enumerated pixel format. This will return
+//   `SDL_PIXELFORMAT_UNKNOWN` if the conversion wasn't possible.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param bpp — a bits per pixel value; usually 15, 16, or 32.
+//  \param Rmask — the red mask for the format.
+//  \param Gmask — the green mask for the format.
+//  \param Bmask — the blue mask for the format.
+//  \param Amask — the alpha mask for the format.
+//
+//  \returns the SDL_PixelFormat value corresponding to the format masks, or SDL_PIXELFORMAT_UNKNOWN
+//   if there isn't a match.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetMasksForPixelFormat
+SDL_GetPixelFormatForMasks :: (bpp: i32, Rmask: u32, Gmask: u32, Bmask: u32, Amask: u32) -> SDL_PixelFormat extern_C
+//  Create an SDL_PixelFormatDetails structure corresponding to a pixel format. Returned structure
+//   may come from a shared global cache (i.e. not newly allocated), and hence should not be
+//   modified, especially the palette. Weird errors such as `Blit combination not supported` may
+//   occur.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param format — one of the SDL_PixelFormat values.
+//
+//  \returns a pointer to a SDL_PixelFormatDetails structure or NULL on failure; call SDL_GetError()
+//   for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetPixelFormatDetails :: (format: SDL_PixelFormat) -> *SDL_PixelFormatDetails extern_C
+//  Create a palette structure with the specified number of color entries. The palette entries are
+//   initialized to white.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ncolors — represents the number of color entries in the color palette.
+//
+//  \returns a new SDL_Palette structure on success or NULL on failure (e.g. if there wasn't enough
+//   memory); call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_DestroyPalette, SDL_SetPaletteColors, SDL_SetSurfacePalette
+SDL_CreatePalette :: (ncolors: i32) -> *SDL_Palette extern_C
+//  Set a range of colors in a palette.
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified or
+//   destroyed in another thread.
+//
+//  \param palette — the SDL_Palette structure to modify.
+//  \param colors — an array of SDL_Color structures to copy into the palette.
+//  \param firstcolor — the index of the first palette entry to modify.
+//  \param ncolors — the number of entries to modify.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_SetPaletteColors :: (palette: *SDL_Palette, colors: *SDL_Color, firstcolor: i32, ncolors: i32) -> bool extern_C
+//  Free a palette created with SDL_CreatePalette().
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified or
+//   destroyed in another thread.
+//
+//  \param palette — the SDL_Palette structure to be freed.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CreatePalette
+SDL_DestroyPalette :: (palette: *SDL_Palette) -> void extern_C
+//  Map an RGB triple to an opaque pixel value for a given pixel format. This function maps the RGB
+//   color value to the specified pixel format and returns the pixel value best approximating the
+//   given RGB color value for the given pixel format. If the format has a palette (8-bit) the index
+//   of the closest matching color in the palette will be returned. If the specified pixel format
+//   has an alpha component it will be returned as all 1 bits (fully opaque). If the pixel format
+//   bpp (color depth) is less than 32-bpp then the unused upper bits of the return value can safely
+//   be ignored (e.g., with a 16-bpp format the return value can be assigned to a Uint16, and
+//   similarly a Uint8 for an 8-bpp format).
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified.
+//
+//  \param format — a pointer to SDL_PixelFormatDetails describing the pixel format.
+//  \param palette — an optional palette for indexed formats, may be NULL.
+//  \param r — the red component of the pixel in the range 0-255.
+//  \param g — the green component of the pixel in the range 0-255.
+//  \param b — the blue component of the pixel in the range 0-255.
+//
+//  \returns a pixel value.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPixelFormatDetails, SDL_GetRGB, SDL_MapRGBA, SDL_MapSurfaceRGB
+SDL_MapRGB :: (format: *SDL_PixelFormatDetails, palette: *SDL_Palette, r: u8, g: u8, b: u8) -> u32 extern_C
+//  Map an RGBA quadruple to a pixel value for a given pixel format. This function maps the RGBA
+//   color value to the specified pixel format and returns the pixel value best approximating the
+//   given RGBA color value for the given pixel format. If the specified pixel format has no alpha
+//   component the alpha value will be ignored (as it will be in formats with a palette). If the
+//   format has a palette (8-bit) the index of the closest matching color in the palette will be
+//   returned. If the pixel format bpp (color depth) is less than 32-bpp then the unused upper bits
+//   of the return value can safely be ignored (e.g., with a 16-bpp format the return value can be
+//   assigned to a Uint16, and similarly a Uint8 for an 8-bpp format).
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified.
+//
+//  \param format — a pointer to SDL_PixelFormatDetails describing the pixel format.
+//  \param palette — an optional palette for indexed formats, may be NULL.
+//  \param r — the red component of the pixel in the range 0-255.
+//  \param g — the green component of the pixel in the range 0-255.
+//  \param b — the blue component of the pixel in the range 0-255.
+//  \param a — the alpha component of the pixel in the range 0-255.
+//
+//  \returns a pixel value.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPixelFormatDetails, SDL_GetRGBA, SDL_MapRGB, SDL_MapSurfaceRGBA
+SDL_MapRGBA :: (format: *SDL_PixelFormatDetails, palette: *SDL_Palette, r: u8, g: u8, b: u8, a: u8) -> u32 extern_C
+//  Get RGB values from a pixel in the specified format. This function uses the entire 8-bit
+//   [0..255] range when converting color components from pixel formats with less than 8-bits per
+//   RGB component (e.g., a completely white pixel in 16-bit RGB565 format would return [0xff, 0xff,
+//   0xff] not [0xf8, 0xfc, 0xf8]).
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified.
+//
+//  \param pixelvalue — a pixel value.
+//  \param format — a pointer to SDL_PixelFormatDetails describing the pixel format.
+//  \param palette — an optional palette for indexed formats, may be NULL.
+//  \param r — a pointer filled in with the red component, may be NULL.
+//  \param g — a pointer filled in with the green component, may be NULL.
+//  \param b — a pointer filled in with the blue component, may be NULL.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPixelFormatDetails, SDL_GetRGBA, SDL_MapRGB, SDL_MapRGBA
+SDL_GetRGB :: (pixelvalue: u32, format: *SDL_PixelFormatDetails, palette: *SDL_Palette, r: *u8, g: *u8, b: *u8) -> void extern_C
+//  Get RGBA values from a pixel in the specified format. This function uses the entire 8-bit
+//   [0..255] range when converting color components from pixel formats with less than 8-bits per
+//   RGB component (e.g., a completely white pixel in 16-bit RGB565 format would return [0xff, 0xff,
+//   0xff] not [0xf8, 0xfc, 0xf8]). If the surface has no alpha component, the alpha will be
+//   returned as 0xff (100% opaque).
+//
+//  It is safe to call this function from any thread, as long as the palette is not modified.
+//
+//  \param pixelvalue — a pixel value.
+//  \param format — a pointer to SDL_PixelFormatDetails describing the pixel format.
+//  \param palette — an optional palette for indexed formats, may be NULL.
+//  \param r — a pointer filled in with the red component, may be NULL.
+//  \param g — a pointer filled in with the green component, may be NULL.
+//  \param b — a pointer filled in with the blue component, may be NULL.
+//  \param a — a pointer filled in with the alpha component, may be NULL.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPixelFormatDetails, SDL_GetRGB, SDL_MapRGB, SDL_MapRGBA
+SDL_GetRGBA :: (pixelvalue: u32, format: *SDL_PixelFormatDetails, palette: *SDL_Palette, r: *u8, g: *u8, b: *u8, a: *u8) -> void extern_C

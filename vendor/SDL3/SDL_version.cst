@@ -1,0 +1,41 @@
+// SDL_version.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 常量 ──
+SDL_MAJOR_VERSION :: 3
+SDL_MICRO_VERSION :: 8
+SDL_MINOR_VERSION :: 4
+SDL_VERSION :: 3004008
+
+// ── 函数 ──
+//  Get the version of SDL that is linked against your program. If you are linking to SDL
+//   dynamically, then it is possible that the current version will be different than the version
+//   you compiled against. This function returns the current version, while SDL_VERSION is the
+//   version you compiled with. This function may be called safely at any time, even before
+//   SDL_Init().
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns the version of the linked library.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetRevision
+SDL_GetVersion :: () -> i32 extern_C
+//  Get the code revision of the SDL library that is linked against your program. This value is the
+//   revision of the code you are linking against and may be different from the code you are
+//   compiling with, which is found in the constant SDL_REVISION if you explicitly include
+//   SDL_revision.h The revision is an arbitrary string (a hash value) uniquely identifying the
+//   exact revision of the SDL library in use, and is only useful in comparing against other
+//   revisions. It is NOT an incrementing number. If SDL wasn't built from a git repository with the
+//   appropriate tools, this will return an empty string. You shouldn't use this function for
+//   anything but logging it for debugging purposes. The string is not intended to be reliable in
+//   any way.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns an arbitrary string, uniquely identifying the exact revision of the SDL library in use.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetVersion
+SDL_GetRevision :: () -> *u8 extern_C

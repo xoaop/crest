@@ -1,0 +1,6 @@
+// SDL_dlopennote.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 常量 ──
+SDL_ELF_NOTE_DLOPEN_PRIORITY_RECOMMENDED :: "recommended"
+SDL_ELF_NOTE_DLOPEN_PRIORITY_REQUIRED :: "required"
+SDL_ELF_NOTE_DLOPEN_PRIORITY_SUGGESTED :: "suggested"

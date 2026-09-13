@@ -1,0 +1,125 @@
+// SDL_messagebox.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  Message box flags. If supported will display warning icon, etc.
+//
+//  \since This datatype is available since SDL 3.2.0.
+SDL_MessageBoxFlags :: u32
+//  SDL_MessageBoxButtonData flags.
+//
+//  \since This datatype is available since SDL 3.2.0.
+SDL_MessageBoxButtonFlags :: u32
+//  Individual button data.
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_MessageBoxButtonData :: struct {
+    flags: SDL_MessageBoxButtonFlags;
+    //  User defined button id (value returned via SDL_ShowMessageBox)
+    buttonID: i32;
+    //  The UTF-8 button text
+    text: *u8;
+}
+//  RGB value used in a message box color scheme
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_MessageBoxColor :: struct {
+    r: u8;
+    g: u8;
+    b: u8;
+}
+//  A set of colors to use for message box dialogs
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_MessageBoxColorScheme :: struct {
+    colors: [5]SDL_MessageBoxColor;
+}
+//  MessageBox structure containing title, text, window, etc.
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_MessageBoxData :: struct {
+    flags: SDL_MessageBoxFlags;
+    //  Parent window, can be NULL
+    window: *SDL_Window;
+    //  UTF-8 title
+    title: *u8;
+    //  UTF-8 message text
+    message: *u8;
+    numbuttons: i32;
+    buttons: *SDL_MessageBoxButtonData;
+    //  SDL_MessageBoxColorScheme, can be NULL to use system settings
+    colorScheme: *SDL_MessageBoxColorScheme;
+}
+SDL_MessageBoxColorType :: i32
+
+// ── 常量 ──
+//  buttons placed left to right
+SDL_MESSAGEBOX_BUTTONS_LEFT_TO_RIGHT :: 128
+//  buttons placed right to left
+SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT :: 256
+//  Marks the default button when escape is hit
+SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT :: 2
+//  Marks the default button when return is hit
+SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT :: 1
+//  error dialog
+SDL_MESSAGEBOX_ERROR :: 16
+//  informational dialog
+SDL_MESSAGEBOX_INFORMATION :: 64
+//  warning dialog
+SDL_MESSAGEBOX_WARNING :: 32
+//  Size of the colors array of SDL_MessageBoxColorScheme.
+SDL_MESSAGEBOX_COLOR_COUNT :: 5
+SDL_MESSAGEBOX_COLOR_BACKGROUND :: 0
+SDL_MESSAGEBOX_COLOR_BUTTON_BACKGROUND :: 3
+SDL_MESSAGEBOX_COLOR_BUTTON_BORDER :: 2
+SDL_MESSAGEBOX_COLOR_BUTTON_SELECTED :: 4
+SDL_MESSAGEBOX_COLOR_TEXT :: 1
+
+// ── 函数 ──
+//  Create a modal message box. If your needs aren't complex, it might be easier to use
+//   SDL_ShowSimpleMessageBox. This function should be called on the thread that created the parent
+//   window, or on the main thread if the messagebox has no parent. It will block execution of that
+//   thread until the user clicks a button or closes the messagebox. This function may be called at
+//   any time, even before SDL_Init(). This makes it useful for reporting errors like a failure to
+//   create a renderer or OpenGL context. On X11, SDL rolls its own dialog box with X11 primitives
+//   instead of a formal toolkit like GTK+ or Qt. Note that if SDL_Init() would fail because there
+//   isn't any available video target, this function is likely to fail for the same reasons. If this
+//   is a concern, check the return value from this function and fall back to writing to stderr if
+//   you can.
+//
+//  This function should only be called on the main thread.
+//
+//  \param messageboxdata — the SDL_MessageBoxData structure with title, text and other options.
+//  \param buttonid — the pointer to which user id of hit button should be copied.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ShowSimpleMessageBox
+SDL_ShowMessageBox :: (messageboxdata: *SDL_MessageBoxData, buttonid: *i32) -> bool extern_C
+//  Display a simple modal message box. If your needs aren't complex, this function is preferred
+//   over SDL_ShowMessageBox. `flags` may be any of the following: - `SDL_MESSAGEBOX_ERROR`: error
+//   dialog - `SDL_MESSAGEBOX_WARNING`: warning dialog - `SDL_MESSAGEBOX_INFORMATION`: informational
+//   dialog This function should be called on the thread that created the parent window, or on the
+//   main thread if the messagebox has no parent. It will block execution of that thread until the
+//   user clicks a button or closes the messagebox. This function may be called at any time, even
+//   before SDL_Init(). This makes it useful for reporting errors like a failure to create a
+//   renderer or OpenGL context. On X11, SDL rolls its own dialog box with X11 primitives instead of
+//   a formal toolkit like GTK+ or Qt. Note that if SDL_Init() would fail because there isn't any
+//   available video target, this function is likely to fail for the same reasons. If this is a
+//   concern, check the return value from this function and fall back to writing to stderr if you
+//   can.
+//
+//  This function should only be called on the main thread.
+//
+//  \param flags — an SDL_MessageBoxFlags value.
+//  \param title — UTF-8 title text.
+//  \param message — UTF-8 message text.
+//  \param window — the parent window, or NULL for no parent.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ShowMessageBox
+SDL_ShowSimpleMessageBox :: (flags: SDL_MessageBoxFlags, title: *u8, message: *u8, window: *SDL_Window) -> bool extern_C

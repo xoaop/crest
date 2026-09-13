@@ -1,0 +1,6 @@
+// SDL_platform_defines.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 常量 ──
+SDL_PLATFORM_WIN32 :: 1
+SDL_PLATFORM_WINDOWS :: 1
+SDL_WINAPI_FAMILY_PHONE :: 0

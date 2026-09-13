@@ -1,0 +1,278 @@
+// SDL_storage.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  Function interface for SDL_Storage. Apps that want to supply a custom implementation of
+//   SDL_Storage will fill in all the functions in this struct, and then pass it to SDL_OpenStorage
+//   to create a custom SDL_Storage object. It is not usually necessary to do this; SDL provides
+//   standard implementations for many things you might expect to do with an SDL_Storage. This
+//   structure should be initialized using SDL_INIT_INTERFACE()
+//
+//  \since This struct is available since SDL 3.2.0.
+//
+//  \sa SDL_INIT_INTERFACE
+SDL_StorageInterface :: struct {
+    version: u32;
+    close: *((*void) -> bool);
+    ready: *((*void) -> bool);
+    enumerate: *((*void, *u8, *SDL_EnumerateDirectoryCallback, *void) -> bool);
+    info: *((*void, *u8, *SDL_PathInfo) -> bool);
+    read_file: *((*void, *u8, *void, u64) -> bool);
+    write_file: *((*void, *u8, *void, u64) -> bool);
+    mkdir: *((*void, *u8) -> bool);
+    remove: *((*void, *u8) -> bool);
+    rename: *((*void, *u8, *u8) -> bool);
+    copy: *((*void, *u8, *u8) -> bool);
+    space_remaining: *((*void) -> u64);
+}
+//  An abstract interface for filesystem access. This is an opaque datatype. One can create this
+//   object using standard SDL functions like SDL_OpenTitleStorage or SDL_OpenUserStorage, etc, or
+//   create an object with a custom implementation using SDL_OpenStorage.
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_Storage :: struct {}
+
+// ── 函数 ──
+//  Opens up a read-only container for the application's filesystem. By default,
+//   SDL_OpenTitleStorage uses the generic storage implementation. When the path override is not
+//   provided, the generic implementation will use the output of SDL_GetBasePath as the base path.
+//
+//  \param override — a path to override the backend's default title root.
+//  \param props — a property list that may contain backend-specific information.
+//
+//  \returns a title storage container on success or NULL on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CloseStorage, SDL_GetStorageFileSize, SDL_OpenUserStorage, SDL_ReadStorageFile
+SDL_OpenTitleStorage :: (override: *u8, props: SDL_PropertiesID) -> *SDL_Storage extern_C
+//  Opens up a container for a user's unique read/write filesystem. While title storage can
+//   generally be kept open throughout runtime, user storage should only be opened when the client
+//   is ready to read/write files. This allows the backend to properly batch file operations and
+//   flush them when the container has been closed; ensuring safe and optimal save I/O.
+//
+//  \param org — the name of your organization.
+//  \param app — the name of your application.
+//  \param props — a property list that may contain backend-specific information.
+//
+//  \returns a user storage container on success or NULL on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CloseStorage, SDL_GetStorageFileSize, SDL_GetStorageSpaceRemaining,
+//   SDL_OpenTitleStorage, SDL_ReadStorageFile, SDL_StorageReady, SDL_WriteStorageFile
+SDL_OpenUserStorage :: (org: *u8, app: *u8, props: SDL_PropertiesID) -> *SDL_Storage extern_C
+//  Opens up a container for local filesystem storage. This is provided for development and tools.
+//   Portable applications should use SDL_OpenTitleStorage() for access to game data and
+//   SDL_OpenUserStorage() for access to user data.
+//
+//  \param path — the base path prepended to all storage paths, or NULL for no base path.
+//
+//  \returns a filesystem storage container on success or NULL on failure; call SDL_GetError() for
+//   more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CloseStorage, SDL_GetStorageFileSize, SDL_GetStorageSpaceRemaining,
+//   SDL_OpenTitleStorage, SDL_OpenUserStorage, SDL_ReadStorageFile, SDL_WriteStorageFile
+SDL_OpenFileStorage :: (path: *u8) -> *SDL_Storage extern_C
+//  Opens up a container using a client-provided storage interface. Applications do not need to use
+//   this function unless they are providing their own SDL_Storage implementation. If you just need
+//   an SDL_Storage, you should use the built-in implementations in SDL, like SDL_OpenTitleStorage()
+//   or SDL_OpenUserStorage(). This function makes a copy of `iface` and the caller does not need to
+//   keep it around after this call.
+//
+//  \param iface — the interface that implements this storage, initialized using
+//   SDL_INIT_INTERFACE().
+//  \param userdata — the pointer that will be passed to the interface functions.
+//
+//  \returns a storage container on success or NULL on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CloseStorage, SDL_GetStorageFileSize, SDL_GetStorageSpaceRemaining, SDL_INIT_INTERFACE,
+//   SDL_ReadStorageFile, SDL_StorageReady, SDL_WriteStorageFile
+SDL_OpenStorage :: (iface: *SDL_StorageInterface, userdata: *void) -> *SDL_Storage extern_C
+//  Closes and frees a storage container.
+//
+//  \param storage — a storage container to close.
+//
+//  \returns true if the container was freed with no errors, false otherwise; call SDL_GetError()
+//   for more information. Even if the function returns an error, the container data will be freed;
+//   the error is only for informational purposes.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_OpenFileStorage, SDL_OpenStorage, SDL_OpenTitleStorage, SDL_OpenUserStorage
+SDL_CloseStorage :: (storage: *SDL_Storage) -> bool extern_C
+//  Checks if the storage container is ready to use. This function should be called in regular
+//   intervals until it returns true - however, it is not recommended to spinwait on this call, as
+//   the backend may depend on a synchronous message loop. You might instead poll this in your
+//   game's main loop while processing events and drawing a loading screen.
+//
+//  \param storage — a storage container to query.
+//
+//  \returns true if the container is ready, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_StorageReady :: (storage: *SDL_Storage) -> bool extern_C
+//  Query the size of a file within a storage container.
+//
+//  \param storage — a storage container to query.
+//  \param path — the relative path of the file to query.
+//  \param length — a pointer to be filled with the file's length.
+//
+//  \returns true if the file could be queried or false on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ReadStorageFile, SDL_StorageReady
+SDL_GetStorageFileSize :: (storage: *SDL_Storage, path: *u8, length: *u64) -> bool extern_C
+//  Synchronously read a file from a storage container into a client-provided buffer. The value of
+//   `length` must match the length of the file exactly; call SDL_GetStorageFileSize() to get this
+//   value. This behavior may be relaxed in a future release.
+//
+//  \param storage — a storage container to read from.
+//  \param path — the relative path of the file to read.
+//  \param destination — a client-provided buffer to read the file into.
+//  \param length — the length of the destination buffer.
+//
+//  \returns true if the file was read or false on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetStorageFileSize, SDL_StorageReady, SDL_WriteStorageFile
+SDL_ReadStorageFile :: (storage: *SDL_Storage, path: *u8, destination: *void, length: u64) -> bool extern_C
+//  Synchronously write a file from client memory into a storage container.
+//
+//  \param storage — a storage container to write to.
+//  \param path — the relative path of the file to write.
+//  \param source — a client-provided buffer to write from.
+//  \param length — the length of the source buffer.
+//
+//  \returns true if the file was written or false on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetStorageSpaceRemaining, SDL_ReadStorageFile, SDL_StorageReady
+SDL_WriteStorageFile :: (storage: *SDL_Storage, path: *u8, source: *void, length: u64) -> bool extern_C
+//  Create a directory in a writable storage container.
+//
+//  \param storage — a storage container.
+//  \param path — the path of the directory to create.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_CreateStorageDirectory :: (storage: *SDL_Storage, path: *u8) -> bool extern_C
+//  Enumerate a directory in a storage container through a callback function. This function provides
+//   every directory entry through an app-provided callback, called once for each directory entry,
+//   until all results have been provided or the callback returns either SDL_ENUM_SUCCESS or
+//   SDL_ENUM_FAILURE. This will return false if there was a system problem in general, or if a
+//   callback returns SDL_ENUM_FAILURE. A successful return means a callback returned
+//   SDL_ENUM_SUCCESS to halt enumeration, or all directory entries were enumerated. If `path` is
+//   NULL, this is treated as a request to enumerate the root of the storage container's tree. An
+//   empty string also works for this.
+//
+//  \param storage — a storage container.
+//  \param path — the path of the directory to enumerate, or NULL for the root.
+//  \param callback — a function that is called for each entry in the directory.
+//  \param userdata — a pointer that is passed to `callback`.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_EnumerateStorageDirectory :: (storage: *SDL_Storage, path: *u8, callback: *SDL_EnumerateDirectoryCallback, userdata: *void) -> bool extern_C
+//  Remove a file or an empty directory in a writable storage container.
+//
+//  \param storage — a storage container.
+//  \param path — the path to remove from the filesystem.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_RemoveStoragePath :: (storage: *SDL_Storage, path: *u8) -> bool extern_C
+//  Rename a file or directory in a writable storage container.
+//
+//  \param storage — a storage container.
+//  \param oldpath — the old path.
+//  \param newpath — the new path.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_RenameStoragePath :: (storage: *SDL_Storage, oldpath: *u8, newpath: *u8) -> bool extern_C
+//  Copy a file in a writable storage container.
+//
+//  \param storage — a storage container.
+//  \param oldpath — the old path.
+//  \param newpath — the new path.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_CopyStorageFile :: (storage: *SDL_Storage, oldpath: *u8, newpath: *u8) -> bool extern_C
+//  Get information about a filesystem path in a storage container.
+//
+//  \param storage — a storage container.
+//  \param path — the path to query.
+//  \param info — a pointer filled in with information about the path, or NULL to check for the
+//   existence of a file.
+//
+//  \returns true on success or false if the file doesn't exist, or another failure; call
+//   SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady
+SDL_GetStoragePathInfo :: (storage: *SDL_Storage, path: *u8, info: *SDL_PathInfo) -> bool extern_C
+//  Queries the remaining space in a storage container.
+//
+//  \param storage — a storage container to query.
+//
+//  \returns the amount of remaining space, in bytes.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_StorageReady, SDL_WriteStorageFile
+SDL_GetStorageSpaceRemaining :: (storage: *SDL_Storage) -> u64 extern_C
+//  Enumerate a directory tree, filtered by pattern, and return a list. Files are filtered out if
+//   they don't match the string in `pattern`, which may contain wildcard characters `*` (match
+//   everything) and `?` (match one character). If pattern is NULL, no filtering is done and all
+//   results are returned. Subdirectories are permitted, and are specified with a path separator of
+//   '/'. Wildcard characters `*` and `?` never match a path separator. `flags` may be set to
+//   SDL_GLOB_CASEINSENSITIVE to make the pattern matching case-insensitive. The returned array is
+//   always NULL-terminated, for your iterating convenience, but if `count` is non-NULL, on return
+//   it will contain the number of items in the array, not counting the NULL terminator. If `path`
+//   is NULL, this is treated as a request to enumerate the root of the storage container's tree. An
+//   empty string also works for this.
+//
+//  It is safe to call this function from any thread, assuming the `storage` object is thread-safe.
+//
+//  \param storage — a storage container.
+//  \param path — the path of the directory to enumerate, or NULL for the root.
+//  \param pattern — the pattern that files in the directory must match. Can be NULL.
+//  \param flags — `SDL_GLOB_*` bitflags that affect this search.
+//  \param count — on return, will be set to the number of items in the returned array. Can be NULL.
+//
+//  \returns an array of strings on success or NULL on failure; call SDL_GetError() for more
+//   information. The caller should pass the returned pointer to SDL_free when done with it. This is
+//   a single allocation that should be freed with SDL_free() when it is no longer needed.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GlobStorageDirectory :: (storage: *SDL_Storage, path: *u8, pattern: *u8, flags: SDL_GlobFlags, count: *i32) -> **u8 extern_C

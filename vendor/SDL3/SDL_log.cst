@@ -1,0 +1,269 @@
+// SDL_log.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  The prototype for the log output callback function. This function is called by SDL when there is
+//   new text to be logged. A mutex is held so that this function is never called by more than one
+//   thread at once.
+//
+//  \param userdata — what was passed as `userdata` to SDL_SetLogOutputFunction().
+//  \param category — the category of the message.
+//  \param priority — the priority of the message.
+//  \param message — the message being output.
+//
+//  \since This datatype is available since SDL 3.2.0.
+SDL_LogOutputFunction :: ((*void, i32, SDL_LogPriority, *u8) -> void)
+SDL_LogCategory :: i32
+SDL_LogPriority :: i32
+
+// ── 常量 ──
+SDL_LOG_CATEGORY_APPLICATION :: 0
+SDL_LOG_CATEGORY_ASSERT :: 2
+SDL_LOG_CATEGORY_AUDIO :: 4
+SDL_LOG_CATEGORY_CUSTOM :: 19
+SDL_LOG_CATEGORY_ERROR :: 1
+SDL_LOG_CATEGORY_GPU :: 9
+SDL_LOG_CATEGORY_INPUT :: 7
+SDL_LOG_CATEGORY_RENDER :: 6
+SDL_LOG_CATEGORY_RESERVED10 :: 18
+SDL_LOG_CATEGORY_RESERVED2 :: 10
+SDL_LOG_CATEGORY_RESERVED3 :: 11
+SDL_LOG_CATEGORY_RESERVED4 :: 12
+SDL_LOG_CATEGORY_RESERVED5 :: 13
+SDL_LOG_CATEGORY_RESERVED6 :: 14
+SDL_LOG_CATEGORY_RESERVED7 :: 15
+SDL_LOG_CATEGORY_RESERVED8 :: 16
+SDL_LOG_CATEGORY_RESERVED9 :: 17
+SDL_LOG_CATEGORY_SYSTEM :: 3
+SDL_LOG_CATEGORY_TEST :: 8
+SDL_LOG_CATEGORY_VIDEO :: 5
+SDL_LOG_PRIORITY_COUNT :: 8
+SDL_LOG_PRIORITY_CRITICAL :: 7
+SDL_LOG_PRIORITY_DEBUG :: 3
+SDL_LOG_PRIORITY_ERROR :: 6
+SDL_LOG_PRIORITY_INFO :: 4
+SDL_LOG_PRIORITY_INVALID :: 0
+SDL_LOG_PRIORITY_TRACE :: 1
+SDL_LOG_PRIORITY_VERBOSE :: 2
+SDL_LOG_PRIORITY_WARN :: 5
+
+// ── 函数 ──
+//  Set the priority of all log categories.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param priority — the SDL_LogPriority to assign.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ResetLogPriorities, SDL_SetLogPriority
+SDL_SetLogPriorities :: (priority: SDL_LogPriority) -> void extern_C
+//  Set the priority of a particular log category.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category to assign a priority to.
+//  \param priority — the SDL_LogPriority to assign.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetLogPriority, SDL_ResetLogPriorities, SDL_SetLogPriorities
+SDL_SetLogPriority :: (category: i32, priority: SDL_LogPriority) -> void extern_C
+//  Get the priority of a particular log category.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category to query.
+//
+//  \returns the SDL_LogPriority for the requested category.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetLogPriority
+SDL_GetLogPriority :: (category: i32) -> SDL_LogPriority extern_C
+//  Reset all priorities to default. This is called by SDL_Quit(). It is safe to call this function
+//   from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetLogPriorities, SDL_SetLogPriority
+SDL_ResetLogPriorities :: () -> void extern_C
+//  Set the text prepended to log messages of a given priority. By default SDL_LOG_PRIORITY_INFO and
+//   below have no prefix, and SDL_LOG_PRIORITY_WARN and higher have a prefix showing their
+//   priority, e.g. "WARNING: ". This function makes a copy of its string argument, **prefix**, so
+//   it is not necessary to keep the value of **prefix** alive after the call returns.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param priority — the SDL_LogPriority to modify.
+//  \param prefix — the prefix to use for that log priority, or NULL to use no prefix.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetLogPriorities, SDL_SetLogPriority
+SDL_SetLogPriorityPrefix :: (priority: SDL_LogPriority, prefix: *u8) -> bool extern_C
+//  Log a message with SDL_LOG_CATEGORY_APPLICATION and SDL_LOG_PRIORITY_INFO.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the `fmt` string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_Log :: (fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_TRACE.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage,
+//   SDL_LogMessageV, SDL_LogVerbose, SDL_LogWarn
+SDL_LogTrace :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_VERBOSE.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage,
+//   SDL_LogMessageV, SDL_LogWarn
+SDL_LogVerbose :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_DEBUG.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogError, SDL_LogInfo, SDL_LogMessage, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogDebug :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_INFO.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogMessage, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogInfo :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_WARN.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage,
+//   SDL_LogMessageV, SDL_LogTrace, SDL_LogVerbose
+SDL_LogWarn :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_ERROR.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogInfo, SDL_LogMessage, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogError :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with SDL_LOG_PRIORITY_CRITICAL.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogCritical :: (category: i32, fmt: *u8, ...) -> void extern_C
+//  Log a message with the specified category and priority.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param priority — the priority of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ... — additional parameters matching % tokens in the **fmt** string, if any.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessageV,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogMessage :: (category: i32, priority: SDL_LogPriority, fmt: *u8, ...) -> void extern_C
+//  Log a message with the specified category and priority.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param category — the category of the message.
+//  \param priority — the priority of the message.
+//  \param fmt — a printf() style message format string.
+//  \param ap — a variable argument list.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Log, SDL_LogCritical, SDL_LogDebug, SDL_LogError, SDL_LogInfo, SDL_LogMessage,
+//   SDL_LogTrace, SDL_LogVerbose, SDL_LogWarn
+SDL_LogMessageV :: (category: i32, priority: SDL_LogPriority, fmt: *u8, ap: *void) -> void extern_C
+//  Get the default log output function.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns the default log output callback. It should be called with NULL for the userdata
+//   argument.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetLogOutputFunction, SDL_GetLogOutputFunction
+SDL_GetDefaultLogOutputFunction :: () -> *SDL_LogOutputFunction extern_C
+//  Get the current log output function.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param callback — an SDL_LogOutputFunction filled in with the current log callback.
+//  \param userdata — a pointer filled in with the pointer that is passed to `callback`.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetDefaultLogOutputFunction, SDL_SetLogOutputFunction
+SDL_GetLogOutputFunction :: (callback: **SDL_LogOutputFunction, userdata: **void) -> void extern_C
+//  Replace the default log output function with one of your own.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param callback — an SDL_LogOutputFunction to call instead of the default.
+//  \param userdata — a pointer that is passed to `callback`.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetDefaultLogOutputFunction, SDL_GetLogOutputFunction
+SDL_SetLogOutputFunction :: (callback: *SDL_LogOutputFunction, userdata: *void) -> void extern_C
