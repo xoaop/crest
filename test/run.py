@@ -8,6 +8,10 @@ Directives (in source as  // @name value  comments):
     // @skip              Skip this test (e.g. multi-file helper)
     // @run               Link .o → .exe with clang++, run it; non-zero exit → FAIL
     // @error "fragment"  For fail tests: compiler output must contain this
+
+Fail tests are judged strictly: a compiler crash (assert/panic/segfault)
+is never "the expected error".  Crash classification lives in oracle.py,
+shared with fuzz.py.
 """
 
 import subprocess
@@ -17,7 +21,9 @@ import re
 import os
 import shutil
 
-CREST = "./crest.exe" if os.name == "nt" else "./crest"
+import oracle
+
+CREST = oracle.default_crest()
 CLANG = "clang++"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.join(SCRIPT_DIR, "build_test")
@@ -63,12 +69,23 @@ def collect_directives(item):
     return result, files
 
 
+def error_count_of(output):
+    """Parse the compiler's own `N error(s), M warning(s) found` tally.
+
+    Returns N, or None if the summary line is absent.  Matching this
+    summary (rather than a bare `"error" in output`) is what stops a
+    crash traceback that happens to contain the word from counting as a
+    clean diagnostic.
+    """
+    m = re.search(r"^\s*(\d+)\s+error\(s\)", output, re.MULTILINE)
+    return int(m.group(1)) if m else None
+
+
 def main():
     if not os.path.exists(CREST):
         print(f"error: {CREST} not found in project root")
         sys.exit(1)
 
-    # check clang++ exists
     if shutil.which(CLANG) is None:
         print(f"error: {CLANG} not found in PATH")
         sys.exit(1)
@@ -92,57 +109,59 @@ def main():
             is_fail = (category == "fail")
 
             # Always output to test/build_test/ to avoid polluting project root
-            crest_args = [CREST, "build", str(item)]
             clean_dir(RUN_DIR)
-            crest_args.extend(["-o", RUN_DIR])
+            rc, combined, timed_out = oracle.run_compiler(
+                CREST, oracle.build_args(item, RUN_DIR), timeout=60)
 
-            result = subprocess.run(
-                crest_args,
-                capture_output=True, text=True,
-            )
-            combined = result.stdout + result.stderr
-            # 编译器自身崩溃（断言/panic/段错误）不是"预期的编译错误"，
-            # 任何类别下都判失败 —— 否则 fail 测试会把 assert 吞成 PASS
-            crashed = ("Assert FAILED" in combined or "PANIC" in combined
-                       or "Assertion failed" in combined or result.returncode < 0)
-            has_error = "error(s)" in combined
+            verdict, reason = oracle.judge(rc, combined, timed_out)
+
+            if verdict != oracle.OK:
+                print(f"  [FAIL] {item}  (compiler {verdict.lower()})")
+                failed += 1
+                failures.append((str(item),
+                    f"compiler {verdict.lower()}: {reason}\n"
+                    f"  output: {oracle.tail(combined, 400)}"))
+                clean_dir(RUN_DIR)
+                continue
+
+            n_errors = error_count_of(combined)
 
             if is_fail:
-                if crashed:
-                    msg = f"compiler crashed instead of reporting an error\n  output: {combined[:400]}"
-                    print(f"  [FAIL] {item}  (compiler crash)")
-                    failed += 1
-                    failures.append((str(item), msg))
-                elif not has_error:
+                if n_errors is None:
                     print(f"  [FAIL] {item}  (expected error, got none)")
                     failed += 1
-                    failures.append((str(item), "expected compilation error but none reported"))
+                    failures.append((str(item),
+                        "expected a compilation error but the compiler "
+                        "printed no error summary"))
+                elif n_errors == 0:
+                    print(f"  [FAIL] {item}  (expected error, got none)")
+                    failed += 1
+                    failures.append((str(item),
+                        f"compiler reported 0 errors\n"
+                        f"  output: {oracle.tail(combined, 400)}"))
                 elif "error" in directives and directives["error"] not in combined:
-                    msg = f"expected error '{directives['error']}' not found in output\n  output: {combined[:400]}"
                     print(f"  [FAIL] {item}  (wrong error)")
                     failed += 1
-                    failures.append((str(item), msg))
+                    failures.append((str(item),
+                        f"expected error '{directives['error']}' not found\n"
+                        f"  output: {oracle.tail(combined, 400)}"))
                 else:
                     print(f"  [PASS] {item}  (error as expected)")
                     passed += 1
             else:
-                if crashed:
-                    msg = f"compiler crashed\n  output: {combined[:400]}"
-                    print(f"  [FAIL] {item}  (compiler crash)")
-                    failed += 1
-                    failures.append((str(item), msg))
-                elif has_error:
-                    tail = combined[-300:]
+                if n_errors:
                     print(f"  [FAIL] {item}")
                     failed += 1
-                    failures.append((str(item), f"compilation had errors:\n{tail}"))
+                    failures.append((str(item),
+                        f"compilation had {n_errors} error(s):\n"
+                        f"{oracle.tail(combined, 300)}"))
                 elif directives.get("run"):
                     exe_path = os.path.join(RUN_DIR, "test.exe")
 
-                    # link all .o files in RUN_DIR
-                    obj_files = [os.path.join(RUN_DIR, f) for f in os.listdir(RUN_DIR) if f.endswith(".o")]
+                    obj_files = [os.path.join(RUN_DIR, f)
+                                 for f in os.listdir(RUN_DIR) if f.endswith(".o")]
                     if not obj_files:
-                        print(f"  [FAIL] {item}  (no .o files in {RUN_DIR})")
+                        print(f"  [FAIL] {item}  (no .o files)")
                         failed += 1
                         failures.append((str(item), f"no .o files in {RUN_DIR}"))
                         continue
@@ -159,16 +178,19 @@ def main():
                         continue
 
                     run_result = subprocess.run(
-                        [exe_path],
-                        capture_output=True, text=True,
+                        [exe_path], capture_output=True, text=True,
                     )
+                    rverdict, rreason = oracle.judge(
+                        run_result.returncode,
+                        (run_result.stdout or "") + (run_result.stderr or ""))
                     if run_result.returncode != 0:
                         print(f"  [FAIL] {item}  (exited {run_result.returncode})")
                         failed += 1
                         failures.append((str(item),
-                            f"runtime exit code {run_result.returncode}\n"
-                            f"  stdout: {run_result.stdout[:300]}\n"
-                            f"  stderr: {run_result.stderr[:300]}"))
+                            f"runtime exit code {run_result.returncode}"
+                            + (f" [{rreason}]" if rverdict != oracle.OK else "")
+                            + f"\n  stdout: {run_result.stdout[:300]}"
+                            + f"\n  stderr: {run_result.stderr[:300]}"))
                     else:
                         print(f"  [PASS] {item}")
                         passed += 1

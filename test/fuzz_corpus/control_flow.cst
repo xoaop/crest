@@ -1,0 +1,48 @@
+// fuzz corpus seed: 控制流
+// break/continue/嵌套循环/else-if 链 —— 错误恢复路径的密集区。
+
+Count :: enum u8 {
+    A :: 0;
+    B :: 1;
+    C :: 2;
+}
+
+loop_nest :: (n: i64) -> i32 {
+    total := 0;
+    for i: i64 in 0..n {
+        for j: i64 in 0..n {
+            if i == j {
+                continue;
+            } else if i > j {
+                break;
+            } else {
+                total = total + 1;
+            }
+            total = total + 1;
+        }
+    }
+    return total;
+}
+
+chain :: (x: i32) -> i32 {
+    if x == 0 {
+        return 0;
+    } else if x == 1 {
+        return 1;
+    } else if x == 2 {
+        return 2;
+    } else {
+        return -1;
+    }
+}
+
+locate :: (c: Count) -> i32 {
+    if c == Count.A {
+        return 10;
+    }
+    return 20;
+}
+
+main :: () -> i32 {
+    return loop_nest(3) + chain(1) + locate(Count.B);
+}

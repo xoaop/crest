@@ -1,0 +1,33 @@
+// fuzz corpus seed: 运算符全覆盖（含位运算与短路）
+// 给 mutate 一个落点密集的表达式树，让 token 级变异容易产生畸形表达式。
+
+int_ops :: (a: i32, b: i32) -> i32 {
+    c := a + b - a * b / 2 % 3;
+    d := a | b & a ^ b;
+    e := a << 2 >> 1;
+    g := ~a;
+    h := cast(i32)(c != 0) + cast(i32)(d != 0);
+    i := cast(i32)(e != 0) + cast(i32)(g != 0);
+    return c + d + e + g + h + i;
+}
+
+bool_ops :: (a: i32, b: i32) -> bool {
+    h := a < b && a > b || a == b;
+    i := a <= b && a >= b && a != b;
+    j := !(a == b);
+    return h || i || j;
+}
+
+floats :: (x: f32, y: f32) -> f32 {
+    return x + y * x / y - x;
+}
+
+shifts :: (a: u32) -> u32 {
+    return ~(a << 3) >> 1;
+}
+
+main :: () -> i32 {
+    k := int_ops(1, 2);
+    if bool_ops(k, k) { return 0; }
+    return k;
+}

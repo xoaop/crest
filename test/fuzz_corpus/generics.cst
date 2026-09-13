@@ -1,0 +1,36 @@
+// fuzz corpus seed: 泛型 / $T / 编译期函数
+// 泛型路径在 parser 与 interpreter 里都是易碎区，作为变异基底。
+// 写法对齐 test/pass/generic_func_param_type.cst 里已验证可用的模式。
+
+type_of :: $(val: $T) -> type {
+    return T;
+}
+
+identity :: (a: $T) -> T {
+    return a;
+}
+
+add :: (a: $T, b: T) -> T {
+    return a + b;
+}
+
+pick_second :: (a: $A, b: $B) -> B {
+    return b;
+}
+
+Box :: $(T: type) -> type {
+    return struct {
+        value: T;
+    };
+}
+
+main :: () -> i32 {
+    a := identity(1i32);
+    b := identity(true);
+    s := add(1i32, 2i32);
+    t := add(1.0f32, 2.0f32);
+    second := pick_second(1i32, 9i64);
+    bx: Box(i32);
+    bx.value = 7;
+    return a + s + bx.value;
+}
