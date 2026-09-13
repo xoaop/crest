@@ -1,0 +1,156 @@
+// SDL_time.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  A structure holding a calendar date and time broken down into its components.
+//
+//  \since This struct is available since SDL 3.2.0.
+SDL_DateTime :: struct {
+    //  Year
+    year: i32;
+    //  Month [01-12]
+    month: i32;
+    //  Day of the month [01-31]
+    day: i32;
+    //  Hour [0-23]
+    hour: i32;
+    //  Minute [0-59]
+    minute: i32;
+    //  Seconds [0-60]
+    second: i32;
+    //  Nanoseconds [0-999999999]
+    nanosecond: i32;
+    //  Day of the week [0-6] (0 being Sunday)
+    day_of_week: i32;
+    //  Seconds east of UTC
+    utc_offset: i32;
+}
+SDL_DateFormat :: i32
+SDL_TimeFormat :: i32
+
+// ── 常量 ──
+//  Day/Month/Year
+SDL_DATE_FORMAT_DDMMYYYY :: 1
+//  Month/Day/Year
+SDL_DATE_FORMAT_MMDDYYYY :: 2
+//  Year/Month/Day
+SDL_DATE_FORMAT_YYYYMMDD :: 0
+//  12 hour time
+SDL_TIME_FORMAT_12HR :: 1
+//  24 hour time
+SDL_TIME_FORMAT_24HR :: 0
+
+// ── 函数 ──
+//  Gets the current preferred date and time format for the system locale. This might be a "slow"
+//   call that has to query the operating system. It's best to ask for this once and save the
+//   results. However, the preferred formats can change, usually because the user has changed a
+//   system preference outside of your program.
+//
+//  This function is not thread safe.
+//
+//  \param dateFormat — a pointer to the SDL_DateFormat to hold the returned date format, may be
+//   NULL.
+//  \param timeFormat — a pointer to the SDL_TimeFormat to hold the returned time format, may be
+//   NULL.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDateTimeLocalePreferences :: (dateFormat: *SDL_DateFormat, timeFormat: *SDL_TimeFormat) -> bool extern_C
+//  Gets the current value of the system realtime clock in nanoseconds since Jan 1, 1970 in
+//   Universal Coordinated Time (UTC).
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ticks — the SDL_Time to hold the returned tick count.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetCurrentTime :: (ticks: *SDL_Time) -> bool extern_C
+//  Converts an SDL_Time in nanoseconds since the epoch to a calendar time in the SDL_DateTime
+//   format.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ticks — the SDL_Time to be converted.
+//  \param dt — the resulting SDL_DateTime.
+//  \param localTime — the resulting SDL_DateTime will be expressed in local time if true, otherwise
+//   it will be in Universal Coordinated Time (UTC).
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_TimeToDateTime :: (ticks: SDL_Time, dt: *SDL_DateTime, localTime: bool) -> bool extern_C
+//  Converts a calendar time to an SDL_Time in nanoseconds since the epoch. This function ignores
+//   the day_of_week member of the SDL_DateTime struct, so it may remain unset.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param dt — the source SDL_DateTime.
+//  \param ticks — the resulting SDL_Time.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_DateTimeToTime :: (dt: *SDL_DateTime, ticks: *SDL_Time) -> bool extern_C
+//  Converts an SDL time into a Windows FILETIME (100-nanosecond intervals since January 1, 1601).
+//   This function fills in the two 32-bit values of the FILETIME structure.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ticks — the time to convert.
+//  \param dwLowDateTime — a pointer filled in with the low portion of the Windows FILETIME value.
+//  \param dwHighDateTime — a pointer filled in with the high portion of the Windows FILETIME value.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_TimeToWindows :: (ticks: SDL_Time, dwLowDateTime: *u32, dwHighDateTime: *u32) -> void extern_C
+//  Converts a Windows FILETIME (100-nanosecond intervals since January 1, 1601) to an SDL time.
+//   This function takes the two 32-bit values of the FILETIME structure as parameters.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param dwLowDateTime — the low portion of the Windows FILETIME value.
+//  \param dwHighDateTime — the high portion of the Windows FILETIME value.
+//
+//  \returns the converted SDL time.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_TimeFromWindows :: (dwLowDateTime: u32, dwHighDateTime: u32) -> SDL_Time extern_C
+//  Get the number of days in a month for a given year.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param year — the year.
+//  \param month — the month [1-12].
+//
+//  \returns the number of days in the requested month or -1 on failure; call SDL_GetError() for
+//   more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDaysInMonth :: (year: i32, month: i32) -> i32 extern_C
+//  Get the day of year for a calendar date.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param year — the year component of the date.
+//  \param month — the month component of the date.
+//  \param day — the day component of the date.
+//
+//  \returns the day of year [0-365] if the date is valid or -1 on failure; call SDL_GetError() for
+//   more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDayOfYear :: (year: i32, month: i32, day: i32) -> i32 extern_C
+//  Get the day of week for a calendar date.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param year — the year component of the date.
+//  \param month — the month component of the date.
+//  \param day — the day component of the date.
+//
+//  \returns a value between 0 and 6 (0 being Sunday) if the date is valid or -1 on failure; call
+//   SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDayOfWeek :: (year: i32, month: i32, day: i32) -> i32 extern_C

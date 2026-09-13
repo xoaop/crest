@@ -1,0 +1,7 @@
+// SDL_endian.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 常量 ──
+SDL_BIG_ENDIAN :: 4321
+SDL_BYTEORDER :: 1234
+SDL_FLOATWORDORDER :: 1234
+SDL_LIL_ENDIAN :: 1234

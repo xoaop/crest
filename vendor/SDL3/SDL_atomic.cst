@@ -1,0 +1,261 @@
+// SDL_atomic.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  An atomic spinlock. The atomic locks are efficient spinlocks using CPU instructions, but are
+//   vulnerable to starvation and can spin forever if a thread holding a lock has been terminated.
+//   For this reason you should minimize the code executed inside an atomic lock and never do
+//   expensive things like API or system calls while holding them. They are also vulnerable to
+//   starvation if the thread holding the lock is lower priority than other threads and doesn't get
+//   scheduled. In general you should use mutexes instead, since they have better performance and
+//   contention behavior. The atomic locks are not safe to lock recursively. Porting Note: The spin
+//   lock functions and type are required and can not be emulated because they are used in the
+//   atomic emulation code.
+SDL_SpinLock :: i32
+//  A type representing an atomic integer value. This can be used to manage a value that is
+//   synchronized across multiple CPUs without a race condition; when an app sets a value with
+//   SDL_SetAtomicInt all other threads, regardless of the CPU it is running on, will see that value
+//   when retrieved with SDL_GetAtomicInt, regardless of CPU caches, etc. This is also useful for
+//   atomic compare-and-swap operations: a thread can change the value as long as its current value
+//   matches expectations. When done in a loop, one can guarantee data consistency across threads
+//   without a lock (but the usual warnings apply: if you don't know what you're doing, or you don't
+//   do it carefully, you can confidently cause any number of disasters with this, so in most cases,
+//   you _should_ use a mutex instead of this!). This is a struct so people don't accidentally use
+//   numeric operations on it directly. You have to use SDL atomic functions.
+//
+//  \since This struct is available since SDL 3.2.0.
+//
+//  \sa SDL_CompareAndSwapAtomicInt, SDL_GetAtomicInt, SDL_SetAtomicInt, SDL_AddAtomicInt
+SDL_AtomicInt :: struct {
+    value: i32;
+}
+//  A type representing an atomic unsigned 32-bit value. This can be used to manage a value that is
+//   synchronized across multiple CPUs without a race condition; when an app sets a value with
+//   SDL_SetAtomicU32 all other threads, regardless of the CPU it is running on, will see that value
+//   when retrieved with SDL_GetAtomicU32, regardless of CPU caches, etc. This is also useful for
+//   atomic compare-and-swap operations: a thread can change the value as long as its current value
+//   matches expectations. When done in a loop, one can guarantee data consistency across threads
+//   without a lock (but the usual warnings apply: if you don't know what you're doing, or you don't
+//   do it carefully, you can confidently cause any number of disasters with this, so in most cases,
+//   you _should_ use a mutex instead of this!). This is a struct so people don't accidentally use
+//   numeric operations on it directly. You have to use SDL atomic functions.
+//
+//  \since This struct is available since SDL 3.2.0.
+//
+//  \sa SDL_CompareAndSwapAtomicU32, SDL_GetAtomicU32, SDL_SetAtomicU32
+SDL_AtomicU32 :: struct {
+    value: u32;
+}
+
+// ── 函数 ──
+//  Try to lock a spin lock by setting it to a non-zero value. ***Please note that spinlocks are
+//   dangerous if you don't know what you're doing. Please be careful using any sort of spinlock!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param lock — a pointer to a lock variable.
+//
+//  \returns true if the lock succeeded, false if the lock is already held.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_LockSpinlock, SDL_UnlockSpinlock
+SDL_TryLockSpinlock :: (lock: *SDL_SpinLock) -> bool extern_C
+//  Lock a spin lock by setting it to a non-zero value. ***Please note that spinlocks are dangerous
+//   if you don't know what you're doing. Please be careful using any sort of spinlock!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param lock — a pointer to a lock variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_TryLockSpinlock, SDL_UnlockSpinlock
+SDL_LockSpinlock :: (lock: *SDL_SpinLock) -> void extern_C
+//  Unlock a spin lock by setting it to 0. Always returns immediately. ***Please note that spinlocks
+//   are dangerous if you don't know what you're doing. Please be careful using any sort of
+//   spinlock!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param lock — a pointer to a lock variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_LockSpinlock, SDL_TryLockSpinlock
+SDL_UnlockSpinlock :: (lock: *SDL_SpinLock) -> void extern_C
+//  Insert a memory release barrier (function version). Please refer to SDL_MemoryBarrierRelease for
+//   details. This is a function version, which might be useful if you need to use this
+//   functionality from a scripting language, etc. Also, some of the macro versions call this
+//   function behind the scenes, where more heavy lifting can happen inside of SDL. Generally,
+//   though, an app written in C/C++/etc should use the macro version, as it will be more efficient.
+//   Obviously this function is safe to use from any thread at any time, but if you find yourself
+//   needing this, you are probably dealing with some very sensitive code; be careful!
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_MemoryBarrierRelease
+SDL_MemoryBarrierReleaseFunction :: () -> void extern_C
+//  Insert a memory acquire barrier (function version). Please refer to SDL_MemoryBarrierRelease for
+//   details. This is a function version, which might be useful if you need to use this
+//   functionality from a scripting language, etc. Also, some of the macro versions call this
+//   function behind the scenes, where more heavy lifting can happen inside of SDL. Generally,
+//   though, an app written in C/C++/etc should use the macro version, as it will be more efficient.
+//   Obviously this function is safe to use from any thread at any time, but if you find yourself
+//   needing this, you are probably dealing with some very sensitive code; be careful!
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_MemoryBarrierAcquire
+SDL_MemoryBarrierAcquireFunction :: () -> void extern_C
+//  Set an atomic variable to a new value if it is currently an old value. ***Note: If you don't
+//   know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicInt variable to be modified.
+//  \param oldval — the old value.
+//  \param newval — the new value.
+//
+//  \returns true if the atomic variable was set, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetAtomicInt, SDL_SetAtomicInt
+SDL_CompareAndSwapAtomicInt :: (a: *SDL_AtomicInt, oldval: i32, newval: i32) -> bool extern_C
+//  Set an atomic variable to a value. This function also acts as a full memory barrier. ***Note: If
+//   you don't know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicInt variable to be modified.
+//  \param v — the desired value.
+//
+//  \returns the previous value of the atomic variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetAtomicInt
+SDL_SetAtomicInt :: (a: *SDL_AtomicInt, v: i32) -> i32 extern_C
+//  Get the value of an atomic variable. ***Note: If you don't know what this function is for, you
+//   shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicInt variable.
+//
+//  \returns the current value of an atomic variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetAtomicInt
+SDL_GetAtomicInt :: (a: *SDL_AtomicInt) -> i32 extern_C
+//  Add to an atomic variable. This function also acts as a full memory barrier. ***Note: If you
+//   don't know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicInt variable to be modified.
+//  \param v — the desired value to add.
+//
+//  \returns the previous value of the atomic variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_AtomicDecRef, SDL_AtomicIncRef
+SDL_AddAtomicInt :: (a: *SDL_AtomicInt, v: i32) -> i32 extern_C
+//  Set an atomic variable to a new value if it is currently an old value. ***Note: If you don't
+//   know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicU32 variable to be modified.
+//  \param oldval — the old value.
+//  \param newval — the new value.
+//
+//  \returns true if the atomic variable was set, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetAtomicU32, SDL_SetAtomicU32
+SDL_CompareAndSwapAtomicU32 :: (a: *SDL_AtomicU32, oldval: u32, newval: u32) -> bool extern_C
+//  Set an atomic variable to a value. This function also acts as a full memory barrier. ***Note: If
+//   you don't know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicU32 variable to be modified.
+//  \param v — the desired value.
+//
+//  \returns the previous value of the atomic variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetAtomicU32
+SDL_SetAtomicU32 :: (a: *SDL_AtomicU32, v: u32) -> u32 extern_C
+//  Get the value of an atomic variable. ***Note: If you don't know what this function is for, you
+//   shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicU32 variable.
+//
+//  \returns the current value of an atomic variable.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetAtomicU32
+SDL_GetAtomicU32 :: (a: *SDL_AtomicU32) -> u32 extern_C
+//  Add to an atomic variable. This function also acts as a full memory barrier. ***Note: If you
+//   don't know what this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to an SDL_AtomicU32 variable to be modified.
+//  \param v — the desired value to add or subtract.
+//
+//  \returns the previous value of the atomic variable.
+//
+//  \since This function is available since SDL 3.4.0.
+SDL_AddAtomicU32 :: (a: *SDL_AtomicU32, v: i32) -> u32 extern_C
+//  Set a pointer to a new value if it is currently an old value. ***Note: If you don't know what
+//   this function is for, you shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to a pointer.
+//  \param oldval — the old pointer value.
+//  \param newval — the new pointer value.
+//
+//  \returns true if the pointer was set, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CompareAndSwapAtomicInt, SDL_GetAtomicPointer, SDL_SetAtomicPointer
+SDL_CompareAndSwapAtomicPointer :: (a: **void, oldval: *void, newval: *void) -> bool extern_C
+//  Set a pointer to a value atomically. ***Note: If you don't know what this function is for, you
+//   shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to a pointer.
+//  \param v — the desired pointer value.
+//
+//  \returns the previous value of the pointer.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CompareAndSwapAtomicPointer, SDL_GetAtomicPointer
+SDL_SetAtomicPointer :: (a: **void, v: *void) -> *void extern_C
+//  Get the value of a pointer atomically. ***Note: If you don't know what this function is for, you
+//   shouldn't use it!***
+//
+//  It is safe to call this function from any thread.
+//
+//  \param a — a pointer to a pointer.
+//
+//  \returns the current value of a pointer.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CompareAndSwapAtomicPointer, SDL_SetAtomicPointer
+SDL_GetAtomicPointer :: (a: **void) -> *void extern_C

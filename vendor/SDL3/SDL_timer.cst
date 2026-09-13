@@ -1,0 +1,189 @@
+// SDL_timer.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  Definition of the timer ID type.
+//
+//  \since This datatype is available since SDL 3.2.0.
+SDL_TimerID :: u32
+//  Function prototype for the millisecond timer callback function. The callback function is passed
+//   the current timer interval and returns the next timer interval, in milliseconds. If the
+//   returned value is the same as the one passed in, the periodic alarm continues, otherwise a new
+//   alarm is scheduled. If the callback returns 0, the periodic alarm is canceled and will be
+//   removed.
+//
+//  SDL may call this callback at any time from a background thread; the application is responsible
+//   for locking resources the callback touches that need to be protected.
+//
+//  \param userdata — an arbitrary pointer provided by the app through SDL_AddTimer, for its own
+//   use.
+//  \param timerID — the current timer being processed.
+//  \param interval — the current callback time interval.
+//
+//  \returns the new callback time interval, or 0 to disable further runs of the callback.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_AddTimer
+SDL_TimerCallback :: ((*void, SDL_TimerID, u32) -> u32)
+//  Function prototype for the nanosecond timer callback function. The callback function is passed
+//   the current timer interval and returns the next timer interval, in nanoseconds. If the returned
+//   value is the same as the one passed in, the periodic alarm continues, otherwise a new alarm is
+//   scheduled. If the callback returns 0, the periodic alarm is canceled and will be removed.
+//
+//  SDL may call this callback at any time from a background thread; the application is responsible
+//   for locking resources the callback touches that need to be protected.
+//
+//  \param userdata — an arbitrary pointer provided by the app through SDL_AddTimer, for its own
+//   use.
+//  \param timerID — the current timer being processed.
+//  \param interval — the current callback time interval.
+//
+//  \returns the new callback time interval, or 0 to disable further runs of the callback.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_AddTimerNS
+SDL_NSTimerCallback :: ((*void, SDL_TimerID, u64) -> u64)
+
+// ── 常量 ──
+SDL_MS_PER_SECOND :: 1000
+SDL_NS_PER_MS :: 1000000
+SDL_NS_PER_SECOND :: 1000000000
+SDL_NS_PER_US :: 1000
+SDL_US_PER_SECOND :: 1000000
+
+// ── 函数 ──
+//  Get the number of milliseconds that have elapsed since the SDL library initialization.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns an unsigned 64‑bit integer that represents the number of milliseconds that have elapsed
+//   since the SDL library was initialized (typically via a call to SDL_Init).
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetTicksNS
+SDL_GetTicks :: () -> u64 extern_C
+//  Get the number of nanoseconds since SDL library initialization.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns an unsigned 64-bit value representing the number of nanoseconds since the SDL library
+//   initialized.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetTicksNS :: () -> u64 extern_C
+//  Get the current value of the high resolution counter. This function is typically used for
+//   profiling. The counter values are only meaningful relative to each other. Differences between
+//   values can be converted to times by using SDL_GetPerformanceFrequency().
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns the current counter value.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPerformanceFrequency
+SDL_GetPerformanceCounter :: () -> u64 extern_C
+//  Get the count per second of the high resolution counter.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns a platform-specific count per second.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetPerformanceCounter
+SDL_GetPerformanceFrequency :: () -> u64 extern_C
+//  Wait a specified number of milliseconds before returning. This function waits a specified number
+//   of milliseconds before returning. It waits at least the specified time, but possibly longer due
+//   to OS scheduling.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ms — the number of milliseconds to delay.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_DelayNS, SDL_DelayPrecise
+SDL_Delay :: (ms: u32) -> void extern_C
+//  Wait a specified number of nanoseconds before returning. This function waits a specified number
+//   of nanoseconds before returning. It waits at least the specified time, but possibly longer due
+//   to OS scheduling.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ns — the number of nanoseconds to delay.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Delay, SDL_DelayPrecise
+SDL_DelayNS :: (ns: u64) -> void extern_C
+//  Wait a specified number of nanoseconds before returning. This function waits a specified number
+//   of nanoseconds before returning. It will attempt to wait as close to the requested time as
+//   possible, busy waiting if necessary, but could return later due to OS scheduling.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param ns — the number of nanoseconds to delay.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_Delay, SDL_DelayNS
+SDL_DelayPrecise :: (ns: u64) -> void extern_C
+//  Call a callback function at a future time. The callback function is passed the current timer
+//   interval and the user supplied parameter from the SDL_AddTimer() call and should return the
+//   next timer interval. If the value returned from the callback is 0, the timer is canceled and
+//   will be removed. The callback is run on a separate thread, and for short timeouts can
+//   potentially be called before this function returns. Timers take into account the amount of time
+//   it took to execute the callback. For example, if the callback took 250 ms to execute and
+//   returned 1000 (ms), the timer would only wait another 750 ms before its next iteration. Timing
+//   may be inexact due to OS scheduling. Be sure to note the current time with SDL_GetTicksNS() or
+//   SDL_GetPerformanceCounter() in case your callback needs to adjust for variances.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param interval — the timer delay, in milliseconds, passed to `callback`.
+//  \param callback — the SDL_TimerCallback function to call when the specified `interval` elapses.
+//  \param userdata — a pointer that is passed to `callback`.
+//
+//  \returns a timer ID or 0 on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_AddTimerNS, SDL_RemoveTimer
+SDL_AddTimer :: (interval: u32, callback: *SDL_TimerCallback, userdata: *void) -> SDL_TimerID extern_C
+//  Call a callback function at a future time. The callback function is passed the current timer
+//   interval and the user supplied parameter from the SDL_AddTimerNS() call and should return the
+//   next timer interval. If the value returned from the callback is 0, the timer is canceled and
+//   will be removed. The callback is run on a separate thread, and for short timeouts can
+//   potentially be called before this function returns. Timers take into account the amount of time
+//   it took to execute the callback. For example, if the callback took 250 ns to execute and
+//   returned 1000 (ns), the timer would only wait another 750 ns before its next iteration. Timing
+//   may be inexact due to OS scheduling. Be sure to note the current time with SDL_GetTicksNS() or
+//   SDL_GetPerformanceCounter() in case your callback needs to adjust for variances.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param interval — the timer delay, in nanoseconds, passed to `callback`.
+//  \param callback — the SDL_TimerCallback function to call when the specified `interval` elapses.
+//  \param userdata — a pointer that is passed to `callback`.
+//
+//  \returns a timer ID or 0 on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_AddTimer, SDL_RemoveTimer
+SDL_AddTimerNS :: (interval: u64, callback: *SDL_NSTimerCallback, userdata: *void) -> SDL_TimerID extern_C
+//  Remove a timer created with SDL_AddTimer().
+//
+//  It is safe to call this function from any thread.
+//
+//  \param id — the ID of the timer to remove.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_AddTimer
+SDL_RemoveTimer :: (id: SDL_TimerID) -> bool extern_C

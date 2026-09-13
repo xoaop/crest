@@ -1,0 +1,237 @@
+// SDL_thread.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  A unique numeric ID that identifies a thread. These are different from SDL_Thread objects, which
+//   are generally what an application will operate on, but having a way to uniquely identify a
+//   thread can be useful at times.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_GetThreadID, SDL_GetCurrentThreadID
+SDL_ThreadID :: u64
+//  Thread local storage ID. 0 is the invalid ID. An app can create these and then set data for
+//   these IDs that is unique to each thread.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_GetTLS, SDL_SetTLS
+SDL_TLSID :: SDL_AtomicInt
+//  The function passed to SDL_CreateThread() as the new thread's entry point.
+//
+//  \param data — what was passed as `data` to SDL_CreateThread().
+//
+//  \returns a value that can be reported through SDL_WaitThread().
+//
+//  \since This datatype is available since SDL 3.2.0.
+SDL_ThreadFunction :: ((*void) -> i32)
+//  The callback used to cleanup data passed to SDL_SetTLS. This is called when a thread exits, to
+//   allow an app to free any resources.
+//
+//  \param value — a pointer previously handed to SDL_SetTLS.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_SetTLS
+SDL_TLSDestructorCallback :: ((*void) -> void)
+//  The SDL thread object. These are opaque data.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_CreateThread, SDL_WaitThread
+SDL_Thread :: struct {}
+SDL_ThreadPriority :: i32
+SDL_ThreadState :: i32
+
+// ── 常量 ──
+//  The thread is currently running
+SDL_THREAD_ALIVE :: 1
+//  The thread has finished and should be cleaned up with SDL_WaitThread()
+SDL_THREAD_COMPLETE :: 3
+//  The thread is detached and can't be waited on
+SDL_THREAD_DETACHED :: 2
+//  The thread is not valid
+SDL_THREAD_UNKNOWN :: 0
+SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER :: "SDL.thread.create.entry_function"
+SDL_PROP_THREAD_CREATE_NAME_STRING :: "SDL.thread.create.name"
+SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER :: "SDL.thread.create.stacksize"
+SDL_PROP_THREAD_CREATE_USERDATA_POINTER :: "SDL.thread.create.userdata"
+SDL_THREAD_PRIORITY_HIGH :: 2
+SDL_THREAD_PRIORITY_LOW :: 0
+SDL_THREAD_PRIORITY_NORMAL :: 1
+SDL_THREAD_PRIORITY_TIME_CRITICAL :: 3
+
+// ── 函数 ──
+//  The actual entry point for SDL_CreateThread.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param fn — the SDL_ThreadFunction function to call in the new thread
+//  \param name — the name of the thread
+//  \param data — a pointer that is passed to `fn`
+//  \param pfnBeginThread — the C runtime's _beginthreadex (or whatnot). Can be NULL.
+//  \param pfnEndThread — the C runtime's _endthreadex (or whatnot). Can be NULL.
+//
+//  \returns an opaque pointer to the new thread object on success, NULL if the new thread could not
+//   be created; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_CreateThreadRuntime :: (fn: *SDL_ThreadFunction, name: *u8, data: *void, pfnBeginThread: *SDL_FunctionPointer, pfnEndThread: *SDL_FunctionPointer) -> *SDL_Thread extern_C
+//  The actual entry point for SDL_CreateThreadWithProperties.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param props — the properties to use
+//  \param pfnBeginThread — the C runtime's _beginthreadex (or whatnot). Can be NULL.
+//  \param pfnEndThread — the C runtime's _endthreadex (or whatnot). Can be NULL.
+//
+//  \returns an opaque pointer to the new thread object on success, NULL if the new thread could not
+//   be created; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_CreateThreadWithPropertiesRuntime :: (props: SDL_PropertiesID, pfnBeginThread: *SDL_FunctionPointer, pfnEndThread: *SDL_FunctionPointer) -> *SDL_Thread extern_C
+//  Get the thread name as it was specified in SDL_CreateThread().
+//
+//  It is safe to call this function from any thread.
+//
+//  \param thread — the thread to query.
+//
+//  \returns a pointer to a UTF-8 string that names the specified thread, or NULL if it doesn't have
+//   a name.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetThreadName :: (thread: *SDL_Thread) -> *u8 extern_C
+//  Get the thread identifier for the current thread. This thread identifier is as reported by the
+//   underlying operating system. If SDL is running on a platform that does not support threads the
+//   return value will always be zero. This function also returns a valid thread ID when called from
+//   the main thread.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns the ID of the current thread.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetThreadID
+SDL_GetCurrentThreadID :: () -> SDL_ThreadID extern_C
+//  Get the thread identifier for the specified thread. This thread identifier is as reported by the
+//   underlying operating system. If SDL is running on a platform that does not support threads the
+//   return value will always be zero.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param thread — the thread to query.
+//
+//  \returns the ID of the specified thread, or the ID of the current thread if `thread` is NULL.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetCurrentThreadID
+SDL_GetThreadID :: (thread: *SDL_Thread) -> SDL_ThreadID extern_C
+//  Set the priority for the current thread. Note that some platforms will not let you alter the
+//   priority (or at least, promote the thread to a higher priority) at all, and some require you to
+//   be an administrator account. Be prepared for this to fail.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param priority — the SDL_ThreadPriority to set.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_SetCurrentThreadPriority :: (priority: SDL_ThreadPriority) -> bool extern_C
+//  Wait for a thread to finish. Threads that haven't been detached will remain until this function
+//   cleans them up. Not doing so is a resource leak. Once a thread has been cleaned up through this
+//   function, the SDL_Thread that references it becomes invalid and should not be referenced again.
+//   As such, only one thread may call SDL_WaitThread() on another. The return code from the thread
+//   function is placed in the area pointed to by `status`, if `status` is not NULL. You may not
+//   wait on a thread that has been used in a call to SDL_DetachThread(). Use either that function
+//   or this one, but not both, or behavior is undefined. It is safe to pass a NULL thread to this
+//   function; it is a no-op. Note that the thread pointer is freed by this function and is not
+//   valid afterward.
+//
+//  It is safe to call this function from any thread, but only a single thread can wait any specific
+//   thread to finish.
+//
+//  \param thread — the SDL_Thread pointer that was returned from the SDL_CreateThread() call that
+//   started this thread.
+//  \param status — a pointer filled in with the value returned from the thread function by its
+//   'return', or -1 if the thread has been detached or isn't valid, may be NULL.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CreateThread, SDL_DetachThread
+SDL_WaitThread :: (thread: *SDL_Thread, status: *i32) -> void extern_C
+//  Get the current state of a thread.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param thread — the thread to query.
+//
+//  \returns the current state of a thread, or SDL_THREAD_UNKNOWN if the thread isn't valid.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ThreadState
+SDL_GetThreadState :: (thread: *SDL_Thread) -> SDL_ThreadState extern_C
+//  Let a thread clean up on exit without intervention. A thread may be "detached" to signify that
+//   it should not remain until another thread has called SDL_WaitThread() on it. Detaching a thread
+//   is useful for long-running threads that nothing needs to synchronize with or further manage.
+//   When a detached thread is done, it simply goes away. There is no way to recover the return code
+//   of a detached thread. If you need this, don't detach the thread and instead use
+//   SDL_WaitThread(). Once a thread is detached, you should usually assume the SDL_Thread isn't
+//   safe to reference again, as it will become invalid immediately upon the detached thread's exit,
+//   instead of remaining until someone has called SDL_WaitThread() to finally clean it up. As such,
+//   don't detach the same thread more than once. If a thread has already exited when passed to
+//   SDL_DetachThread(), it will stop waiting for a call to SDL_WaitThread() and clean up
+//   immediately. It is not safe to detach a thread that might be used with SDL_WaitThread(). You
+//   may not call SDL_WaitThread() on a thread that has been detached. Use either that function or
+//   this one, but not both, or behavior is undefined. It is safe to pass NULL to this function; it
+//   is a no-op.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param thread — the SDL_Thread pointer that was returned from the SDL_CreateThread() call that
+//   started this thread.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_CreateThread, SDL_WaitThread
+SDL_DetachThread :: (thread: *SDL_Thread) -> void extern_C
+//  Get the current thread's value associated with a thread local storage ID.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param id — a pointer to the thread local storage ID, may not be NULL.
+//
+//  \returns the value associated with the ID for the current thread or NULL if no value has been
+//   set; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_SetTLS
+SDL_GetTLS :: (id: *SDL_TLSID) -> *void extern_C
+//  Set the current thread's value associated with a thread local storage ID. If the thread local
+//   storage ID is not initialized (the value is 0), a new ID will be created in a thread-safe way,
+//   so all calls using a pointer to the same ID will refer to the same local storage. Note that
+//   replacing a value from a previous call to this function on the same thread does _not_ call the
+//   previous value's destructor! `destructor` can be NULL; it is assumed that `value` does not need
+//   to be cleaned up if so.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param id — a pointer to the thread local storage ID, may not be NULL.
+//  \param value — the value to associate with the ID for the current thread.
+//  \param destructor — a function called when the thread exits, to free the value, may be NULL.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetTLS
+SDL_SetTLS :: (id: *SDL_TLSID, value: *void, destructor: *SDL_TLSDestructorCallback) -> bool extern_C
+//  Cleanup all TLS data for this thread. If you are creating your threads outside of SDL and then
+//   calling SDL functions, you should call this function before your thread exits, to properly
+//   clean up SDL memory. It is safe to call this function from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_CleanupTLS :: () -> void extern_C

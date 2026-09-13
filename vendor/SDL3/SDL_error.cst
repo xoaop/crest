@@ -1,0 +1,73 @@
+// SDL_error.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 函数 ──
+//  Set the SDL error message for the current thread. Calling this function will replace any
+//   previous error message that was set. This function always returns false, since SDL frequently
+//   uses false to signify a failing result, leading to this idiom: ```c if (error_code) { return
+//   SDL_SetError("This operation has failed: %d", error_code); } ```
+//
+//  It is safe to call this function from any thread.
+//
+//  \param fmt — a printf()-style message format string.
+//  \param ... — additional parameters matching % tokens in the `fmt` string, if any.
+//
+//  \returns false.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ClearError, SDL_GetError, SDL_SetErrorV
+SDL_SetError :: (fmt: *u8, ...) -> bool extern_C
+//  Set the SDL error message for the current thread. Calling this function will replace any
+//   previous error message that was set.
+//
+//  It is safe to call this function from any thread.
+//
+//  \param fmt — a printf()-style message format string.
+//  \param ap — a variable argument list.
+//
+//  \returns false.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ClearError, SDL_GetError, SDL_SetError
+SDL_SetErrorV :: (fmt: *u8, ap: *void) -> bool extern_C
+//  Set an error indicating that memory allocation failed. This function does not do any memory
+//   allocation.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns false.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OutOfMemory :: () -> bool extern_C
+//  Retrieve a message about the last error that occurred on the current thread. It is possible for
+//   multiple errors to occur before calling SDL_GetError(). Only the last error is returned. The
+//   message is only applicable when an SDL function has signaled an error. You must check the
+//   return values of SDL function calls to determine when to appropriately call SDL_GetError(). You
+//   should *not* use the results of SDL_GetError() to decide if an error has occurred! Sometimes
+//   SDL will set an error string even when reporting success. SDL will *not* clear the error string
+//   for successful API calls. You *must* check return values for failure cases before you can
+//   assume the error string applies. Error strings are set per-thread, so an error set in a
+//   different thread will not interfere with the current thread's operation. The returned value is
+//   a thread-local string which will remain valid until the current thread's error string is
+//   changed. The caller should make a copy if the value is needed after the next SDL API call.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns a message with information about the specific error that occurred, or an empty string
+//   if there hasn't been an error message set since the last call to SDL_ClearError().
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_ClearError, SDL_SetError
+SDL_GetError :: () -> *u8 extern_C
+//  Clear any previous error message for this thread.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns true.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_GetError, SDL_SetError
+SDL_ClearError :: () -> bool extern_C

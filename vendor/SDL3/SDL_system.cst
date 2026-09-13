@@ -1,0 +1,170 @@
+// SDL_system.h — GENERATED from SDL3 3.4.8, do not edit
+
+// ── 类型 ──
+//  A callback to be used with SDL_SetWindowsMessageHook. This callback may modify the message, and
+//   should return true if the message should continue to be processed, or false to prevent further
+//   processing. As this is processing a message directly from the Windows event loop, this callback
+//   should do the minimum required work and return quickly.
+//
+//  This may only be called (by SDL) from the thread handling the Windows event loop.
+//
+//  \param userdata — the app-defined pointer provided to SDL_SetWindowsMessageHook.
+//  \param msg — a pointer to a Win32 event structure to process.
+//
+//  \returns true to let event continue on, false to drop it.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_SetWindowsMessageHook, SDL_HINT_WINDOWS_ENABLE_MESSAGELOOP
+SDL_WindowsMessageHook :: ((*void, *MSG) -> bool)
+//  A callback to be used with SDL_SetX11EventHook. This callback may modify the event, and should
+//   return true if the event should continue to be processed, or false to prevent further
+//   processing. As this is processing an event directly from the X11 event loop, this callback
+//   should do the minimum required work and return quickly.
+//
+//  This may only be called (by SDL) from the thread handling the X11 event loop.
+//
+//  \param userdata — the app-defined pointer provided to SDL_SetX11EventHook.
+//  \param xevent — a pointer to an Xlib XEvent union to process.
+//
+//  \returns true to let event continue on, false to drop it.
+//
+//  \since This datatype is available since SDL 3.2.0.
+//
+//  \sa SDL_SetX11EventHook
+SDL_X11EventHook :: ((*void, *XEvent) -> bool)
+SDL_Sandbox :: i32
+
+// ── 常量 ──
+SDL_SANDBOX_FLATPAK :: 2
+SDL_SANDBOX_MACOS :: 4
+SDL_SANDBOX_NONE :: 0
+SDL_SANDBOX_SNAP :: 3
+SDL_SANDBOX_UNKNOWN_CONTAINER :: 1
+
+// ── 函数 ──
+//  Set a callback for every Windows message, run before TranslateMessage(). The callback may modify
+//   the message, and should return true if the message should continue to be processed, or false to
+//   prevent further processing.
+//
+//  This function should only be called on the main thread.
+//
+//  \param callback — the SDL_WindowsMessageHook function to call.
+//  \param userdata — a pointer to pass to every iteration of `callback`.
+//
+//  \since This function is available since SDL 3.2.0.
+//
+//  \sa SDL_WindowsMessageHook, SDL_HINT_WINDOWS_ENABLE_MESSAGELOOP
+SDL_SetWindowsMessageHook :: (callback: *SDL_WindowsMessageHook, userdata: *void) -> void extern_C
+//  Get the D3D9 adapter index that matches the specified display. The returned adapter index can be
+//   passed to `IDirect3D9::CreateDevice` and controls on which monitor a full screen application
+//   will appear.
+//
+//  \param displayID — the instance of the display to query.
+//
+//  \returns the D3D9 adapter index on success or -1 on failure; call SDL_GetError() for more
+//   information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDirect3D9AdapterIndex :: (displayID: SDL_DisplayID) -> i32 extern_C
+//  Get the DXGI Adapter and Output indices for the specified display. The DXGI Adapter and Output
+//   indices can be passed to `EnumAdapters` and `EnumOutputs` respectively to get the objects
+//   required to create a DX10 or DX11 device and swap chain.
+//
+//  \param displayID — the instance of the display to query.
+//  \param adapterIndex — a pointer to be filled in with the adapter index.
+//  \param outputIndex — a pointer to be filled in with the output index.
+//
+//  \returns true on success or false on failure; call SDL_GetError() for more information.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetDXGIOutputInfo :: (displayID: SDL_DisplayID, adapterIndex: *i32, outputIndex: *i32) -> bool extern_C
+//  Set a callback for every X11 event. The callback may modify the event, and should return true if
+//   the event should continue to be processed, or false to prevent further processing.
+//
+//  This function should only be called on the main thread.
+//
+//  \param callback — the SDL_X11EventHook function to call.
+//  \param userdata — a pointer to pass to every iteration of `callback`.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_SetX11EventHook :: (callback: *SDL_X11EventHook, userdata: *void) -> void extern_C
+//  Query if the current device is a tablet. If SDL can't determine this, it will return false.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns true if the device is a tablet, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_IsTablet :: () -> bool extern_C
+//  Query if the current device is a TV. If SDL can't determine this, it will return false.
+//
+//  It is safe to call this function from any thread.
+//
+//  \returns true if the device is a TV, false otherwise.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_IsTV :: () -> bool extern_C
+//  Get the application sandbox environment, if any.
+//
+//  \returns the application sandbox environment or SDL_SANDBOX_NONE if the application is not
+//   running in a sandbox environment.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_GetSandbox :: () -> SDL_Sandbox extern_C
+//  Let iOS apps with external event handling report onApplicationWillTerminate. This functions
+//   allows iOS apps that have their own event handling to hook into SDL to generate SDL events.
+//   This maps directly to an iOS-specific event, but since it doesn't do anything iOS-specific
+//   internally, it is available on all platforms, in case it might be useful for some specific
+//   paradigm. Most apps do not need to use this directly; SDL's internal event code will handle all
+//   this for windows created by SDL_CreateWindow! It is safe to call this function from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationWillTerminate :: () -> void extern_C
+//  Let iOS apps with external event handling report onApplicationDidReceiveMemoryWarning. This
+//   functions allows iOS apps that have their own event handling to hook into SDL to generate SDL
+//   events. This maps directly to an iOS-specific event, but since it doesn't do anything
+//   iOS-specific internally, it is available on all platforms, in case it might be useful for some
+//   specific paradigm. Most apps do not need to use this directly; SDL's internal event code will
+//   handle all this for windows created by SDL_CreateWindow! It is safe to call this function from
+//   any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationDidReceiveMemoryWarning :: () -> void extern_C
+//  Let iOS apps with external event handling report onApplicationWillResignActive. This functions
+//   allows iOS apps that have their own event handling to hook into SDL to generate SDL events.
+//   This maps directly to an iOS-specific event, but since it doesn't do anything iOS-specific
+//   internally, it is available on all platforms, in case it might be useful for some specific
+//   paradigm. Most apps do not need to use this directly; SDL's internal event code will handle all
+//   this for windows created by SDL_CreateWindow! It is safe to call this function from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationWillEnterBackground :: () -> void extern_C
+//  Let iOS apps with external event handling report onApplicationDidEnterBackground. This functions
+//   allows iOS apps that have their own event handling to hook into SDL to generate SDL events.
+//   This maps directly to an iOS-specific event, but since it doesn't do anything iOS-specific
+//   internally, it is available on all platforms, in case it might be useful for some specific
+//   paradigm. Most apps do not need to use this directly; SDL's internal event code will handle all
+//   this for windows created by SDL_CreateWindow! It is safe to call this function from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationDidEnterBackground :: () -> void extern_C
+//  Let iOS apps with external event handling report onApplicationWillEnterForeground. This
+//   functions allows iOS apps that have their own event handling to hook into SDL to generate SDL
+//   events. This maps directly to an iOS-specific event, but since it doesn't do anything
+//   iOS-specific internally, it is available on all platforms, in case it might be useful for some
+//   specific paradigm. Most apps do not need to use this directly; SDL's internal event code will
+//   handle all this for windows created by SDL_CreateWindow! It is safe to call this function from
+//   any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationWillEnterForeground :: () -> void extern_C
+//  Let iOS apps with external event handling report onApplicationDidBecomeActive. This functions
+//   allows iOS apps that have their own event handling to hook into SDL to generate SDL events.
+//   This maps directly to an iOS-specific event, but since it doesn't do anything iOS-specific
+//   internally, it is available on all platforms, in case it might be useful for some specific
+//   paradigm. Most apps do not need to use this directly; SDL's internal event code will handle all
+//   this for windows created by SDL_CreateWindow! It is safe to call this function from any thread.
+//
+//  \since This function is available since SDL 3.2.0.
+SDL_OnApplicationDidEnterForeground :: () -> void extern_C
