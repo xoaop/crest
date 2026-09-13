@@ -736,6 +736,8 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRUnaryInfo& info, CIRI
         result_type = easy_type(Type_bool);
     } else if(op == TokenType::Minus) {
         result_type = operand_type;
+    } else if(op == TokenType::Tilde) {
+        result_type = operand_type;   // 按位取反：结果类型同操作数
     } else {
         return make_result(pc_ref, inst_error(pc_ref, "未知的一元运算符"));
     }
@@ -750,6 +752,10 @@ std::optional<AnalyzeResult> Interpreter::analyze_Unary(CIRUnaryInfo& info, CIRI
     } else if(op == TokenType::Exclamation) {
         if(operand_type != easy_type(Type_bool)) {
             return make_result(pc_ref, inst_error(pc_ref, "逻辑非要求布尔类型操作数，实际类型 '{}'", operand_type->name()));
+        }
+    } else if(op == TokenType::Tilde) {
+        if(!is_integer_or_untyped_type(operand_type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "按位取反要求整数类型操作数，实际类型 '{}'", operand_type->name()));
         }
     }
 
@@ -1527,6 +1533,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_Binary(CIRBinaryInfo& info, CI
         }
         if(op == TokenType::Percent && is_float_type(left_type)) {
             return make_result(pc_ref, inst_error(pc_ref, "浮点类型不允许取模运算符"));
+        }
+        if(is_bitwise_operator(op)) {
+            if(!is_integer_or_untyped_type(left_type)) {
+                return make_result(pc_ref, inst_error(pc_ref, "按位/移位运算要求整数类型操作数，实际类型 '{}'", left_type->name()));
+            }
         }
     }
 

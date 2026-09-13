@@ -232,6 +232,7 @@ bool is_equal_compare_operator(TokenType t);
 bool is_compare_operator(TokenType t);
 bool is_operator_for_bool(TokenType t);
 bool is_logic_operator(TokenType t);
+bool is_bitwise_operator(TokenType t);
 bool is_return_bool_operator(TokenType t);
 
 const char *ast_string(AstType type);

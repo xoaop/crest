@@ -35,6 +35,10 @@
     TOKEN_INFO(And, "&"),                                       \
     TOKEN_INFO(DoubleAnd, "&&"),                                \
     TOKEN_INFO(DoubleOr, "||"),                                 \
+    TOKEN_INFO(Pipe, "|"),                                      \
+    TOKEN_INFO(Tilde, "~"),                                     \
+    TOKEN_INFO(ShiftLeft, "<<"),                                \
+    TOKEN_INFO(ShiftRight, ">>"),                               \
     TOKEN_INFO(Colon, ":"),                                     \
     TOKEN_INFO(Semicolon, ";"),                                 \
     TOKEN_INFO(DoubleColon, "::"),                              \
