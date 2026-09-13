@@ -163,15 +163,23 @@ arena_allocator_proc :: (allocator_data: *void, type: AllocationType, ptr: *void
     } else if type == AllocationType.Free {
         // no-op: arena doesn't free individual allocations
     } else if type == AllocationType.Realloc {
-        if ptr == null { return null; }
-
-        if size == 0 {
+        // 语义对齐 C 的 realloc：
+        //   ptr == null      → 等价 alloc(size)
+        //   size == 0        → 释放并返回 null（arena 不单独回收，只返回 null）
+        //   小于等于旧尺寸   → 原地复用（必要时补零）
+        //   增长             → 新开一块并搬过去
+        if ptr == null {
+            result = arena_alloc_item(arena, size);
+        } else if size == 0 {
             result = null;
         } else if size <= old_size {
             result = ptr;
         } else {
             result = arena_alloc_item(arena, size);
-            // memmove data to new location
+            // 分配失败必须原样返回，否则 memmove 会往 null 写
+            if result == null {
+                return null;
+            }
             c.memmove(result, ptr, cast(u64)old_size);
         }
     } else if type == AllocationType.FreeAll {
