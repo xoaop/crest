@@ -2,6 +2,7 @@
 
 #include "internal/llvm_basic_block_mapper.hpp"
 #include "internal/llvm_generator.hpp"
+#include "internal/llvm_abi.hpp"
 
 #include "llvm_generate_ir.hpp"
 
@@ -814,7 +815,11 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     if(xp_hash_map_get(inst_vals, fk)) return;
 
     // 创建声明 + 落库（生成即稳定）
-    LLVMTypeRef fn_type = get_llvm_type_from_type(res.actual_val().type);
+    // extern_C 走 C ABI 降级（>8 字节的聚合按指针传、按 sret 返回）；
+    // Crest 内部函数两边自洽，维持原样。
+    LLVMTypeRef fn_type = fd.is_extern_c
+        ? gen_abi_func_type(*this, res.actual_val().type)
+        : get_llvm_type_from_type(res.actual_val().type);
     xpString func_full_name = register_func_name(fk, fd.is_extern_c, res.actual_val().type);
     const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
     LLVMValueRef func = LLVMAddFunction(unit.module, c_name, fn_type);
@@ -1319,11 +1324,41 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 }
             }
 
-            LLVMTypeRef fn_type = get_llvm_type_from_type(func_type);
+            // extern_C 被调方走 C ABI（>8 字节聚合按指针传、sret 返回）；
+            // Crest 内部函数维持原样。is_extern_c 从被调 FunctionDecl 上取。
+            bool callee_is_extern_c = false;
+            {
+                auto& cr = result_ctx.result_of(info.called_thing);
+                if(cr.state == CIRResultState::WholeValue) {
+                    Value cv = cr.actual_val();
+                    if(cv.actual_type() == ActualValueType::Function) {
+                        const auto& fk = cv.func_val().func_key;
+                        callee_is_extern_c = fk.cir_package->inst(fk.inst_ref)
+                            ->info<CIROperator::FunctionDecl>().is_extern_c;
+                    }
+                }
+            }
+
+            LLVMTypeRef fn_type = callee_is_extern_c
+                ? gen_abi_func_type(*this, func_type)
+                : get_llvm_type_from_type(func_type);
 
             LLVMValueRef callee = get_llvm_val_from_inst_ref(info.called_thing);
 
-            Array<LLVMValueRef> args = make_array_capacity<LLVMValueRef>(stage_allocator(), info.arg_insts.count);
+            // sret：>8 字节的聚合返回，调用方分配缓冲，指针作为首参传进去
+            LLVMValueRef sret_slot = nullptr;
+            if(callee_is_extern_c) {
+                TypeRef fret = func_type->function_info.return_type;
+                if(llvm_abi::uses_sret(fret, size_of_type(fret))) {
+                    sret_slot = insert_alloca_before_last_inst_which_is_br(
+                        curr_state.entry, "sret", get_llvm_type_from_type(fret));
+                }
+            }
+
+            Array<LLVMValueRef> args = make_array_capacity<LLVMValueRef>(stage_allocator(), info.arg_insts.count + 1);
+            if(sret_slot != nullptr) {
+                args.push_back(sret_slot);
+            }
             for(isize i = 0; i < info.arg_insts.count; i++) {
                 LLVMValueRef arg_val = get_llvm_val_from_inst_ref(info.arg_insts[i]);
 
@@ -1346,14 +1381,29 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     ) {
                         arg_val = gen_ir_cast(arg_type, easy_type(Type_i32), arg_val);
                     }
+                } else if(callee_is_extern_c && param_type != nullptr
+                          && (is_struct_type(param_type) || is_union_type(param_type))) {
+                    // 聚合参数按 C ABI 装箱（≤8 字节 → 整数；>8 字节 → 指针）
+                    arg_val = gen_abi_arg(*this, arg_val, size_of_type(param_type));
                 }
 
                 args.push_back(arg_val);
             }
 
             TypeRef return_type = result_ctx.result_of(ref).actual_type();
+            // sret 调用本身返回 void，不能带名字（LLVM 会校验失败）
             char const *name = (return_type && return_type->kind == Type_void) ? "" : "calltmp";
+            if(sret_slot != nullptr) {
+                name = "";
+            }
             LLVMValueRef result = LLVMBuildCall2(unit.builder, fn_type, callee, args.data, (unsigned)args.count, name);
+
+            // sret：函数本身返回 void，从缓冲把聚合值读出来当结果
+            if(sret_slot != nullptr) {
+                result = LLVMBuildLoad2(unit.builder,
+                    get_llvm_type_from_type(func_type->function_info.return_type),
+                    sret_slot, "sretval");
+            }
             save_llvm_val_of_inst(ref, result);
         } break;
         
