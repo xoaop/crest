@@ -29,6 +29,9 @@ struct ErrorMsg {
 
 struct ErrorReporter {
 private:
+    // 详细输出（含源码行 + 光标）的错误条数上限，超出的只计数
+    static constexpr isize MAX_REPORTED_MSGS = 60;
+
     void add_error_msg(ErrorLevel level, bool has_location, Span highlight_span, SourceCode src_code, xpString formatted_msg);
 
     template <typename... Args>
