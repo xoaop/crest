@@ -20,8 +20,11 @@
 temp*
 .ninja_log
 
-# Windows 批处理脚本（构建用 CMake 替代）
+# Windows 批处理脚本：构建入口要入库，其余忽略
 *.bat
+!build.bat
+!test.bat
+!fuzz.bat
 
 # 构建输出目录
 output/
@@ -41,8 +44,9 @@ build_ubsan*/
 *.vcxproj
 *.vcxproj.filters
 
-# 测试：源码要提交，但排除测试构建产物
+# 测试：源码要提交（含种子语料），构建产物与生成的 fuzz case 排除
 test/build_test/
+test/build_fuzz/
 test/__pycache__/
 
 # SDL3 示例/构建产物
