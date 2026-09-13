@@ -159,7 +159,7 @@ List :: $(T: type) -> type {
 
 main :: () -> i32 {
 
-    data := {1, 2, 3, 4, 5};
+    data := {1i32, 2, 3, 4, 5};
 
     // ─── Array (1 type param) ─────────────────────
     arr: Array(i32);

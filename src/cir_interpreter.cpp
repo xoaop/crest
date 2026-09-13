@@ -1079,6 +1079,11 @@ std::optional<AnalyzeResult> Interpreter::analyze_ArrayInit(CIRArrayInitInfo& in
         }
     }
 
+    if(is_untyped_type(elem_type)) {
+        return make_result(pc_ref, inst_error(pc_ref,
+            "数组字面量无法推断元素类型，请给第一个元素显式类型（如 {{1i32, 2, 3}}）"));
+    }
+
     // 有具体类型则将其他 untyped 元素传染为该类型（副作用进 writes；溢出检查用传染后的类型）
     AnalyzeResult r;   // 累积 writes：传染 + 自身结果
     if(!is_untyped_type(elem_type)) {
@@ -1818,7 +1823,7 @@ TypeRef Interpreter::determine_type_of(CIRInstructionRef determined_inst,
                 write_type = default_certain_type_for_untyped_type(determined_type);
             }
         } else if(is_array_type(determined_type) && is_untyped_type(determined_type->array_info.element_type)) {
-            // 数组元素类型包含 untyped 时递归解析
+            // 数组元素类型自身是 untyped，由上下文/默认类型补全
             TypeRef elem_t = determined_type->array_info.element_type;
             if(has_val) {
                 Array<Value> elems = result_val.array_element_values();
