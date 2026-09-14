@@ -1352,7 +1352,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMValueRef sret_slot = nullptr;
             if(callee_is_extern_c) {
                 TypeRef fret = func_type->function_info.return_type;
-                if(llvm_abi::uses_sret(fret, size_of_type(fret))) {
+                if(uses_sret(fret, size_of_type(fret))) {
                     sret_slot = insert_alloca_before_last_inst_which_is_br(
                         curr_state.entry, "sret", get_llvm_type_from_type(fret));
                 }

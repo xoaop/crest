@@ -23,8 +23,6 @@
 
 struct LLVMGenerator;   // 前向声明（生成侧接口用）
 
-namespace llvm_abi {
-
 // 聚合类型在 C 边界上是否需要降级（>8 字节 → 传指针）
 bool needs_downgrade(TypeRef type, int size);
 
@@ -33,8 +31,6 @@ int int_width_for(int size);
 
 // 返回类型是否走 sret（隐藏出参指针）
 bool uses_sret(TypeRef ret_type, int size);
-
-}   // namespace llvm_abi
 
 
 // ── 生成侧（实现在 llvm_abi.cpp，只服务 extern_C 边界）──

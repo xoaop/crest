@@ -6,8 +6,6 @@
 // 纯规则
 // ─────────────────────────────────────────────────────────────
 
-namespace llvm_abi {
-
 bool needs_downgrade(TypeRef type, int size) {
     if(!is_struct_type(type) && !is_union_type(type)) {
         return false;
@@ -29,8 +27,6 @@ bool uses_sret(TypeRef ret_type, int size) {
     return needs_downgrade(ret_type, size);
 }
 
-}   // namespace llvm_abi
-
 
 // ─────────────────────────────────────────────────────────────
 // 生成侧：签名降级 / 实参装箱 / sret 缓冲
@@ -51,7 +47,7 @@ LLVMValueRef gen_abi_arg(LLVMGenerator& gen, LLVMValueRef val, int size) {
         LLVMBuildStore(gen.unit.builder, val, addr);
     }
 
-    int width = llvm_abi::int_width_for(size);
+    int width = int_width_for(size);
     if(width != 0) {
         // ≤8 字节：当同宽整数读出来
         LLVMTypeRef int_t = LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)width);
@@ -71,7 +67,7 @@ LLVMTypeRef gen_abi_func_type(LLVMGenerator& gen, TypeRef func_type) {
 
     // sret：>8 字节的聚合返回 → 首参是指向返回值的指针，函数本身返回 void
     int ret_size = gen.size_of_type(fret);
-    bool sret = llvm_abi::uses_sret(fret, ret_size);
+    bool sret = uses_sret(fret, ret_size);
     if(sret) {
         params.push_back(LLVMPointerTypeInContext(g_llvm_session.ctx, 0));
     }
@@ -80,10 +76,10 @@ LLVMTypeRef gen_abi_func_type(LLVMGenerator& gen, TypeRef func_type) {
     for(isize i = 0; i < fixed; i++) {
         TypeRef pt = fparams[i];
         int sz = gen.size_of_type(pt);
-        if(llvm_abi::needs_downgrade(pt, sz)) {
+        if(needs_downgrade(pt, sz)) {
             params.push_back(LLVMPointerTypeInContext(g_llvm_session.ctx, 0));
         } else if(is_struct_type(pt) || is_union_type(pt)) {
-            params.push_back(LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)llvm_abi::int_width_for(sz)));
+            params.push_back(LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)int_width_for(sz)));
         } else {
             params.push_back(gen.get_llvm_type_from_type(pt));
         }
