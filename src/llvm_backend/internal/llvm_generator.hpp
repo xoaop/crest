@@ -57,6 +57,7 @@ struct LLVMGenerator {
     void deinit();
 
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
+    LLVMValueRef gen_abi_arg(LLVMValueRef val, int size);
     void gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg = nullptr);
     void gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func);
 

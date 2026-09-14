@@ -21,8 +21,6 @@
 #include "type.hpp"
 #include "llvm_global.hpp"   // LLVMTypeRef / LLVMValueRef
 
-struct LLVMGenerator;   // 前向声明（生成侧接口用）
-
 // 聚合类型在 C 边界上是否需要降级（>8 字节 → 传指针）
 bool needs_downgrade(TypeRef type, int size);
 
@@ -38,8 +36,5 @@ bool uses_sret(TypeRef ret_type, int size);
 
 // 建 extern_C 函数的 LLVM 函数类型：参数按 ABI 降级，sret 走首参
 LLVMTypeRef gen_abi_func_type(TypeRef func_type);
-
-// 把实参装箱成 C ABI 形状：≤8 字节 → 同宽整数；>8 字节 → 指针
-LLVMValueRef gen_abi_arg(LLVMGenerator& gen, LLVMValueRef val, int size);
 
 #endif // CREST_LLVM_BACKEND_INTERNAL_LLVM_ABI_HPP

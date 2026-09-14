@@ -1,7 +1,5 @@
 #include "internal/llvm_abi.hpp"
 
-#include "internal/llvm_generator.hpp"
-
 // ─────────────────────────────────────────────────────────────
 // 纯规则
 // ─────────────────────────────────────────────────────────────
@@ -29,34 +27,11 @@ bool uses_sret(TypeRef ret_type, int size) {
 
 
 // ─────────────────────────────────────────────────────────────
-// 生成侧：签名降级 / 实参装箱 / sret 缓冲
+// 生成侧：签名降级 / sret 缓冲
 //
 // 只服务 extern_C 边界。被调方在 DLL 里（Crest 不为 extern_C 生成 body），
 // 所以只需要处理"调用方这一半"。
 // ─────────────────────────────────────────────────────────────
-
-// 把实参降级成 C ABI 要求的形状。
-// 实参在 LLVM 里可能是内存地址（局部变量、Deref 等），也可能是聚合值
-// （常量 struct 走 LLVMConstNamedStruct）。>8 字节的要传指针，所以先统一
-// 落到一块临时 alloca 上，再按需取地址或按整数读回——clang 也是这么做的。
-LLVMValueRef gen_abi_arg(LLVMGenerator& gen, LLVMValueRef val, int size) {
-    LLVMValueRef addr = val;
-    if(LLVMGetTypeKind(LLVMTypeOf(val)) != LLVMPointerTypeKind) {
-        LLVMTypeRef t = LLVMTypeOf(val);
-        addr = gen.insert_alloca_before_last_inst_which_is_br(gen.curr_state.entry, "abitmp", t);
-        LLVMBuildStore(gen.unit.builder, val, addr);
-    }
-
-    int width = int_width_for(size);
-    if(width != 0) {
-        // ≤8 字节：当同宽整数读出来
-        LLVMTypeRef int_t = LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)width);
-        return LLVMBuildLoad2(gen.unit.builder, int_t, addr, "abiint");
-    }
-
-    // >8 字节：传指针
-    return addr;
-}
 
 // 建 extern_C 函数的 LLVM 函数类型（参数按 ABI 降级，sret 走首参）
 LLVMTypeRef gen_abi_func_type(TypeRef func_type) {

@@ -216,6 +216,29 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     return nullptr;
 }
 
+// 把实参降级成 C ABI 要求的形状。
+// 实参在 LLVM 里可能是内存地址（局部变量、Deref 等），也可能是聚合值
+// （常量 struct 走 LLVMConstNamedStruct）。>8 字节的要传指针，所以先统一
+// 落到一块临时 alloca 上，再按需取地址或按整数读回——clang 也是这么做的。
+LLVMValueRef LLVMGenerator::gen_abi_arg(LLVMValueRef val, int size) {
+    LLVMValueRef addr = val;
+    if(LLVMGetTypeKind(LLVMTypeOf(val)) != LLVMPointerTypeKind) {
+        LLVMTypeRef t = LLVMTypeOf(val);
+        addr = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abitmp", t);
+        LLVMBuildStore(unit.builder, val, addr);
+    }
+
+    int width = int_width_for(size);
+    if(width != 0) {
+        // ≤8 字节：当同宽整数读出来
+        LLVMTypeRef int_t = LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)width);
+        return LLVMBuildLoad2(unit.builder, int_t, addr, "abiint");
+    }
+
+    // >8 字节：传指针
+    return addr;
+}
+
 LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
     switch(type->kind) {
         case Type_void:
@@ -1383,7 +1406,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 } else if(callee_is_extern_c && param_type != nullptr
                           && (is_struct_type(param_type) || is_union_type(param_type))) {
                     // 聚合参数按 C ABI 装箱（≤8 字节 → 整数；>8 字节 → 指针）
-                    arg_val = gen_abi_arg(*this, arg_val, size_of_type(param_type));
+                    arg_val = gen_abi_arg(arg_val, size_of_type(param_type));
                 }
 
                 args.push_back(arg_val);
