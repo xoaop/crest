@@ -87,8 +87,6 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     loop_stack = make_array<LLVMLoopBlocks>(allocator);
-    struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
-    union_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(allocator);
     this->pkg = pkg_ref;
     result_ctx = CIRResultContext::create(&pkg_ref.unwrap().cir_package);
     this->curr_state = {nullptr, nullptr};
@@ -107,8 +105,6 @@ void LLVMGenerator::deinit() {
     LLVMDisposeModule(unit.module);
 
     array_free(&loop_stack);
-    xp_hash_map_free(struct_types);
-    xp_hash_map_free(union_types);
     xp_hash_map_free(block_to_bbs);
 }
 
@@ -152,7 +148,7 @@ void LLVMGenerator::Set_Curr_Inst_Pos_Before(LLVMValueRef inst) {
     LLVMPositionBuilderBefore(unit.builder, inst);
 }
 
-int LLVMGenerator::size_of_type(TypeRef type) {
+int size_of_type(TypeRef type) {
     if(type->kind == Type_void) {
         return 0;
     }
@@ -220,7 +216,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     return nullptr;
 }
 
-LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
+LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
     switch(type->kind) {
         case Type_void:
             return LLVMVoidTypeInContext(g_llvm_session.ctx);
@@ -256,7 +252,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             TypeHashKey& key = type->struct_info.hash_key;
 
             // 如果已经存在该结构体类型, 直接返回
-            LLVMTypeRef *existing_struct_type = xp_hash_map_get(struct_types, key);
+            LLVMTypeRef *existing_struct_type = xp_hash_map_get(g_llvm_session.struct_types, key);
             if(existing_struct_type != nullptr) {
                 return *existing_struct_type;
             }
@@ -266,7 +262,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             xpString name = name_maybe.has_value() ? type->struct_info.hash_key.name.value() : xp_string_c("anonymous_struct");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
-            LLVMTypeRef *struct_type = xp_hash_map_insert(&struct_types, key, struct_ty);
+            LLVMTypeRef *struct_type = xp_hash_map_insert(&g_llvm_session.struct_types, key, struct_ty);
             
             
             Array<LLVMTypeRef> field_types = make_array_capacity<LLVMTypeRef>(stage_allocator(), type->struct_info.struct_fields.count);
@@ -284,7 +280,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
         case Type_union: {
             TypeHashKey& key = type->union_info.hash_key;
 
-            LLVMTypeRef *existing_union_type = xp_hash_map_get(union_types, key);
+            LLVMTypeRef *existing_union_type = xp_hash_map_get(g_llvm_session.union_types, key);
             if(existing_union_type != nullptr) {
                 return *existing_union_type;
             }
@@ -293,7 +289,7 @@ LLVMTypeRef LLVMGenerator::get_llvm_type_from_type(TypeRef type) {
             xpString name = name_maybe.has_value() ? name_maybe.value() : xp_string_c("anonymous_union");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
-            LLVMTypeRef *union_type = xp_hash_map_insert(&union_types, key, struct_ty);
+            LLVMTypeRef *union_type = xp_hash_map_insert(&g_llvm_session.union_types, key, struct_ty);
 
             // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，运行期布局
             Ref<Scope> scope = type->union_info.union_scope;
@@ -821,7 +817,7 @@ void LLVMGenerator::gen_ir_function(CIRInstructionRef func_ref, CIRPackage *targ
     // extern_C 走 C ABI 降级（>8 字节的聚合按指针传、按 sret 返回）；
     // Crest 内部函数两边自洽，维持原样。
     LLVMTypeRef fn_type = fd.is_extern_c
-        ? gen_abi_func_type(*this, res.actual_val().type)
+        ? gen_abi_func_type(res.actual_val().type)
         : get_llvm_type_from_type(res.actual_val().type);
     xpString func_full_name = register_func_name(fk, fd.is_extern_c, res.actual_val().type);
     const char *c_name = xp_string_to_c_style(func_full_name, stage_allocator()).c_str;
@@ -1343,7 +1339,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             }
 
             LLVMTypeRef fn_type = callee_is_extern_c
-                ? gen_abi_func_type(*this, func_type)
+                ? gen_abi_func_type(func_type)
                 : get_llvm_type_from_type(func_type);
 
             LLVMValueRef callee = get_llvm_val_from_inst_ref(info.called_thing);

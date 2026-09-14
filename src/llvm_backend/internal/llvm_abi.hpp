@@ -16,7 +16,7 @@
 // struct，按值拆寄存器传没任何问题），不需要也不应该受此约束。
 //
 // 本文件只放"纯规则"：不碰 LLVMGenerator，尺寸由调用方算好传进来
-// （尺寸必须用目标 data layout 的真实值，即 LLVMGenerator::size_of_type）。
+// （尺寸必须用目标 data layout 的真实值，即 size_of_type）。
 
 #include "type.hpp"
 #include "llvm_global.hpp"   // LLVMTypeRef / LLVMValueRef
@@ -34,10 +34,10 @@ bool uses_sret(TypeRef ret_type, int size);
 
 
 // ── 生成侧（实现在 llvm_abi.cpp，只服务 extern_C 边界）──
-// 尺寸一律由调用方用 gen.size_of_type()（目标 data layout 的真实值）算好传进来。
+// 尺寸一律由调用方用 size_of_type()（目标 data layout 的真实值）算好传进来。
 
 // 建 extern_C 函数的 LLVM 函数类型：参数按 ABI 降级，sret 走首参
-LLVMTypeRef gen_abi_func_type(LLVMGenerator& gen, TypeRef func_type);
+LLVMTypeRef gen_abi_func_type(TypeRef func_type);
 
 // 把实参装箱成 C ABI 形状：≤8 字节 → 同宽整数；>8 字节 → 指针
 LLVMValueRef gen_abi_arg(LLVMGenerator& gen, LLVMValueRef val, int size);

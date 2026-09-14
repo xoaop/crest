@@ -56,9 +56,7 @@ struct LLVMGenerator {
     void init(Ref<Package> pkg, xpAllocator allocator);
     void deinit();
 
-    int size_of_type(TypeRef type);
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
-    LLVMTypeRef get_llvm_type_from_type(TypeRef type);
     void gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg = nullptr);
     void gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func);
 
@@ -98,9 +96,6 @@ public:
     LLVMModuleState unit;   // 逐单元 LLVM 句柄（module + builder）
 
     Array<LLVMLoopBlocks> loop_stack;
-
-    xpHashMap<TypeHashKey, LLVMTypeRef> struct_types;
-    xpHashMap<TypeHashKey, LLVMTypeRef> union_types;
 
 
     Ref<Package> pkg;

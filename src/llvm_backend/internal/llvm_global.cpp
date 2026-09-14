@@ -3,6 +3,7 @@
 #include "llvm_global.hpp"
 
 #include "context.hpp"
+#include "common.hpp"   // permanent_allocator
 #include "print.hpp"
 #include "error_msg.hpp"
 
@@ -43,4 +44,7 @@ void init_llvm() {
     LLVMDisposeMessage(host_cpu);
     LLVMDisposeMessage(host_features);
     g_llvm_session.target_data = LLVMCreateTargetDataLayout(g_llvm_session.target_machine);
+
+    g_llvm_session.struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(permanent_allocator());
+    g_llvm_session.union_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(permanent_allocator());
 }
