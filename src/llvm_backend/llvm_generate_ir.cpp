@@ -153,6 +153,9 @@ void LLVMGenerator::Set_Curr_Inst_Pos_Before(LLVMValueRef inst) {
 }
 
 int LLVMGenerator::size_of_type(TypeRef type) {
+    if(type->kind == Type_void) {
+        return 0;
+    }
     return (int)LLVMStoreSizeOfType(g_llvm_session.target_data, get_llvm_type_from_type(type));
 }
 
