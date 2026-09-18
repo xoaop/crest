@@ -56,6 +56,11 @@ struct Ast;
         Ast *then_block;                                                             \
         Ast *else_block;                                                             \
     })                                                                               \
+    AST_INFO(ComptimeIfStmt, "comptime if statement", struct {                       \
+        Ast *condition;                                                              \
+        Ast *then_block;                                                             \
+        Ast *else_block;                                                             \
+    })                                                                               \
     AST_INFO(ForStmt, "for statement", struct {                                      \
         Ast *iter_var;                                                               \
         Ast *index_var;                                                              \
