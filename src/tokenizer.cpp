@@ -184,8 +184,8 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
 
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
         xpString str = xp_make_string_capacity(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
-        TokenType *type = NULL;
-        if((type = xp_hash_map_get(keyword_map, str)) != NULL) {
+        TokenType *type = nullptr;
+        if((type = xp_hash_map_get(keyword_map, str)) != nullptr) {
             token.type = *type;
         }
         token.token_str = str;

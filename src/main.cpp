@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     // test_array_perf();
     #endif
 
-    char const *main_path = NULL;
+    char const *main_path = nullptr;
 
     if(argc < 2) {
         crest_helper();
@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
             context()->target_triple = argv[i];
         }
         
-        else if(main_path == NULL) {
+        else if(main_path == nullptr) {
             main_path = argv[i];
         } else {
             crest_helper();

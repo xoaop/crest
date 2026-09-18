@@ -31,7 +31,7 @@ Ast& Ast::operator=(const Ast& other) {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
-    
+
     ast.ast_symbol = Ref<SymbolInfo>::INVALID_REF;
     ast.is_null = false;
 
@@ -190,7 +190,7 @@ xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...>
 
 // 主函数：打印单个 Ast 节点
 void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
-    if (a == NULL) {
+    if (a == nullptr) {
         print_line(depth, is_last, "(null)");
         return;
     }

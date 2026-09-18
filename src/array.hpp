@@ -126,7 +126,7 @@ struct Array {
             isize new_cap = capacity > 0 ? capacity * 2 : 8;
             if (new_cap < new_count) new_cap = new_count;
             T* nd = cast(T*)xp_alloc(allocator, new_cap * sizeof(T));
-            if(data != NULL) {
+            if(data != nullptr) {
                 if constexpr (std::is_trivially_copyable_v<T>) {
                     memcpy(nd, data, count * sizeof(T));
                 } else {
@@ -256,7 +256,7 @@ struct Array {
         return data + count;
     }
 
-    b8 full() {
+    bool full() {
         return count == capacity;
     }
 
@@ -288,7 +288,7 @@ template<typename T>
 Array<T> make_array(xpAllocator allocator) {
     Array<T> array;
     array.allocator = allocator;
-    array.data = NULL;
+    array.data = nullptr;
     array.count = 0;
     array.capacity = 0;
 
@@ -324,7 +324,7 @@ void array_free(Array<T>* array) {
     array->clear();
     xp_free(array->allocator, array->data);
 
-    array->data = NULL;
+    array->data = nullptr;
     array->count = 0;
     array->capacity = 0;
 }

@@ -50,16 +50,16 @@ void global_allocators_free() {
 
 
 xpString rename_ident(xpHashMap<xpString, isize> *identifier_map, xpString ident) {
-    isize *exist_count = NULL;
-    if((exist_count = xp_hash_map_get(*identifier_map, ident)) != NULL) {
-        int len = snprintf(NULL, 0, "%s.%td", ident.c_str, *exist_count);
+    isize *exist_count = nullptr;
+    if((exist_count = xp_hash_map_get(*identifier_map, ident)) != nullptr) {
+        int len = snprintf(nullptr, 0, "%s.%td", ident.c_str, *exist_count);
         char *new_ident = cast(char *)xp_alloc(permanent_allocator(), len + 1);
         snprintf(new_ident, len + 1, "%s.%td", ident.c_str, *exist_count);
         *exist_count += 1;
         return xp_string_c(new_ident);
     } else {
         isize new_count = 0;
-        int len = snprintf(NULL, 0, "%s.%td", ident.c_str, new_count);
+        int len = snprintf(nullptr, 0, "%s.%td", ident.c_str, new_count);
         char *new_ident = cast(char *)xp_alloc(permanent_allocator(), len + 1);
         snprintf(new_ident, len + 1, "%s.%td", ident.c_str, new_count);
 

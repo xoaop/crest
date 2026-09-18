@@ -183,7 +183,7 @@ xpString Type::t_name() {
 
 TypeRef get_pointed_type(TypeRef pointer_type) {
     XP_ASSERT_DEFAULT(pointer_type->kind == Type_pointer);
-    XP_ASSERT_DEFAULT(pointer_type->pointed_type != NULL);
+    XP_ASSERT_DEFAULT(pointer_type->pointed_type != nullptr);
 
     return pointer_type->pointed_type;
 }
@@ -235,7 +235,7 @@ bool is_equal_type(Type a, Type b) {
         return is_equal_type(*a.function_info.return_type, *b.function_info.return_type);
     
     case Type_pointer:
-        if((a.pointed_type == NULL && b.pointed_type != NULL) || (a.pointed_type != NULL && b.pointed_type == NULL)) {
+        if((a.pointed_type == nullptr && b.pointed_type != nullptr) || (a.pointed_type != nullptr && b.pointed_type == nullptr)) {
             return false;
         }
 
@@ -916,7 +916,7 @@ TypeRef add_type_unique(Type type) {
 
 TypeRef get_or_add_type(Type type) {
     TypeRef type_ref = get_type(type);
-    if(type_ref != NULL) {
+    if(type_ref != nullptr) {
         return type_ref;
     }
 

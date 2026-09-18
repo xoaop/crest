@@ -15,6 +15,8 @@
 
 
 #if defined(__cplusplus)
+// <format> 不能落进下面的 extern "C"
+#include <format>
 extern "C" { // for decl
 #endif
 
@@ -123,16 +125,6 @@ bool xp_check_f64_is_inf(f64 value);
 #define XP_TRAP() __builtin_trap()
 #endif
 
-// 打印调用栈
-#include <stacktrace>
-#include <format>
-inline void xp_dump_stacktrace() {
-    auto st = std::stacktrace::current(2);
-    fprintf(stderr, "--- stacktrace (%zu frames) ---\n", st.size());
-    for(std::size_t i = 0; i < st.size(); i++) {
-        fprintf(stderr, "  #%zu %s\n", i, std::format("{}", st[i]).c_str());
-    }
-}
 
 #define XP_ASSERT(exp) do {                                     \
     if(!(exp))                                                  \
@@ -143,7 +135,6 @@ inline void xp_dump_stacktrace() {
     if(!(exp)) {                                                \
         fprintf(stderr, "\nAssert FAILED at %s:%d: ", __FILE__, __LINE__); \
         fprintf(stderr, format, ##__VA_ARGS__);                   \
-        xp_dump_stacktrace();                                     \
         fflush(stderr);                                           \
         XP_TRAP();                                              \
     }                                                           \
