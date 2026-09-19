@@ -309,7 +309,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_ast_block(Ast *block_ast, bool new_
         End_Block();
     }
 
-    if(out_block) *out_block = block_blk;
+    if(out_block) {
+        *out_block = block_blk;
+    }
     return block_inst;
 }
 
@@ -398,6 +400,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
 
         case AstType_ConstDecl: {
             build_inst_for_const_decl(stmt);
+        } break;
+
+        case AstType_IfExpr: {
+            // 值被丢弃，类型仍要确定化
+            auto value_inst = build_inst_for_expr(stmt);
+            Make_Instruction<CIROperator::DetermineType>(stmt, {
+                .determining_inst = value_inst,
+                .type_inst = INVALID_INST,
+            });
         } break;
 
         default: {
@@ -722,6 +733,44 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
                 result = call_inst;
             } break;
+
+        case AstType_IfExpr: {
+
+            auto info = expr->IfExpr;
+            ASSERT(info.condition != nullptr);
+            ASSERT(info.then_expr != nullptr);
+            ASSERT(info.else_expr != nullptr);
+            
+
+            auto cond_inst = build_inst_for_expr(expr->IfExpr.condition);
+
+            CIRBlockRef true_blk = INVALID_BLOCK;
+            {
+                true_blk = curr_pkg->create_block(false, false, false);
+                block_stack.push_back(true_blk);
+                defer(End_Block());
+
+                auto then_inst = build_inst_for_expr(expr->IfExpr.then_expr);
+                New_Break(CIRInstructionRef(true_blk), then_inst, expr->IfExpr.then_expr);
+            }
+
+            CIRBlockRef false_blk = INVALID_BLOCK;
+            {
+                false_blk = curr_pkg->create_block(false, false, false);
+                block_stack.push_back(false_blk);
+                defer(End_Block());
+
+                auto else_inst = build_inst_for_expr(expr->IfExpr.else_expr);
+                New_Break(CIRInstructionRef(false_blk), else_inst, expr->IfExpr.else_expr);
+            }
+
+            result = Make_Instruction<CIROperator::IfExpr>(expr, {
+                .condition_inst = cond_inst,
+                .true_block     = true_blk,
+                .false_block    = false_blk,
+            });
+
+        } break;
 
         case AstType_BinaryExpr: {
 

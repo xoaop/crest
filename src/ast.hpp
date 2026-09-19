@@ -56,11 +56,6 @@ struct Ast;
         Ast *then_block;                                                             \
         Ast *else_block;                                                             \
     })                                                                               \
-    AST_INFO(ComptimeIfStmt, "comptime if statement", struct {                       \
-        Ast *condition;                                                              \
-        Ast *then_block;                                                             \
-        Ast *else_block;                                                             \
-    })                                                                               \
     AST_INFO(ForStmt, "for statement", struct {                                      \
         Ast *iter_var;                                                               \
         Ast *index_var;                                                              \
@@ -108,6 +103,11 @@ struct Ast;
     AST_INFO(UnaryExpr, "unary expr", struct {                                       \
         TokenType op;                                                                \
         Ast *operand;                                                                \
+    })                                                                               \
+    AST_INFO(IfExpr, "if expr", struct {                                             \
+        Ast *condition;                                                              \
+        Ast *then_expr;                                                              \
+        Ast *else_expr;                                                              \
     })                                                                               \
     AST_INFO(FunctionCallExpr, "function call expr", struct {                        \
         Ast *func_ident;                                                             \

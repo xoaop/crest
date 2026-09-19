@@ -71,7 +71,7 @@ Ast *parse_block(Parser *p);
 Ast *parse_if(Parser *p);
 Ast *parse_for(Parser *p);
 
-Ast *parse_comptime_if(Parser *p, bool is_sub_if = false);
+Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition);
 
 
 Ast *parse_expr_factor(Parser *p);
@@ -607,16 +607,16 @@ Ast *parse_stmt(Parser *p) {
     switch(curr.type) {
     case TokenType::KW_if:
         a = parse_if(p);
+        // if ... then ... else ... 是表达式, 语句位置要自己吃分号
+        if(a->type == AstType_IfExpr) {
+            expect(p, TokenType::Semicolon);
+        }
         break;
 
     case TokenType::KW_for:
         a = parse_for(p);
         break;
-    
-    
-    case TokenType::Hash:
-        a = parse_comptime_if(p);
-        break;
+
 
     case TokenType::LeftCurlyBracket:
         a = parse_block(p);
@@ -714,13 +714,20 @@ Ast *parse_block(Parser *p) {
 
 
 Ast *parse_if(Parser *p) {
-    Ast *a = ast_alloc(AstType_IfStmt);
-    a->token = expect(p, TokenType::KW_if);
+    Token if_token = expect(p, TokenType::KW_if);
 
-    
-    a->IfStmt.condition = parse_expr(p, 0);
+    Ast *condition = parse_expr(p, 0);
+
+    // if ... then ... else ... 是表达式，if ... { } 是语句
+    if(curr_token(p).type == TokenType::KW_then) {
+        return parse_if_tail(p, if_token, condition);
+    }
+
+    Ast *a = ast_alloc(AstType_IfStmt, if_token);
+
+    a->IfStmt.condition = condition;
     a->IfStmt.then_block = parse_block(p);
-    
+
     a->IfStmt.else_block = nullptr;
     if(curr_token(p).type == TokenType::KW_else) {
         expect(p, TokenType::KW_else);
@@ -734,7 +741,7 @@ Ast *parse_if(Parser *p) {
             a->IfStmt.else_block = parse_block(p);
         }
     }
-    
+
     if(a->IfStmt.else_block != nullptr) {
         a->src_loc = merge(a->token.src_loc, a->IfStmt.else_block->src_loc);
     } else {
@@ -744,41 +751,19 @@ Ast *parse_if(Parser *p) {
     return a;
 }
 
-Ast *parse_comptime_if(Parser *p, bool is_sub_if) {
-    Ast *a = ast_alloc(AstType_ComptimeIfStmt, curr_token(p));
+// if / condition 已消费，接着 then / else 两臂
+Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition) {
+    Ast *a = ast_alloc(AstType_IfExpr, if_token);
 
-    // 只有链头的 #if 带 #，后面的 else if / else 是普通关键字
-    if(!is_sub_if) {
-        expect(p, TokenType::Hash);
-    }
-    a->token = expect(p, TokenType::KW_if);
+    a->IfExpr.condition = condition;
 
-    a->ComptimeIfStmt.condition = parse_expr(p, 0);
-    a->ComptimeIfStmt.then_block = parse_block(p);
+    expect(p, TokenType::KW_then);
+    a->IfExpr.then_expr = parse_expr(p, 0);
 
-    a->ComptimeIfStmt.else_block = nullptr;
+    expect(p, TokenType::KW_else);
+    a->IfExpr.else_expr = parse_expr(p, 0);
 
-    if(curr_token(p).type == TokenType::KW_else) {
-        expect(p, TokenType::KW_else);
-
-        if(curr_token(p).type == TokenType::KW_if) {
-            // else if 展开成 else 位置上的嵌套 ComptimeIfStmt，包一层虚拟 Block 与 else 臂同形
-            Ast *blk = ast_alloc(AstType_Block, curr_token(p));
-            blk->Block.statements = make_array<Ast *>(ast_allocator());
-            blk->Block.statements.push_back(parse_comptime_if(p, true));
-
-            blk->src_loc = blk->Block.statements[0]->src_loc;
-            a->ComptimeIfStmt.else_block = blk;
-        } else {
-            a->ComptimeIfStmt.else_block = parse_block(p);
-        }
-    }
-
-    if(a->ComptimeIfStmt.else_block != nullptr) {
-        a->src_loc = merge(a->token.src_loc, a->ComptimeIfStmt.else_block->src_loc);
-    } else {
-        a->src_loc = merge(a->token.src_loc, a->ComptimeIfStmt.then_block->src_loc);
-    }
+    a->src_loc = merge(a->token.src_loc, a->IfExpr.else_expr->src_loc);
 
     return a;
 }
@@ -1218,6 +1203,16 @@ Ast *parse_expr_factor(Parser *p) {
 
             a = parse_ident(p);
 
+        } break;
+
+        case TokenType::KW_if: {
+            Token if_token = curr_token(p);
+
+            a = parse_if(p);
+            if(a->type != AstType_IfExpr) {
+                context()->reporter.report_error(if_token.src_loc, "'if' 作表达式时缺 'then'");
+                a = ast_alloc(AstType_BadExpr, if_token);
+            }
         } break;
 
         case TokenType::KW_cast:

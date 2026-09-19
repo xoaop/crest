@@ -249,6 +249,16 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
         }
 
+        case AstType_IfExpr: {
+            print_line(depth + 1, false, "condition:");
+            print_ast(a->IfExpr.condition, depth + 2, false);
+            print_line(depth + 1, false, "then:");
+            print_ast(a->IfExpr.then_expr, depth + 2, false);
+            print_line(depth + 1, true, "else:");
+            print_ast(a->IfExpr.else_expr, depth + 2, true);
+            break;
+        }
+
         case AstType_Assignment: {
             print_line(depth + 1, false, "left:");
             print_ast(a->Assignment.left_var_expr, depth + 2, false);

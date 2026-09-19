@@ -23,12 +23,12 @@ CIRPackage make_cir_package(xpAllocator allocator) {
 
 
 CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) {
-    XP_ASSERT(ref.inst_index >= 0);   // ref 恒为真实指令（INVALID_INST={-1,-1} 除外）
+    ASSERT((ref.inst_index != INVALID_INST_INDEX && ref.block_ref != INVALID_BLOCK) || ref.block_ref != INVALID_BLOCK);   // ref 恒为真实指令（INVALID_INST={-1,-1} 除外）
     return &blocks[ref.block_ref].insts[ref.inst_index];
 }
 
 const CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) const {
-    XP_ASSERT(ref.inst_index >= 0);   // ref 恒为真实指令（INVALID_INST={-1,-1} 除外）
+    ASSERT((ref.inst_index != INVALID_INST_INDEX && ref.block_ref != INVALID_BLOCK) || ref.block_ref != INVALID_BLOCK);
     return &blocks[ref.block_ref].insts[ref.inst_index];
 }
 

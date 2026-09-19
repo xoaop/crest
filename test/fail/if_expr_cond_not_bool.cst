@@ -1,0 +1,7 @@
+// @fail
+// @error "if 语句的条件表达式必须是布尔类型"
+
+main :: () -> i32 {
+    x: i32 = if 1 then 1 else 2;
+    return x;
+}

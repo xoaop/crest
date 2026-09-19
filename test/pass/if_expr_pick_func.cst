@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+// 在两个已存在的函数声明之间选
+
+linux_impl :: (x: i32) -> i32 { return x + 1; }
+win_impl   :: (x: i32) -> i32 { return x + 2; }
+
+PLATFORM :: 1
+
+impl :: if PLATFORM == 1 then linux_impl else win_impl
+
+main :: () -> i32 {
+    if impl(10) != 11 { return 1; }
+    return 0;
+}

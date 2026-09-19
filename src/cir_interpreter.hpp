@@ -160,19 +160,28 @@ struct Interpreter {
 
     CIRResultState result_state(CIRInstructionRef ref);
     void set_result_state(CIRInstructionRef ref, CIRResultState state);
+    
     TypeRef ResultType(CIRInstructionRef ref);
     Value ResultValue(CIRInstructionRef ref);
+
+    std::optional<Value> ResultValueOpt(CIRInstructionRef ref);
+
     void Set_ResultType(CIRInstructionRef ref, TypeRef type);
     void Set_ResultValue(CIRInstructionRef ref, Value val);
     void Set_ResultTypeAndValue(CIRInstructionRef ref, Value val);
+    
     bool has_result_val(CIRInstructionRef ref);
     bool has_result_val(std::initializer_list<CIRInstructionRef> refs);
     bool has_result_val(Array<CIRInstructionRef>& refs);
     bool has_result_type(CIRInstructionRef ref);
+
     bool has_error(CIRInstructionRef ref);
+    bool has_error(std::initializer_list<CIRInstructionRef> refs);
     void Set_ResultError(CIRInstructionRef ref);
     bool propagate_error(std::initializer_list<CIRInstructionRef> refs);
     bool propagate_error(Array<CIRInstructionRef>& refs);
+
+
 
     bool should_eval_for_lazy_eval(std::initializer_list<CIRInstructionRef> refs);
     bool should_eval_for_lazy_eval(Array<CIRInstructionRef>& refs);
@@ -210,7 +219,7 @@ struct Interpreter {
 
 
 
-#define X(name) std::optional<AnalyzeResult> analyze_##name(CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);
+#define X(name) AnalyzeResult analyze_##name(CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);
     CIR_OPERATORS
 #undef X
 

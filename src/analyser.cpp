@@ -672,7 +672,8 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
         }
     } break;
 
-    case AstType_FunctionCallExpr: {
+    case AstType_FunctionCallExpr:
+    case AstType_IfExpr: {
         resolve_expr(stmt_ast, analyser);
     } break;
 
@@ -764,6 +765,12 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
 
         case AstType_UnaryExpr: {
             resolve_expr2(expr_ast->UnaryExpr.operand, analyser);
+        } break;
+
+        case AstType_IfExpr: {
+            resolve_expr2(expr_ast->IfExpr.condition, analyser);
+            resolve_expr2(expr_ast->IfExpr.then_expr, analyser);
+            resolve_expr2(expr_ast->IfExpr.else_expr, analyser);
         } break;
 
         case AstType_CastExpr: {

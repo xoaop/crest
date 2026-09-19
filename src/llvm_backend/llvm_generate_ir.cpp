@@ -1498,6 +1498,67 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
         } break;
 
+        case CIROperator::IfExpr: {
+            auto &info = inst->info<CIROperator::IfExpr>();
+
+            // cond 编译期已知：只生成活臂（死臂没有结果），IfExpr 值透传活臂块的值
+            if(result_ctx.result_of(info.condition_inst).state == CIRResultState::WholeValue) {
+                bool cond = result_ctx.result_of(info.condition_inst).actual_val().bool_val();
+
+                CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
+                ASSERT(live_blk != INVALID_BLOCK);
+
+                gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
+                auto* live_mapper = mapper(live_blk);
+                LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
+
+                auto& parent_mapper = get_or_create_mapper(curr_blk);
+                auto merge_bb = parent_mapper.add_frag_blk("ifexpr.merge");
+                llvm_build_br_when_no_br(live_mapper->exit_blk(), merge_bb);
+
+                Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
+
+                // 活臂块的值 = 它的带值 break（存在 CIRInstructionRef{live_blk} 句柄）；void if 表达式不透传
+                if(result_ctx.result_of(ref).actual_type()->kind != Type_void) {
+                    save_llvm_val_of_inst(ref, get_llvm_val_from_inst_ref(CIRInstructionRef{live_blk}));
+                }
+                break;
+            }
+
+            LLVMValueRef cond_val = get_llvm_val_from_inst_ref(info.condition_inst);
+
+            // 两臂是独立 Block，自身接线由 connect_to_parent=false 处理
+            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block}, false);
+
+            auto* true_mapper = mapper(info.true_block);
+            auto* false_mapper = mapper(info.false_block);
+
+            LLVMBuildCondBr(unit.builder, cond_val, true_mapper->first_frag_blk(), false_mapper->first_frag_blk());
+
+            auto& parent_mapper = get_or_create_mapper(curr_blk);
+            auto merge_bb = parent_mapper.add_frag_blk("ifexpr.merge");
+
+            LLVMBasicBlockRef true_exit = true_mapper->exit_blk();
+            LLVMBasicBlockRef false_exit = false_mapper->exit_blk();
+            llvm_build_br_when_no_br(true_exit, merge_bb);
+            llvm_build_br_when_no_br(false_exit, merge_bb);
+
+            Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
+
+            // 两臂在各自 exit_blk 汇合到 merge：φ 选出 if 表达式的值。
+            // 臂值存在臂块句柄上（gen_ir_block_in_func_block 收尾时 save）。void if 表达式不建 φ。
+            if(result_ctx.result_of(ref).actual_type()->kind != Type_void) {
+                LLVMValueRef true_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.true_block});
+                LLVMValueRef false_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.false_block});
+                LLVMValueRef phi = LLVMBuildPhi(unit.builder, LLVMTypeOf(true_val), "ifexpr_phi");
+                LLVMValueRef vals[2] = {true_val, false_val};
+                LLVMBasicBlockRef srcs[2] = {true_exit, false_exit};
+                LLVMAddIncoming(phi, vals, srcs, 2);
+                save_llvm_val_of_inst(ref, phi);
+            }
+        } break;
+
         case CIROperator::Break: {
             auto &info = inst->info<CIROperator::Break>();
 
@@ -1514,7 +1575,10 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 }
             } else {
                 // block break：跳转到 target_block 的 exit_blk
-                auto target_blk_ref = result_ctx.pkg()->inst(target_block)->info<CIROperator::BlockRef>().block_ref;
+                // 句柄 {blk,-1}（if 表达式臂）直接取 block_ref；真实 BlockRef 指令才 deref
+                auto target_blk_ref = (target_block.inst_index == INVALID_INST_INDEX)
+                    ? target_block.block_ref
+                    : result_ctx.pkg()->inst(target_block)->info<CIROperator::BlockRef>().block_ref;
                 auto target_block_mapper = mapper(target_blk_ref);
                 LLVMBasicBlockRef target_block_exit = target_block_mapper->exit_blk();
 
