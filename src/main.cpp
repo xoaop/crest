@@ -46,27 +46,27 @@ static void crest_helper() {
 
 
 int main(int argc, char** argv) {
+    defer(DEBUG_LOG("\n\nEXIT!"));
+    
+    
     // 诊断输出不做缓冲
     setvbuf(stderr, nullptr, _IONBF, 0);
 
-    defer(DEBUG_LOG("\n\nEXIT!"));
+
 
     auto start_time = std::chrono::high_resolution_clock::now();
     auto last_time = start_time;
 
     auto mark_stage = [&](const char* name) {
         auto now = std::chrono::high_resolution_clock::now();
-        using Sec = std::chrono::duration<double>;
-        auto total = std::chrono::duration_cast<Sec>(now - start_time).count();
-        auto since_last = std::chrono::duration_cast<Sec>(now - last_time).count();
+        auto total = std::chrono::duration_cast<std::chrono::duration<double>>(now - start_time).count();
+        auto since_last = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time).count();
+
         println_out("[phase] {:>10.6f}s (+{:>10.6f}s) {}", total, since_last, name);
+        
         last_time = now;
     };
-    
-    #ifdef CREST_DEBUG
-    // test_stable_ordered_array();
-    // test_array_perf();
-    #endif
+
 
     char const *main_path = nullptr;
 
@@ -200,32 +200,29 @@ int main(int argc, char** argv) {
         std::filesystem::path p{std::string(main_path)};
         main_dir = xp_make_string(permanent_allocator(), p.parent_path().string().c_str());
     }
-    context()->package_search_paths.push_back(main_dir);
     context()->main_src_dir_path = main_dir;
+    context()->package_search_paths.push_back(main_dir);
+
 
     auto main_pkg_opt = compile_package_from_path(xp_string_c(main_path));
     if(main_pkg_opt.is_none()) {
-        context()->reporter.report_error("main package path '{}' is not a valid directory or file", main_path);
-        context()->reporter.print_msg();
-        return 0;
+        err("main package path '{}' is not a valid directory or file", main_path);
+        return 1;
     }
-
 
     mark_stage("analyze packages");
 
+    
     if(context()->scope_dump) {
         print_scope_tree(&context()->global_blank_package.unwrap().package_scope.unwrap());
+        return 0;
     }
-
-    // if(context()->cir_dump) {
-    //     for(auto& pkg : context()->all_packages) {
-    //         dump_cir_package(&pkg.cir_package);
-    //     }
-    // }
+    
+    
 
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
-        return 0;
+        return 1;
     }
 
 

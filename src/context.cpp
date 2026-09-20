@@ -24,7 +24,7 @@ Scope *try_access_val(const Ref<Scope> &r) {
 }
 
 
-CIRInstruction* inst(CIRInstructionRef ref) {
+const CIRInstruction& inst(CIRInstructionRef ref) {
     ASSERT(ref.pkg_index >= 0);
     return context()->all_packages[ref.pkg_index].cir_package.inst(ref);
 }

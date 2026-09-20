@@ -43,7 +43,7 @@ struct Context {
 Ref<Package> add_package(Context *ctx, Package pkg);
 
 
-CIRInstruction* inst(CIRInstructionRef ref);
+const CIRInstruction& inst(CIRInstructionRef ref);
 
 Context *context();
 

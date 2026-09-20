@@ -123,10 +123,10 @@ struct CIRPackage {
     Array<FuncCallKey> comptime_func_calls;
 
 
-    CIRInstruction* inst(CIRInstructionRef ref);
-    const CIRInstruction* inst(CIRInstructionRef ref) const;
-    CIRBlock* block(CIRBlockRef ref);
-    const CIRBlock* block(CIRBlockRef ref) const;
+    CIRInstruction& inst_mut(CIRInstructionRef ref);
+    const CIRInstruction& inst(CIRInstructionRef ref) const;
+    CIRBlock& block_mut(CIRBlockRef ref);
+    const CIRBlock& block(CIRBlockRef ref) const;
 
     Ref<CIRResultInstance> get_result_instance(FuncCallKey key);
 

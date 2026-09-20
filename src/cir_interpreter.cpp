@@ -116,13 +116,13 @@ void Interpreter::analyze_cir_package(Ref<Package> pkg_ref) {
 
 
 
-static Array<CIRInstructionRef> deps_of(CIRInstruction* inst, xpAllocator alloc);
-static Array<CIRInstructionRef> targets_of(CIRInstruction* inst, xpAllocator alloc);
+static Array<CIRInstructionRef> deps_of(const CIRInstruction* inst, xpAllocator alloc);
+static Array<CIRInstructionRef> targets_of(const CIRInstruction* inst, xpAllocator alloc);
 
 
 void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, AnalyzeParams params) {
 
-    CIRInstruction *inst = pkg->inst(curr_inst_ref());
+    const auto* inst = &pkg->inst(curr_inst_ref());
 
     DEBUG_TRACE("curr curr_inst(): {}, inst: {}, src_loc: {}, evalmode: {}", curr_inst_ref(), inst->to_string(), inst->src_loc, (int)curr_eval_mode());
 
@@ -181,7 +181,7 @@ void Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
 
 
 void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
-    auto& block_info = *pkg->block(blk);
+    auto& block_info = pkg->block(blk);
 
     new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref.index});
     bool pushed_eval_mode = false;
@@ -207,14 +207,14 @@ void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef
 }
 
 void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
-    auto& block_info = *pkg->block(blk);
+    auto& block_info = pkg->block(blk);
 
     new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref.index});
 
     
     // TODO: 实现编译期循环
     if(curr_eval_mode() == EvalMode::FullEval) {
-        context()->reporter.report_error(pkg->inst(curr_inst_ref())->src_loc, "compile-time loop evaluation is not yet implemented");
+        context()->reporter.report_error(pkg->inst(curr_inst_ref()).src_loc, "compile-time loop evaluation is not yet implemented");
     } else {
         analyze_block_insts(blk, target);
     }
@@ -224,7 +224,7 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
 }
 
 void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
-    auto& block_info = *pkg->block(blk);
+    auto& block_info = pkg->block(blk);
 
     for(;;) {
 
@@ -242,9 +242,9 @@ void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstruct
 }
 
 Value Interpreter::eval_GetOrInitStruct(CIRInstructionRef ref) {
-    ASSERT(pkg->inst(ref)->op == CIROperator::GetOrInitStruct);
+    ASSERT(pkg->inst(ref).op == CIROperator::GetOrInitStruct);
 
-    auto& info = pkg->inst(ref)->info<CIROperator::GetOrInitStruct>();
+    auto& info = pkg->inst(ref).info<CIROperator::GetOrInitStruct>();
 
     TypeRef st = unfinished_anonymous_struct_type(info.decl_ast);
 
@@ -531,7 +531,7 @@ static Array<CIRInstructionRef> deps_of_info(T& payload, xpAllocator alloc) {
     }
 }
 
-static Array<CIRInstructionRef> deps_of(CIRInstruction* inst, xpAllocator alloc) {
+static Array<CIRInstructionRef> deps_of(const CIRInstruction* inst, xpAllocator alloc) {
     switch(inst->op) {
 #define X(name) case CIROperator::name: return deps_of_info(inst->info<CIROperator::name>(), alloc);
         CIR_OPERATORS
@@ -550,7 +550,7 @@ static Array<CIRInstructionRef> targets_of_info(T& payload, xpAllocator alloc) {
     }
 }
 
-static Array<CIRInstructionRef> targets_of(CIRInstruction* inst, xpAllocator alloc) {
+static Array<CIRInstructionRef> targets_of(const CIRInstruction* inst, xpAllocator alloc) {
     switch(inst->op) {
 #define X(name) case CIROperator::name: return targets_of_info(inst->info<CIROperator::name>(), alloc);
         CIR_OPERATORS
@@ -594,7 +594,7 @@ void Interpreter::apply_result(CIRInstructionRef ref, const ResultDesc& result) 
 // 报错辅助：report_error + 返回 make_error()
 template<typename... Args>
 ResultDesc inst_error(CIRInstructionRef pc_ref, std::format_string<Args...> fmt, Args&&... args) {
-    context()->reporter.report_error(inst(pc_ref)->src_loc, fmt, std::forward<Args>(args)...);
+    context()->reporter.report_error(inst(pc_ref).src_loc, fmt, std::forward<Args>(args)...);
     return ResultDesc::make_error();
 }
 
@@ -626,14 +626,14 @@ static AnalyzeResult make_result(std::initializer_list<ResultWrite> writes) {
 
 // handler: ConstantValue
 AnalyzeResult Interpreter::analyze_ConstantValue(CIRConstantValueInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Value val = inst(pc_ref)->info<CIROperator::ConstantValue>().value;
+    Value val = inst(pc_ref).info<CIROperator::ConstantValue>().value;
     return make_result(pc_ref, ResultDesc::make_value(val.type, val));
 }
 
 // handler: StringLiteral
 AnalyzeResult Interpreter::analyze_StringLiteral(CIRStringLiteralInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     // 从 IdentVal 依赖获取 string 类型（由 std/builtin/string.cst 注册并解析）
-    TypeRef string_type = ResultValue(inst(pc_ref)->info<CIROperator::StringLiteral>().string_type_inst).type_val();
+    TypeRef string_type = ResultValue(inst(pc_ref).info<CIROperator::StringLiteral>().string_type_inst).type_val();
     if (string_type == nullptr) {
         return make_result(pc_ref, ResultDesc::make_error());
     }
@@ -657,10 +657,10 @@ AnalyzeResult Interpreter::analyze_StringLiteral(CIRStringLiteralInfo& info, CIR
 
 // handler: PointerType
 AnalyzeResult Interpreter::analyze_PointerType(CIRPointerTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    CIRInstructionRef pointed_inst = inst(pc_ref)->info<CIROperator::PointerType>().pointed_type_inst;
+    CIRInstructionRef pointed_inst = inst(pc_ref).info<CIROperator::PointerType>().pointed_type_inst;
 
     if(!is_type_type(ResultType(pointed_inst))) {
-        return make_result(pc_ref, inst_error(pc_ref, "指针类型需要一个类型参数，但收到 '{}'", pkg->inst(pointed_inst)->to_string()));
+        return make_result(pc_ref, inst_error(pc_ref, "指针类型需要一个类型参数，但收到 '{}'", pkg->inst(pointed_inst).to_string()));
 
     }
 
@@ -681,7 +681,7 @@ AnalyzeResult Interpreter::analyze_PointerType(CIRPointerTypeInfo& info, CIRInst
 
 // handler: Load
 AnalyzeResult Interpreter::analyze_Load(CIRLoadInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    CIRInstructionRef ptr_inst = inst(pc_ref)->info<CIROperator::Load>().ptr_inst;
+    CIRInstructionRef ptr_inst = inst(pc_ref).info<CIROperator::Load>().ptr_inst;
 
     if(is_lvalue(ptr_inst)) {
         TypeRef loaded_type = ResultType(ptr_inst);
@@ -709,7 +709,7 @@ AnalyzeResult Interpreter::analyze_Load(CIRLoadInfo& info, CIRInstructionRef pc_
 
 
 AnalyzeResult Interpreter::analyze_Deref(CIRDerefInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    CIRInstructionRef ptr_inst = inst(pc_ref)->info<CIROperator::Deref>().operand_inst;
+    CIRInstructionRef ptr_inst = inst(pc_ref).info<CIROperator::Deref>().operand_inst;
 
     TypeRef ptr_type = ResultType(ptr_inst);
     if(!is_pointer_type(ptr_type)) {
@@ -741,7 +741,7 @@ AnalyzeResult Interpreter::analyze_Unary(CIRUnaryInfo& info, CIRInstructionRef p
         return {};
     }
 
-    auto& unary_info = inst(pc_ref)->info<CIROperator::Unary>();
+    auto& unary_info = inst(pc_ref).info<CIROperator::Unary>();
 
     auto op = unary_info.op;
     auto operand_inst = unary_info.operand_inst;
@@ -803,7 +803,7 @@ AnalyzeResult Interpreter::analyze_Cast(CIRCastInfo& info, CIRInstructionRef pc_
         return {};
     }
 
-    auto& cast_info = inst(pc_ref)->info<CIROperator::Cast>();
+    auto& cast_info = inst(pc_ref).info<CIROperator::Cast>();
 
     auto expr_inst = cast_info.expr_inst;
     auto target_type_inst = cast_info.target_type_inst;
@@ -855,7 +855,7 @@ AnalyzeResult Interpreter::analyze_ArrayType(CIRArrayTypeInfo& info, CIRInstruct
 
         // count 未求值（变量/错误表达式）时 FullEval 下会 panic，这里显式报错
         if(!has_result_val(info.count_inst)) {
-            return make_result(pc_ref, inst_error(pc_ref, "数组长度必须是编译期常量，实际 '{}' 未求值", pkg->inst(info.count_inst)->to_string()));
+            return make_result(pc_ref, inst_error(pc_ref, "数组长度必须是编译期常量，实际 '{}' 未求值", pkg->inst(info.count_inst).to_string()));
         }
 
         Value count_val = ResultValue(info.count_inst);
@@ -942,7 +942,7 @@ AnalyzeResult Interpreter::analyze_TypeOfInstResult(CIRTypeOfInstResultInfo& inf
         return {};
     }
 
-    auto target_inst = inst(pc_ref)->info<CIROperator::TypeOfInstResult>().target_inst;
+    auto target_inst = inst(pc_ref).info<CIROperator::TypeOfInstResult>().target_inst;
 
     // 目标是 $T 模板的未解析函数值：签名待实例化，类型未知，依赖未就绪 → 等
     if(has_result_val(target_inst) && ResultValue(target_inst).is_unresolved_func_val()) {
@@ -1199,7 +1199,7 @@ AnalyzeResult Interpreter::analyze_Index(CIRIndexInfo& info, CIRInstructionRef p
 
 // handler: StructField
 AnalyzeResult Interpreter::analyze_StructField(CIRStructFieldInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto type_block_inst = inst(pc_ref)->info<CIROperator::StructField>().type_block_inst;
+    auto type_block_inst = inst(pc_ref).info<CIROperator::StructField>().type_block_inst;
 
 
     if(has_result_type(type_block_inst)) {
@@ -1291,7 +1291,7 @@ AnalyzeResult Interpreter::analyze_FieldAccess(CIRFieldAccessInfo& info, CIRInst
         }
 
         if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
-            context()->reporter.report_error(inst(pc_ref)->src_loc, "联合体字段访问的编译期求值尚未实现");
+            context()->reporter.report_error(inst(pc_ref).src_loc, "联合体字段访问的编译期求值尚未实现");
         }
 
         return make_result(pc_ref, ResultDesc::make_type_only(field_type));
@@ -1337,7 +1337,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(CIRFieldPtrInfo& info, CIRInstructio
         }
 
         if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
-            context()->reporter.report_error(inst(pc_ref)->src_loc, "联合体字段指针访问的编译期求值尚未实现");
+            context()->reporter.report_error(inst(pc_ref).src_loc, "联合体字段指针访问的编译期求值尚未实现");
         }
 
         return make_result(pc_ref, ResultDesc::make_type_only(field_type, CIRValueKind::LValue));
@@ -1435,8 +1435,8 @@ AnalyzeResult Interpreter::analyze_AddrOf(CIRAddrOfInfo& info, CIRInstructionRef
             fv = ResultValue(lval_inst).func_val();
             got_fv = true;
         } else {
-            CIRInstruction* lval_ptr = pkg->inst(lval_inst);
-            SymbolInfo* sym = try_access_val(lval_ptr->symbol);
+            const auto& lval = pkg->inst(lval_inst);
+            SymbolInfo* sym = try_access_val(lval.symbol);
             if(sym && sym->is_const_decl_and_func()) {
                 auto r = sym->result(curr_cache_key());
                 if(r.state == CIRResultState::WholeValue) {
@@ -1445,7 +1445,7 @@ AnalyzeResult Interpreter::analyze_AddrOf(CIRAddrOfInfo& info, CIRInstructionRef
                 }
             }
         }
-        if(got_fv && is_pure_comptime_func(fv.func_key.cir_package->inst(fv.func_key.inst_ref)->info<CIROperator::FunctionDecl>(), result_context())) {
+        if(got_fv && is_pure_comptime_func(fv.func_key.cir_package->inst(fv.func_key.inst_ref).info<CIROperator::FunctionDecl>(), result_context())) {
             return make_result(pc_ref, inst_error(pc_ref, "不能取泛型函数的地址"));
         }
     }
@@ -1464,7 +1464,7 @@ AnalyzeResult Interpreter::analyze_AddrOf(CIRAddrOfInfo& info, CIRInstructionRef
 AnalyzeResult Interpreter::analyze_Binary(CIRBinaryInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     if(has_result_val(pc_ref)) return {};
 
-    auto& binary_info = inst(pc_ref)->info<CIROperator::Binary>();
+    auto& binary_info = inst(pc_ref).info<CIROperator::Binary>();
     auto op = binary_info.op;
     auto left_inst = binary_info.left_inst;
     auto right_inst = binary_info.right_inst;
@@ -1622,7 +1622,7 @@ AnalyzeResult Interpreter::analyze_Break(CIRBreakInfo& info, CIRInstructionRef p
 
             // 真实 BlockRef 指令（loop break）才改 pc 跳转；块句柄 {blk,-1}（if 表达式臂）无此指令，控制流由 analyze_block recover 处理
             if(target_block.inst_index != INVALID_INST_INDEX) {
-                CIRBlockRefInfo& block_ref_info = pkg->inst(target_block)->info<CIROperator::BlockRef>();
+                CIRBlockRefInfo& block_ref_info = pkg->inst(target_block).info<CIROperator::BlockRef>();
                 auto new_curr_inst_ref = curr_inst_ref();
                 new_curr_inst_ref.block_ref = block_ref_info.in_which_block;
                 new_curr_inst_ref.inst_index = target_block.inst_index;
@@ -1643,7 +1643,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo& info, CIRInst
     // 限制:
     // var_inst == VariableDecl
     // type_inst.result is type_type
-    XP_ASSERT_DEFAULT(pkg->inst(info.var_inst)->op == CIROperator::VariableDecl);
+    XP_ASSERT_DEFAULT(pkg->inst(info.var_inst).op == CIROperator::VariableDecl);
 
     // 类型标注表达式求值出错：传播错误（Error 态晚于 OnlyType，下面那个 >= OnlyType 会误把它当有类型）
     if(has_error(info.type_inst)) {
@@ -1656,7 +1656,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo& info, CIRInst
         if(result_context().result_of(info.type_inst).state >= CIRResultState::OnlyType) {
             TypeRef t = ResultType(info.type_inst);
             if(t != type_type() && t != undefined_type()) {
-                context()->reporter.report_error(inst(pc_ref)->src_loc, "类型标注必须是类型，实际收到 '{}'", t->name());
+                context()->reporter.report_error(inst(pc_ref).src_loc, "类型标注必须是类型，实际收到 '{}'", t->name());
                 return make_result(pc_ref, ResultDesc::make_error());
             }
         }
@@ -1664,11 +1664,11 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo& info, CIRInst
     }
 
     if(!is_type_type(ResultValue(info.type_inst).type)) {
-        context()->reporter.report_error(inst(pc_ref)->src_loc, "类型标注必须是类型，实际收到 '{}'", ResultValue(info.type_inst).type->name());
+        context()->reporter.report_error(inst(pc_ref).src_loc, "类型标注必须是类型，实际收到 '{}'", ResultValue(info.type_inst).type->name());
         return make_result(pc_ref, ResultDesc::make_error());
     }
 
-    CIRVariableDeclInfo& vd = pkg->inst(info.var_inst)->info<CIROperator::VariableDecl>();
+    CIRVariableDeclInfo& vd = pkg->inst(info.var_inst).info<CIROperator::VariableDecl>();
 
     // 类型位置必须是真类型、且有存储布局。函数形参例外（类型形参 $T 的类型就是 'type'）
     const Value& type_val = ResultValue(info.type_inst);
@@ -1684,7 +1684,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo& info, CIRInst
         r.writes.push_back({info.var_inst, ResultDesc::make_type_only(declared_type, CIRValueKind::LValue)});
     } else {
         if(existing != declared_type) {
-            context()->reporter.report_error(inst(pc_ref)->src_loc, "类型标注与推导出的变量类型冲突");
+            context()->reporter.report_error(inst(pc_ref).src_loc, "类型标注与推导出的变量类型冲突");
             return make_result(pc_ref, ResultDesc::make_error());
         }
     }
@@ -1708,7 +1708,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(CIRTypeAscribeInfo& info, CIRInst
 
 // handler: Store（statement，无自身结果；类型推断写 var_inst）
 AnalyzeResult Interpreter::analyze_Store(CIRStoreInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto& store_info = inst(pc_ref)->info<CIROperator::Store>();
+    auto& store_info = inst(pc_ref).info<CIROperator::Store>();
     CIRInstructionRef var_inst = store_info.var_inst;
     CIRInstructionRef value_inst = store_info.value_inst;
 
@@ -1863,7 +1863,7 @@ TypeRef Interpreter::determine_type_of(CIRInstructionRef determined_inst,
             write_type = array_type(elem_t, determined_type->array_info.count);
 
             // 同步更新所有元素指令的类型，防止 LLVM 生成器遇到 untyped
-            const auto& elems_info = pkg->inst(determined_inst)->info<CIROperator::ArrayInit>();
+            const auto& elems_info = pkg->inst(determined_inst).info<CIROperator::ArrayInit>();
             for(const auto ei: elems_info.element_insts) {
                 if(is_untyped_type(ResultType(ei))) {
                     out_writes.push_back({ei, ResultDesc::make_type_only(elem_t)});
@@ -1966,7 +1966,7 @@ AnalyzeResult Interpreter::analyze_ConstDecl(CIRConstDeclInfo& info, CIRInstruct
 
 // handler: VariableDecl（写自身类型 = undefined + LValue；符号注册副作用保留）
 AnalyzeResult Interpreter::analyze_VariableDecl(CIRVariableDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto& vd = inst(pc_ref)->info<CIROperator::VariableDecl>();
+    auto& vd = inst(pc_ref).info<CIROperator::VariableDecl>();
     SymbolInfo &sym = vd.symbol.unwrap();
 
     // 副作用：符号绑定到本指令结果 + Solved（类型由 TypeAscribe 后续补全）
@@ -2063,7 +2063,7 @@ AnalyzeResult Interpreter::analyze_FinishStruct(CIRFinishStructInfo& info, CIRIn
             Array<StructField> fields = make_array<StructField>(type_allocator());
             for(isize i = 0; i < info.field_insts.count; i++) {
                 auto field_inst = info.field_insts[i];
-                auto& field_info = pkg->inst(field_inst)->info<CIROperator::StructField>();
+                auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
                     return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' {}", field_info.name, e.value()));
@@ -2149,7 +2149,7 @@ AnalyzeResult Interpreter::analyze_FinishUnion(CIRFinishUnionInfo& info, CIRInst
         if(!already_finished) {
             for(isize i = 0; i < info.field_insts.count; i++) {
                 auto field_inst = info.field_insts[i];
-                auto& field_info = pkg->inst(field_inst)->info<CIROperator::StructField>();
+                auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
                     return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' {}", field_info.name, e.value()));
@@ -2195,21 +2195,30 @@ AnalyzeResult Interpreter::analyze_GetOrInitStruct(CIRGetOrInitStructInfo& info,
 
 // handler: BlockRef（进入子 Block 分析；pc 由 new_analyze_flow/recover 自管，dispatch 末尾 advance 越过）
 AnalyzeResult Interpreter::analyze_BlockRef(CIRBlockRefInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    CIRBlockRef blk = inst(pc_ref)->info<CIROperator::BlockRef>().block_ref;
-    if(pkg->block(blk)->is_loop) {
+    CIRBlockRef blk = inst(pc_ref).info<CIROperator::BlockRef>().block_ref;
+    if(pkg->block(blk).is_loop) {
         analyze_loop(blk, pc_ref);   // 循环不需要 force_eval_mode
     } else {
         // 副作用：进入子 Block 分析（内部 new_analyze_flow 压栈，可能 push FullEval for immediate_eval）
         analyze_block(blk, pc_ref, params.block_eval_mode);
+    }
+    // BlockRef 的结果 = 它指向的块自己的结果（块内 Break 打裸块句柄 {blk,-1}）；回填给消费方
+    auto blk_key = CIRInstructionRef(blk);
+    auto val_opt = ResultValueOpt(blk_key);
+    if(val_opt.has_value()) {
+        return make_result(pc_ref, ResultDesc::make_value(ResultType(blk_key), val_opt.value()));
+    }
+    if(has_result_type(blk_key)) {
+        return make_result(pc_ref, ResultDesc::make_type_only(ResultType(blk_key)));
     }
     return {};
 }
 
 // handler: CondBr（进入分支 Block 分析；pc 由 new_analyze_flow/recover 自管）
 AnalyzeResult Interpreter::analyze_CondBr(CIRCondBrInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    XP_ASSERT_DEFAULT(inst(pc_ref)->op == CIROperator::CondBr);
+    XP_ASSERT_DEFAULT(inst(pc_ref).op == CIROperator::CondBr);
 
-    auto& if_info = inst(pc_ref)->info<CIROperator::CondBr>();
+    auto& if_info = inst(pc_ref).info<CIROperator::CondBr>();
     auto cond_inst = if_info.condition_inst;
     CIRBlockRef true_blk = if_info.true_block;
     CIRBlockRef false_blk = if_info.false_block;
@@ -2293,7 +2302,7 @@ AnalyzeResult Interpreter::analyze_IfExpr(CIRIfExprInfo& info, CIRInstructionRef
 
     // 臂值 = 臂块末尾 Break 递送的那条指令（后端也读它，定型要写到它身上）
     auto arm_value_inst = [&](CIRBlockRef arm_blk) -> CIRInstructionRef {
-        auto& insts = pkg->block(arm_blk)->insts;
+        auto& insts = pkg->block(arm_blk).insts;
         for(isize i = insts.count() - 1; i >= 0; i--) {
             if(insts[i].op == CIROperator::Break) {
                 return insts[i].info<CIROperator::Break>().break_value_inst;
@@ -2382,7 +2391,7 @@ AnalyzeResult Interpreter::analyze_IfExpr(CIRIfExprInfo& info, CIRInstructionRef
 
 // handler: FunctionDecl（写自身函数类型值；body 跳转用 next_pc 表达）
 AnalyzeResult Interpreter::analyze_FunctionDecl(CIRFunctionDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto& func = inst(pc_ref)->info<CIROperator::FunctionDecl>();
+    auto& func = inst(pc_ref).info<CIROperator::FunctionDecl>();
 
     // $T 泛型: 形参/返回类型都是 IdentVal(T), T 未填值时整份签名算不出来。
     // 判断条件是"T 有没有值"而非 has_generic_param_type —— 实例化会重跑本指令,
@@ -2405,7 +2414,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(CIRFunctionDeclInfo& info, CIRIn
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
 
         // 符号照常绑定并 Solved: 否则 IdentVal(add) 命中 Solving 会误报循环依赖
-        if(SymbolInfo* sym = try_access_val(inst(pc_ref)->symbol)) {
+        if(SymbolInfo* sym = try_access_val(inst(pc_ref).symbol)) {
             sym->val(Ref<CIRInstResult>::make(pkg, pc_ref, {}));
             sym->state = SymbolState::Solved;
         }
@@ -2457,7 +2466,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(CIRFunctionDeclInfo& info, CIRIn
         TypeRef func_type_type = function_type(param_types, return_type);
         Value v = make_value(func_type_type);
 
-        SymbolInfo* sym = try_access_val(inst(pc_ref)->symbol);
+        SymbolInfo* sym = try_access_val(inst(pc_ref).symbol);
 
         {
             auto func_key = Ref<CIRInstResult>::make(pkg, pc_ref, result_context().call_instance());
@@ -2495,18 +2504,13 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(CIRFunctionDeclInfo& info, CIRIn
 
 
         if(is_pure_comptime_func(func, result_context())) {
-            // 纯编译期函数：跳过 body（body BlockRef 紧跟 FunctionDecl）
-            // old 代码 curr_inst() = next() 后再由外层 advance() 越过 → next_pc 需要补一格
-            r.next_pc = pc_ref.next(2);
+            // 纯编译期函数：跳过 body（body 不在父块发 BlockRef，next(1) 越过 FunctionDecl 自身即可）
+            r.next_pc = pc_ref.next(1);
         } else {
             // 普通运行时函数：TypeOnly body — 外层 const 块可能是 FullEval，需强制 TypeOnly 隔离
-            CIRInstructionRef func_pc = pc_ref;
-            // 副作用：TypeOnly 分析函数体（new_analyze_flow 进入 body BlockRef，绕过外层 eval mode）
-            new_analyze_flow(func.body_inst);
-            analyze_instruction({}, {.block_eval_mode = EvalMode::TypeOnly});
-            recover_analyze_flow();
-            // 跳过紧随的 body BlockRef，避免外层迭代二次分析（同上补一格）
-            r.next_pc = func_pc.next(2);
+            // body_inst 是裸块句柄 {blk,-1}，显式进块分析（不经父块线性扫描的 BlockRef 指令）
+            analyze_block(func.body_inst.block_ref, func.body_inst, EvalMode::TypeOnly);
+            r.next_pc = pc_ref.next(1);
         }
     }
 
@@ -2525,7 +2529,7 @@ std::optional<Value> Interpreter::instantiate_generic_func(
 
     CIRPackage *callee_pkg = fv.func_key.cir_package;
     CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
-    CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc)->info<CIROperator::FunctionDecl>();
+    CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
     ASSERT(type_args.count == func.generic_param_type_var_insts.count);
 
@@ -2589,7 +2593,7 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(CIRInstantiateFuncInfo& info,
     }
     const FuncValue fv = called_val.unresolved_func_val();
     const CIRFunctionDeclInfo& generic_func = fv.func_key.cir_package
-                                                ->inst(fv.func_key.inst_ref)->info<CIROperator::FunctionDecl>();
+                                                ->inst(fv.func_key.inst_ref).info<CIROperator::FunctionDecl>();
 
     // TODO: REPEAT
     // 模板没有可查的签名，arity 直接用形参个数比
@@ -2637,7 +2641,7 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(CIRInstantiateFuncInfo& info,
 
 // handler: Call（写自身返回值；编译期调用 push/pop instance 副作用保留）
 AnalyzeResult Interpreter::analyze_Call(CIRCallInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto& call_info = inst(pc_ref)->info<CIROperator::Call>();
+    auto& call_info = inst(pc_ref).info<CIROperator::Call>();
     CIRInstructionRef called_inst = call_info.called_thing;
 
     TypeRef called_type = ResultType(called_inst);
@@ -2688,7 +2692,7 @@ AnalyzeResult Interpreter::analyze_Call(CIRCallInfo& info, CIRInstructionRef pc_
     if(has_result_val(called_inst)) {
         Value called_val = ResultValue(called_inst);
         auto fv = called_val.func_val();
-        auto func_info = fv.func_key.inst()->info<CIROperator::FunctionDecl>();
+        auto func_info = fv.func_key.inst().info<CIROperator::FunctionDecl>();
 
         auto ctx = CIRResultContext::create(fv.func_key.cir_package);
         if(fv.func_key.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
@@ -2726,7 +2730,7 @@ AnalyzeResult Interpreter::analyze_Call(CIRCallInfo& info, CIRInstructionRef pc_
         CIRPackage *callee_pkg = fv.func_key.cir_package;
 
         CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
-        CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc)->info<CIROperator::FunctionDecl>();
+        CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
         if(fv.builtin_kind != BuiltinKind::None) {
             switch(fv.builtin_kind) {
@@ -2799,8 +2803,8 @@ AnalyzeResult Interpreter::analyze_Call(CIRCallInfo& info, CIRInstructionRef pc_
         pkg = callee_pkg;
         // callee 初始 scope 已由 push_eval_instance 压入（nullptr，body 的 EnterScope 会覆盖）
 
-        // 副作用：分析 callee 函数体（dispatch 循环，结果写 callee 的 result instance）
-        analyze_instruction_at(func.body_inst);
+        // 副作用：分析 callee 函数体（body_inst 是裸块句柄，显式进块；eval mode 沿用当前栈）
+        analyze_block(func.body_inst.block_ref, func.body_inst);
 
         bool body_has_error = has_error(func.body_inst);
 
@@ -2853,10 +2857,10 @@ AnalyzeResult Interpreter::analyze_ExitScope(CIRExitScopeInfo& info, CIRInstruct
 
 // handler: IdentRef（写自身 LValue 类型/地址；符号按需分析副作用保留）
 AnalyzeResult Interpreter::analyze_IdentRef(CIRIdentRefInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto sym = inst(pc_ref)->symbol;
+    auto sym = inst(pc_ref).symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
-        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref)->info<CIROperator::IdentRef>().ident));
+        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentRef>().ident));
     }
 
     if(!sym->is_var_decl() && !sym->is_const_decl_and_func()) {
@@ -2881,7 +2885,7 @@ AnalyzeResult Interpreter::analyze_IdentRef(CIRIdentRefInfo& info, CIRInstructio
     if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || r.state == CIRResultState::WholeValue)) {
         if(sym->is_var_decl()) {
             Ref<CIRInstResult> var_key = sym->val_as_inst_key();
-            CIRVariableDeclInfo& vd = var_key.cir_package->inst(var_key.inst_ref)->info<CIROperator::VariableDecl>();
+            CIRVariableDeclInfo& vd = var_key.cir_package->inst(var_key.inst_ref).info<CIROperator::VariableDecl>();
 
             // slot < 0 = 不占槽的编译期变量（$T 的类型变量），只能经 IdentVal 读值
             ASSERT_MSG(vd.slot >= 0, "IdentRef 作用于不占 var_ptrs 槽位的变量");
@@ -2914,10 +2918,10 @@ AnalyzeResult Interpreter::analyze_IdentVal(CIRIdentValInfo& info, CIRInstructio
         return {};
     }
 
-    auto sym = inst(pc_ref)->symbol;
+    auto sym = inst(pc_ref).symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
-        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref)->info<CIROperator::IdentVal>().ident));
+        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentVal>().ident));
     }
 
     if(sym->is_var_decl()) {

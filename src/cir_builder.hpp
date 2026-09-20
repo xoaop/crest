@@ -66,9 +66,10 @@ struct CIRBuilder {
         return ref;
     }
 
-    CIRInstructionRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);  // 创建子块 + BlockRef 指令并压栈，返回 handle（尾随 BlockRef 指令位置）
+    CIRBlockRef Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval);   // 创建子块并压栈，返回块号（不发 BlockRef 指令）
+    CIRInstructionRef New_BlockRef(Ast *ast, CIRBlockRef blk);                  // 在当前栈顶块发一条指向 blk 的 BlockRef 指令（下降标记）
     void End_Block();                                                           // 弹栈
-    CIRInstructionRef Begin_Loop(Ast *ast);
+    CIRBlockRef Begin_Loop(Ast *ast);
     void End_Loop(CIRInstructionRef loop_inst);
 
 

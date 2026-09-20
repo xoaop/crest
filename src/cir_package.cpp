@@ -22,22 +22,22 @@ CIRPackage make_cir_package(xpAllocator allocator) {
 }
 
 
-CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) {
+CIRInstruction& CIRPackage::inst_mut(CIRInstructionRef ref) {
     ASSERT((ref.inst_index != INVALID_INST_INDEX && ref.block_ref != INVALID_BLOCK) || ref.block_ref != INVALID_BLOCK);   // ref 恒为真实指令（INVALID_INST={-1,-1} 除外）
-    return &blocks[ref.block_ref].insts[ref.inst_index];
+    return blocks[ref.block_ref].insts[ref.inst_index];
 }
 
-const CIRInstruction* CIRPackage::inst(CIRInstructionRef ref) const {
+const CIRInstruction& CIRPackage::inst(CIRInstructionRef ref) const {
     ASSERT((ref.inst_index != INVALID_INST_INDEX && ref.block_ref != INVALID_BLOCK) || ref.block_ref != INVALID_BLOCK);
-    return &blocks[ref.block_ref].insts[ref.inst_index];
+    return blocks[ref.block_ref].insts[ref.inst_index];
 }
 
-CIRBlock* CIRPackage::block(CIRBlockRef ref) {
-    return &blocks[ref];
+CIRBlock& CIRPackage::block_mut(CIRBlockRef ref) {
+    return blocks[ref];
 }
 
-const CIRBlock* CIRPackage::block(CIRBlockRef ref) const {
-    return &blocks[ref];
+const CIRBlock& CIRPackage::block(CIRBlockRef ref) const {
+    return blocks[ref];
 }
 
 CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop) {
@@ -118,7 +118,7 @@ CIRInstResult* Ref<CIRInstResult>::get_result() const {
     return &cir_package->result_of(inst_ref);
 }
 
-const CIRInstruction* Ref<CIRInstResult>::inst() const {
+const CIRInstruction& Ref<CIRInstResult>::inst() const {
     return cir_package->inst(inst_ref);
 }
 
@@ -355,7 +355,7 @@ static void dump_result(CIRInstResult& res) {
 }
 
 static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_result) {
-    auto& inst = *pkg->inst(ref);
+    auto& inst = pkg->inst(ref);
 
     switch (inst.op) {
     case CIROperator::VariableDecl:
@@ -371,7 +371,7 @@ static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_
         if(f.arg_decl_insts.count > 0) {
             print_err(", params=[");
             for (isize i = 0; i < f.arg_decl_insts.count; i++) {
-                auto& var = pkg->inst(f.arg_decl_insts[i])->info<CIROperator::VariableDecl>();
+                auto& var = pkg->inst(f.arg_decl_insts[i]).info<CIROperator::VariableDecl>();
                 if(i > 0) print_err(", ");
                 print_err("{} slot={} type=%{}", var.name, var.slot, f.arg_type_insts[i]);
             }
