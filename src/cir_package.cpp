@@ -305,7 +305,7 @@ CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
 
 // ─── is_pure_comptime_func ────────────────────────────────────────
 
-bool is_pure_comptime_func(CIRFunctionDeclInfo& func, const CIRResultContext& ctx) {
+bool is_pure_comptime_func(const CIRFunctionDeclInfo& func, const CIRResultContext& ctx) {
     if(func.is_comptime) {
         return true;
     }

@@ -64,7 +64,7 @@ struct LLVMGenerator {
     void gen_ir_inst(CIRInstructionRef ref);
     void gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, bool connect_to_parent = false);
     void gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef first_bb, LLVMBasicBlockMapper& blk_mapper, CIRBlockRef parent_blk_ref);   // 循环收尾接线（回边 + break 目标 → 父 merge）
-    void gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* inst);
+    void gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruction& inst);
     void gen_ir_binary_expr(CIRInstructionRef inst);
     void gen_ir_unary(CIRInstructionRef inst);
     void llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBlockRef to);

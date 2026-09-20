@@ -540,7 +540,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
         if(null_cached) return *null_cached;
     }
 
-    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} op={} state={} call_instance={} curr_gen_ref={} curr_gen_op={}", ref, (int)result_ctx.pkg()->inst(ref).op, (int)result.state, result_ctx.call_instance().index, debug_curr_gen_ref, result_ctx.pkg()->inst(debug_curr_gen_ref) ? (int)result_ctx.pkg()->inst(debug_curr_gen_ref).op : -1);
+    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} op={} state={} call_instance={} curr_gen_ref={} curr_gen_op={}", ref, (int)result_ctx.pkg()->inst(ref).op, (int)result.state, result_ctx.call_instance().index, debug_curr_gen_ref, (int)result_ctx.pkg()->inst(debug_curr_gen_ref).op);
     std::unreachable();
     return nullptr;
 }
@@ -1356,7 +1356,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     if(cv.actual_type() == ActualValueType::Function) {
                         const auto& fk = cv.func_val().func_key;
                         callee_is_extern_c = fk.cir_package->inst(fk.inst_ref)
-                            ->info<CIROperator::FunctionDecl>().is_extern_c;
+                            .info<CIROperator::FunctionDecl>().is_extern_c;
                     }
                 }
             }
@@ -1675,7 +1675,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
     }
 }
 
-void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, CIRInstruction* inst) {
+void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruction& inst) {
     XP_ASSERT_DEFAULT(inst.op == CIROperator::VariableDecl);
 
     // 1. 分配空间

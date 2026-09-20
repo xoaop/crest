@@ -1271,7 +1271,7 @@ CIRInstructionRef CIRBuilder::New_Instruction(CIROperator op, Ast *ast) {
     inst.src_loc = ast ? ast->src_loc : SourceLocation{};
 
     CIRBlockRef blk = block_stack.back();
-    isize inst_index = curr_pkg->block(blk).push_back_inst(inst);
+    isize inst_index = curr_pkg->block_mut(blk).push_back_inst(inst);
 
     return CIRInstructionRef{ blk, inst_index, curr_pkg->package_ref.index };
 }
