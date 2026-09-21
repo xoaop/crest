@@ -68,6 +68,7 @@
     TOKEN_INFO(KW_enum, "enum"),                                \
     TOKEN_INFO(KW_union, "union"),                              \
     TOKEN_INFO(KW_if, "if"),                                    \
+    TOKEN_INFO(KW_then, "then"),                                \
     TOKEN_INFO(KW_else, "else"),                                \
     TOKEN_INFO(KW_for, "for"),                                  \
     TOKEN_INFO(KW_in, "in"),                                    \

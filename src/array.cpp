@@ -12,7 +12,7 @@ Array<u32> make_array_as_string(xpAllocator allocator, const char32_t *string) {
 
 
 void array_push_back_str(Array<u32> *array, const char32_t *str) {
-    if(str == NULL) {
+    if(str == nullptr) {
         return;
     }
 

@@ -39,16 +39,16 @@ void println_err(std::format_string<Args...> fmt, Args&&... args) {
 #if defined(CREST_DEBUG)
     #include <source_location>
     #include <cstdlib>
-    #include <stacktrace>
+    #include "stacktrace.hpp"
 
     inline bool g_trace_enabled = false;
 
 
     inline void dump_stacktrace() {
-        auto st = std::stacktrace::current(/*skip=*/2);
-        println_err("--- stacktrace ({} frames) ---", st.size());
-        for (std::size_t i = 0; i < st.size(); i++) {
-            println_err("  #{} {}", i, st[i]);
+        std::vector<std::string> frames = xp_capture_stacktrace(/*skip=*/2);
+        println_err("--- stacktrace ({} frames) ---", frames.size());
+        for (std::size_t i = 0; i < frames.size(); i++) {
+            println_err("  #{} {}", i, frames[i]);
         }
     }
 

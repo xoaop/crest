@@ -1,0 +1,8 @@
+// @fail
+// @error "if 表达式两臂类型必须相同"
+
+main :: () -> i32 {
+    c := true;
+    x: i32 = if c then 1 else 1.5;
+    return x;
+}

@@ -104,6 +104,11 @@ struct Ast;
         TokenType op;                                                                \
         Ast *operand;                                                                \
     })                                                                               \
+    AST_INFO(IfExpr, "if expr", struct {                                             \
+        Ast *condition;                                                              \
+        Ast *then_expr;                                                              \
+        Ast *else_expr;                                                              \
+    })                                                                               \
     AST_INFO(FunctionCallExpr, "function call expr", struct {                        \
         Ast *func_ident;                                                             \
         Array<Ast *> args;                                                           \

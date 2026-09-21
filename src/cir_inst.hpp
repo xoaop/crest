@@ -84,6 +84,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(EnterScope)               \
     X(ExitScope)                \
     X(CondBr)                   \
+    X(IfExpr)                   \
     X(Break)                    \
     X(Load)                     \
     X(Deref)                    \
@@ -186,6 +187,15 @@ struct CIRCondBrInfo {
     bool is_short_circuit = false;   // &&/|| 短路 CondBr：cond 已知时死分支（右操作数）整体跳过
 
     CIR_REFS(&CIRCondBrInfo::condition_inst)
+};
+
+// if 表达式：自身即结果载体，两臂是两个 Block（臂块以 Break 结尾，break 到本指令所在块）
+struct CIRIfExprInfo {
+    CIRInstructionRef condition_inst;
+    CIRBlockRef true_block;
+    CIRBlockRef false_block;
+
+    CIR_REFS(&CIRIfExprInfo::condition_inst)
 };
 
 struct CIRBreakInfo {

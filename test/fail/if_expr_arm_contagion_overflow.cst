@@ -1,0 +1,9 @@
+// @fail
+// @error "类型确定时值溢出"
+
+// 一臂确定 u8、另一臂是 untyped 字面量 300：确定类型传染 untyped 臂，300 超出 u8 上界报溢出。
+pick :: (c: bool, y: u8) -> u8 { return if c then y else 300; }
+
+main :: () -> i32 {
+    return 0;
+}

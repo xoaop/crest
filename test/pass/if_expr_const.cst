@@ -1,0 +1,12 @@
+// @pass
+// @run
+
+DEBUG :: 1
+
+// 常量条件：死支（10/0）不分析，编译过即证明
+MODE :: if DEBUG == 1 then 100 else 10/0
+
+main :: () -> i32 {
+    if MODE != 100 { return 1; }
+    return 0;
+}

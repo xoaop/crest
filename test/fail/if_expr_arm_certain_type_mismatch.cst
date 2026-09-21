@@ -1,0 +1,9 @@
+// @fail
+// @error "if 表达式两臂类型必须相同"
+
+// 两臂都是确定类型且不同（i32 vs u8）：不是 untyped 传染，直接报两臂类型不一致。
+pick :: (c: bool, a: i32, b: u8) -> i32 { return if c then a else b; }
+
+main :: () -> i32 {
+    return pick(true, 1, 2);
+}

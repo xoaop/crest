@@ -1,0 +1,12 @@
+// @fail
+// @error "无法确定类型：期望 u8，实际 i32"
+
+// 运行时条件 + 两臂都是 untyped 字面量：结果无法编译期确定，untyped 臂必须当场
+// 确定成默认类型（i32）。外层想要的 u8 无法伸进臂——只有编译期已确定结果时才保留
+// untyped 交给下游。i32 撞 u8 报错。
+pick_u8 :: (c: bool) -> u8 { return if c then 7 else 9; }
+
+main :: () -> i32 {
+    if pick_u8(true) != 7 { return 1; }
+    return 0;
+}

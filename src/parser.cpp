@@ -71,6 +71,8 @@ Ast *parse_block(Parser *p);
 Ast *parse_if(Parser *p);
 Ast *parse_for(Parser *p);
 
+Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition);
+
 
 Ast *parse_expr_factor(Parser *p);
 Ast *parse_expr(Parser *p, isize min_prec = 0);
@@ -97,7 +99,7 @@ Parser parser_make(Array<Token> tokens) {
     p.curr_token_index = 0;
     p.tokens = tokens;
     p.top_levels = make_array<Ast *>(ast_allocator());
-    p.src_code = NULL;
+    p.src_code = nullptr;
     return p;
 }
 
@@ -354,16 +356,17 @@ bool parse_function_tail(Parser *p, FunctionTail *out) {
     }
 
     out->is_builtin = false;
-    if(curr_token(p).type == TokenType::Hash) {
-        advance_token(p);
-        Token builtin_token = expect(p, TokenType::Ident);
-        if(xp_string_equal(builtin_token.token_str, xp_string_c("builtin"))) {
+    if(curr_token(p).type == TokenType::Hash && next_token(p).type == TokenType::Ident) {
+        Token directive_token = next_token(p);
+        if(xp_string_equal(directive_token.token_str, xp_string_c("builtin"))) {
+            advance_token(p);
+            advance_token(p);
             out->is_builtin = true;
         } else {
             context()->reporter.report_error(
-                builtin_token.src_loc,
+                directive_token.src_loc,
                 "unknown directive '{}', expected 'builtin'",
-                builtin_token.token_str
+                directive_token.token_str
             );
         }
     }
@@ -484,7 +487,7 @@ Ast *parse_const_decl(Parser *p) {
     expect(p, TokenType::DoubleColon);
 
 
-    Ast *value_ast = NULL;
+    Ast *value_ast = nullptr;
     Token curr = curr_token(p);
 
     value_ast = parse_expr(p, 0);
@@ -508,7 +511,7 @@ Ast *parse_var_decl(Parser *p) {
     auto name_succ = expect2(p, TokenType::Ident);
     name_token = name_succ.first;
 
-    Ast *a = NULL;
+    Ast *a = nullptr;
     Token curr = curr_token(p);
     switch(curr.type) {
         case TokenType::ColonEqual: {
@@ -538,7 +541,7 @@ Ast *parse_var_decl(Parser *p) {
                 a->src_loc = merge(a->token.src_loc, a->VariableDecl.expr->src_loc);
             }
 
-            a->VariableDecl.type_ast = NULL;
+            a->VariableDecl.type_ast = nullptr;
         } break;
 
         case TokenType::Colon: {
@@ -563,7 +566,7 @@ Ast *parse_var_decl(Parser *p) {
                     Token tm = expect(p, TokenType::TripleMinus);
 
                     a->VariableDecl.no_zero_init = true;
-                    a->VariableDecl.expr = NULL;
+                    a->VariableDecl.expr = nullptr;
 
                     a->src_loc = merge(a->token.src_loc, tm.src_loc);
                 } else {
@@ -579,7 +582,7 @@ Ast *parse_var_decl(Parser *p) {
                 // 零初始化
 
                 a->VariableDecl.no_zero_init = false;
-                a->VariableDecl.expr = NULL;
+                a->VariableDecl.expr = nullptr;
 
                 a->src_loc = merge(a->token.src_loc, a->VariableDecl.type_ast->src_loc);
             }
@@ -600,17 +603,21 @@ Ast *parse_stmt(Parser *p) {
     Token curr = curr_token(p);
     Token next = next_token(p);
 
-    Ast *a = NULL;
+    Ast *a = nullptr;
     switch(curr.type) {
     case TokenType::KW_if:
         a = parse_if(p);
+        // if ... then ... else ... 是表达式, 语句位置要自己吃分号
+        if(a->type == AstType_IfExpr) {
+            expect(p, TokenType::Semicolon);
+        }
         break;
 
     case TokenType::KW_for:
         a = parse_for(p);
         break;
-    
-    
+
+
     case TokenType::LeftCurlyBracket:
         a = parse_block(p);
         break;
@@ -623,7 +630,7 @@ Ast *parse_stmt(Parser *p) {
             a->ReturnStmt.expr = parse_expr(p, 0);
             a->src_loc = merge(a->token.src_loc, a->ReturnStmt.expr->src_loc);
         } else {
-            a->ReturnStmt.expr = NULL;
+            a->ReturnStmt.expr = nullptr;
             a->src_loc = a->token.src_loc;
         }
 
@@ -707,14 +714,21 @@ Ast *parse_block(Parser *p) {
 
 
 Ast *parse_if(Parser *p) {
-    Ast *a = ast_alloc(AstType_IfStmt);
-    a->token = expect(p, TokenType::KW_if);
+    Token if_token = expect(p, TokenType::KW_if);
 
-    
-    a->IfStmt.condition = parse_expr(p, 0);
+    Ast *condition = parse_expr(p, 0);
+
+    // if ... then ... else ... 是表达式，if ... { } 是语句
+    if(curr_token(p).type == TokenType::KW_then) {
+        return parse_if_tail(p, if_token, condition);
+    }
+
+    Ast *a = ast_alloc(AstType_IfStmt, if_token);
+
+    a->IfStmt.condition = condition;
     a->IfStmt.then_block = parse_block(p);
-    
-    a->IfStmt.else_block = NULL;
+
+    a->IfStmt.else_block = nullptr;
     if(curr_token(p).type == TokenType::KW_else) {
         expect(p, TokenType::KW_else);
         if(curr_token(p).type == TokenType::KW_if) {
@@ -727,8 +741,8 @@ Ast *parse_if(Parser *p) {
             a->IfStmt.else_block = parse_block(p);
         }
     }
-    
-    if(a->IfStmt.else_block != NULL) {
+
+    if(a->IfStmt.else_block != nullptr) {
         a->src_loc = merge(a->token.src_loc, a->IfStmt.else_block->src_loc);
     } else {
         a->src_loc = merge(a->token.src_loc, a->IfStmt.then_block->src_loc);
@@ -736,6 +750,24 @@ Ast *parse_if(Parser *p) {
 
     return a;
 }
+
+// if / condition 已消费，接着 then / else 两臂
+Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition) {
+    Ast *a = ast_alloc(AstType_IfExpr, if_token);
+
+    a->IfExpr.condition = condition;
+
+    expect(p, TokenType::KW_then);
+    a->IfExpr.then_expr = parse_expr(p, 0);
+
+    expect(p, TokenType::KW_else);
+    a->IfExpr.else_expr = parse_expr(p, 0);
+
+    a->src_loc = merge(a->token.src_loc, a->IfExpr.else_expr->src_loc);
+
+    return a;
+}
+
 
 Ast *parse_for(Parser *p) {
     Ast *a = ast_alloc(AstType_ForStmt);
@@ -1013,8 +1045,8 @@ Ast *parse_expr_factor(Parser *p) {
         return bad;
     }
 
-    Ast *a = NULL;
-    defer(XP_ASSERT_DEFAULT(a != NULL));
+    Ast *a = nullptr;
+    defer(XP_ASSERT_DEFAULT(a != nullptr));
 
     Token curr = curr_token(p);
 
@@ -1171,6 +1203,16 @@ Ast *parse_expr_factor(Parser *p) {
 
             a = parse_ident(p);
 
+        } break;
+
+        case TokenType::KW_if: {
+            Token if_token = curr_token(p);
+
+            a = parse_if(p);
+            if(a->type != AstType_IfExpr) {
+                context()->reporter.report_error(if_token.src_loc, "'if' 作表达式时缺 'then'");
+                a = ast_alloc(AstType_BadExpr, if_token);
+            }
         } break;
 
         case TokenType::KW_cast:
@@ -1451,7 +1493,7 @@ Ast *parse_constant(Parser *p) {
 #include <inttypes.h>
 
 void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
-    XP_ASSERT_DEFAULT(str != NULL && a != NULL);
+    XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
 
     bool has_minus = false;
     if(str[0] == '-') {
@@ -1460,7 +1502,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     }
 
     // 解析
-    char *end = NULL;
+    char *end = nullptr;
     errno = 0;
     i128 val = 0;
     if(str[0] == '0' && str[1] == 'b') {
@@ -1526,7 +1568,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 }
 
 void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
-    XP_ASSERT_DEFAULT(str != NULL && a != NULL);
+    XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
 
     // 解析
     char *end;
@@ -1633,7 +1675,7 @@ Ast *parse_ident(Parser *p) {
 
 
 Ast *parse_single_ident_or_field_access_with_pure_ident(Parser *p) {
-    Ast *a = NULL;
+    Ast *a = nullptr;
 
     a = parse_ident(p);
 

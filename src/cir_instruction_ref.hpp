@@ -137,7 +137,7 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
 
     CIRInstResult* get_result() const;
 
-    const CIRInstruction* inst() const;
+    const CIRInstruction& inst() const;
 
     bool operator==(const Ref& other) const {
         return cir_package == other.cir_package

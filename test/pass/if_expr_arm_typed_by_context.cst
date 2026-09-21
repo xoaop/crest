@@ -1,0 +1,21 @@
+// @pass
+// @run
+
+// 一侧确定类型，传染另一侧 untyped 臂
+pick_mixed :: (c: bool, y: u8) -> u8 { return if c then y else 1; }
+
+main :: () -> i32 {
+    if pick_mixed(true, 5) != 5 { return 3; }
+    if pick_mixed(false, 5) != 1 { return 4; }
+
+    // 没有外层类型：两臂 untyped 当场定成默认类型（i32）
+    flag := true;
+    z := if flag then 1 else 2;
+    if z != 1 { return 7; }
+    flag = false;
+    if z != 1 { return 8; }
+    z = if flag then 1 else 2;
+    if z != 2 { return 9; }
+
+    return 0;
+}

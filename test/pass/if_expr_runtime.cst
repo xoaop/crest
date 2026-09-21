@@ -1,0 +1,28 @@
+// @pass
+// @run
+
+// 条件不是编译期常量：两支都编，运行时选值
+pick :: (c: bool) -> i32 { return if c then 11 else 22; }
+
+// 臂是运行期求值的调用（φ 的两条入边都不是常量）
+g :: () -> i32 { return 7; }
+h :: () -> i32 { return 9; }
+pick_call :: (c: bool) -> i32 { return if c then g() else h(); }
+pick_nested :: (c: bool, d: bool) -> i32 { return if c then g() else if d then h() else 0; }
+
+main :: () -> i32 {
+    if pick(true) != 11 { return 1; }
+    if pick(false) != 22 { return 2; }
+
+    flag := true;
+    if (if flag then 7 else 8) != 7 { return 3; }
+    flag = false;
+    if (if flag then 7 else 8) != 8 { return 4; }
+
+    if pick_call(true) != 7 { return 5; }
+    if pick_call(false) != 9 { return 6; }
+    if pick_nested(false, true) != 9 { return 7; }
+    if pick_nested(false, false) != 0 { return 8; }
+
+    return 0;
+}

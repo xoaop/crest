@@ -31,7 +31,7 @@ Ast& Ast::operator=(const Ast& other) {
 
 Ast ast_make(AstType type) {
     Ast ast = {};
-    
+
     ast.ast_symbol = Ref<SymbolInfo>::INVALID_REF;
     ast.is_null = false;
 
@@ -190,7 +190,7 @@ xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...>
 
 // 主函数：打印单个 Ast 节点
 void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
-    if (a == NULL) {
+    if (a == nullptr) {
         print_line(depth, is_last, "(null)");
         return;
     }
@@ -246,6 +246,16 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             print_line(depth + 1, false, "op: {}", token_strings[a->UnaryExpr.op]);
             print_line(depth + 1, true, "operand:");
             print_ast(a->UnaryExpr.operand, depth + 2, true);
+            break;
+        }
+
+        case AstType_IfExpr: {
+            print_line(depth + 1, false, "condition:");
+            print_ast(a->IfExpr.condition, depth + 2, false);
+            print_line(depth + 1, false, "then:");
+            print_ast(a->IfExpr.then_expr, depth + 2, false);
+            print_line(depth + 1, true, "else:");
+            print_ast(a->IfExpr.else_expr, depth + 2, true);
             break;
         }
 

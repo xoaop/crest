@@ -40,8 +40,8 @@ struct CIRBlock {
         bool operator==(const InstRefIter& o) const { return ref == o.ref; }
     };
 
-    InstRefIter begin() { return {CIRInstructionRef{self, 0, package_ref.index}}; }
-    InstRefIter end()   { return {CIRInstructionRef{self, (isize)insts.count(), package_ref.index}}; }
+    InstRefIter begin() const { return {CIRInstructionRef{self, 0, package_ref.index}}; }
+    InstRefIter end()   const { return {CIRInstructionRef{self, (isize)insts.count(), package_ref.index}}; }
 };
 
 
@@ -123,10 +123,10 @@ struct CIRPackage {
     Array<FuncCallKey> comptime_func_calls;
 
 
-    CIRInstruction* inst(CIRInstructionRef ref);
-    const CIRInstruction* inst(CIRInstructionRef ref) const;
-    CIRBlock* block(CIRBlockRef ref);
-    const CIRBlock* block(CIRBlockRef ref) const;
+    CIRInstruction& inst_mut(CIRInstructionRef ref);
+    const CIRInstruction& inst(CIRInstructionRef ref) const;
+    CIRBlock& block_mut(CIRBlockRef ref);
+    const CIRBlock& block(CIRBlockRef ref) const;
 
     Ref<CIRResultInstance> get_result_instance(FuncCallKey key);
 
@@ -142,7 +142,7 @@ CIRPackage make_cir_package(xpAllocator allocator);
 
 struct CIRResultContext;
 
-bool is_pure_comptime_func(CIRFunctionDeclInfo& func, const CIRResultContext& ctx);
+bool is_pure_comptime_func(const CIRFunctionDeclInfo& func, const CIRResultContext& ctx);
 void dump_cir_package(CIRPackage *file);
 
 

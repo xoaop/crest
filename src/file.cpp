@@ -9,21 +9,21 @@
 #include <vector>
 
 std::string get_program_path() {
-    // 方法1：先尝试固定大小缓冲区（避免 NULL,0 在某些环境下失败）
+    // 方法1：先尝试固定大小缓冲区（避免 nullptr,0 在某些环境下失败）
     std::vector<wchar_t> buffer(MAX_PATH + 1);
-    DWORD len = GetModuleFileNameW(NULL, buffer.data(), static_cast<DWORD>(buffer.size()));
+    DWORD len = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     
     if (len == 0) {
         DWORD err = GetLastError();
         if (err == ERROR_INSUFFICIENT_BUFFER) {
             // 缓冲区太小，需要更大空间：再次调用获取所需大小
-            DWORD needed = GetModuleFileNameW(NULL, NULL, 0);
+            DWORD needed = GetModuleFileNameW(nullptr, nullptr, 0);
             if (needed == 0) {
                 // 二次失败，放弃
                 return "";
             }
             buffer.resize(needed + 1);
-            len = GetModuleFileNameW(NULL, buffer.data(), static_cast<DWORD>(buffer.size()));
+            len = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
             if (len == 0) {
                 return "";
             }

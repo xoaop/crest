@@ -49,8 +49,10 @@ target_link_libraries(crest PRIVATE "${LLVM_C_LIB}")
 if(WIN32)
     # clang++ 是 GNU 风格驱动，需 -Wl, 转义
     target_link_options(crest PRIVATE -Wl,/stack:16777216)
+    target_link_libraries(crest PRIVATE dbghelp)
 else()
-    target_link_options(crest PRIVATE -Wl,-z,stacksize=16777216)
+    # -rdynamic：backtrace_symbols 才能取到函数名
+    target_link_options(crest PRIVATE -Wl,-z,stacksize=16777216 -rdynamic)
 endif()
 
 # Windows：编译后把 LLVM-C.dll 复制到可执行文件同目录（运行依赖）
