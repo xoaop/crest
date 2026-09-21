@@ -2321,13 +2321,13 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
         return INVALID_INST;
     };
 
-    // 条件编译期已知：只分析活臂，死臂整支不碰
+    // 条件在编译期已知: 只分析活分支, 死分支忽略
     if(has_result_val(cond_inst)) {
         CIRBlockRef live_blk = ResultValue(cond_inst).bool_val() ? info.true_block : info.false_block;
         analyze_block(live_blk, pc_ref);
 
         const auto live_blk_as_inst = CIRInstructionRef(live_blk);
-        if(has_error({live_blk_as_inst})) {
+        if(has_error(live_blk_as_inst)) {
             return make_result(pc_ref, ResultDesc::make_error());
         }
 

@@ -60,7 +60,7 @@ void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
     auto& cir_pkg = pkg->cir_package;
 
     // 添加package的顶级Block
-    curr_pkg->top_blk = curr_pkg->create_block(false, false, false);
+    curr_pkg->top_blk = Begin_Block(true, true);
     block_stack.push_back(curr_pkg->top_blk);
     defer(block_stack.pop_back());
 
@@ -132,7 +132,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
         curr_func_body_block = saved_curr_func_body_block;
     });
 
-    CIRBlockRef def_blk = Begin_Block(fd, true, true);
+    CIRBlockRef def_blk = Begin_Block(true, true);
 
     CIRFunctionDeclInfo func = {};
     func.return_count = 1;
@@ -181,7 +181,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
 
     // 签名(形参类型 + 返回类型)单独成块: 结构上把签名与声明/函数体分开,
     // 也让 $T 实例化能只重跑这一块
-    CIRBlockRef sig_blk = Begin_Block(fd, true, true);
+    CIRBlockRef sig_blk = Begin_Block(true, true);
 
     // 1. 每个参数：类型 block + 分配 slot
     auto param_decls = make_array<CIRVariableDeclInfo>(curr_pkg_ref->stage_allocator);
@@ -211,7 +211,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
     } else if(fd->FunctionDeclValue.return_type_ast != nullptr) {
         func.return_type_inst = build_block_inst_for_expr(fd->FunctionDeclValue.return_type_ast, true, true);
     } else {
-        CIRBlockRef rt_blk = Begin_Block(fd, true, true);
+        CIRBlockRef rt_blk = Begin_Block(true, true);
 
         auto val = make_value(type_type());
         val.type_val(easy_type(Type_void));
@@ -241,7 +241,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(Ast *fd, std::optional<Ref<SymbolI
     // TODO: externC特殊处理, 后面完善些, 现在太丑
     if(!func.is_extern_c && !func.is_builtin) {
         // body 靠 fd.body_inst 显式下降（非父块扫描），不发 BlockRef，句柄即块本身
-        CIRBlockRef body_blk = Begin_Block(fd->FunctionDeclValue.block, false, false);
+        CIRBlockRef body_blk = Begin_Block(false, false);
         auto body_inst = CIRInstructionRef(body_blk);
         curr_func_body_block = body_inst;
 
@@ -291,7 +291,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_ast_block(Ast *block_ast, bool new_
     CIRInstructionRef block_inst = INVALID_INST;
     CIRBlockRef block_blk = INVALID_BLOCK;
     if(new_ir_block) {
-        block_blk = Begin_Block(block_ast, false, false);
+        block_blk = Begin_Block(false, false);
     }
 
 
@@ -364,8 +364,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
                 build_inst_for_ast_block(if_stmt.else_block, true, false, &else_blk);
             } else {
                 // 没有 else 块的 if：空块，CondBr 的 exit→merge 桥接即可
-                else_blk = curr_pkg->create_block(false, false, false);
-                block_stack.push_back(else_blk);
+                else_blk = Begin_Block(false, false);
                 End_Block();
             }
 
@@ -405,12 +404,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
         } break;
 
         case AstType_IfExpr: {
-            // 值被丢弃，类型仍要确定化
             auto value_inst = build_inst_for_expr(stmt);
-            Make_Instruction<CIROperator::DetermineType>(stmt, {
-                .determining_inst = value_inst,
-                .type_inst = INVALID_INST,
-            });
+            // Make_Instruction<CIROperator::DetermineType>(stmt, {
+            //     .determining_inst = value_inst,
+            //     .type_inst = INVALID_INST,
+            // });
         } break;
 
         default: {
@@ -441,7 +439,7 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
         }
     }
 
-    CIRBlockRef loop_blk = Begin_Loop(stmt);
+    CIRBlockRef loop_blk = Begin_Loop();
     auto loop_inst = CIRInstructionRef(loop_blk);   // break 目标 = 循环块自己（裸句柄）
 
     // Build condition inside loop (re-evaluated each iteration)
@@ -458,17 +456,16 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
         cond_inst = Make_Instruction<CIROperator::ConstantValue>(stmt, { .value = true_val });
     }
 
-    auto body_blk = curr_pkg->create_block(false, false, false);
-    block_stack.push_back(body_blk);
+    auto body_blk = Begin_Block(false, false);
     {
         defer(End_Block());
 
-        CIRBlockRef user_blk = Begin_Block(stmt, false, false);
+        CIRBlockRef user_blk = Begin_Block(false, false);
         auto user_block = CIRInstructionRef(user_blk);   // continue 的 break 目标：块自己
         {
             loop_body_block_stack.push_back(user_block);
             defer({
-                XP_ASSERT_DEFAULT(loop_body_block_stack.back() == user_block);
+                ASSERT(loop_body_block_stack.back() == user_block);
                 loop_body_block_stack.pop_back();
             });
 
@@ -490,8 +487,7 @@ void CIRBuilder::build_inst_for_for_stmt(Ast *stmt) {
         }
     }
 
-    auto exit_blk = curr_pkg->create_block(false, false, false);
-    block_stack.push_back(exit_blk);
+    auto exit_blk = Begin_Block(false, false);
     {
         defer(End_Block());
         New_Break(loop_inst, INVALID_INST, stmt);
@@ -599,7 +595,7 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
 
 
 CIRInstructionRef CIRBuilder::build_block_inst_for_expr(Ast *expr, bool is_comptime_block, bool immediate_eval) {
-    CIRBlockRef blk = Begin_Block(expr, is_comptime_block, immediate_eval);
+    CIRBlockRef blk = Begin_Block(is_comptime_block, immediate_eval);
 
     auto value_inst = build_inst_for_expr(expr);
     New_Break(CIRInstructionRef(blk), value_inst, expr);   // break 到块自己（裸句柄）
@@ -751,8 +747,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             CIRBlockRef true_blk = INVALID_BLOCK;
             {
-                true_blk = curr_pkg->create_block(false, false, false);
-                block_stack.push_back(true_blk);
+                true_blk = Begin_Block(false, false);
                 defer(End_Block());
 
                 auto then_inst = build_inst_for_expr(expr->IfExpr.then_expr);
@@ -761,8 +756,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             CIRBlockRef false_blk = INVALID_BLOCK;
             {
-                false_blk = curr_pkg->create_block(false, false, false);
-                block_stack.push_back(false_blk);
+                false_blk = Begin_Block(false, false);
                 defer(End_Block());
 
                 auto else_inst = build_inst_for_expr(expr->IfExpr.else_expr);
@@ -780,7 +774,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_BinaryExpr: {
 
             if(is_logic_operator(expr->BinaryExpr.op)) {
-                CIRBlockRef result_blk = Begin_Block(expr, false, false);
+                CIRBlockRef result_blk = Begin_Block(false, false);
 
                 auto left_inst  = build_inst_for_expr(expr->BinaryExpr.left);
 
@@ -824,8 +818,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
                 CIRBlockRef true_blk = INVALID_BLOCK;
                 {
-                    true_blk = curr_pkg->create_block(false, false, false);
-                    block_stack.push_back(true_blk);
+                    true_blk = Begin_Block(false, false);
                     defer(End_Block());
 
                     auto right_inst = build_inst_for_expr(expr->BinaryExpr.right);
@@ -842,8 +835,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
                 CIRBlockRef false_blk = INVALID_BLOCK;
                 {
-                    false_blk = curr_pkg->create_block(false, false, false);
-                    block_stack.push_back(false_blk);
+                    false_blk = Begin_Block(false, false);
                     defer(End_Block());
 
                     auto false_val = make_value(easy_type(Type_bool));
@@ -1051,7 +1043,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_StructDeclValue: {
             auto scope_guard = ScopeGuard(this, expr);
 
-            CIRBlockRef struct_decl_blk = Begin_Block(expr, true, false);
+            CIRBlockRef struct_decl_blk = Begin_Block(true, false);
 
             // 1. GetOrInitStruct
             auto decl_init = Make_Instruction<CIROperator::GetOrInitStruct>(expr, {
@@ -1103,7 +1095,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             if(expr->EnumDecl.type_ast != nullptr) {
                 tag_type_inst = build_block_inst_for_expr(expr->EnumDecl.type_ast, true, false);
             } else {
-                CIRBlockRef ti_blk = Begin_Block(expr, true, false);
+                CIRBlockRef ti_blk = Begin_Block(true, false);
 
                 auto val = make_value(type_type());
                 val.type_val(easy_type(Type_i32));
@@ -1159,7 +1151,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         case AstType_UnionDecl: {
             auto scope_guard = ScopeGuard(this, expr);
 
-            CIRBlockRef union_decl_blk = Begin_Block(expr, true, false);
+            CIRBlockRef union_decl_blk = Begin_Block(true, false);
 
             // 1. GetOrInitUnion
             auto decl_init = Make_Instruction<CIROperator::GetOrInitUnion>(expr, {
@@ -1282,8 +1274,12 @@ CIRInstruction& CIRBuilder::Instruction(CIRInstructionRef ref) {
 }
 
 
+// 在当前栈顶块发一条指向 blk 的 BlockRef 指令（下降标记）
+CIRInstructionRef CIRBuilder::New_BlockRef(Ast *ast, CIRBlockRef blk) {
+    return Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk, .in_which_block = block_stack.back() });
+}
 
-CIRBlockRef CIRBuilder::Begin_Block(Ast *ast, bool is_comptime, bool immediate_eval) {
+CIRBlockRef CIRBuilder::Begin_Block(bool is_comptime, bool immediate_eval) {
     ASSERT(!immediate_eval || is_comptime);
 
     CIRBlockRef blk = curr_pkg->create_block(is_comptime, immediate_eval, false);
@@ -1291,28 +1287,28 @@ CIRBlockRef CIRBuilder::Begin_Block(Ast *ast, bool is_comptime, bool immediate_e
     return blk;
 }
 
-// 在当前栈顶块发一条指向 blk 的 BlockRef 指令（下降标记）
-CIRInstructionRef CIRBuilder::New_BlockRef(Ast *ast, CIRBlockRef blk) {
-    return Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk, .in_which_block = block_stack.back() });
-}
-
 void CIRBuilder::End_Block() {
     block_stack.pop_back();
 }
 
 
-CIRBlockRef CIRBuilder::Begin_Loop(Ast *ast) {
-    CIRBlockRef blk = Begin_Block(ast, false, false);
-    curr_pkg->block_mut(blk).is_loop = true;
+CIRBlockRef CIRBuilder::Begin_Loop() {
+    CIRBlockRef blk = curr_pkg->create_block(false, false, true);
+
+    // 为什么不拓展Begin_Block? 因为我不确定以后的Loop会不会还是基于在Block上加is_loop flag来表示
+    // 所以我单独写一个Begin_Loop, 以便以后扩展
+    block_stack.push_back(blk);
     loop_stack.push_back(CIRInstructionRef(blk));   // break 目标 = 块自己（裸句柄）
+    
     return blk;
 }
 
 void CIRBuilder::End_Loop(CIRInstructionRef loop_inst) {
-    XP_ASSERT_DEFAULT(loop_stack.back() == loop_inst);
+    ASSERT(loop_stack.back() == loop_inst);
 
+    
     loop_stack.pop_back();
-    End_Block();
+    block_stack.pop_back(); // 同理如上
 }
 
 
@@ -1328,7 +1324,7 @@ bool CIRBuilder::Enter_Scope(Ast *ast) {
         return false;
     }
 
-    Ref<Scope> child_n{child};   // 已验证存在
+    Ref<Scope> child_n{child};
     auto ref = Make_Instruction<CIROperator::EnterScope>(nullptr, { .scope = child_n });
     curr_scope = child_n;
 
@@ -1341,7 +1337,7 @@ void CIRBuilder::Exit_Scope() {
         return;
     }
 
-    Ref<Scope> parent_n{parent.index};   // 已验证存在
+    Ref<Scope> parent_n{parent.index};
     auto ref = Make_Instruction<CIROperator::ExitScope>(nullptr, { .scope = parent_n });
     curr_scope = parent_n;
 }
