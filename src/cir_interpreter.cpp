@@ -1,4 +1,5 @@
 ﻿#include "cir_interpreter.hpp"
+#include "common.hpp"
 #include "compile.hpp"
 
 #include "context.hpp"
@@ -19,6 +20,7 @@
 #include <filesystem>
 
 #include "print.hpp"
+#include "xoaop.h"
 
 
 bool is_val_overflow(const Value& val) {
@@ -120,7 +122,7 @@ static Array<CIRInstructionRef> deps_of(const CIRInstruction* inst, xpAllocator 
 static Array<CIRInstructionRef> targets_of(const CIRInstruction* inst, xpAllocator alloc);
 
 
-void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, AnalyzeParams params) {
+bool Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, AnalyzeParams params) {
 
     CIRInstruction& inst = pkg->inst_mut(curr_inst_ref());
 
@@ -143,7 +145,9 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         if(has_error(dependent_inst_ref)) {
             Set_ResultError(curr_inst_ref());
 
-            auto tgt = targets_of(&inst, permanent_allocator());
+            auto tmp = xpAutoArenaRestore(temp_allocator());
+
+            auto tgt = targets_of(&inst, temp_allocator());
             for(auto& target_inst: tgt) {
                 if(target_inst != INVALID_INST) {
                     Set_ResultError(target_inst);
@@ -151,7 +155,7 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
             }
 
             curr_inst_ref().advance();
-            return;
+            return false;
         }
     }
 
@@ -165,6 +169,7 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         CIR_OPERATORS
 
 #undef X
+        UNREACHABLE();
     };
     
 
@@ -179,16 +184,23 @@ void Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         curr_inst_ref().advance();
     }
 
+    if(r.has_error()) {
+        return false;
+    } else {
+        return true;
+    }
 }
 
-void Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
+bool Interpreter::analyze_instruction_at(CIRInstructionRef at_ref) {
     new_analyze_flow(at_ref);
-    analyze_instruction();
+    const auto ret = analyze_instruction();
     recover_analyze_flow();
+
+    return ret;
 }
 
 
-void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
+bool Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
     auto& block_info = pkg->block(blk);
 
     new_analyze_flow(CIRInstructionRef{blk, 0, pkg->package_ref.index});
@@ -206,12 +218,14 @@ void Interpreter::analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef
         force_eval_mode.has_value() ? (int)*force_eval_mode : -1,
         pushed_eval_mode, (int)curr_eval_mode(), eval_mode_stack.count);
 
-    analyze_block_insts(blk, target);
+    const auto result = analyze_block_insts(blk, target);
 
     if(pushed_eval_mode) {
         eval_mode_stack.pop_back();
     }
     recover_analyze_flow();
+
+    return result;
 }
 
 void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
@@ -231,9 +245,10 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
     recover_analyze_flow();
 }
 
-void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
+bool Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
     auto& block_info = pkg->block(blk);
 
+    bool result = true;
     for(;;) {
 
         // @note: 目前假设执行一个block时, 执行完一条指令, package不会被修改, 即使是Call了不同package的function, 执行完了也会回到当前package
@@ -242,11 +257,16 @@ void Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstruct
         bool no_target_result = !(target.has_value() && has_result_val(target.value()));
 
         if(is_in_same_block && is_in_bounds && no_target_result) {
-            analyze_instruction();
+            const auto res = analyze_instruction();
+            if(!res) {
+                result = res;
+            }
         } else {
             break;
         }
     }
+
+    return result;
 }
 
 Value Interpreter::eval_GetOrInitStruct(CIRInstructionRef ref) {
@@ -312,7 +332,7 @@ void Interpreter::pop_eval_instance() {
 }
 
 bool Interpreter::has_result_val(CIRInstructionRef ref) {
-    return result_context().result_of(ref).state == CIRResultState::WholeValue;
+    return ResultValueOpt(ref).has_value();
 }
 
 bool Interpreter::has_result_val(std::initializer_list<CIRInstructionRef> refs) {
@@ -334,8 +354,7 @@ bool Interpreter::has_result_val(const Array<CIRInstructionRef>& refs) {
 }
 
 bool Interpreter::has_result_type(CIRInstructionRef ref) {
-    auto state = result_context().result_of(ref).state;
-    return state == CIRResultState::OnlyType || state == CIRResultState::WholeValue;
+    return ResultTypeOpt(ref).has_value();
 }
 
 bool Interpreter::has_error(CIRInstructionRef ref) {
@@ -383,14 +402,25 @@ void Interpreter::set_result_state(CIRInstructionRef ref, CIRResultState state) 
 
 
 TypeRef Interpreter::ResultType(CIRInstructionRef ref) {
-    auto& res = result_context().result_of(ref);
-    XP_ASSERT_DEFAULT(res.state == CIRResultState::OnlyType || res.state == CIRResultState::WholeValue || res.state == CIRResultState::InProgress);
-    return res.type();
+    auto res_opt = ResultTypeOpt(ref);
+
+    if(!res_opt) {
+        DEBUG_PANIC(
+            "trying to get type of instruction that doesn't have a type yet: ref: {}, curr_pc: {}",
+            ref, curr_inst_ref()
+        );
+    }
+
+    return res_opt.value();
 }
 
-void Interpreter::Set_ResultType(CIRInstructionRef ref, TypeRef type) {
-    ASSERT_MSG(type != nullptr, "cannot set result type to null");
-    result_context().result_of(ref).set_type(type);
+std::optional<TypeRef> Interpreter::ResultTypeOpt(CIRInstructionRef ref) {
+    auto& res = result_context().result_of(ref);
+    if(res.state == CIRResultState::OnlyType || res.state == CIRResultState::WholeValue || res.state == CIRResultState::InProgress) {
+        return res.type();
+    } else {
+        return std::nullopt;
+    }
 }
 
 Value Interpreter::ResultValue(CIRInstructionRef ref) {
@@ -417,6 +447,10 @@ std::optional<Value> Interpreter::ResultValueOpt(CIRInstructionRef ref) {
     return res.actual_val();
 }
 
+void Interpreter::Set_ResultType(CIRInstructionRef ref, TypeRef type) {
+    ASSERT_MSG(type != nullptr, "cannot set result type to null");
+    result_context().result_of(ref).set_type(type);
+}
 
 void Interpreter::Set_ResultValue(CIRInstructionRef ref, Value val) {
     DEBUG_TRACE("Set_ResultValue: ref: {}", ref);
@@ -1627,11 +1661,13 @@ AnalyzeResult Interpreter::analyze_Break(const CIRBreakInfo& info, CIRInstructio
 
         // @bug: 目前在编译期执行时, 还不存在无target的break, 只有loop block的break才无target, 但是现在还不支持loop block的编译期执行, 2x2的bool矩阵正好只有对角线, 才无问题。
         // @bug: 如果要修复, 得支持在fulleval时修改curr_inst_ref, 让上层循环可以通过curr_inst_ref来判断是否要退出循环, 而不是目前的通过target_block来判断
-        // FullEval：写值到目标块
-        if(curr_eval_mode() == EvalMode::FullEval && has_result_val(info.break_value_inst)) {
+        // 值指令有值就递送：FullEval，或目标块以表达式产出值（yields_value）——后者让运行时臂的编译期常量也进块，块 = 类型 + 值
+        const bool target_yields_value = pkg->block(target_block.block_ref).yields_value;
+        if(has_result_val(info.break_value_inst)
+           && (curr_eval_mode() == EvalMode::FullEval || target_yields_value)) {
 
             // 真实 BlockRef 指令（loop break）才改 pc 跳转；块句柄 {blk,-1}（if 表达式臂）无此指令，控制流由 analyze_block recover 处理
-            if(target_block.inst_index != INVALID_INST_INDEX) {
+            if(curr_eval_mode() == EvalMode::FullEval && target_block.inst_index != INVALID_INST_INDEX) {
                 const CIRBlockRefInfo& block_ref_info = pkg->inst(target_block).info<CIROperator::BlockRef>();
                 auto new_curr_inst_ref = curr_inst_ref();
                 new_curr_inst_ref.block_ref = block_ref_info.in_which_block;
@@ -2290,12 +2326,8 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
 
     auto cond_inst = info.condition_inst;
 
-    // 条件未就绪：&&/|| 的 lowering 把条件做成 BlockRef，可能排在本指令之后（同 CondBr）
     if(!has_result_type(cond_inst)) {
-        analyze_instruction_at(cond_inst);
-    }
-    if(!has_result_type(cond_inst)) {
-        return {};
+        return make_result(pc_ref, inst_error(pc_ref, "Compiler bug: IfExpr cond result_type not ready"));
     }
 
 
@@ -2310,54 +2342,29 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
 
     ASSERT(info.true_block != INVALID_BLOCK && info.false_block != INVALID_BLOCK);
 
-    // 臂值 = 臂块末尾 Break 递送的那条指令（后端也读它，定型要写到它身上）
-    auto arm_value_inst = [&](CIRBlockRef arm_blk) -> CIRInstructionRef {
-        auto& insts = pkg->block(arm_blk).insts;
-        for(isize i = insts.count() - 1; i >= 0; i--) {
-            if(insts[i].op == CIROperator::Break) {
-                return insts[i].info<CIROperator::Break>().break_value_inst;
-            }
-        }
-        return INVALID_INST;
-    };
-
     // 条件在编译期已知: 只分析活分支, 死分支忽略
     if(has_result_val(cond_inst)) {
         CIRBlockRef live_blk = ResultValue(cond_inst).bool_val() ? info.true_block : info.false_block;
-        analyze_block(live_blk, pc_ref);
-
-        const auto live_blk_as_inst = CIRInstructionRef(live_blk);
-        if(has_error(live_blk_as_inst)) {
+        
+        if(!analyze_block(live_blk, pc_ref)) {
             return make_result(pc_ref, ResultDesc::make_error());
         }
 
-        TypeRef live_type = ResultType(live_blk_as_inst);
-        const auto live_val_opt = ResultValueOpt(live_blk_as_inst);
-
-        // 结果编译期确定：值/类型原样透传，残留 untyped 交下游 determine_type_of 收敛
+        // 结果编译期确定：活臂块的结果整体搬到自身，残留 untyped 交下游 determine_type_of 收敛
         // （有外层类型转外层，无则默认）。IfExpr 自身恒为编译期常量，后端折叠不读活臂块。
-        AnalyzeResult r;
-        if(live_val_opt.has_value()) {
-            r.writes.push_back({pc_ref, ResultDesc::make_value(live_type, live_val_opt.value())});
-        } else {
-            r.writes.push_back({pc_ref, ResultDesc::make_type_only(live_type)});
-        }
-        return r;
+        const auto live_blk_as_inst = CIRInstructionRef(live_blk);
+        return make_result(pc_ref, ResultDesc::from(result_context().result_of(live_blk_as_inst)));
     }
 
     // 条件运行时未知：两臂都分析，类型统一
-    analyze_block(info.true_block, pc_ref);
-    analyze_block(info.false_block, pc_ref);
-
-    const auto true_blk_as_inst = CIRInstructionRef(info.true_block);
-    const auto false_blk_as_inst = CIRInstructionRef(info.false_block);
-
-    if(has_error({true_blk_as_inst, false_blk_as_inst})) {
+    const auto then_ok = analyze_block(info.true_block, pc_ref);
+    const auto else_ok = analyze_block(info.false_block, pc_ref);
+    if(!then_ok || !else_ok) {
         return make_result(pc_ref, ResultDesc::make_error());
     }
 
-    const auto then_inst = arm_value_inst(info.true_block);
-    const auto else_inst = arm_value_inst(info.false_block);
+    const auto true_blk_as_inst = CIRInstructionRef(info.true_block);
+    const auto false_blk_as_inst = CIRInstructionRef(info.false_block);
 
     const auto then_type = ResultType(true_blk_as_inst);
     const auto else_type = ResultType(false_blk_as_inst);
@@ -2365,29 +2372,21 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
     AnalyzeResult r;
     TypeRef result_type = nullptr;
 
-    // 消 untyped：determine_type_of 定臂值指令，臂块句柄另外同步（重入读句柄），nullptr = 已报错
-    auto resolve_arm = [&](CIRInstructionRef arm_inst, CIRBlockRef arm_blk, std::optional<TypeRef> target) -> TypeRef {
-        TypeRef t = determine_type_of(arm_inst, target, pc_ref, r.writes);
-        if(t != nullptr) {
-            r.writes.push_back({CIRInstructionRef(arm_blk), ResultDesc::make_type_only(t)});
-        }
-        return t;
-    };
-
     // 两臂类型合并：都确定相同则直接用；都 untyped 先定 then 再拿它收敛 else；一确定一未定则传染；否则报错
+    // 臂结果落在臂块句柄上，直接对句柄 determine_type_of 收敛 untyped，nullptr = 已报错
     if(then_type == else_type) {
         if(is_untyped_type(then_type)) {
-            result_type = resolve_arm(then_inst, info.true_block, std::nullopt);
+            result_type = determine_type_of(true_blk_as_inst, std::nullopt, pc_ref, r.writes);
             if(result_type != nullptr) {
-                result_type = resolve_arm(else_inst, info.false_block, result_type);
+                result_type = determine_type_of(false_blk_as_inst, result_type, pc_ref, r.writes);
             }
         } else {
             result_type = then_type;
         }
     } else if(is_untyped_type(then_type) && !is_untyped_type(else_type)) {
-        result_type = resolve_arm(then_inst, info.true_block, else_type);
+        result_type = determine_type_of(true_blk_as_inst, else_type, pc_ref, r.writes);
     } else if(is_untyped_type(else_type) && !is_untyped_type(then_type)) {
-        result_type = resolve_arm(else_inst, info.false_block, then_type);
+        result_type = determine_type_of(false_blk_as_inst, then_type, pc_ref, r.writes);
     } else {
         r.writes.push_back({pc_ref, inst_error(pc_ref, "if 表达式两臂类型必须相同（实际 '{}' 与 '{}'）", then_type->name(), else_type->name())});
     }

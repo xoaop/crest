@@ -66,7 +66,7 @@ struct CIRBuilder {
         return ref;
     }
 
-    CIRBlockRef Begin_Block(bool is_comptime, bool immediate_eval);
+    CIRBlockRef Begin_Block(bool is_comptime, bool immediate_eval, bool yields_value = false);
     CIRInstructionRef New_BlockRef(Ast *ast, CIRBlockRef blk);
     void End_Block();
     CIRBlockRef Begin_Loop();

@@ -507,8 +507,8 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     auto result = result_ctx.result_of(ref);
     if(result.state == CIRResultState::WholeValue) {
         Value v = result.actual_val();
-        DEBUG_TRACE("get_llvm_val_from_inst_ref WholeValue: ref={}, op={}, v.type kind={}",
-            ref, result_ctx.pkg()->inst(ref).to_string(), (int)(v.type ? v.type->kind : -1));
+        DEBUG_TRACE("get_llvm_val_from_inst_ref WholeValue: ref={}, v.type kind={}",
+            ref, (int)(v.type ? v.type->kind : -1));
         LLVMValueRef llvm_val;
         if(is_function_type(v.type)) {
             // 函数值：走原子入口（声明 + body 一体），inst_vals 命中即完整
@@ -540,14 +540,14 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
         if(null_cached) return *null_cached;
     }
 
-    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} op={} state={} call_instance={} curr_gen_ref={} curr_gen_op={}", ref, (int)result_ctx.pkg()->inst(ref).op, (int)result.state, result_ctx.call_instance().index, debug_curr_gen_ref, (int)result_ctx.pkg()->inst(debug_curr_gen_ref).op);
+    DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} state={} call_instance={} curr_gen_ref={}", ref, (int)result.state, result_ctx.call_instance().index, debug_curr_gen_ref);
     std::unreachable();
     return nullptr;
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
     Ref<CIRInstResult> key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, result_ctx.call_instance());
-    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={} op={}", ref, (void*)result_ctx.pkg(), result_ctx.call_instance().index, (int)result_ctx.pkg()->inst(ref).op);
+    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)result_ctx.pkg(), result_ctx.call_instance().index);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
     // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
     if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
@@ -1026,6 +1026,13 @@ void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef fir
 
 void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
     debug_curr_gen_ref = ref;
+
+
+    if(ref.is_block()) {
+        UNREACHABLE();
+    }
+
+
     const auto& inst = result_ctx.pkg()->inst(ref);
     DEBUG_TRACE("gen_ir_inst ref=%{} op={}, loc= {}", ref, string(inst.op), inst.src_loc);
 

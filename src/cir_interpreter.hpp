@@ -61,6 +61,24 @@ struct ResultDesc {
         return r;
     }
 
+    static ResultDesc from(const CIRInstResult& src) {
+        ASSERT(src.state == CIRResultState::WholeValue || src.state == CIRResultState::OnlyType || src.state == CIRResultState::Error);
+        
+        ResultDesc r;
+        r.state = src.state;
+        r.value_kind = src.value_kind;
+        r.implicit_type = src.implicit_type;
+        
+        r.outstanding_type = src.type();
+        if(src.state == CIRResultState::OnlyType) {
+            r.val.type = src.actual_type();
+        } else if(src.state == CIRResultState::WholeValue) {
+            r.val = src.actual_val();
+        }
+
+        return r;
+    }
+
     TypeRef type() const { return outstanding_type; }
     TypeRef actual_type() const { return val.type; }
     const Value& val_ref() const { return val; }
@@ -98,6 +116,15 @@ struct AnalyzeResult {
 
     AnalyzeResult();
     AnalyzeResult(ResultDesc result, CIRInstructionRef ref);
+
+    inline bool has_error() {
+        for(const auto& w: writes) {
+            if(w.result.state == CIRResultState::Error) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 enum class EvalMode {
@@ -147,13 +174,13 @@ struct Interpreter {
 
     void analyze_cir_package(Ref<Package> pkg_ref);
 
-    void analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
-    void analyze_instruction_at(CIRInstructionRef at_ref);
+    bool analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
+    bool analyze_instruction_at(CIRInstructionRef at_ref);
 
 
-    void analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);  // 进入块 blk 分析；target = 块的 handle（结果位置，可选：无结果位置的块传 nullopt）
+    bool analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);  // 进入块 blk 分析；target = 块的 handle（结果位置，可选：无结果位置的块传 nullopt）
     void analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 循环块分析（完全独立）：入口 + 迭代 + 编译时检查 + 恢复
-    void analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
+    bool analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
     bool analyze_symbol_of_package(Ref<SymbolInfo> sym_ref);
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
@@ -164,6 +191,7 @@ struct Interpreter {
     TypeRef ResultType(CIRInstructionRef ref);
     Value ResultValue(CIRInstructionRef ref);
 
+    std::optional<TypeRef> ResultTypeOpt(CIRInstructionRef ref);
     std::optional<Value> ResultValueOpt(CIRInstructionRef ref);
 
     void Set_ResultType(CIRInstructionRef ref, TypeRef type);

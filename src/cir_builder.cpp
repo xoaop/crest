@@ -595,7 +595,7 @@ void CIRBuilder::build_inst_for_return_stmt(Ast *return_stmt_ast) {
 
 
 CIRInstructionRef CIRBuilder::build_block_inst_for_expr(Ast *expr, bool is_comptime_block, bool immediate_eval) {
-    CIRBlockRef blk = Begin_Block(is_comptime_block, immediate_eval);
+    CIRBlockRef blk = Begin_Block(is_comptime_block, immediate_eval, true);
 
     auto value_inst = build_inst_for_expr(expr);
     New_Break(CIRInstructionRef(blk), value_inst, expr);   // break 到块自己（裸句柄）
@@ -747,7 +747,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             CIRBlockRef true_blk = INVALID_BLOCK;
             {
-                true_blk = Begin_Block(false, false);
+                true_blk = Begin_Block(false, false, true);
                 defer(End_Block());
 
                 auto then_inst = build_inst_for_expr(expr->IfExpr.then_expr);
@@ -756,7 +756,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
 
             CIRBlockRef false_blk = INVALID_BLOCK;
             {
-                false_blk = Begin_Block(false, false);
+                false_blk = Begin_Block(false, false, true);
                 defer(End_Block());
 
                 auto else_inst = build_inst_for_expr(expr->IfExpr.else_expr);
@@ -1279,10 +1279,10 @@ CIRInstructionRef CIRBuilder::New_BlockRef(Ast *ast, CIRBlockRef blk) {
     return Make_Instruction<CIROperator::BlockRef>(ast, { .block_ref = blk, .in_which_block = block_stack.back() });
 }
 
-CIRBlockRef CIRBuilder::Begin_Block(bool is_comptime, bool immediate_eval) {
+CIRBlockRef CIRBuilder::Begin_Block(bool is_comptime, bool immediate_eval, bool yields_value) {
     ASSERT(!immediate_eval || is_comptime);
 
-    CIRBlockRef blk = curr_pkg->create_block(is_comptime, immediate_eval, false);
+    CIRBlockRef blk = curr_pkg->create_block(is_comptime, immediate_eval, false, yields_value);
     block_stack.push_back(blk);
     return blk;
 }

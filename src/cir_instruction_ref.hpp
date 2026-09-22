@@ -36,6 +36,10 @@ struct CIRInstructionRef {
         ASSERT(blk != INVALID_BLOCK);
     }
 
+    bool is_block() const { 
+        return inst_index == INVALID_INST_INDEX;
+    }
+
     // 块内推进：只动 inst_index，block_ref 不变（不跨 Block）
     void advance(isize n = 1) { 
         inst_index += n; 

@@ -26,6 +26,7 @@ struct CIRBlock {
     bool is_comptime;
     bool immediate_eval;
     bool is_loop;                // 循环块标记（旧 Loop 指令已合并进 Block）
+    bool yields_value;           // 块作为表达式产出值：break 的值递送到块句柄当结果（含 TypeOnly 下的编译期常量）
 
     isize push_back_inst(CIRInstruction inst);
 
@@ -132,7 +133,7 @@ struct CIRPackage {
 
     CIRInstResult& result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance = {});
 
-    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop);
+    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false);
 };
 
 
