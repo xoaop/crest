@@ -11,16 +11,13 @@ namespace lcir {
 
 struct FunctionDecl {
     enum class Linkage {
-        PureDeclaration,     // 纯声明（无定义）
+        PureDeclaration = 0,     // 纯声明（无定义）
         Definition,          // 定义（有函数体）
         MergableDefinition,  // 可合并定义（COMDAT）
     } linkage;
 
-    xpString name;
-
-    CIRInstructionRef decl_inst;
-
-    Ref<CIRResultInstance> result_instance;
+    xpString raw_name;
+    Ref<CIRInstResult> decl_result;
 };
 
 
@@ -28,29 +25,25 @@ struct Module {
 
     static Module init(xpAllocator allocator) {
         auto m = Module {
-            .functions = make_array<FunctionDecl>(allocator),
+            .functions = xp_hash_map_make<Ref<CIRInstResult>, FunctionDecl>(allocator),
         };
 
         return m;
     }
 
-
-    Ref<Package> package;
-
-    Array<FunctionDecl> functions;
+    xpHashMap<Ref<CIRInstResult>, FunctionDecl> functions;   // func_key → 条目，插入即去重
 };
 
 
-FunctionDecl::Linkage classify_linkage(bool is_extern_c, bool is_builtin, bool has_symbol, bool is_instance);
-
-xpString mangle_name(Ref<CIRInstResult> func_key, bool is_extern_c, TypeRef signature);
+xpString mangle_name(Ref<CIRInstResult> key, std::optional<xpString> base_name_opt, bool is_extern_c, Ref<Package> package);
 
 template<class F>
 void within_instance(CIRResultContext& ctx, const FunctionDecl& fd, F&& body) {
     auto saved_ci = ctx.call_instance();
 
-    if(fd.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
-        ctx.enter_call_instance(fd.result_instance);
+    const auto result_instance = fd.decl_result.result_instance;
+    if(result_instance != Ref<CIRResultInstance>::INVALID_REF) {
+        ctx.enter_call_instance(result_instance);
     }
 
     body();

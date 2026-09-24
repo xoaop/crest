@@ -245,6 +245,8 @@ struct Interpreter {
 
     void apply_result(CIRInstructionRef target, const ResultDesc& result);
 
+    void capture_lcir_function(Ref<CIRInstResult> fk);   // 把被引用的函数值登记进 lcir 工作表
+
 
 
 #define X(name) AnalyzeResult analyze_##name(const CIR##name##Info& info, CIRInstructionRef pc_ref, const AnalyzeParams& params);

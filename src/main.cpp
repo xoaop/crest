@@ -178,6 +178,7 @@ int main(int argc, char** argv) {
     context()->all_packages = make_array<Package>(permanent_allocator());
     context()->all_scopes = make_array<Scope>(permanent_allocator());
     context()->static_mem.init(MemoryKind::String, permanent_allocator());
+    context()->lcir_modules = xp_hash_map_make<Ref<Package>, lcir::Module>(permanent_allocator());
 
     // 各包的 stage arena 统一在退出时回收（含以下所有报错早退路径）
     defer({
@@ -225,13 +226,26 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // TODO: move to a function
+    // std::for_each(context()->lcir_modules.begin(), context()->lcir_modules.end(), [](const auto& entry) {
+    //     auto& module = entry.value;
+
+    //     println_out("Module for package: {}", entry.key.unwrap().path);
+
+    //     std::for_each(module.functions.begin(), module.functions.end(), [](const auto& func) {
+    //         println_out("Function: {} (linkage: {})", func.value.raw_name, static_cast<int>(func.value.linkage));
+    //     });
+
+    //     println_out("");
+    // });
+
 
     init_llvm();
 
     std::filesystem::create_directories(context()->output_path);
 
-    LLVMIRGenerateConfig llvm_config = {};
-    Array<xpString> obj_paths = gen_ir_all_packages(&context()->all_packages, llvm_config);
+    LLVMIRGenerateConfig llvm_config;
+    Array<xpString> obj_paths = gen_ir_all_packages(context()->lcir_modules, llvm_config);
     
     mark_stage("generate LLVM IR");
 

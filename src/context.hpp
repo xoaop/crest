@@ -9,6 +9,8 @@
 #include "cir_builder.hpp"
 #include "scope.hpp"
 
+#include "lcir.hpp"
+
 struct ThreadPool;
 
 
@@ -34,6 +36,7 @@ struct Context {
 
     Array<Scope> all_scopes;
 
+    xpHashMap<Ref<Package>, lcir::Module> lcir_modules;
 
     ValueMemory static_mem;
 

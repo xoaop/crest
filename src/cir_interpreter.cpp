@@ -93,6 +93,8 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
 void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
     DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
 
+    context()->lcir_modules.insert(pkg, lcir::Module::init(permanent_allocator()));
+
     Interpreter interpreter(allocator);
     interpreter.analyze_cir_package(pkg);
 }
@@ -176,6 +178,11 @@ bool Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
     AnalyzeResult r = analyze_lambda();
     for(auto& w : r.writes) {
         apply_result(w.ref, w.result);
+
+        // 可达性捕获：被引用的函数值进 lcir 工作表（与 apply_result 平级，不塞进它内部）
+        if(w.result.state == CIRResultState::WholeValue && is_function_type(w.result.val_ref().type)) {
+            capture_lcir_function(w.result.val_ref().func_val().func_key);
+        }
     }
 
     if(r.next_pc.has_value()) {
@@ -604,7 +611,77 @@ static Array<CIRInstructionRef> targets_of(const CIRInstruction* inst, xpAllocat
 }
 
 
-// apply_result — 把 ResultDesc 写入目标指令的结果槽
+// 把一个被引用的函数值登记进 lcir 工作表：owner 包发定义，跨包引用在调用方补声明。
+// 纯编译期函数、编译期调用里顺带重分析的函数都不发运行期符号。
+void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
+    // 编译期调用里顺带重分析的函数不是运行期单态，跳过（真 $T 实例 is_generic_instance=true 仍收）
+    if(has_instance() && !curr_cache_key()->is_generic_instance) {
+        return;
+    }
+
+    const auto& finst = fk.cir_package->inst(fk.inst_ref);
+    if(finst.op != CIROperator::FunctionDecl) {
+        return;
+    }
+    const auto& fdecl = finst.info<CIROperator::FunctionDecl>();
+
+    auto ctx = CIRResultContext::create(fk.cir_package);
+    if(fk.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
+        ctx.enter_call_instance(fk.result_instance);
+    }
+    if(is_pure_comptime_func(fdecl, ctx)) {
+        return;
+    }
+
+    const bool has_symbol = finst.symbol != Ref<SymbolInfo>::INVALID_REF;
+    const xpString nm = lcir::mangle_name(
+        fk,
+        has_symbol ? std::optional<xpString>(finst.symbol->name) : std::nullopt,
+        fdecl.is_extern_c,
+        fk.cir_package->package_ref
+    );
+
+    const auto owner = fk.cir_package->package_ref;
+    const auto caller = pkg->package_ref;
+    const bool is_instance = fk.result_instance != Ref<CIRResultInstance>::INVALID_REF;
+
+    // owner 侧：由 owner 发定义。extern_c/builtin 只声明；实例/匿名走 COMDAT；具名普通定义
+    {
+        auto& owner_mod = context()->lcir_modules.get_or_insert(owner, [&]() {
+            return lcir::Module::init(permanent_allocator());
+        });
+
+        owner_mod.functions.get_or_insert(fk, [&]() {
+            const auto linkage = (fdecl.is_extern_c || fdecl.is_builtin)
+                ? lcir::FunctionDecl::Linkage::PureDeclaration
+                : (is_instance || !has_symbol)
+                    ? lcir::FunctionDecl::Linkage::MergableDefinition
+                    : lcir::FunctionDecl::Linkage::Definition;
+
+            return lcir::FunctionDecl{
+                .linkage = linkage,
+                .raw_name = nm,
+                .decl_result = fk,
+            };
+        });
+    }
+
+    // 调用方侧：跨包引用补一条声明，本模块 phase1 才能声明它
+    if(owner != caller) {
+        auto& caller_mod = context()->lcir_modules.get_or_insert(caller, [&]() {
+            return lcir::Module::init(permanent_allocator());
+        });
+
+        caller_mod.functions.get_or_insert(fk, [&]() {
+            return lcir::FunctionDecl{
+                .linkage = lcir::FunctionDecl::Linkage::PureDeclaration,
+                .raw_name = nm,
+                .decl_result = fk,
+            };
+        });
+    }
+}
+
 void Interpreter::apply_result(CIRInstructionRef ref, const ResultDesc& result) {
     if(result.state == CIRResultState::Error) {
         Set_ResultError(ref);  // 自动标记 targets
@@ -620,8 +697,7 @@ void Interpreter::apply_result(CIRInstructionRef ref, const ResultDesc& result) 
             res.implicit_type = result.implicit_type;
         }
         return;
-    }
-    if(result.state == CIRResultState::WholeValue) {
+    } else if(result.state == CIRResultState::WholeValue) {
         ASSERT_MSG(result.type() != nullptr, "cannot set result type to null");
 
         res.set_type(result.type());
@@ -630,6 +706,7 @@ void Interpreter::apply_result(CIRInstructionRef ref, const ResultDesc& result) 
         if(result.implicit_type.has_value()) {
             res.implicit_type = result.implicit_type;
         }
+        
         return;
     }
 }
@@ -2405,13 +2482,14 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
     // $T 泛型: 形参/返回类型都是 IdentVal(T), T 未填值时整份签名算不出来。
     // 判断条件是"T 有没有值"而非 has_generic_param_type —— 实例化会重跑本指令,
     // 用静态标记会第二次早退, 真签名永远算不出来。
-    bool has_unresolved_type_var = false;
-    for(auto type_var_inst : func.generic_param_type_var_insts) {
-        if(!has_result_val(type_var_inst)) {
-            has_unresolved_type_var = true;
-            break;
+    const bool has_unresolved_type_var = [&]() {
+        for(auto type_var_inst : func.generic_param_type_var_insts) {
+            if(!has_result_val(type_var_inst)) {
+                return true;
+            }
         }
-    }
+        return false;
+    }();
 
     if(has_unresolved_type_var) {
         // 发一个 type 未定但带 func_key 的函数值: 调用点据此找回本指令去实例化。
@@ -2470,11 +2548,11 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
     AnalyzeResult r;   // 自身函数类型值 + 可选 body 跳转
 
+    SymbolInfo* sym = try_access_val(inst(pc_ref).symbol);
     {
         TypeRef func_type_type = function_type(param_types, return_type);
         Value v = make_value(func_type_type);
 
-        SymbolInfo* sym = try_access_val(inst(pc_ref).symbol);
 
         {
             auto func_key = Ref<CIRInstResult>::make(pkg, pc_ref, result_context().call_instance());
@@ -2505,13 +2583,15 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         }
     }
 
+
+    bool is_pure_comptime = is_pure_comptime_func(func, result_context());
     if(func.is_extern_c || func.is_builtin) {
         // extern "C" / #builtin 没有函数体，不分析了
     } else {
         ASSERT_MSG(func.body_inst != INVALID_INST, "non-extern function must have body");
 
 
-        if(is_pure_comptime_func(func, result_context())) {
+        if(is_pure_comptime) {
             // 纯编译期函数：跳过 body（body 不在父块发 BlockRef，dispatch 默认 advance 越过 FunctionDecl 自身即可）
         } else {
             // 普通运行时函数：TypeOnly body — 外层 const 块可能是 FullEval，需强制 TypeOnly 隔离
@@ -2520,6 +2600,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         }
     }
 
+    // 函数登记进 lcir 工作表统一在 capture_lcir_function（apply_result 调用点平级）处理，这里不再收
     return r;
 }
 

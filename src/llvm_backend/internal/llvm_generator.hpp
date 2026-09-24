@@ -12,6 +12,7 @@
 #include "cir_instruction_ref.hpp"   // CIRInstructionRef / CIRBlockRef / Ref<CIRInstResult>
 #include "cir_inst.hpp"              // CIRFunctionDeclInfo / CIRInstruction
 #include "cir_package.hpp"           // CIRResultContext
+#include "lcir.hpp"                  // lcir::Module
 
 #include "llvm_global.hpp"              // 全部 LLVM-C 类型 / LLVMSession / g_llvm_session
 #include "llvm_basic_block_mapper.hpp"  // LLVMBasicBlockMapper
@@ -25,12 +26,6 @@ struct CIRPackage;
 
 struct IRSymbolTable {
     xpHashMap<Ref<SymbolInfo>, LLVMValueRef> local_vals;
-};
-
-
-struct LLVMLoopBlocks {
-    LLVMBasicBlockRef cond_block;
-    LLVMBasicBlockRef merge_block;
 };
 
 
@@ -58,8 +53,7 @@ struct LLVMGenerator {
 
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
     LLVMValueRef gen_abi_arg(LLVMValueRef val, int size);
-    void gen_ir_function(CIRInstructionRef func_ref, CIRPackage *target_cir_pkg = nullptr);
-    void gen_func_body(Ref<CIRInstResult> key, LLVMValueRef llvm_func);
+    void gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm_func);   // 体遍历核心（不含上下文切换/COMDAT）
 
     void gen_ir_inst(CIRInstructionRef ref);
     void gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, bool connect_to_parent = false);
@@ -68,7 +62,7 @@ struct LLVMGenerator {
     void gen_ir_binary_expr(CIRInstructionRef inst);
     void gen_ir_unary(CIRInstructionRef inst);
     void llvm_build_br_when_no_br(LLVMBasicBlockRef from, LLVMBasicBlockRef to);
-    xpString gen_ir_package(LLVMIRGenerateConfig config);
+    xpString gen_ir_package(const lcir::Module& mod, LLVMIRGenerateConfig config);
 
     // LLVMValueRef gen_ir_string_struct_value(xpString str);
 
@@ -95,9 +89,6 @@ struct LLVMGenerator {
     void Set_Curr_Inst_Pos_Before(LLVMValueRef inst);
 public:
     LLVMModuleState unit;   // 逐单元 LLVM 句柄（module + builder）
-
-    Array<LLVMLoopBlocks> loop_stack;
-
 
     Ref<Package> pkg;
 

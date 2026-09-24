@@ -3,6 +3,7 @@
 
 #include "parser.hpp"
 #include "package.hpp"
+#include "lcir.hpp"
 
 #include "llvm-c/Core.h"
 #include "llvm-c/Comdat.h"
@@ -15,7 +16,7 @@
 
 
 enum class LLVMIROptimizationLevel {
-    O0, // 不优化, 生成的IR更接近源代码, 适合调试
+    O0 = 0, // 不优化, 生成的IR更接近源代码, 适合调试
     O1, // 适度优化, 在不显著增加编译时间的前提下优化性能
     O2, // 大幅优化, 生成高性能的IR, 可能会显著增加编译时间
     O3, // 极限优化, 生成最高性能的IR, 可能会极大增加编译时间, 适合发布版本
@@ -31,7 +32,7 @@ struct LLVMIRGenerateConfig {
 
 
 void init_llvm();
-Array<xpString> gen_ir_all_packages(Array<Package>* all_packages, LLVMIRGenerateConfig config);
+Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config);
 
 
 
