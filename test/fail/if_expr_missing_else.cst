@@ -1,0 +1,8 @@
+// @fail
+// @error "expected else"
+
+// if 作表达式缺 else：解析报错，不能 assert 崩（曾崩在 BadExpr）
+main :: () -> i32 {
+    x := if true then 1;
+    return x;
+}

@@ -1,0 +1,11 @@
+// @fail
+// @error "类型标注必须是类型"
+
+// 用 if 选类型但活臂是值 5（非类型），当作类型标注：应报错，不能 assert 崩
+// （曾崩在 DetermineType 对非类型值调 type_val）
+T :: if false then i32 else 5
+
+main :: () -> i32 {
+    x : T = 0;
+    return x;
+}
