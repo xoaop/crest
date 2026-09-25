@@ -21,14 +21,17 @@ file(GLOB CREST_SOURCES
 
 add_executable(crest ${CREST_SOURCES})
 
-# src/ 为顶层 include 根（parser.hpp / llvm-c/ 等），llvm_backend/ 供
+# src/ 为顶层 include 根（parser.hpp 等），llvm_backend/ 供
 # main.cpp 直接引 llvm_generate_ir.hpp
-# third_party/xoaop 是 xoaop.h 库（git submodule）的模块化头文件目录，
-# 提供 xoaop.h + xoaop_*.h 子模块
+# third_party/ 下有两类外部依赖：
+#   xoaop     — xoaop.h 库（git submodule），提供 xoaop.h + xoaop_*.h 子模块
+#   llvm-c    — LLVM 21.1.6 官方 C API 头文件，与 bin/LLVM-C.lib 严格配套
+#               源码里写作 #include "llvm-c/Core.h"，故目录名必须是 llvm-c
 target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")
 
 # 所有配置：禁用异常 + i128 支持
