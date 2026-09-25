@@ -260,7 +260,7 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
     } else if(is_float_or_untyped) {
         result.set_type(v1.type);
     } else {
-        std::unreachable();
+        UNREACHABLE();
     }
     
 
@@ -363,7 +363,7 @@ ValueResult exec_unary(Value &operand, TokenType op) {
     } else if(is_bool) {
         result.set_type(easy_type(Type_bool));
     } else {
-        std::unreachable();
+        UNREACHABLE();
     }
 
     return ValueResult::ok(result);

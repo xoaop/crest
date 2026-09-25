@@ -514,7 +514,7 @@ struct CIRInstruction {
         CIR_OPERATORS
 #undef X
 
-        std::unreachable();
+        UNREACHABLE();
     }
 
 

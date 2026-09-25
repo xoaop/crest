@@ -412,7 +412,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(Ast *stmt) {
         } break;
 
         default: {
-            std::unreachable();
+            UNREACHABLE();
         } break;
     }
 
@@ -811,7 +811,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
                         } break;
 
                         default: {
-                            std::unreachable();
+                            UNREACHABLE();
                         } break;
                     }
                 }
@@ -1218,7 +1218,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         default: {
 
             DEBUG_LOG("Unsupported AST type for CIR generation: {}", ast_string(expr->type));
-            std::unreachable();
+            UNREACHABLE();
         } break;
     }
 

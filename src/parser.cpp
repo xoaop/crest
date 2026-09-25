@@ -590,7 +590,7 @@ Ast *parse_var_decl(Parser *p) {
         } break;
 
         default: {
-            std::unreachable();
+            UNREACHABLE();
         } break;
 
     }
@@ -1029,7 +1029,7 @@ Ast *parse_string_literal(Parser *p) {
         return a;
     } else {
         // 代表解析失败, 已经报告了错误, 这里返回一个BadExpr占位符就行了
-        std::unreachable();
+        UNREACHABLE();
         // Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
         // return a;
     }
@@ -1514,7 +1514,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     // 检查解析完成
     if(end == str) {
-        std::unreachable();
+        UNREACHABLE();
     }
 
     // 检查溢出(字面量)
@@ -1577,7 +1577,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
 
     // 检查解析完成
     if(end == str) {
-        std::unreachable();
+        UNREACHABLE();
     }
 
     // 检查溢出(字面量)

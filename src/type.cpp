@@ -542,7 +542,7 @@ int get_type_rank(TypeRef t) {
         case Type_isize:
         case Type_usize: return (int)(sizeof(void*) * 8);
         default: 
-            std::unreachable();
+            UNREACHABLE();
             return 0;
     }
 }
@@ -648,7 +648,7 @@ bool check_integer_overflow(i128 val, TypeRef type) {
         case Type_usize:
             return (val < 0 || val > (i128)UINTPTR_MAX);
         default:
-            std::unreachable();
+            UNREACHABLE();
             return false;
     }
 }
@@ -662,7 +662,7 @@ bool check_float_overflow(double val, TypeRef type) {
         case Type_f64:
             return (val < -DBL_MAX || val > DBL_MAX);
         default:
-            std::unreachable();
+            UNREACHABLE();
             return false;
     }
 }

@@ -355,10 +355,29 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     if(!(analyser.current_scope->scope_type == ScopeType::File)) {
         SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
         add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
+        
+        if(val_ast->type == AstType_IfExpr) {
+            // NOTE: 对于 ifExpr, then/else 分支的 ast_symbol 都要指向同一个符号, 以便在 CIR 阶段求值时, then/else 分支的 CIRInstResult 都能指向同一个符号定义
+            // ! IMPLICIT: 如果 If_Expr 的 cond_expr 得能编译期确定, 不然会同时解析两个分支, 未定义行为
+
+            auto& if_expr = val_ast->IfExpr;
+
+            if_expr.then_expr->ast_symbol = Ref<SymbolInfo>{
+                .scope = analyser.current_scope,
+                .name = const_decl_ast->ConstDecl.name
+            };
+            if_expr.else_expr->ast_symbol = Ref<SymbolInfo>{
+                .scope = analyser.current_scope,
+                .name = const_decl_ast->ConstDecl.name
+            };
+
+        } else {
+        }
         const_decl_ast->ast_symbol = Ref<SymbolInfo>{
             .scope = analyser.current_scope,
             .name = const_decl_ast->ConstDecl.name
         };
+
     }
 }
 
@@ -731,6 +750,17 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 }
 
 
+void resolve_if_expr(Ast *expr_ast, std::function<void(Ast*, Analyser)> body, Analyser analyser) {
+    XP_ASSERT_DEFAULT(expr_ast->type == AstType_IfExpr);
+
+    resolve_expr2(expr_ast->IfExpr.condition, analyser);
+
+    body(expr_ast->IfExpr.then_expr, analyser);
+    body(expr_ast->IfExpr.else_expr, analyser);
+
+    return;
+}
+
 void resolve_expr2(Ast *expr_ast, Analyser analyser) {
     if(expr_ast == NULL) {
         return;
@@ -768,9 +798,13 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_IfExpr: {
-            resolve_expr2(expr_ast->IfExpr.condition, analyser);
-            resolve_expr2(expr_ast->IfExpr.then_expr, analyser);
-            resolve_expr2(expr_ast->IfExpr.else_expr, analyser);
+            resolve_if_expr(
+                expr_ast, 
+                [](Ast *branch_expr, Analyser analyser) {
+                    resolve_expr2(branch_expr, analyser);
+                }, 
+                analyser
+            );
         } break;
 
         case AstType_CastExpr: {
@@ -855,13 +889,13 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
         
         case AstType_Undefined: {
-            std::unreachable();
+            UNREACHABLE();
         } break;
 
         default: {
             DEBUG_LOG("unhandled expr type: {}", ast_string(expr_ast->type));
 
-            std::unreachable();
+            UNREACHABLE();
         } break;
     
     }
@@ -893,6 +927,16 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
         case AstType_UnionDecl: {
             resolve_union_decl(expr_ast, analyser);
+        } break;
+
+        case AstType_IfExpr: {
+            resolve_if_expr(
+                expr_ast, 
+                [](Ast *branch_expr, Analyser analyser) {
+                    resolve_expr(branch_expr, analyser);
+                }, 
+                analyser
+            );
         } break;
 
         default: {
@@ -978,7 +1022,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     }
 
 
-    std::unreachable();
+    UNREACHABLE();
 }
 
 

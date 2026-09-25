@@ -331,7 +331,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
         default:
             DEBUG_TRACE("get_llvm_type_from_type UNREACHABLE: type kind={}", (int)type->kind);
-            std::unreachable();
+            UNREACHABLE();
     }
 
     return nullptr;
@@ -527,7 +527,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     }
 
     DEBUG_TRACE("get_llvm_val_from_inst_ref UNREACHABLE: ref={} state={} call_instance={} curr_gen_ref={}", ref, (int)result.state, result_ctx.call_instance().index, debug_curr_gen_ref);
-    std::unreachable();
+    UNREACHABLE();
     return nullptr;
 }
 
@@ -638,7 +638,7 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
         return value;
     }
 
-    std::unreachable();
+    UNREACHABLE();
 
     return nullptr;
 }
@@ -720,7 +720,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
 
                 llvm_val = LLVMConstNamedStruct(get_llvm_type_from_type(value.type), field_values.data, cast(unsigned)field_values.count);
             } else {
-                std::unreachable();
+                UNREACHABLE();
             }
 
         } break;
@@ -762,7 +762,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
                 }
             }
 
-            std::unreachable();
+            UNREACHABLE();
         } break;
 
         case Type_enum: {
@@ -774,7 +774,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
 
         default: {
             // TODO 其他类型的常量
-            std::unreachable();
+            UNREACHABLE();
         } break;
     }
 
@@ -858,7 +858,7 @@ void LLVMGenerator::gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, b
         // - 目前唯一会进入这里的运行时块是短路 &&/|| 的 result_blk，恒有 2 条带值 break；
         //   因此 break_vals.count == 1 暂时不可达，单条透传只是防御性写法。
         // - 该分支还负责把块结果值 save 到 blk_ref_inst：漏掉的话后续读块值的指令
-        //   会在 get_llvm_val_from_inst_ref 里走到 std::unreachable()。
+        //   会在 get_llvm_val_from_inst_ref 里走到 UNREACHABLE()。
         // 所有离开路径都是 break，last_bb 是死代码；多条 break 才需要 φ 汇合，单条直接透传。
         if(blk_mapper.break_vals.count > 0) {
             if(!LLVMGetBasicBlockTerminator(last_bb)) {
@@ -1145,7 +1145,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 indices[0] = index_val;
                 elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
             } else {
-                std::unreachable();
+                UNREACHABLE();
             }
 
             TypeRef val_type = result_ctx.result_of(ref).actual_type();
@@ -1182,7 +1182,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 indices[0] = index_val;
                 elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(data_ptr_type->pointed_type), data_typed_ptr, indices, 1, "sliceelemptrtmp");
             } else {
-                std::unreachable();
+                UNREACHABLE();
             }
 
             save_llvm_val_of_inst(ref, elem_ptr);
@@ -1746,7 +1746,7 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
         } break;
 
         default: {
-            std::unreachable();
+            UNREACHABLE();
         } break;
     }
 

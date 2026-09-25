@@ -1726,8 +1726,18 @@ AnalyzeResult Interpreter::analyze_Binary(const CIRBinaryInfo& info, CIRInstruct
     }
 
     if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({left_inst, right_inst})) {
-        Value left_val = ResultValue(left_inst);
-        Value right_val = ResultValue(right_inst);
+        auto left_val_opt = ResultValueOpt(left_inst);
+        auto right_val_opt = ResultValueOpt(right_inst);
+
+        if(!left_val_opt) {
+            return make_result(pc_ref, inst_error(pc_ref, "二元表达式求值失败：左操作数无值"));
+        } else if(!right_val_opt) {
+            return make_result(pc_ref, inst_error(pc_ref, "二元表达式求值失败：右操作数无值"));
+        }
+
+        auto left_val = left_val_opt.value();
+        auto right_val = right_val_opt.value();
+
         // 传染延迟生效：模拟操作数值的传染后类型（writes 尚未 apply）
         if(contagion_target == left_inst) {
             left_val.set_type(contagion_type);
@@ -2467,6 +2477,10 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
         }
     }
 
+    if(curr_eval_mode() == EvalMode::FullEval && !has_result_val(cond_inst)) {
+        return make_result(pc_ref, inst_error(pc_ref, "can't eval it in comptime"));
+    }
+
     ASSERT(info.true_block != INVALID_BLOCK && info.false_block != INVALID_BLOCK);
 
     // 条件在编译期已知: 只分析活分支, 死分支忽略
@@ -2564,7 +2578,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
     for(isize i = 0; i < func.arg_type_insts.count; i++) {
         if(func.arg_type_insts[i] != INVALID_INST) {
-            if(auto e = check_var_type(temp_allocator(), ResultValue(func.arg_type_insts[i]), true /*is_param*/)) {
+            if(auto e = check_var_type(temp_allocator(), ResultValue(func.arg_type_insts[i]), true)) {
                 return make_result(pc_ref, inst_error(pc_ref, "函数形参 {}", e.value()));
             }
             param_types.push_back(ResultValue(func.arg_type_insts[i]).type_val());
