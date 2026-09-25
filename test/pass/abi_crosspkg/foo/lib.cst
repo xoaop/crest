@@ -1,0 +1,20 @@
+Vec :: struct {
+    x: i32;
+    y: i32;
+}
+
+make_vec :: (a: i32, b: i32) -> Vec {
+    return Vec.{a, b};
+}
+
+vec_sum :: (v: Vec) -> i32 {
+    return v.x + v.y;
+}
+
+ret_i64 :: (x: i32) -> i64 {
+    return 1;
+}
+
+add1 :: (x: i32) -> i32 {
+    return x + 1;
+}

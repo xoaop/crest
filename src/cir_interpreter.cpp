@@ -136,6 +136,11 @@ bool Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
         }
     }
 
+    if(has_error(curr_inst_ref())) {
+        curr_inst_ref().advance();
+        return false;
+    }
+
     auto dep_arr = deps_of(&inst, pkg_ref->stage_allocator);
 
     // 自动 deps 错误传播
@@ -1442,6 +1447,36 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
 AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     CIRInstructionRef parent_inst = info.parent_inst;
 
+    // 包成员取指针：解析成员符号，产出其值作为左值（函数成员即得到函数指针）
+    if(has_result_type(parent_inst) && is_package_type(ResultType(parent_inst))) {
+        Ref<Package> pkg_val = ResultType(parent_inst)->package_info;
+        auto field_sym = find_symbol_ref_curr(pkg_val->package_scope, info.field_name);
+
+        if(field_sym == Ref<SymbolInfo>::INVALID_REF) {
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
+        }
+
+        if(!analyze_symbol_of_package(field_sym)) {
+            return make_result(pc_ref, inst_error(pc_ref, "循环依赖导致包成员 '{}' 无法求值", info.field_name));
+        }
+
+        auto r = field_sym->result(curr_cache_key());
+
+        if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", info.field_name));
+        }
+
+        if(!field_sym->is_var_decl() && !field_sym->is_const_decl_and_func()) {
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不是可寻址实体", info.field_name));
+        }
+
+        if(r.state == CIRResultState::WholeValue) {
+            return make_result(pc_ref, ResultDesc::make_value(r.type(), r.actual_val(), CIRValueKind::LValue));
+        }
+
+        return make_result(pc_ref, ResultDesc::make_type_only(r.type(), CIRValueKind::LValue));
+    }
+
     if(!is_lvalue(parent_inst)) {
         return make_result(pc_ref, inst_error(pc_ref, "不能对非左值表达式取字段指针"));
     }
@@ -2022,7 +2057,14 @@ AnalyzeResult Interpreter::analyze_DetermineType(const CIRDetermineTypeInfo& inf
         if(!has_result_val(expected_type_inst)) {
             return {};   // 依赖未就绪，等下一轮
         } else {
-            const TypeRef target_type = ResultValue(expected_type_inst).type_val();
+            const Value& type_v = ResultValue(expected_type_inst);
+
+            if(!is_type_type(type_v.type)) {
+                return make_result(pc_ref, ResultDesc::make_error());
+            }
+
+            const TypeRef target_type = type_v.type_val();
+
             if(target_type != easy_type(Type_var_arg_c)) {
                 expected_type = target_type;
             }
@@ -2059,12 +2101,14 @@ AnalyzeResult Interpreter::analyze_ConstDecl(const CIRConstDeclInfo& info, CIRIn
     }
     // 注：value_inst 错误不能交给 dispatch 短路（前向引用时短路检查时尚未分析），这里显式检查
     if(has_error(info.value_inst)) {
+        sym.state = SymbolState::Error;
         return make_result(pc_ref, ResultDesc::make_error());
     }
 
     if(!has_result_val(info.value_inst)) {
         if(has_result_type(info.value_inst)) {
             if(auto e = check_const_type(temp_allocator(), ResultType(info.value_inst))) {
+                sym.state = SymbolState::Error;
                 return make_result(pc_ref, inst_error(pc_ref, "{}", e.value()));
             }
             // 副作用：符号绑定到本指令结果 + Solved（仅类型，无值）
@@ -2077,6 +2121,7 @@ AnalyzeResult Interpreter::analyze_ConstDecl(const CIRConstDeclInfo& info, CIRIn
 
     Value result = ResultValue(info.value_inst);
     if(auto e = check_const_type(temp_allocator(), result.type)) {
+        sym.state = SymbolState::Error;
         return make_result(pc_ref, inst_error(pc_ref, "{}", e.value()));
     }
     result = clone_value(result, permanent_allocator());
@@ -2327,6 +2372,11 @@ AnalyzeResult Interpreter::analyze_BlockRef(const CIRBlockRefInfo& info, CIRInst
     }
     // BlockRef 的结果 = 它指向的块自己的结果（块内 Break 打裸块句柄 {blk,-1}）；回填给消费方
     auto blk_key = CIRInstructionRef(blk);
+
+    if(has_error(blk_key)) {
+        return make_result(pc_ref, ResultDesc::make_error());
+    }
+
     auto val_opt = ResultValueOpt(blk_key);
     if(val_opt.has_value()) {
         return make_result(pc_ref, ResultDesc::make_value(ResultType(blk_key), val_opt.value()));
@@ -2951,6 +3001,15 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
     }
 
     if(!sym->is_var_decl() && !sym->is_const_decl_and_func()) {
+        // 包符号无左值地址：透传包值，供 FieldPtr 解析成员（如 &foo.func）
+        if(analyze_symbol_of_package(sym)) {
+            auto pr = sym->result(curr_cache_key());
+
+            if(pr.state == CIRResultState::WholeValue && is_package_type(pr.actual_val().type)) {
+                return make_result(pc_ref, ResultDesc::make_value(pr.type(), pr.actual_val()));
+            }
+        }
+
         return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 不是可寻址实体", sym->name));
     }
 
@@ -3090,6 +3149,8 @@ bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
         // TODO: 隐式约定
         // NOTE: 表示循环依赖，返回 false 让上层报错
         return false;
+    } else if(sym->state == SymbolState::Error) {
+        return true;
     }
 
     return true;

@@ -852,7 +852,6 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_BadExpr: {
-            std::unreachable();
         } break;
         
         case AstType_Undefined: {

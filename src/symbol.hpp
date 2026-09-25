@@ -21,7 +21,8 @@ struct Scope;
 enum class SymbolState {
     Unsolved, // 还未解析
     Solving,  // 正在解析中, 用于检测循环依赖
-    Solved    // 已经解析完成
+    Solved,   // 已经解析完成
+    Error     // 定义求值失败
 };
 
 inline const char* to_string(SymbolState state) {
@@ -29,6 +30,7 @@ inline const char* to_string(SymbolState state) {
         case SymbolState::Unsolved: return "Unsolved"; // 还未解析
         case SymbolState::Solving:  return "Solving";  // 正在解析中
         case SymbolState::Solved:   return "Solved";   // 已经解析完成
+        case SymbolState::Error:    return "Error";    // 定义求值失败
         default: return "Unknown";
     }
 }
