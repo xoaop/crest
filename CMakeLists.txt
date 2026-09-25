@@ -23,10 +23,13 @@ add_executable(crest ${CREST_SOURCES})
 
 # src/ 为顶层 include 根（parser.hpp / llvm-c/ 等），llvm_backend/ 供
 # main.cpp 直接引 llvm_generate_ir.hpp
+# third_party/xoaop 是 xoaop.h 库（git submodule）的模块化头文件目录，
+# 提供 xoaop.h + xoaop_*.h 子模块
 target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")
 
 # 所有配置：禁用异常 + i128 支持
 target_compile_options(crest PRIVATE -fno-exceptions)

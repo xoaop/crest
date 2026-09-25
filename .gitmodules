@@ -1,0 +1,3 @@
+[submodule "third_party/xoaop"]
+	path = third_party/xoaop
+	url = git@github.com:xoaop/xoaop.h.git
