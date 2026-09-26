@@ -112,6 +112,11 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
             break;
         }
 
+        if(curr_token(&p).type == TokenType::Semicolon) {   // 可选/多余的 ;（含空语句）
+            advance_token(&p);
+            continue;
+        }
+
         p.top_levels.push_back(parse_stmt(&p));
     }
 
@@ -617,10 +622,6 @@ Ast *parse_stmt(Parser *p) {
     switch(curr.type) {
     case TokenType::KW_if:
         a = parse_if(p);
-        // if ... then ... else ... 是表达式, 语句位置要自己吃分号
-        if(a->type == AstType_IfExpr) {
-            expect(p, TokenType::Semicolon);
-        }
         break;
 
     case TokenType::KW_for:
@@ -644,33 +645,28 @@ Ast *parse_stmt(Parser *p) {
             a->src_loc = a->token.src_loc;
         }
 
-        expect(p, TokenType::Semicolon);
         break;
 
     case TokenType::KW_break:
         a = ast_alloc(AstType_Break);
         a->token = expect(p, TokenType::KW_break);
         a->src_loc = a->token.src_loc;
-        expect(p, TokenType::Semicolon);
         break;
 
     case TokenType::KW_continue:
         a = ast_alloc(AstType_Continue);
         a->token = expect(p, TokenType::KW_continue);
         a->src_loc = a->token.src_loc;
-        expect(p, TokenType::Semicolon);
         break;
-    
-    case TokenType::Ident: 
+
+    case TokenType::Ident:
         if(next.type == TokenType::ColonEqual || next.type == TokenType::Colon) {
             a = parse_var_decl(p);
-            expect(p, TokenType::Semicolon);
 
         } else if(next.type == TokenType::DoubleColon) {
             a = parse_const_decl(p);
         } else {
             a = parse_assignment_or_expr(p);
-            expect(p, TokenType::Semicolon);
 
         }
         break;
@@ -693,7 +689,6 @@ Ast *parse_stmt(Parser *p) {
 
     default:
         a = parse_assignment_or_expr(p);
-        expect(p, TokenType::Semicolon);
         break;
     }
 
@@ -709,6 +704,10 @@ Ast *parse_block(Parser *p) {
 
 
     while (curr_token(p).type != TokenType::RightCurlyBracket && !reach_end(p)) {
+        if(curr_token(p).type == TokenType::Semicolon) {   // 可选/多余的 ;（含空语句）
+            advance_token(p);
+            continue;
+        }
         stmts.push_back(parse_stmt(p));
     }
     a->Block.statements = stmts;
