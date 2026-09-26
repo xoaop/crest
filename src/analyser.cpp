@@ -321,6 +321,14 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
     }    
 
 */
+// 绑到 const 上时会用 const 名命名自身的匿名声明字面量（供 CIR/后端符号命名）
+static bool is_named_decl_value(Ast *a) {
+    return a->type == AstType_FunctionDeclValue
+        || a->type == AstType_StructDeclValue
+        || a->type == AstType_EnumDecl
+        || a->type == AstType_UnionDecl;
+}
+
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type) {
     xpString const_ident = const_decl_ast->ConstDecl.name;
 
@@ -352,33 +360,37 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     }
 
 
-    if(!(analyser.current_scope->scope_type == ScopeType::File)) {
+    Ref<SymbolInfo> symbol_ref;
+    if(analyser.current_scope->scope_type != ScopeType::File) {
+        // 局部 const：在当前作用域现场建符号
         SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
         add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
-        
-        if(val_ast->type == AstType_IfExpr) {
-            // NOTE: 对于 ifExpr, then/else 分支的 ast_symbol 都要指向同一个符号, 以便在 CIR 阶段求值时, then/else 分支的 CIRInstResult 都能指向同一个符号定义
-            // ! IMPLICIT: 如果 If_Expr 的 cond_expr 得能编译期确定, 不然会同时解析两个分支, 未定义行为
 
-            auto& if_expr = val_ast->IfExpr;
-
-            if_expr.then_expr->ast_symbol = Ref<SymbolInfo>{
-                .scope = analyser.current_scope,
-                .name = const_decl_ast->ConstDecl.name
-            };
-            if_expr.else_expr->ast_symbol = Ref<SymbolInfo>{
-                .scope = analyser.current_scope,
-                .name = const_decl_ast->ConstDecl.name
-            };
-
-        } else {
-        }
-        const_decl_ast->ast_symbol = Ref<SymbolInfo>{
+        symbol_ref = Ref<SymbolInfo>{
             .scope = analyser.current_scope,
             .name = const_decl_ast->ConstDecl.name
         };
-
+    } else {
+        // 顶层 const：符号已在包作用域（collect 阶段建），解析取用
+        symbol_ref = find_symbol_ref_until_global(analyser.current_scope, const_decl_ast->ConstDecl.name);
     }
+
+    if(val_ast->type == AstType_IfExpr) {
+        // 仅当臂是匿名声明字面量(函数/结构体/枚举/联合)时才用 const 名命名它；
+        // 臂是标识符/调用等引用则不能覆盖其 ast_symbol
+        auto& if_expr = val_ast->IfExpr;
+        if(is_named_decl_value(if_expr.then_expr)) {
+            if_expr.then_expr->ast_symbol = symbol_ref;
+        }
+        if(is_named_decl_value(if_expr.else_expr)) {
+            if_expr.else_expr->ast_symbol = symbol_ref;
+        }
+    } else if(is_named_decl_value(val_ast)) {
+        // 直接 Vec::struct{} / bar::func：值节点用 const 名命名
+        val_ast->ast_symbol = symbol_ref;
+    }
+
+    const_decl_ast->ast_symbol = symbol_ref;
 }
 
 

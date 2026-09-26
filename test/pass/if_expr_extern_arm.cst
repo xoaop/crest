@@ -1,0 +1,12 @@
+// @pass
+// @run
+
+// if false 选中 extern_C 臂：该函数应取 const 名 abs → 链接到 libc abs。
+// （曾 bug：else 臂被命名为匿名 @__anon_0，链接找不到符号）
+abs :: if false then (x: i32) -> i32 { return x; } else (x: i32) -> i32 extern_C
+
+main :: () -> i32 {
+    if abs(-5) != 5 { return 1; }
+    if abs(7) != 7 { return 2; }
+    return 0;
+}

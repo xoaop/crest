@@ -103,9 +103,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     // 前置：先建值块（发射 BlockRef 指令），再建 ConstDecl。
     // 迭代先分析值块，ConstDecl 只读结果——无感知。
     auto value_ast = const_decl_ast->ConstDecl.value_ast;
-    curr_const_sym = const_decl_ast->ast_symbol;
     CIRInstructionRef value_inst = build_block_inst_for_expr(value_ast, true, true);
-    curr_const_sym = {};
 
     auto const_decl = Make_Instruction<CIROperator::ConstDecl>(const_decl_ast, {
         .ident = const_decl_ast->ConstDecl.name,
@@ -1048,7 +1046,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // 1. GetOrInitStruct
             auto decl_init = Make_Instruction<CIROperator::GetOrInitStruct>(expr, {
                 .decl_ast = expr,
-                .symbol = curr_const_sym,
+                .symbol = expr->ast_symbol,
             });
 
             // return <type-decl>: 类型身份已定, 提前登记返回值以中断递归
@@ -1129,19 +1127,19 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             auto decl_init = Make_Instruction<CIROperator::EnumDeclInit>(expr, {
                 .tag_type_inst = tag_type_inst,
                 .decl_ast = expr,
-                .symbol = curr_const_sym,
+                .symbol = expr->ast_symbol,
                 .scope = curr_scope,
                 .fields = fields,
             });
-            curr_const_sym = {};
             result = decl_init;
         } break;
 
 
         case AstType_FunctionDeclValue: {
-            if(curr_const_sym.scope != Ref<Scope>::INVALID_REF) {
-                Ref<SymbolInfo> func_sym = curr_const_sym;
-                curr_const_sym = {};
+            // 命名取分析期绑好的 ast_symbol（const 直接值或 if 臂）；匿名则无名
+            Ref<SymbolInfo> func_sym = expr->ast_symbol;
+
+            if(func_sym.scope != Ref<Scope>::INVALID_REF) {
                 result = build_func_decl(expr, func_sym);
             } else {
                 result = build_func_decl(expr, std::nullopt);
@@ -1156,7 +1154,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
             // 1. GetOrInitUnion
             auto decl_init = Make_Instruction<CIROperator::GetOrInitUnion>(expr, {
                 .decl_ast = expr,
-                .symbol = curr_const_sym,
+                .symbol = expr->ast_symbol,
                 .scope = curr_scope,
             });
 
