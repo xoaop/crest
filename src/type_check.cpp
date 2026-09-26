@@ -133,6 +133,11 @@ std::optional<xpString> check_const_type(xpAllocator allocator, TypeRef type) {
     if(type->kind == Type_void) {
         return xp_make_string(allocator, "常量不能是 'void' 类型（void 没有存储空间）");
     }
+
+    if(is_pointer_type(type)) {
+        return xp_make_string(allocator, "常量不能是 指针类型（指针没有存储空间）");
+    }
+
     return std::nullopt;
 }
 
