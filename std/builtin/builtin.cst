@@ -2,6 +2,11 @@
 
 sizeof :: $(T: type) -> usize #builtin
 
+// 目标平台标志（暂硬编码 Windows，后续由编译器从 -target 填充）
+TARGET_IS_WINDOWS :: true
+TARGET_IS_LINUX   :: false
+TARGET_IS_MACOS   :: false
+
 // type_of :: $(T: type) -> ? {
 //     return $(val: T) -> type {
 //         return T;

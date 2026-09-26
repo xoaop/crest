@@ -168,3 +168,39 @@ SDL_OnApplicationWillEnterForeground :: () -> void extern_C
 //
 //  \since This function is available since SDL 3.2.0.
 SDL_OnApplicationDidEnterForeground :: () -> void extern_C
+
+// ── 平台独有（approach a：全量声明；不在本平台调用则不进链接，调用了才在链接期暴露）──
+
+// 独有类型 / 回调 / 不透明句柄（MSG/XEvent 已在 SDL_stdinc 定义）
+SDL_iOSAnimationCallback :: ((*void) -> void)
+SDL_RequestAndroidPermissionCallback :: ((*void, *u8, bool) -> void)
+XTaskQueueObject :: struct {}
+XUser :: struct {}
+
+// Linux
+SDL_SetLinuxThreadPriority :: (threadID: i64, priority: i32) -> bool extern_C
+SDL_SetLinuxThreadPriorityAndPolicy :: (threadID: i64, sdlPriority: i32, schedPolicy: i32) -> bool extern_C
+
+// iOS
+SDL_SetiOSAnimationCallback :: (window: *SDL_Window, interval: i32, callback: *SDL_iOSAnimationCallback, callbackParam: *void) -> bool extern_C
+SDL_SetiOSEventPump :: (enabled: bool) -> void extern_C
+SDL_OnApplicationDidChangeStatusBarOrientation :: () -> void extern_C
+
+// Android
+SDL_GetAndroidJNIEnv :: () -> *void extern_C
+SDL_GetAndroidActivity :: () -> *void extern_C
+SDL_GetAndroidSDKVersion :: () -> i32 extern_C
+SDL_IsChromebook :: () -> bool extern_C
+SDL_IsDeXMode :: () -> bool extern_C
+SDL_SendAndroidBackButton :: () -> void extern_C
+SDL_GetAndroidInternalStoragePath :: () -> *u8 extern_C
+SDL_GetAndroidExternalStorageState :: () -> u32 extern_C
+SDL_GetAndroidExternalStoragePath :: () -> *u8 extern_C
+SDL_GetAndroidCachePath :: () -> *u8 extern_C
+SDL_RequestAndroidPermission :: (permission: *u8, cb: *SDL_RequestAndroidPermissionCallback, userdata: *void) -> bool extern_C
+SDL_ShowAndroidToast :: (message: *u8, duration: i32, gravity: i32, xoffset: i32, yoffset: i32) -> bool extern_C
+SDL_SendAndroidMessage :: (command: u32, param: i32) -> bool extern_C
+
+// GDK
+SDL_GetGDKTaskQueue :: (outTaskQueue: **XTaskQueueObject) -> bool extern_C
+SDL_GetGDKDefaultUser :: (outUserHandle: **XUser) -> bool extern_C

@@ -1,6 +1,11 @@
-// SDL_platform_defines.h — GENERATED from SDL3 3.4.8, do not edit
+// SDL_platform_defines.h — GENERATED from SDL3 3.4.8
+// 平台常量按 SDL 的 #ifdef 树用 ifExpr 收敛到 TARGET_IS_* 标志（死臂消除）
 
 // ── 常量 ──
-SDL_PLATFORM_WIN32 :: 1
-SDL_PLATFORM_WINDOWS :: 1
+SDL_PLATFORM_WINDOWS :: if TARGET_IS_WINDOWS then 1 else 0
+SDL_PLATFORM_WIN32   :: if TARGET_IS_WINDOWS then 1 else 0
+SDL_PLATFORM_LINUX   :: if TARGET_IS_LINUX then 1 else 0
+SDL_PLATFORM_UNIX    :: if TARGET_IS_LINUX then 1 else 0
+SDL_PLATFORM_APPLE   :: if TARGET_IS_MACOS then 1 else 0
+SDL_PLATFORM_MACOS   :: if TARGET_IS_MACOS then 1 else 0
 SDL_WINAPI_FAMILY_PHONE :: 0

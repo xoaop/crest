@@ -2669,3 +2669,7 @@ SDL_GetPixelFormatFromGPUTextureFormat :: (format: SDL_GPUTextureFormat) -> SDL_
 //
 //  \since This function is available since SDL 3.4.0.
 SDL_GetGPUTextureFormatFromPixelFormat :: (format: SDL_PixelFormat) -> SDL_GPUTextureFormat extern_C
+
+// ── GDK 独有（approach a：全量声明）──
+SDL_GDKSuspendGPU :: (device: *SDL_GPUDevice) -> void extern_C
+SDL_GDKResumeGPU :: (device: *SDL_GPUDevice) -> void extern_C
