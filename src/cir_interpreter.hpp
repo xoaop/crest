@@ -225,26 +225,17 @@ struct Interpreter {
 
     EvalMode curr_eval_mode() const;
 
-    bool has_instance() const { return instance_stack.count > 1; }
+    bool has_instance() const;
 
-    std::optional<FuncCallKey> curr_cache_key() const {
-        if(instance_stack.count > 1) {
-            return instance_stack.back().ctx.call_key();
-        }
-        return std::nullopt;
-    }
+    std::optional<FuncCallKey> curr_cache_key() const;
 
-    CIRResultContext result_context() const {
-        return instance_stack.back().ctx;
-    }
+    CIRResultContext result_context() const;
 
     void push_eval_instance(EvalInstance inst);
     void pop_eval_instance();
 
     CIRInstructionRef& curr_inst_ref();   // 当前指令位置 = inst_stack 栈顶
-    EvalInstance* curr_instance() {
-        return instance_stack.count > 1 ? &instance_stack.back() : nullptr;
-    }
+    EvalInstance* curr_instance();
 
 
     void apply_result(CIRInstructionRef target, const ResultDesc& result);

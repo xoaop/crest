@@ -343,6 +343,25 @@ void Interpreter::pop_eval_instance() {
     instance_stack.pop_back();
 }
 
+bool Interpreter::has_instance() const {
+    return instance_stack.count > 1;
+}
+
+std::optional<FuncCallKey> Interpreter::curr_cache_key() const {
+    if(instance_stack.count > 1) {
+        return instance_stack.back().ctx.call_key();
+    }
+    return std::nullopt;
+}
+
+CIRResultContext Interpreter::result_context() const {
+    return instance_stack.back().ctx;
+}
+
+EvalInstance* Interpreter::curr_instance() {
+    return instance_stack.count > 1 ? &instance_stack.back() : nullptr;
+}
+
 bool Interpreter::has_result_val(CIRInstructionRef ref) {
     return ResultValueOpt(ref).has_value();
 }
