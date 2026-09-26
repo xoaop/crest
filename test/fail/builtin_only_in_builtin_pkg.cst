@@ -1,0 +1,9 @@
+// @fail
+// @error "只能在 builtin 包声明"
+
+// #builtin 只能在 builtin 包声明
+foo :: #builtin
+
+main :: () -> i32 {
+    return 0;
+}

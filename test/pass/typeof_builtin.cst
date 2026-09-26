@@ -1,0 +1,13 @@
+// @pass
+// @run
+
+// typeof 用作类型标注（运行时变量取类型）+ sizeof(typeof(x)) + sizeof(类型)
+main :: () -> i32 {
+    x := 5i32;
+    y : typeof(x) = 10;
+
+    if sizeof(typeof(x)) != 4 { return 1; }
+    if sizeof(i32) != 4 { return 2; }
+
+    return y - 10;
+}

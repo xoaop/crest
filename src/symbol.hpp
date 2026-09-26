@@ -72,6 +72,7 @@ public:
     bool is_var_decl();
     bool is_const_decl();
     bool is_const_decl_and_func();
+    bool is_built_in();
 };
 
 SymbolInfo make_symbol(xpString name, Value value, Ref<Package> package, AstFile *file, Ast *ast);

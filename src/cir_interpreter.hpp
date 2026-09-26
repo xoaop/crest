@@ -183,6 +183,10 @@ struct Interpreter {
     bool analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
     bool analyze_symbol_of_package(Ref<SymbolInfo> sym_ref);
 
+    // 各内建 hook 的独立处理
+    AnalyzeResult hook_typeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
+    AnalyzeResult hook_sizeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
+
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 
     CIRResultState result_state(CIRInstructionRef ref);

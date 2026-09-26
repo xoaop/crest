@@ -1088,6 +1088,51 @@ AnalyzeResult Interpreter::analyze_TypeOfInstResult(const CIRTypeOfInstResultInf
     return make_result(pc_ref, ResultDesc::make_value(result));
 }
 
+// handler: Hook（内建口子，按 name 硬编码分派；不走泛型/常量实参那套）
+AnalyzeResult Interpreter::analyze_Hook(const CIRHookInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    if(has_result_val(pc_ref)) {
+        return {};
+    }
+
+    if(xp_string_equal(info.name, xp_string_c("typeof"))) {
+        return hook_typeof(info, pc_ref);
+    } else if(xp_string_equal(info.name, xp_string_c("sizeof"))) {
+        return hook_sizeof(info, pc_ref);
+    } else {
+        return make_result(pc_ref, inst_error(pc_ref, "未知内建 '{}'", info.name));
+    }
+}
+
+AnalyzeResult Interpreter::hook_typeof(const CIRHookInfo& info, CIRInstructionRef pc_ref) {
+    if(info.arg_insts.count != 1) {
+        return make_result(pc_ref, inst_error(pc_ref, "typeof 需要恰好 1 个参数"));
+    }
+    if(!has_result_type(info.arg_insts[0])) {
+        return {};   // 未就绪，等下一轮
+    }
+    // 不抽取：实参是普通值取其类型，实参本身是类型值则得到 'type'
+    const auto t = ResultType(info.arg_insts[0]);
+    auto v = make_value(type_type());
+    v.type_val(t);
+    return make_result(pc_ref, ResultDesc::make_value(v));
+}
+
+AnalyzeResult Interpreter::hook_sizeof(const CIRHookInfo& info, CIRInstructionRef pc_ref) {
+    if(info.arg_insts.count != 1) {
+        return make_result(pc_ref, inst_error(pc_ref, "sizeof 需要恰好 1 个参数"));
+    }
+    if(!has_result_val(info.arg_insts[0])) {
+        return {};
+    }
+    const auto av = ResultValue(info.arg_insts[0]);
+    if(!is_type_type(av.type)) {
+        return make_result(pc_ref, inst_error(pc_ref, "sizeof 需要类型参数"));
+    }
+    auto v = make_value(easy_type(Type_usize));
+    v.integer_val(type_size_of(av.type_val()));
+    return make_result(pc_ref, ResultDesc::make_value(v));
+}
+
 // handler: FieldTypeOfStruct
 AnalyzeResult Interpreter::analyze_FieldTypeOfStruct(const CIRFieldTypeOfStructInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     if(has_result_val(pc_ref)) {
@@ -2620,12 +2665,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
         {
             auto func_key = Ref<CIRInstResult>::make(pkg, pc_ref, result_context().call_instance());
-
-            if (func.is_builtin && sym != nullptr && sym->name == xp_string_c("sizeof")) {
-                v.func_val(func_key, BuiltinKind::SizeOf);
-            } else {
-                v.func_val(func_key);
-            }
+            v.func_val(func_key);
         }
 
         // DEBUG_TRACE("to set type and result for func {}", sym ? sym->name : xp_string_c("<anon>"));
@@ -2883,20 +2923,6 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
         const CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
-        if(fv.builtin_kind != BuiltinKind::None) {
-            switch(fv.builtin_kind) {
-                case BuiltinKind::None: break;
-                case BuiltinKind::SizeOf: {
-                    Value arg_val = ResultValue(call_info.arg_insts[0]);
-                    TypeRef target_type = arg_val.type_val();
-                    isize size = type_size_of(target_type);
-                    Value result = make_value(easy_type(Type_usize));
-                    result.integer_val(size);
-                    r.writes.push_back({pc_ref, ResultDesc::make_value(result)});
-                } goto end;
-            }
-        }
-
         isize var_count = func.slot_count;
         isize func_arg_count = func.arg_decl_insts.count;
 
@@ -3014,6 +3040,10 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentRef>().ident));
     }
 
+    if(sym->is_built_in()) {
+        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", sym->name));
+    }
+
     if(!sym->is_var_decl() && !sym->is_const_decl_and_func()) {
         // 包符号无左值地址：透传包值，供 FieldPtr 解析成员（如 &foo.func）
         if(analyze_symbol_of_package(sym)) {
@@ -3082,6 +3112,10 @@ AnalyzeResult Interpreter::analyze_IdentVal(const CIRIdentValInfo& info, CIRInst
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentVal>().ident));
+    }
+
+    if(sym->is_built_in()) {
+        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", sym->name));
     }
 
     if(sym->is_var_decl()) {

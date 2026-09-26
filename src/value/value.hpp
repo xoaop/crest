@@ -95,15 +95,8 @@ enum class ActualValueType {
 
 
 
-enum class BuiltinKind : u8 {
-    None,
-    SizeOf,
-};
-
-
 struct FuncValue {
     Ref<CIRInstResult>                func_key;
-    BuiltinKind                     builtin_kind = BuiltinKind::None;
 };
 
 struct Value {
@@ -126,7 +119,6 @@ public:
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
     void func_val(Ref<CIRInstResult> func_key);
-    void func_val(Ref<CIRInstResult> func_key, BuiltinKind builtin_kind);
     void func_val_key(Ref<CIRInstResult> key);
     void pointer_val(Pointer ptr);
     void type_val(TypeRef type_ref);

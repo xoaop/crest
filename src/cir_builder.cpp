@@ -100,6 +100,12 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ast *const_decl_ast) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
     SymbolInfo &sym = const_decl_ast->ast_symbol.unwrap();
 
+    // 内建：无值，符号仅作识别（is_built_in() 读 AST），标 Solved、不建值块
+    if(const_decl_ast->ConstDecl.is_builtin) {
+        sym.state = SymbolState::Solved;
+        return INVALID_INST;
+    }
+
     // 前置：先建值块（发射 BlockRef 指令），再建 ConstDecl。
     // 迭代先分析值块，ConstDecl 只读结果——无感知。
     auto value_ast = const_decl_ast->ConstDecl.value_ast;
@@ -689,6 +695,22 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(Ast *expr) {
         } break;
 
         case AstType_FunctionCallExpr: {
+                // 内建：callee 解析到 #builtin 符号 → 发 Hook，不走普通 Call / 泛型 / 常量实参
+                {
+                    const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
+                    if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
+                        auto hook_args = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);
+                        for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                            hook_args.push_back(build_inst_for_expr(expr->FunctionCallExpr.args[i]));
+                        }
+                        result = Make_Instruction<CIROperator::Hook>(expr, {
+                            .name = csym->name,
+                            .arg_insts = hook_args.copy(permanent_allocator()),
+                        });
+                        break;
+                    }
+                }
+
                 auto called_thing_inst = build_inst_for_expr(expr->FunctionCallExpr.func_ident);
 
                 Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(curr_pkg_ref->stage_allocator);

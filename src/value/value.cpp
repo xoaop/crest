@@ -65,12 +65,6 @@ void Value::func_val(Ref<CIRInstResult> func_key) {
     this->func_value.func_key = func_key;
 }
 
-void Value::func_val(Ref<CIRInstResult> func_key, BuiltinKind builtin_kind) {
-    actual_value_type = ActualValueType::Function;
-    this->func_value.func_key = func_key;
-    this->func_value.builtin_kind = builtin_kind;
-}
-
 void Value::func_val_key(Ref<CIRInstResult> key) {
     this->func_value.func_key = key;
 }

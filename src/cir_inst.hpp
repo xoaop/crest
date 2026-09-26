@@ -106,6 +106,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(BlockRef)                 \
     X(ImportPackage)            \
     X(PublishReturnValue)       \
+    X(Hook)                     \
 /**/
 
 enum class CIROperator {
@@ -232,6 +233,14 @@ struct CIRCallInfo {
     Array<CIRInstructionRef> arg_insts;
 
     CIR_REFS(&CIRCallInfo::called_thing, &CIRCallInfo::arg_insts)
+};
+
+// 内建 hook：编译器开的口子，name 决定语义，interp 里硬编码 switch 处理
+struct CIRHookInfo {
+    xpString name;
+    Array<CIRInstructionRef> arg_insts;
+
+    CIR_REFS(&CIRHookInfo::arg_insts)
 };
 
 // $T 实例化：把 called_thing 的未实例化模板按实参类型具化，结果写回 called_thing 的结果槽。

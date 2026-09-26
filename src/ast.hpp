@@ -158,6 +158,7 @@ struct Ast;
         xpString name;                                                               \
         Ast *type_ast;                                                               \
         Ast *value_ast;                                                              \
+        bool is_builtin;                                                             \
     })                                                                               \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})                      \
 /**/

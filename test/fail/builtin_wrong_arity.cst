@@ -1,0 +1,7 @@
+// @fail
+// @error "需要恰好 1 个参数"
+
+// sizeof 参数个数不对
+main :: () -> i32 {
+    return cast(i32)sizeof();
+}

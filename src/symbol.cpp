@@ -86,8 +86,15 @@ bool SymbolInfo::is_const_decl() {
 bool SymbolInfo::is_const_decl_and_func() {
     if(ast == nullptr) return false;
 
-    return ast->type == AstType_ConstDecl && 
+    return ast->type == AstType_ConstDecl &&
+           ast->ConstDecl.value_ast != nullptr &&
            ast->ConstDecl.value_ast->type == AstType_FunctionDeclValue;
+}
+
+bool SymbolInfo::is_built_in() {
+    if(ast == nullptr) return false;
+
+    return ast->type == AstType_ConstDecl && ast->ConstDecl.is_builtin;
 }
 
 

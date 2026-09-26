@@ -490,14 +490,24 @@ Ast *parse_const_decl(Parser *p) {
     Ast *value_ast = nullptr;
     Token curr = curr_token(p);
 
-    value_ast = parse_expr(p, 0);
+    // `name :: #builtin`：内建标记（非值），仅 builtin 包合法（在分析期校验）
+    bool is_builtin = false;
+    if(curr.type == TokenType::Hash && next_token(p).type == TokenType::Ident
+       && xp_string_equal(next_token(p).token_str, xp_string_c("builtin"))) {
+        expect(p, TokenType::Hash);
+        expect(p, TokenType::Ident);
+        is_builtin = true;
+    } else {
+        value_ast = parse_expr(p, 0);
+    }
 
 
     Ast *const_decl = ast_alloc(AstType_ConstDecl, name_token);
     const_decl->ConstDecl.name = name_token.token_str;
     const_decl->ConstDecl.type_ast = type_ast;
     const_decl->ConstDecl.value_ast = value_ast;
-    const_decl->src_loc = merge(name_token.src_loc, value_ast->src_loc);
+    const_decl->ConstDecl.is_builtin = is_builtin;
+    const_decl->src_loc = is_builtin ? name_token.src_loc : merge(name_token.src_loc, value_ast->src_loc);
 
     return const_decl;
 }

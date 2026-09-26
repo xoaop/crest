@@ -92,10 +92,13 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
 
     Ast *value_ast = const_decl_ast->ConstDecl.value_ast;
-    
+
+    // #builtin 无值；import 落文件作用域，其余（含 builtin）落包作用域
+    bool is_import = (value_ast != nullptr && value_ast->type == AstType_Import);
+
     // 先检查有没有重复符号
     Ref<SymbolInfo> info = Ref<SymbolInfo>::INVALID_REF;
-    if(value_ast->type == AstType_Import) {
+    if(is_import) {
         // Import符号在文件作用域
 
         info = find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
@@ -103,19 +106,19 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
         // 其他符号在包作用域
 
         info = find_symbol_ref_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
-    }    
+    }
 
     if(info != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
             SourceLocation(analyser.curr_ast_file->source_code, const_decl_ast->src_loc.span),
             "symbol '{}' repeated definition",
             const_decl_ast->ConstDecl.name
-        );    
+        );
         return;
-    }    
+    }
 
     SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
-    if(value_ast->type == AstType_Import) {
+    if(is_import) {
         add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
     } else {
         add_symbol_to_scope(&analyser.pkg.unwrap().package_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
@@ -288,6 +291,14 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             ast->ast_symbol = find_symbol_ref_until_global(analyser.current_scope, ast->ConstDecl.name);
             ASSERT(ast->ast_symbol != Ref<SymbolInfo>::INVALID_REF);
 
+            // #builtin：无值标记，仅 builtin 包合法
+            if(ast->ConstDecl.is_builtin) {
+                if(analyser.pkg != context()->global_blank_package) {
+                    context()->reporter.report_error(ast->src_loc, "内建（#builtin）只能在 builtin 包声明");
+                }
+                break;
+            }
+
             // @NOTE: import 的符号求解已移到 CIR 阶段（ImportPackage 指令），这里只收集符号
             if(ast->ConstDecl.value_ast->type == AstType_Import) {
                 break;
@@ -331,6 +342,12 @@ static bool is_named_decl_value(Ast *a) {
 
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type) {
     xpString const_ident = const_decl_ast->ConstDecl.name;
+
+    // #builtin 无值标记，只能在 builtin 包顶层声明；到这里说明是局部/非法位置
+    if(const_decl_ast->ConstDecl.is_builtin) {
+        context()->reporter.report_error(const_decl_ast->src_loc, "内建（#builtin）只能在 builtin 包顶层声明");
+        return;
+    }
 
     if(!(analyser.current_scope->scope_type == ScopeType::File)) {
         Ref<SymbolInfo> exist = find_symbol_ref_curr(analyser.current_scope, const_ident);

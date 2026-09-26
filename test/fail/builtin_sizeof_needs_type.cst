@@ -1,0 +1,7 @@
+// @fail
+// @error "sizeof 需要类型参数"
+
+// sizeof 的实参必须是类型，不是值
+main :: () -> i32 {
+    return cast(i32)sizeof(3);
+}
