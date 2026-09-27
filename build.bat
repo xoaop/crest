@@ -13,7 +13,7 @@ if "%BUILD_TYPE%"=="Release" set "BUILD_DIR=build_release"
 echo === Crest Build (%BUILD_TYPE%) ===
 echo.
 
-cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_CXX_COMPILER=clang++
+cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_CXX_COMPILER=g++
 if errorlevel 1 (
     echo.
     echo Configure failed.

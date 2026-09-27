@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(Crest CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # LLVM 库：Windows 用 LLVM-C.lib + 运行时 dll；Linux 用 libLLVM.so（LLVM-C API 内建其中）
@@ -25,6 +25,8 @@ add_executable(crest ${CREST_SOURCES})
 # main.cpp 直接引 llvm_generate_ir.hpp
 # third_party/ 下有两类外部依赖：
 #   xoaop     — xoaop.h 库（git submodule），提供 xoaop.h + xoaop_*.h 子模块
+#   debug_fmt — debug_fmt.hpp 库（git submodule），C++26 反射 Debug 打印器；
+#               仅 GCC 的 -freflection 可编，clang 构建只挂 include、不启用反射
 #   llvm-c    — LLVM 21.1.6 官方 C API 头文件，与 bin/LLVM-C.lib 严格配套
 #               源码里写作 #include "llvm-c/Core.h"，故目录名必须是 llvm-c
 target_include_directories(crest PRIVATE
@@ -32,11 +34,16 @@ target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/debug_fmt")
 
 # 所有配置：禁用异常 + i128 支持
 target_compile_options(crest PRIVATE -fno-exceptions)
 target_compile_definitions(crest PRIVATE XOAOP_I128_SUPPORT)
+
+# debug_fmt.hpp 用 C++26 静态反射(P2996)，仅 GCC 的 -freflection 提供；
+# clang（当前 Windows 构建）不支持,故只在 GNU 下加,clang 构建不受影响。
+target_compile_options(crest PRIVATE $<$<CXX_COMPILER_ID:GNU>:-freflection>)
 
 # Debug / Release 区分：
 #   Debug   — 调试符号 + CREST_DEBUG 宏（DEBUG_LOG/ASSERT 等）
@@ -53,9 +60,10 @@ target_link_libraries(crest PRIVATE "${LLVM_C_LIB}")
 # 主线程栈大小。Windows PE 头默认只保留 1MB（Linux/macOS 是 8MB），
 # 而编译器是递归下降，1MB 只够约 54 层嵌套。
 if(WIN32)
-    # clang++ 是 GNU 风格驱动，需 -Wl, 转义
-    target_link_options(crest PRIVATE -Wl,/stack:16777216)
-    target_link_libraries(crest PRIVATE dbghelp)
+    # 单一 GCC 工具链：MinGW g++ 走 GNU ld —— PE 栈大小用 --stack；
+    # dbghelp 供栈回溯；std::print 的终端 Unicode 辅助函数在 libstdc++exp。
+    target_link_options(crest PRIVATE -Wl,--stack,16777216)
+    target_link_libraries(crest PRIVATE dbghelp stdc++exp)
 else()
     # -rdynamic：backtrace_symbols 才能取到函数名
     target_link_options(crest PRIVATE -Wl,-z,stacksize=16777216 -rdynamic)
