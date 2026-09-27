@@ -11,6 +11,7 @@
 #include "ref.hpp"
 
 #include "value.hpp"
+#include "debug_fmt.hpp"
 
 
 struct AstFile;
@@ -26,13 +27,7 @@ enum class SymbolState {
 };
 
 inline const char* to_string(SymbolState state) {
-    switch(state) {
-        case SymbolState::Unsolved: return "Unsolved"; // 还未解析
-        case SymbolState::Solving:  return "Solving";  // 正在解析中
-        case SymbolState::Solved:   return "Solved";   // 已经解析完成
-        case SymbolState::Error:    return "Error";    // 定义求值失败
-        default: return "Unknown";
-    }
+    return dbg::to_string(state);
 }
 
 

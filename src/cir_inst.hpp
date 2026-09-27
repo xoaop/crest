@@ -11,6 +11,7 @@
 #include "span.hpp"
 #include "scope.hpp"
 #include "error_msg.hpp"
+#include "debug_fmt.hpp"
 
 #include "print.hpp"
 
@@ -117,12 +118,7 @@ enum class CIROperator {
 
 
 inline const char *string(CIROperator op) {
-    switch(op) {
-#define X(name) case CIROperator::name: return #name;
-        CIR_OPERATORS
-#undef X
-        default: return "<unknown operator>";
-    }
+    return dbg::to_string(op);
 }
 
 
@@ -540,4 +536,14 @@ private:
 #undef X
     };
 
+};
+
+
+// dbg::debug 的 tagged-union 支持：判别式是 op，tag→成员 复用已有的 info<Op>()
+template <>
+struct dbg::TagUnionTrait<CIRInstruction> {
+    static auto tag(const CIRInstruction& x) { return x.op; }
+
+    template <CIROperator E>
+    static decltype(auto) union_val(const CIRInstruction& x) { return x.info<E>(); }
 };

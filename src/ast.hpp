@@ -9,6 +9,7 @@
 #include "symbol.hpp"
 
 #include "value.hpp"
+#include "debug_fmt.hpp"
 
 
 struct Ast;
@@ -219,6 +220,21 @@ struct Ast {
     };
 
     SourceLocation src_loc; // 该AST节点对应的源代码位置, 主要用于错误提示
+};
+
+
+// dbg::debug 的 tagged-union 支持：判别式是 type，tag→成员 由 AST_INFOS 生成
+template <>
+struct dbg::TagUnionTrait<Ast> {
+    static auto tag(const Ast& x) { return x.type; }
+
+    template <AstType E>
+    static decltype(auto) union_val(const Ast& x) {
+#define AST_INFO(type_name, type_str, ...) if constexpr (E == XP_JOIN_2(AstType_, type_name)) return (x.type_name);
+        AST_INFOS
+#undef AST_INFO
+        if constexpr (E == AstType_COUNT) return (x.Undefined);   // COUNT 非真实节点，占位
+    }
 };
 
 extern const char *ast_strs[];

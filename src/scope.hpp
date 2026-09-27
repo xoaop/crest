@@ -119,21 +119,8 @@ struct std::formatter<Scope> {
     }
 
     auto format(const Scope& scope, std::format_context& ctx) const {
-        const char *scope_type_string = nullptr;
-        switch(scope.scope_type) {
-            case ScopeType::Global: scope_type_string = "Global"; break;
-            case ScopeType::Package: scope_type_string = "Package"; break;
-            case ScopeType::File: scope_type_string = "File"; break;
-            case ScopeType::Function: scope_type_string = "Function"; break;
-            case ScopeType::Block: scope_type_string = "Block"; break;
-            case ScopeType::LoopBlock: scope_type_string = "LoopBlock"; break;
-            case ScopeType::StructBlock: scope_type_string = "StructBlock"; break;
-            case ScopeType::EnumBlock: scope_type_string = "EnumBlock"; break;
-            case ScopeType::UnionBlock: scope_type_string = "UnionBlock"; break;
-        }
-
         return std::format_to(ctx.out(), "Scope {{ type: {}, symbols: [\n{}] }}",
-            scope_type_string,
+            dbg::to_string(scope.scope_type),
             scope.symbols
         );
     }
