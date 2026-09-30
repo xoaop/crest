@@ -117,7 +117,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, As
     });
 
 
-    sym.val(Ref<CIRInstResult>::make(ctx.pkg, const_decl));
+    sym.val(Ref<CIRInstResult>::init(ctx.pkg, const_decl));
 
     return const_decl;
 }

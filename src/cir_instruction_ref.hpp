@@ -137,7 +137,7 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     CIRInstructionRef                      inst_ref;
     Ref<CIRResultInstance>                 result_instance;
 
-    static Ref make(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
+    static Ref init(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
 
     CIRInstResult* get_result() const;
 

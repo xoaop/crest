@@ -99,7 +99,7 @@ CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r) {
     return &r.cir_package->result_instances[r.index];
 }
 
-Ref<CIRInstResult> Ref<CIRInstResult>::make(CIRPackage* pkg, CIRInstructionRef ref,
+Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRPackage* pkg, CIRInstructionRef ref,
                                             Ref<CIRResultInstance> ri) {
     return Ref<CIRInstResult>{.cir_package = pkg, .inst_ref = ref, .result_instance = ri};
 }

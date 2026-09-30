@@ -505,7 +505,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     }
 
     // 其余按引用点的 key 寻址（每条指令的 LLVM 值各存各的）
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, result_ctx.call_instance());
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, result_ctx.call_instance());
     if(LLVMValueRef* val = xp_hash_map_get(inst_vals, key)) {
         return *val;
     }
@@ -520,7 +520,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 
     // 引用点 key 未命中 → 尝试 null call_instance
     if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, {});
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, {});
         if(LLVMValueRef* null_cached = xp_hash_map_get(inst_vals, null_key)) {
             return *null_cached;
         }
@@ -532,12 +532,12 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, result_ctx.call_instance());
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, result_ctx.call_instance());
     DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)result_ctx.pkg(), result_ctx.call_instance().index);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
     // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
     if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::make(result_ctx.pkg(), ref, {});
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, {});
         xp_hash_map_insert(&inst_vals, null_key, llvm_val);
     }
 }

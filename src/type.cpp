@@ -811,7 +811,7 @@ TypeRef union_field_type(TypeRef union_type, xpString field_name) {
     ASSERT(field_sym != Ref<SymbolInfo>::INVALID_REF);
 
     const Ref<CIRInstResult> &ik = field_sym->inst_key;
-    auto key = Ref<CIRInstResult>::make(ik.cir_package, ik.inst_ref, union_type->union_info.creation_instance);
+    auto key = Ref<CIRInstResult>::init(ik.cir_package, ik.inst_ref, union_type->union_info.creation_instance);
     
     const CIRInstResult *r = key.get_result();
     ASSERT(r != nullptr);
