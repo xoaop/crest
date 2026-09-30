@@ -264,6 +264,7 @@ bool Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstruct
     for(;;) {
 
         // @note: 目前假设执行一个block时, 执行完一条指令, package不会被修改, 即使是Call了不同package的function, 执行完了也会回到当前package
+        // 也就是说执行任何一条指令前后, package不变, 但指令执行中间不保证
         bool is_in_same_block = curr_inst_ref().block_ref == blk;
         bool is_in_bounds = curr_inst_ref().inst_index < block_info.insts.count();
         bool no_target_result = !(target.has_value() && has_result_val(target.value()));

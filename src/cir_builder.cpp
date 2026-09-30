@@ -1267,6 +1267,8 @@ CIRInstructionRef CIRBuilder::Alloc_Var(CIRBuildContext& ctx, xpString name, boo
 }
 
 CIRInstructionRef CIRBuilder::New_Break(CIRBuildContext& ctx, CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast) {
+    ASSERT(break_block.is_block());
+    
     auto br = Make_Instruction<CIROperator::Break>(ctx, ast, {
         .break_block = break_block,
         .break_value_inst = break_value_inst,
