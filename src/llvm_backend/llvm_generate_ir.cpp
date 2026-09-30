@@ -35,6 +35,15 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
+    // 模块级 triple / data layout
+    char *mod_triple = LLVMGetTargetMachineTriple(g_llvm_session.target_machine);
+    LLVMSetTarget(unit.module, mod_triple);
+    LLVMDisposeMessage(mod_triple);
+
+    char *mod_datalayout = LLVMCopyStringRepOfTargetData(g_llvm_session.target_data);
+    LLVMSetDataLayout(unit.module, mod_datalayout);
+    LLVMDisposeMessage(mod_datalayout);
+
     this->pkg = pkg_ref;
     result_ctx = CIRResultContext::create(&pkg_ref.unwrap().cir_package);
     this->curr_state = {nullptr, nullptr};

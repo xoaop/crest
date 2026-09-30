@@ -41,6 +41,8 @@ static void crest_helper() {
     println_out("  -cir_dump      Dump CIR instructions");
     println_out("  -scope_dump    Dump scope tree");
     println_out("  -target <triple> Override target triple (default: LLVM host)");
+    println_out("  -cpu <name>    Override target CPU (default: generic)");
+    println_out("  -features <f>  Override target features, e.g. \"+avx2,-sse4.2\" (default: from cpu)");
 }
 
 
@@ -124,6 +126,24 @@ int main(int argc, char** argv) {
             }
 
             context()->target_triple = argv[i];
+        } else if(strcmp(argv[i], "-cpu") == 0) {
+            i += 1; // 跳过 "-cpu" 参数
+
+            if(i >= argc) {
+                err("Missing argument for -cpu option");
+                return -1;
+            }
+
+            context()->target_cpu = argv[i];
+        } else if(strcmp(argv[i], "-features") == 0) {
+            i += 1; // 跳过 "-features" 参数
+
+            if(i >= argc) {
+                err("Missing argument for -features option");
+                return -1;
+            }
+
+            context()->target_features = argv[i];
         }
         
         else if(main_path == nullptr) {

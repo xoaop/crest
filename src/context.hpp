@@ -21,6 +21,8 @@ struct Context {
     bool cir_dump = false;
     bool scope_dump = false;
     const char *target_triple = nullptr;   // -target 显式指定；null → 用 LLVM 默认 triple
+    const char *target_cpu = nullptr;      // -cpu 显式指定；null → generic
+    const char *target_features = nullptr; // -features 显式指定；null → 用 cpu 自带特性
 
 
     xpString main_src_dir_path;
