@@ -19,84 +19,79 @@
 #include "package.hpp"
 
 
-//
-// Builder
-//
 struct CIRBuilder;
 
+struct CIRBuildContext {
+    xpAllocator allocator;
+
+    CIRPackage *pkg;
+    Ref<Package> pkg_ref;
+    CIRFunctionDeclInfo *func;
+    CIRInstructionRef func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
+    Ref<Scope> scope;
+    bool building_return_type_decl = false;   // 正在构建 return <type-decl>，声明块内发 PublishReturnValue
+
+    Array<CIRBlockRef> block_stack;
+    Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
+    Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
+};
+
 struct ScopeGuard {
-    CIRBuilder *builder;
+    CIRBuildContext *ctx;
     bool entered;
 
-    ScopeGuard(CIRBuilder *builder, Ast *ast);
+    ScopeGuard(CIRBuildContext& ctx, Ast *ast);
     ~ScopeGuard();
 };
 
 struct CIRBuilder {
 
-    CIRBuilder(xpAllocator allocator);
-    ~CIRBuilder();
-
-
-    void build_cir_package(Ref<Package> pkg);
-
-    CIRInstructionRef build_inst_for_const_decl(Ast *const_decl_ast);
-    CIRInstructionRef build_func_decl(Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
-    CIRInstructionRef build_inst_for_ast_block(Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
-    CIRInstructionRef build_inst_for_stmt(Ast *stmt);
-    CIRInstructionRef build_inst_for_expr(Ast *expr);
-    CIRInstructionRef build_block_inst_for_expr(Ast *expr, bool is_comptime_block, bool immediate_eval);
-    CIRInstructionRef build_ptr_inst_for_expr(Ast *expr);
-
-    CIRInstructionRef build_inst_for_var_decl(Ast *var_decl_ast);
-    void build_inst_for_return_stmt(Ast *return_stmt_ast);
-    void build_inst_for_for_stmt(Ast *stmt);
-
-    CIRInstructionRef New_Instruction(CIROperator op, Ast *ast);
-    CIRInstructionRef Alloc_Var(xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param = false);
-    CIRInstructionRef New_Break(CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
-    CIRInstruction& Instruction(CIRInstructionRef ref);
-
-
+    
+    static CIRInstructionRef build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast);
+    static CIRInstructionRef build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
+    static CIRInstructionRef build_inst_for_ast_block(CIRBuildContext& ctx, Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
+    static CIRInstructionRef build_inst_for_stmt(CIRBuildContext& ctx, Ast *stmt);
+    static CIRInstructionRef build_inst_for_expr(CIRBuildContext& ctx, Ast *expr);
+    static CIRInstructionRef build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
+    static CIRInstructionRef build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast *expr);
+    
+    static CIRInstructionRef build_inst_for_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast);
+    static void build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_stmt_ast);
+    static void build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt);
+    
+    static CIRInstructionRef New_Instruction(CIRBuildContext& ctx, CIROperator op, Ast *ast);
+    static CIRInstructionRef Alloc_Var(CIRBuildContext& ctx, xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param = false);
+    static CIRInstructionRef New_Break(CIRBuildContext& ctx, CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
+    static CIRInstruction& Instruction(CIRBuildContext& ctx, CIRInstructionRef ref);
+    
+    
     
     template<CIROperator Op>
-    CIRInstructionRef Make_Instruction(Ast *ast, const typename info_type<Op>::type& payload) {
-        auto ref = New_Instruction(Op, ast);
-        Instruction(ref).info<Op>() = payload;
+    static CIRInstructionRef Make_Instruction(CIRBuildContext& ctx, Ast *ast, const typename info_type<Op>::type& payload) {
+        auto ref = New_Instruction(ctx, Op, ast);
+        Instruction(ctx, ref).info<Op>() = payload;
         return ref;
     }
 
-    CIRBlockRef Begin_Block(bool is_comptime, bool immediate_eval, bool yields_value = false);
-    CIRInstructionRef New_BlockRef(Ast *ast, CIRBlockRef blk);
-    void End_Block();
-    CIRBlockRef Begin_Loop();
-    void End_Loop(CIRInstructionRef loop_inst);
+    static CIRBlockRef Begin_Block(CIRBuildContext& ctx, bool is_comptime, bool immediate_eval, bool yields_value = false);
+    static CIRInstructionRef New_BlockRef(CIRBuildContext& ctx, Ast *ast, CIRBlockRef blk);
+    static void End_Block(CIRBuildContext& ctx);
+    static CIRBlockRef Begin_Loop(CIRBuildContext& ctx);
+    static void End_Loop(CIRBuildContext& ctx, CIRInstructionRef loop_inst);
+    
+    
+    
+    static bool Enter_Scope(CIRBuildContext& ctx, Ast *ast);
+    static void Exit_Scope(CIRBuildContext& ctx);
+    
 
+    CIRBuilder(xpAllocator allocator);
+    ~CIRBuilder();
 
-
-    bool Enter_Scope(Ast *ast);
-    void Exit_Scope();
-
-
+    void build_cir_package(Ref<Package> pkg);
 public:
 
-
-    // state
-    AstFile *curr_ast_file;
-
-    CIRPackage *curr_pkg;
-    Ref<Package> curr_pkg_ref;
-    CIRFunctionDeclInfo *curr_func;
-    CIRInstructionRef curr_func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
-    CIRInstructionRef curr_block_inst;
-    Ref<Scope> curr_scope;
-    bool building_return_type_decl = false;   // 正在构建 return <type-decl>，声明块内发 PublishReturnValue
-
-
-    // cirbuilder所有的状态, 需要分配
-    Array<CIRBlockRef> block_stack;
-    Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
-    Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
+    CIRBuildContext ctx;
 };
 
 
