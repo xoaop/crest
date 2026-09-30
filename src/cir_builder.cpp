@@ -696,64 +696,64 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
         case AstType_FunctionCallExpr: {
                 // 内建：callee 解析到 #builtin 符号 → 发 Hook，不走普通 Call / 泛型 / 常量实参
-                {
-                    const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
-                    if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
-                        auto hook_args = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-                        for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
-                            hook_args.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
-                        }
-                        result = Make_Instruction<CIROperator::Hook>(ctx, expr, {
-                            .name = csym->name,
-                            .arg_insts = hook_args.copy(permanent_allocator()),
-                        });
-                        break;
+            {
+                const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
+                if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
+                    auto hook_args = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
+                    for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                        hook_args.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
                     }
-                }
-
-                auto called_thing_inst = build_inst_for_expr(ctx, expr->FunctionCallExpr.func_ident);
-
-                Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-                for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
-                    arg_insts.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
-                }
-
-                // 实例化排在签名消费方之前：$T 模板在此具化，后续拿到的都是真签名
-                auto instantiate = Make_Instruction<CIROperator::InstantiateFunc>(ctx, expr, {
-                    .called_thing = called_thing_inst,
-                    .arg_insts = arg_insts.copy(permanent_allocator()),
-                });
-
-                // func_type = TypeOfInstResult(被调对象)。InstantiateFunc 已把 $T 模板具化并
-                // 写回 called_thing 的结果，这里读到的就是真函数值
-                auto typeof_func = Make_Instruction<CIROperator::TypeOfInstResult>(ctx, expr, {
-                    .target_inst = called_thing_inst
-                });
-
-                // 每个实参: FunParamType + DetermineType
-                for(isize i = 0; i < arg_insts.count; i++) {
-                    Ast *arg = expr->FunctionCallExpr.args[i];
-                    auto arg_inst = arg_insts[i];
-
-                    // 获取函数参数类型
-                    auto fpt = Make_Instruction<CIROperator::FuncParamType>(ctx, arg, {
-                        .type_of_func_type_inst = typeof_func,
-                        .param_index = i,
+                    result = Make_Instruction<CIROperator::Hook>(ctx, expr, {
+                        .name = csym->name,
+                        .arg_insts = hook_args.copy(permanent_allocator()),
                     });
-
-                    auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, arg, {
-                        .determining_inst = arg_inst,
-                        .type_inst = fpt,
-                    });
+                    break;
                 }
+            }
 
-                auto call_inst = Make_Instruction<CIROperator::Call>(ctx, expr, {
-                    .called_thing = called_thing_inst,
-                    .arg_insts = arg_insts.copy(permanent_allocator()),
+            auto called_thing_inst = build_inst_for_expr(ctx, expr->FunctionCallExpr.func_ident);
+
+            Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
+            for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
+                arg_insts.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
+            }
+
+            // 实例化排在签名消费方之前：$T 模板在此具化，后续拿到的都是真签名
+            auto instantiate = Make_Instruction<CIROperator::InstantiateFunc>(ctx, expr, {
+                .called_thing = called_thing_inst,
+                .arg_insts = arg_insts.copy(permanent_allocator()),
+            });
+
+            // func_type = TypeOfInstResult(被调对象)。InstantiateFunc 已把 $T 模板具化并
+            // 写回 called_thing 的结果，这里读到的就是真函数值
+            auto typeof_func = Make_Instruction<CIROperator::TypeOfInstResult>(ctx, expr, {
+                .target_inst = called_thing_inst
+            });
+
+            // 每个实参: FunParamType + DetermineType
+            for(isize i = 0; i < arg_insts.count; i++) {
+                Ast *arg = expr->FunctionCallExpr.args[i];
+                auto arg_inst = arg_insts[i];
+
+                // 获取函数参数类型
+                auto fpt = Make_Instruction<CIROperator::FuncParamType>(ctx, arg, {
+                    .type_of_func_type_inst = typeof_func,
+                    .param_index = i,
                 });
 
-                result = call_inst;
-            } break;
+                auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, arg, {
+                    .determining_inst = arg_inst,
+                    .type_inst = fpt,
+                });
+            }
+
+            auto call_inst = Make_Instruction<CIROperator::Call>(ctx, expr, {
+                .called_thing = called_thing_inst,
+                .arg_insts = arg_insts.copy(permanent_allocator()),
+            });
+
+            result = call_inst;
+        } break;
 
         case AstType_IfExpr: {
 
