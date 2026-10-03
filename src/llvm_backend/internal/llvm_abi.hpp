@@ -1,5 +1,4 @@
-#ifndef CREST_LLVM_BACKEND_INTERNAL_LLVM_ABI_HPP
-#define CREST_LLVM_BACKEND_INTERNAL_LLVM_ABI_HPP
+#pragma once
 
 // C ABI 降级（Microsoft x64 软件约定）。
 //
@@ -19,7 +18,7 @@
 // （尺寸必须用目标 data layout 的真实值，即 size_of_type）。
 
 #include "type.hpp"
-#include "llvm_global.hpp"   // LLVMTypeRef / LLVMValueRef
+#include "llvm_global.hpp"
 
 // 聚合类型在 C 边界上是否需要降级（>8 字节 → 传指针）
 bool needs_downgrade(TypeRef type, int size);
@@ -36,5 +35,3 @@ bool uses_sret(TypeRef ret_type, int size);
 
 // 建 extern_C 函数的 LLVM 函数类型：参数按 ABI 降级，sret 走首参
 LLVMTypeRef gen_abi_func_type(TypeRef func_type);
-
-#endif // CREST_LLVM_BACKEND_INTERNAL_LLVM_ABI_HPP

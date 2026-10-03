@@ -1,8 +1,8 @@
 #pragma once
 
-#include "xoaop.h"           // xpAllocator / isize
-#include "array.hpp"         // Array
-#include "llvm_global.hpp"   // 全部 LLVM-C 类型
+#include "xoaop.h"
+#include "array.hpp"
+#include "llvm_global.hpp"
 
 struct LLVMBasicBlockMapper {
     LLVMBasicBlockMapper() = default;

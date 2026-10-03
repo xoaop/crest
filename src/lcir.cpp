@@ -1,7 +1,7 @@
 #include "lcir.hpp"
 
-#include "symbol.hpp"     // SymbolInfo
-#include "cir_inst.hpp"   // CIROperator, CIRFunctionDeclInfo
+#include "symbol.hpp"
+#include "cir_inst.hpp"
 
 namespace lcir {
 

@@ -916,7 +916,10 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
 
         case AstType_BadExpr: {
         } break;
-        
+
+        case AstType_BadDecl: {
+        } break;
+
         case AstType_Undefined: {
             UNREACHABLE();
         } break;

@@ -12,7 +12,7 @@
 #include "llvm-c/Transforms/PassBuilder.h"
 #include "llvm-c/Linker.h"
 
-#include "type.hpp"   // TypeRef / TypeHashKey
+#include "type.hpp"
 
 
 // 全局 LLVM 会话：跨 package 共享，init_llvm() 创建一次

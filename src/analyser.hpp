@@ -1,5 +1,4 @@
-#ifndef CREST_ANALYSER_HPP
-#define CREST_ANALYSER_HPP
+#pragma once
 
 #include "xoaop.h"
 #include "array.hpp"
@@ -18,6 +17,3 @@ void resolve_package(Ref<Package> pkg);
 
 // 注册基础类型符号
 void init_global_symbols();
-
-
-#endif // CREST_ANALYSER_HPP

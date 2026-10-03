@@ -1,5 +1,4 @@
-#ifndef CREST_VALUE_OPS_HPP
-#define CREST_VALUE_OPS_HPP
+#pragma once
 
 #include "value.hpp"
 #include "tokenizer.hpp"
@@ -13,8 +12,3 @@ ValueResult exec_unary(Value &operand, TokenType op);
 
 // cast运算
 ValueResult exec_cast(Value &val, TypeRef target_type);
-
-
-
-
-#endif // CREST_VALUE_OPS_HPP

@@ -146,6 +146,11 @@ Ast *parse_import(Parser *p) {
     raw_path.c_str = raw_path.c_str + 1;  // 去掉开头的引号
     raw_path.length -= 2;                 // 去掉结尾的引号
 
+    if(!is_valid_utf8(raw_path)) {
+        context()->reporter.report_error(path_succ.first.src_loc, "import 路径不是合法 UTF-8");
+        return ast_alloc(AstType_BadDecl, import_token);
+    }
+
     Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.src_loc, path_succ.first.src_loc));
     a->Import.path = normalize_path(raw_path, ast_allocator());
     

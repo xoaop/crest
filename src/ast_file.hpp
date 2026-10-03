@@ -1,5 +1,4 @@
-#ifndef CREST_AST_FILE_HPP
-#define CREST_AST_FILE_HPP
+#pragma once
 
 #include "ast.hpp"
 
@@ -18,5 +17,3 @@ struct AstFile {
 
 
 AstFile make_ast_file(Array<Ast *> top_levels, SourceCode src_code);
-
-#endif

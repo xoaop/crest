@@ -1,5 +1,4 @@
-#ifndef CREST_TOKENIZER_H
-#define CREST_TOKENIZER_H
+#pragma once
 
 #include "xoaop.h"
 #include "array.hpp"
@@ -125,6 +124,3 @@ Array<Token> tokenize(SourceCode *src_code);
 
 void init_keyword_map();
 void test_keyword_map();
-
-
-#endif

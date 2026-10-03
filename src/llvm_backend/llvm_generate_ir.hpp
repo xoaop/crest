@@ -1,5 +1,4 @@
-#ifndef CREST_LLVM_GENERATE_IR_HPP
-#define CREST_LLVM_GENERATE_IR_HPP
+#pragma once
 
 #include "parser.hpp"
 #include "package.hpp"
@@ -33,9 +32,3 @@ struct LLVMIRGenerateConfig {
 
 void init_llvm();
 Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config);
-
-
-
-
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef CREST_STABLE_ORDERED_ARRAY_HPP
-#define CREST_STABLE_ORDERED_ARRAY_HPP
+#pragma once
 
 #include "array.hpp"
 
@@ -501,5 +500,3 @@ static void test_stable_ordered_array() {
 }
 
 #endif // CREST_DEBUG
-
-#endif

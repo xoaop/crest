@@ -1,5 +1,4 @@
-#ifndef CREST_ERROR_MSG_HPP
-#define CREST_ERROR_MSG_HPP
+#pragma once
 
 #include <format>
 
@@ -102,6 +101,3 @@ template <typename... Args>
 void err(std::format_string<Args...> fmt, Args&&... args) {
     print_error_line(ErrorLevel::Error, fmt, std::forward<Args>(args)...);
 }
-
-
-#endif

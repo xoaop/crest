@@ -1,18 +1,13 @@
-﻿#include "path.hpp"
+#include "path.hpp"
 
+#include <string>
 #include <filesystem>
 
 // ! TODO: AI GENERATE
 xpString normalize_path(xpString path, xpAllocator allocator) {
-    
-    // 归一化
-    std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-    std::filesystem::path normalized_path = p.lexically_normal();
+    const std::u8string normalized = std::filesystem::path(as_u8(path)).lexically_normal().generic_u8string();
 
-    // 转为通用格式
-    auto generic = normalized_path.generic_string();
-
-    return xp_make_string_capacity(allocator, generic.c_str(), (isize)generic.length());
+    return xp_make_string(allocator, (const char *)normalized.c_str());
 }
 
 
@@ -20,10 +15,11 @@ xpString normalize_path(xpString path, xpAllocator allocator) {
 Array<xpString> scan_crest_files(const char *dir_path, xpAllocator allocator) {
     Array<xpString> crest_files = make_array<xpString>(allocator);
 
-    for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".cst") {
-            xpString file_path = xp_make_string_capacity(allocator, entry.path().string().c_str(), (isize)entry.path().string().length());
-            crest_files.push_back(file_path);
+    std::error_code ec;
+    const std::filesystem::path dir(as_u8(xp_string_c(dir_path)));
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (entry.is_regular_file(ec) && entry.path().extension() == ".cst") {
+            crest_files.push_back(xp_make_string(allocator, (const char *)entry.path().generic_u8string().c_str()));
         }
     }
 
@@ -32,42 +28,36 @@ Array<xpString> scan_crest_files(const char *dir_path, xpAllocator allocator) {
 
 // ! TODO: AI GENERATE
 xpString concat_path(xpString base_path, xpString relative_path, xpAllocator allocator) {
-    std::filesystem::path base{std::string(base_path.c_str, (size_t)base_path.length)};
-    std::filesystem::path relative{std::string(relative_path.c_str, (size_t)relative_path.length)};
+    const std::filesystem::path combined =
+        std::filesystem::path(as_u8(base_path)) / std::filesystem::path(as_u8(relative_path));
 
-    std::filesystem::path combined = base / relative;
-    std::filesystem::path normalized = combined.lexically_normal();
-
-    auto generic = normalized.generic_string();
-
-    return xp_make_string_capacity(allocator, generic.c_str(), (isize)generic.length());
+    return xp_make_string(allocator, (const char *)combined.lexically_normal().generic_u8string().c_str());
 }
 
 // ! TODO: AI GENERATE
 xpString get_last_component_of_path(xpString path, xpAllocator allocator) {
-    std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-    auto filename = p.filename().string();
+    const std::u8string filename = std::filesystem::path(as_u8(path)).filename().generic_u8string();
 
-    return xp_make_string_capacity(allocator, filename.c_str(), (isize)filename.length());
+    return xp_make_string(allocator, (const char *)filename.c_str());
 }
 
 
 // ! TODO: AI GENERATE
 bool is_file(xpString path) {
-    std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-    return std::filesystem::is_regular_file(p);
+    std::error_code ec;
+    return std::filesystem::is_regular_file(std::filesystem::path(as_u8(path)), ec);
 }
 
 // ! TODO: AI GENERATE
 bool is_directory(xpString path) {
-    std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-    return std::filesystem::is_directory(p);
+    std::error_code ec;
+    return std::filesystem::is_directory(std::filesystem::path(as_u8(path)), ec);
 }
 
 // ! TODO: AI GENERATE
 bool is_path_exists(xpString path) {
-    std::filesystem::path p{std::string(path.c_str, (size_t)path.length)};
-    return std::filesystem::exists(p);
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::path(as_u8(path)), ec);
 }
 
 // ! TODO: AI GENERATE
@@ -80,14 +70,11 @@ bool is_existing_directory(xpString path) {
     return is_path_exists(path) && is_directory(path);
 }
 
-std::filesystem::path to_path(xpString path) {
-    return std::filesystem::path(std::string(path.c_str, (size_t)path.length));
-}
 
 
 
 Path::Path(xpString raw_path_str, xpAllocator allocator) {
-    
+
 }
 
 

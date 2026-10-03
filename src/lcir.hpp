@@ -1,10 +1,10 @@
 #pragma once
 
 #include "array.hpp"
-#include "cir_instruction_ref.hpp"   // CIRInstructionRef, Ref<CIRResultInstance>, Ref<CIRInstResult>
-#include "cir_package.hpp"           // CIRResultContext, CIRPackage
-#include "package.hpp"               // Ref<Package>, Package
-#include "type.hpp"                  // TypeRef
+#include "cir_instruction_ref.hpp"
+#include "cir_package.hpp"
+#include "package.hpp"
+#include "type.hpp"
 
 namespace lcir {
 

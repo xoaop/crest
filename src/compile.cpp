@@ -186,6 +186,11 @@ AstFile tokenize_and_parse_file(const char *path) {
 xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator allocator) {
     Array<xpString>& search_paths = context()->package_search_paths;
 
+    // 空路径 concat 出来就是搜索根目录本身（base / "" 带尾斜杠），会误当成一个包
+    if(import_path.length <= 0) {
+        return xpOption<xpString>::none();
+    }
+
     for (isize i = 0; i < search_paths.count; i++) {
         xpString base = search_paths[i];
         xpString candidate = concat_path(base, import_path, allocator);

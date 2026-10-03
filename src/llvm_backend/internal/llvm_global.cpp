@@ -1,11 +1,11 @@
-#include "xoaop.h"   // XP_ASSERT_DEFAULT
+#include "xoaop.h"
 
-#include <cstring>   // strcmp
+#include <cstring>
 
 #include "llvm_global.hpp"
 
 #include "context.hpp"
-#include "common.hpp"   // permanent_allocator
+#include "common.hpp"
 #include "print.hpp"
 #include "error_msg.hpp"
 
@@ -20,9 +20,8 @@ void init_llvm() {
     LLVMInitializeNativeDisassembler();
 
     // 全局会话创建一次（跨 package 共享）：ctx + target_machine + target_data
-    const char *triple = context()->target_triple
-                       ? context()->target_triple
-                       : LLVMGetDefaultTargetTriple();
+    XP_ASSERT_DEFAULT(!context()->target_triple.empty());
+    const char *triple = context()->target_triple.c_str();
     LLVMTargetRef target;
     char *error = nullptr;
     if(LLVMGetTargetFromTriple(triple, &target, &error)) {

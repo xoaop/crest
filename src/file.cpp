@@ -5,6 +5,8 @@
 #if defined(_WIN32) || defined(_WIN64)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
+#include <stdlib.h>
 #include <memory>
 #include <vector>
 
@@ -67,7 +69,7 @@ std::string get_program_path() {
 
 #include <mach-o/dyld.h>
 #include <limits.h>
-#include <stdlib.h>   // for realpath
+#include <stdlib.h>
 
 std::string get_program_path() {
     char buffer[PATH_MAX];
@@ -88,3 +90,64 @@ std::string get_program_path() {
 #else
     #error "Unsupported platform"
 #endif
+
+
+std::vector<std::string> get_utf8_args(int argc, char** argv) {
+    std::vector<std::string> args;
+
+#ifdef _WIN32
+    int wide_argc = 0;
+    wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
+    if(!wide_argv) {
+        return args;
+    }
+    for(int i = 0; i < wide_argc; i++) {
+        const int needed = WideCharToMultiByte(
+            CP_UTF8, 0, wide_argv[i], -1, nullptr, 0, nullptr, nullptr);
+        if(needed <= 0) {
+            args.push_back("");
+            continue;
+        }
+        std::string utf8((size_t)needed, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide_argv[i], -1, utf8.data(), needed, nullptr, nullptr);
+        utf8.resize((size_t)needed - 1);   // 去掉结尾 NUL
+        args.push_back(utf8);
+    }
+    LocalFree(wide_argv);
+#else
+    for(int i = 0; i < argc; i++) {
+        args.push_back(argv[i]);
+    }
+#endif
+
+    return args;
+}
+
+
+std::string get_utf8_env(const char *name) {
+#ifdef _WIN32
+    const int name_len = MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0);
+    if(name_len <= 0) {
+        return "";
+    }
+    std::wstring wide_name((size_t)name_len, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, name, -1, wide_name.data(), name_len);
+
+    const wchar_t *wide_value = _wgetenv(wide_name.c_str());
+    if(!wide_value) {
+        return "";
+    }
+    const int needed = WideCharToMultiByte(
+        CP_UTF8, 0, wide_value, -1, nullptr, 0, nullptr, nullptr);
+    if(needed <= 0) {
+        return "";
+    }
+    std::string utf8((size_t)needed, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide_value, -1, utf8.data(), needed, nullptr, nullptr);
+    utf8.resize((size_t)needed - 1);   // 去掉结尾 NUL
+    return utf8;
+#else
+    const char *value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+#endif
+}

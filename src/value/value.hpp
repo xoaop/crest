@@ -1,5 +1,4 @@
-#ifndef CREST_VALUE_HPP
-#define CREST_VALUE_HPP
+#pragma once
 
 
 #include "xoaop.h"
@@ -245,8 +244,3 @@ struct std::formatter<Value> {
         }
     }
 };
-
-
-
-
-#endif // CREST_VALUE_HPP

@@ -1,5 +1,4 @@
-#ifndef CREST_SYMBOL_HPP
-#define CREST_SYMBOL_HPP
+#pragma once
 
 #include <optional>
 #include <functional>
@@ -140,6 +139,3 @@ struct std::formatter<SymbolTable> {
         return ctx.out();
     }
 };
-
-
-#endif // CREST_SYMBOL_HPP

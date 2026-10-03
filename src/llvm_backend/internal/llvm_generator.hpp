@@ -1,21 +1,20 @@
-#ifndef CREST_LLVM_BACKEND_INTERNAL_LLVM_GENERATOR_HPP
-#define CREST_LLVM_BACKEND_INTERNAL_LLVM_GENERATOR_HPP
+#pragma once
 
 // 内部实现头文件：LLVM 后端的结构体/类定义。
 // 仅供 src/llvm_backend/ 下的 .cpp 使用，其他模块不要 include。
 
-#include "llvm_generate_ir.hpp"      // LLVMIROptimizationLevel / LLVMIRGenerateConfig
+#include "llvm_generate_ir.hpp"
 
 #include "xoaop.h"
 #include "array.hpp"
-#include "type.hpp"                  // TypeRef / TypeHashKey
-#include "cir_instruction_ref.hpp"   // CIRInstructionRef / CIRBlockRef / Ref<CIRInstResult>
-#include "cir_inst.hpp"              // CIRFunctionDeclInfo / CIRInstruction
-#include "cir_package.hpp"           // CIRResultContext
-#include "lcir.hpp"                  // lcir::Module
+#include "type.hpp"
+#include "cir_instruction_ref.hpp"
+#include "cir_inst.hpp"
+#include "cir_package.hpp"
+#include "lcir.hpp"
 
-#include "llvm_global.hpp"              // 全部 LLVM-C 类型 / LLVMSession / g_llvm_session
-#include "llvm_basic_block_mapper.hpp"  // LLVMBasicBlockMapper
+#include "llvm_global.hpp"
+#include "llvm_basic_block_mapper.hpp"
 
 
 struct SymbolInfo;
@@ -110,5 +109,3 @@ public:
     CIRInstructionRef debug_curr_gen_ref = INVALID_INST;
 
 };
-
-#endif // CREST_LLVM_BACKEND_INTERNAL_LLVM_GENERATOR_HPP

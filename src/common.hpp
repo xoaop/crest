@@ -1,5 +1,4 @@
-#ifndef CREST_COMMON_H
-#define CREST_COMMON_H
+#pragma once
 
 #include <format>
 #include <meta>
@@ -55,7 +54,3 @@ const char *to_string(const T value) {
     UNREACHABLE();
     return nullptr;
 }
-
-
-
-#endif

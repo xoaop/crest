@@ -1,8 +1,8 @@
-#ifndef CREST_PATH_CPP
-#define CREST_PATH_CPP
+#pragma once
 
 #include "xoaop.h"
 #include "array.hpp"
+#include "utf8.hpp"
 
 #include <filesystem>
 
@@ -22,8 +22,6 @@ bool is_existing_file(xpString path);
 
 bool is_existing_directory(xpString path);
 
-std::filesystem::path to_path(xpString path);
-
 
 struct Path {
 
@@ -34,9 +32,3 @@ private:
     std::filesystem::path internal_path;
 
 };
-
-
-
-
-
-#endif

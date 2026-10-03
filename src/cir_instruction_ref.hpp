@@ -1,5 +1,4 @@
-#ifndef CREST_CIR_INSTRUCTION_REF_HPP
-#define CREST_CIR_INSTRUCTION_REF_HPP
+#pragma once
 
 #include "xoaop.h"
 #include "array.hpp"
@@ -159,5 +158,3 @@ struct std::hash<Ref<CIRInstResult>> {
         return h;
     }
 };
-
-#endif

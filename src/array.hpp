@@ -1,5 +1,4 @@
-#ifndef XOAOP_ARRAY_H
-#define XOAOP_ARRAY_H
+#pragma once
 
 #include "xoaop.h"
 #include <type_traits>
@@ -549,6 +548,4 @@ static void test_array_perf() {
         array_free(&arr);
     }
 }
-#endif
-
 #endif

@@ -9,6 +9,7 @@
 #include "context.hpp"
 
 #include "path.hpp"
+#include "utf8.hpp"
 
 #include "print.hpp"
 #include "error_msg.hpp"
@@ -422,22 +423,23 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
     // 输出 .ll 文件
     char *error = nullptr;
-    std::filesystem::path pkg_path = to_path(pkg.unwrap().path);
-    std::string file_name = pkg_path.generic_string();
+    const std::filesystem::path pkg_path(as_u8(pkg.unwrap().path));
+    std::string file_name = (const char *)pkg_path.generic_u8string().c_str();
     // 单文件包 path 带扩展名(.cst), 输出文件名不带后缀
     if(pkg_path.has_extension()) {
-        file_name = pkg_path.stem().generic_string();
+        file_name = (const char *)pkg_path.stem().generic_u8string().c_str();
     }
     std::replace(file_name.begin(), file_name.end(), '/', '_');
     std::replace(file_name.begin(), file_name.end(), ':', '_');
 
-    std::filesystem::path &output_path = context()->output_path;
+    const std::filesystem::path& output_path = context()->output_path;
 
-    std::filesystem::path obj_file_path = output_path / (file_name + ".o");
-    std::filesystem::path ll_file_path = output_path / (file_name + ".ll");
-    
+    const std::filesystem::path obj_file_path = output_path / (file_name + ".o");
+    const std::filesystem::path ll_file_path = output_path / (file_name + ".ll");
+    const std::string ll_file_path_utf8 = (const char *)ll_file_path.generic_u8string().c_str();
 
-    if(LLVMPrintModuleToFile(unit.module, ll_file_path.generic_string().c_str(), &error)) {
+
+    if(LLVMPrintModuleToFile(unit.module, ll_file_path_utf8.c_str(), &error)) {
         err("Error writing .ll file: {}", error);
         LLVMDisposeMessage(error);
     }
@@ -481,24 +483,22 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
     
 
     // 确保目标文件夹存在
-    std::filesystem::create_directories(obj_file_path.parent_path());
+    std::filesystem::create_directories(output_path);
 
     // 生成.o文件
+    const std::string obj_file_path_utf8 = (const char *)obj_file_path.generic_u8string().c_str();
     if(LLVMTargetMachineEmitToFile(
         g_llvm_session.target_machine,
         unit.module,
-        obj_file_path.generic_string().c_str(),
+        obj_file_path_utf8.c_str(),
         LLVMObjectFile,
         &error
     )) {
         err("Error writing object file: {}", error);
         LLVMDisposeMessage(error);
     }
-    
-    std::string obj_file_path_str = obj_file_path.generic_string();
-    xpString obj_file_path_str_permanent = xp_make_string_count(permanent_allocator(), obj_file_path_str.c_str(), obj_file_path_str.size());
 
-    return obj_file_path_str_permanent;
+    return xp_make_string(permanent_allocator(), (const char *)obj_file_path.generic_u8string().c_str());
 }
 
 LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {

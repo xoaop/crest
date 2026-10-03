@@ -1,5 +1,4 @@
-#ifndef CREST_SCOPE_HPP
-#define CREST_SCOPE_HPP
+#pragma once
 
 #include "xoaop.h"
 
@@ -125,13 +124,3 @@ struct std::formatter<Scope> {
         );
     }
 };
-
-
-
-
-
-
-
-
-
-#endif

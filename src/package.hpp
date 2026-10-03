@@ -1,5 +1,4 @@
-#ifndef CREST_PACKAGE_HPP
-#define CREST_PACKAGE_HPP
+#pragma once
 
 #include "xoaop.h"
 #include "symbol.hpp"
@@ -35,7 +34,3 @@ struct Package {
 };
 
 Package make_package(xpString path, xpAllocator allocator);
-
-
-
-#endif

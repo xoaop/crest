@@ -1,5 +1,4 @@
-#ifndef CREST_PARSER_H
-#define CREST_PARSER_H
+#pragma once
 
 #include "xoaop.h"
 #include "tokenizer.hpp"
@@ -11,6 +10,3 @@
 
 
 Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code);
-
-
-#endif

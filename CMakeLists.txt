@@ -67,7 +67,7 @@ if(WIN32)
     # 单一 GCC 工具链：MinGW g++ 走 GNU ld —— PE 栈大小用 --stack；
     # dbghelp 供栈回溯；std::print 的终端 Unicode 辅助函数在 libstdc++exp。
     target_link_options(crest PRIVATE -Wl,--stack,16777216)
-    target_link_libraries(crest PRIVATE dbghelp stdc++exp)
+    target_link_libraries(crest PRIVATE dbghelp stdc++exp advapi32)
 else()
     # -rdynamic：backtrace_symbols 才能取到函数名
     target_link_options(crest PRIVATE -Wl,-z,stacksize=16777216 -rdynamic)

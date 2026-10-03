@@ -1,5 +1,4 @@
-#ifndef CREST_SPAN_HPP
-#define CREST_SPAN_HPP
+#pragma once
 
 #include <format>
 #include "xoaop.h"
@@ -61,6 +60,3 @@ struct std::formatter<SourceLocation> {
         );
     }
 };
-
-
-#endif
