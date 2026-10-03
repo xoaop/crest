@@ -253,8 +253,8 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
             for(isize i = 0; i < param_decls.count; i++) {
                 auto& var = param_decls[i];
 
-                // NOTE: 函数参数变量的no_zero_init为false, 因为一定有值, 没必要
-                auto vd = Alloc_Var(ctx, var.name, var.is_var_arg, false, fd->FunctionDeclValue.params[i], true /*is_param*/);
+                // 参数一定由 caller 传值，零初始化会被后面的参数 store 覆盖
+                auto vd = Alloc_Var(ctx, var.name, var.is_var_arg, true, fd->FunctionDeclValue.params[i], true /*is_param*/);
                 func.arg_decl_insts.push_back(vd);
 
                 auto param_type = func.arg_type_insts[i];
@@ -512,7 +512,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast 
     auto& vd_ast = var_decl_ast->VariableDecl;
 
     // 1. 变量声明（分配存储空间）
-    auto vd = Alloc_Var(ctx, vd_ast.var_name, false, vd_ast.no_zero_init, var_decl_ast);
+    // 有初始值时由下面的 Store 完成初始化，不必再零初始化
+    auto vd = Alloc_Var(ctx, vd_ast.var_name, false, vd_ast.no_zero_init || vd_ast.expr != nullptr, var_decl_ast);
     Instruction(ctx, vd).src_loc = var_decl_ast->src_loc;
 
     // 2. 类型归属 — 仅当有显式类型标注时才发射
@@ -672,7 +673,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
     CIRInstructionRef result = INVALID_INST;
     switch(expr->type) {
         case AstType_Ident: {
-            SymbolInfo *sym = try_access_val(expr->ast_symbol);
+            SymbolInfo *sym = expr->ast_symbol.try_get();
             if(sym && sym->is_var_decl()) {
                 auto ref = New_Instruction(ctx, CIROperator::IdentRef, expr);
                 Instruction(ctx, ref).symbol = expr->ast_symbol;

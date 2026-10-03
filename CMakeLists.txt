@@ -4,6 +4,8 @@ project(Crest CXX)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # LLVM 库：Windows 用 LLVM-C.lib + 运行时 dll；Linux 用 libLLVM.so（LLVM-C API 内建其中）
 if(WIN32)
     set(LLVM_C_LIB "${CMAKE_CURRENT_SOURCE_DIR}/bin/LLVM-C.lib")
@@ -25,8 +27,6 @@ add_executable(crest ${CREST_SOURCES})
 # main.cpp 直接引 llvm_generate_ir.hpp
 # third_party/ 下有两类外部依赖：
 #   xoaop     — xoaop.h 库（git submodule），提供 xoaop.h + xoaop_*.h 子模块
-#   debug_fmt — debug_fmt.hpp 库（git submodule），C++26 反射 Debug 打印器；
-#               仅 GCC 的 -freflection 可编，clang 构建只挂 include、不启用反射
 #   llvm-c    — LLVM 21.1.6 官方 C API 头文件，与 bin/LLVM-C.lib 严格配套
 #               源码里写作 #include "llvm-c/Core.h"，故目录名必须是 llvm-c
 target_include_directories(crest PRIVATE
@@ -34,22 +34,26 @@ target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/debug_fmt")
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")
 
 # 所有配置：禁用异常 + i128 支持
 target_compile_options(crest PRIVATE -fno-exceptions)
 target_compile_definitions(crest PRIVATE XOAOP_I128_SUPPORT)
 
-# debug_fmt.hpp 用 C++26 静态反射(P2996)，仅 GCC 的 -freflection 提供；
-# clang（当前 Windows 构建）不支持,故只在 GNU 下加,clang 构建不受影响。
+# C++26 静态反射(P2996)，仅 GCC 的 -freflection 提供；clang 不支持,故只在 GNU 下加。
 target_compile_options(crest PRIVATE $<$<CXX_COMPILER_ID:GNU>:-freflection>)
 
 # Debug / Release 区分：
 #   Debug   — 调试符号 + CREST_DEBUG 宏（DEBUG_LOG/ASSERT 等）
-#   Release — 优化，关调试宏
+#   Release — 优化，关调试宏，静态链 GCC 运行时
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(crest PRIVATE -O2)
+    # 静态链 GCC/C++ 运行时与 winpthread，产物不再依赖
+    # libstdc++-6.dll / libgcc_s_seh-1.dll / libwinpthread-1.dll
+    target_link_options(crest PRIVATE -static-libgcc -static-libstdc++)
+    if(WIN32)
+        target_link_options(crest PRIVATE -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive)
+    endif()
 else()
     target_compile_options(crest PRIVATE -g)
     target_compile_definitions(crest PRIVATE CREST_DEBUG XP_HEAP_RECORD_ENABLE)

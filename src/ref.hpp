@@ -11,15 +11,20 @@ template<typename T>
 struct Ref;
 
 template<typename T>
-concept RefBaseConcept = requires(const Ref<T> &d) { try_access_val(d); };
-
-template<RefBaseConcept T>
 struct RefBase {
     static const inline Ref<T> INVALID_REF{};
 
+    T *try_get() const {
+        return derived().resolve();
+    }
+
+    bool is_valid() const {
+        return this->try_get() != nullptr;
+    }
+
     // 保证非空解包：拿不到就断言崩溃
     T &unwrap() const {
-        T *p = try_access_val(derived());
+        T *p = this->try_get();
         ASSERT(p != nullptr);
         return *p;
     }
@@ -29,18 +34,18 @@ struct RefBase {
         return &unwrap();
     }
 
-    T &operator*()  const {
+    T &operator*() const {
         return unwrap();
     }
 
 private:
 
-    Ref<T> &derived() { 
-        return static_cast<Ref<T>&>(*this); 
+    Ref<T> &derived() {
+        return static_cast<Ref<T>&>(*this);
     }
 
-    const Ref<T> &derived() const { 
-        return static_cast<const Ref<T>&>(*this); 
+    const Ref<T> &derived() const {
+        return static_cast<const Ref<T>&>(*this);
     }
 };
 
@@ -54,11 +59,11 @@ struct Ref : RefBase<T> {
     explicit constexpr Ref(isize idx) : index(idx) {}
 
     bool operator==(const Ref& other) const { return index == other.index; }
+
+    T *resolve() const;
 };
 
 template<typename T>
 struct std::hash<Ref<T>> {
     usize operator()(const Ref<T>& r) const { return (usize)(u64)r.index; }
 };
-
-

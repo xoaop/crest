@@ -13,7 +13,6 @@ struct CIRPackage;
 struct CIRInstResult;
 struct CIRResultInstance;
 
-CIRPackage* try_access_val(const Ref<CIRPackage>& r);
 struct CIRInstruction;
 using CIRBlockRef = isize;
 
@@ -104,12 +103,12 @@ struct std::hash<FuncCallKey> {
 };
 
 
-CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r);
-
 template<>
 struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
     Ref<CIRPackage> cir_package;
     isize index = -1;
+
+    CIRResultInstance *resolve() const;
 
     bool operator==(const Ref& other) const {
         return cir_package == other.cir_package && index == other.index;
@@ -129,8 +128,6 @@ struct std::hash<Ref<CIRResultInstance>> {
 // 引用 CIRPackage 中某个指令的结果值
 // result_instance == INVALID_REF → 值在 cir_package->results[inst_ref] 中
 // result_instance != INVALID_REF → 值在 result_instance->results[inst_ref] 中
-CIRInstResult* try_access_val(const Ref<CIRInstResult>& r);
-
 template<>
 struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     CIRPackage*                            cir_package = nullptr;
@@ -138,6 +135,8 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     Ref<CIRResultInstance>                 result_instance;
 
     static Ref init(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
+
+    CIRInstResult *resolve() const;
 
     CIRInstResult* get_result() const;
 

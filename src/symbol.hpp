@@ -11,7 +11,6 @@
 #include "ref.hpp"
 
 #include "value.hpp"
-#include "debug_fmt.hpp"
 
 
 struct AstFile;
@@ -26,9 +25,6 @@ enum class SymbolState {
     Error     // 定义求值失败
 };
 
-inline const char* to_string(SymbolState state) {
-    return dbg::to_string(state);
-}
 
 
 enum class ValueStoreType {
@@ -91,12 +87,12 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name);
 
 
 
-SymbolInfo *try_access_val(const Ref<SymbolInfo> &r);
-
 template<>
 struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
     Ref<Scope> scope = Ref<Scope>::INVALID_REF;
     xpString name;
+
+    SymbolInfo *resolve() const;
 
     bool operator==(const Ref<SymbolInfo> &other) const {
         return scope == other.scope && name == other.name;

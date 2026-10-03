@@ -1,5 +1,9 @@
 @echo off
 setlocal
+
+clear
+
+
 cd /d "%~dp0"
 
 rem Default Debug; pass "release" for Release
@@ -20,7 +24,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%BUILD_DIR%"
+cmake --build "%BUILD_DIR%" -j 4
 if errorlevel 1 (
     echo.
     echo Build failed.

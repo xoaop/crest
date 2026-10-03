@@ -195,7 +195,9 @@ int main(int argc, char** argv) {
     defer(free_type_table(context()));
 
 
-    context()->all_packages = make_array<Package>(permanent_allocator());
+    // TODO: CIRPackage * has risk
+    context()->all_packages = make_array_capacity<Package>(permanent_allocator(), 128);
+
     context()->all_scopes = make_array<Scope>(permanent_allocator());
     context()->static_mem.init(MemoryKind::String, permanent_allocator());
     context()->lcir_modules = xp_hash_map_make<Ref<Package>, lcir::Module>(permanent_allocator());

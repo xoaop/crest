@@ -34,6 +34,7 @@ build_release/
 build_cmake_*/
 build_rel_*/
 build_ubsan*/
+build_verify/
 
 # IDE配置
 .vscode/

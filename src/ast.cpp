@@ -188,6 +188,8 @@ xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...>
 }
 
 
+void print_ast(Array<Ast *> a_arr, i32 depth, bool is_last);
+
 // 主函数：打印单个 Ast 节点
 void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
     if (a == nullptr) {

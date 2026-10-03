@@ -13,14 +13,16 @@ Ref<Package> add_package(Context *ctx, Package pkg) {
     return Ref<Package>{ctx->all_packages.count - 1};
 }
 
-Package *try_access_val(const Ref<Package> &r) {
-    if (r.index < 0) return nullptr;
-    return &context()->all_packages[r.index];
+template<>
+Package *Ref<Package>::resolve() const {
+    if (this->index < 0) return nullptr;
+    return &context()->all_packages[this->index];
 }
 
-Scope *try_access_val(const Ref<Scope> &r) {
-    if (r.index < 0 || r.index >= context()->all_scopes.count) return nullptr;
-    return &context()->all_scopes[r.index];
+template<>
+Scope *Ref<Scope>::resolve() const {
+    if (this->index < 0 || this->index >= context()->all_scopes.count) return nullptr;
+    return &context()->all_scopes[this->index];
 }
 
 

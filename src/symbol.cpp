@@ -156,10 +156,10 @@ SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
     return info;
 }
 
-SymbolInfo *try_access_val(const Ref<SymbolInfo> &r) {
-    if(r.scope == Ref<Scope>::INVALID_REF) {
+SymbolInfo *Ref<SymbolInfo>::resolve() const {
+    if(this->scope == Ref<Scope>::INVALID_REF) {
         return nullptr;
     }
-    return find_symbol(&r.scope.unwrap().symbols, r.name);
+    return find_symbol(&this->scope.unwrap().symbols, this->name);
 }
 

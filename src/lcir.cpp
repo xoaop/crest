@@ -1,6 +1,6 @@
 #include "lcir.hpp"
 
-#include "symbol.hpp"     // SymbolInfo, try_access_val
+#include "symbol.hpp"     // SymbolInfo
 #include "cir_inst.hpp"   // CIROperator, CIRFunctionDeclInfo
 
 namespace lcir {
@@ -19,7 +19,7 @@ xpString mangle_name(Ref<CIRInstResult> key, std::optional<xpString> base_name_o
         // const auto& inst = key.cir_package->inst(key.inst_ref);
         // ASSERT(inst.op == CIROperator::FunctionDecl);
 
-        // SymbolInfo* sym = try_access_val(inst.symbol);
+        // SymbolInfo* sym = inst.symbol.try_get();
         xpString base_name = base_name_opt.value_or([]{
             static isize anon_counter = 0;
             xpString name = xp_string_copy(permanent_allocator(), xp_string_c("__anon_"));

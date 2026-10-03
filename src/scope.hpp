@@ -120,7 +120,7 @@ struct std::formatter<Scope> {
 
     auto format(const Scope& scope, std::format_context& ctx) const {
         return std::format_to(ctx.out(), "Scope {{ type: {}, symbols: [\n{}] }}",
-            dbg::to_string(scope.scope_type),
+            to_string(scope.scope_type),
             scope.symbols
         );
     }

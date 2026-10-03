@@ -4,4 +4,5 @@
 
 struct CIRPackage;
 
-CIRPackage* try_access_val(const Ref<CIRPackage>& r);
+template<>
+CIRPackage* Ref<CIRPackage>::resolve() const;

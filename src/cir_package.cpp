@@ -70,7 +70,7 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
 
 
 CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
-    CIRResultInstance* inst = try_access_val(instance);
+    CIRResultInstance* inst = instance.try_get();
     if(inst != nullptr) {
         return inst->result_of_or(ref, [&]{ return result_of(ref); });
     }
@@ -80,23 +80,24 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstanc
 }
 
 
-CIRPackage* try_access_val(const Ref<CIRPackage>& r) {
-    if(r.index < 0) {
+template<>
+CIRPackage* Ref<CIRPackage>::resolve() const {
+    if(this->index < 0) {
         return nullptr;
     }
 
-    return &context()->all_packages[r.index].cir_package;
+    return &context()->all_packages[this->index].cir_package;
 }
 
 
 
 
-CIRResultInstance* try_access_val(const Ref<CIRResultInstance>& r) {
-    if(r.cir_package == Ref<CIRPackage>::INVALID_REF || r.index < 0) {
+CIRResultInstance* Ref<CIRResultInstance>::resolve() const {
+    if(cir_package == Ref<CIRPackage>::INVALID_REF || index < 0) {
         return nullptr;
     }
 
-    return &r.cir_package->result_instances[r.index];
+    return &cir_package->result_instances[index];
 }
 
 Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRPackage* pkg, CIRInstructionRef ref,
@@ -104,15 +105,15 @@ Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRPackage* pkg, CIRInstructionRef r
     return Ref<CIRInstResult>{.cir_package = pkg, .inst_ref = ref, .result_instance = ri};
 }
 
-CIRInstResult* try_access_val(const Ref<CIRInstResult>& r) {
-    if(r.cir_package == nullptr) {
+CIRInstResult* Ref<CIRInstResult>::resolve() const {
+    if(cir_package == nullptr) {
         return nullptr;
     }
-    return r.get_result();
+    return get_result();
 }
 
 CIRInstResult* Ref<CIRInstResult>::get_result() const {
-    CIRResultInstance* inst = try_access_val(result_instance);
+    CIRResultInstance* inst = result_instance.try_get();
     if(inst != nullptr) {
         return inst->result_ptr_of(inst_ref);
     }
@@ -329,56 +330,82 @@ bool is_pure_comptime_func(const CIRFunctionDeclInfo& func, const CIRResultConte
 }
 
 #if defined(CREST_DEBUG)
-//
-// debug
-//
+// 打印单个 block：块头 + 块内每条指令
+static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
+    CIRBlock& blk = pkg->blocks[block];
 
-static void dump_result(CIRInstResult& res) {
-    switch(res.state) {
-        case CIRResultState::NothingYet:
-            break;
-        case CIRResultState::OnlyType:
-            print_err(" -> {}", get_type_kind_str(res.type()->kind));
-            break;
-        case CIRResultState::InProgress:
-            print_err(" -> <in-progress>");
-            break;
-        case CIRResultState::WholeValue:
-            print_err(" -> {} = {}", get_type_kind_str(res.type()->kind), res.actual_val());
-            break;
-        case CIRResultState::Error:
-            print_err(" -> <error>");
-            break;
-    }
-    if(res.value_kind == CIRValueKind::LValue) {
-        print_err(" [lvalue]");
-    }
-}
+    std::string flags;
+    if (blk.is_comptime)    flags += " comptime";
+    if (blk.immediate_eval) flags += " immediate";
+    if (blk.is_loop)        flags += " loop";
+    if (blk.yields_value)   flags += " yields";
 
-static void dump_inst_compact(CIRPackage *pkg, CIRInstructionRef ref, bool show_result) {
-    auto& inst = pkg->inst(ref);
-
-    print_err("{}", dbg::debug(inst));
-
-    if(show_result) {
-        auto *entry = pkg->results.get_entry(ref);
-        if(entry) dump_result(entry->value);
-    }
     println_err("");
+    println_err("block #{} {{ {} insts{} }}", block, blk.insts.count(), flags);
+
+    for (auto ref : blk) {
+        const CIRInstruction& inst = pkg->inst(ref);
+
+        std::string ref_str = std::format("{}", ref);
+        std::string op_name = inst.to_string();
+
+        std::string line;
+        line.append(ref_str.size() < 6 ? 6 - ref_str.size() : 0, ' ');
+        line += ref_str;
+        line += "  ";
+        line += op_name;
+        line.append(op_name.size() < 15 ? 15 - op_name.size() : 1, ' ');
+
+        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
+            if (inst.op == [:e:]) {
+                const auto& payload = inst.info<([:e:])>();
+                CIRFormat<std::remove_cvref_t<decltype(payload)>>::write(line, payload);
+            }
+        }
+
+        auto *entry = pkg->results.get_entry(ref);
+        if (entry) {
+            CIRInstResult& res = entry->value;
+
+            std::string result;
+            switch (res.state) {
+                case CIRResultState::NothingYet: break;
+                case CIRResultState::OnlyType:   result = std::format("{}", get_type_kind_str(res.type()->kind)); break;
+                case CIRResultState::InProgress: result = "<in-progress>"; break;
+                case CIRResultState::WholeValue: result = std::format("{} = {}", get_type_kind_str(res.type()->kind), res.actual_val()); break;
+                case CIRResultState::Error:      result = "<error>"; break;
+            }
+            if (res.value_kind == CIRValueKind::LValue) result += " [lvalue]";
+
+            if (!result.empty()) {
+                constexpr usize arrow_col = 78;
+                line.append(line.size() < arrow_col ? arrow_col - line.size() : 2, ' ');
+                line += "-> " + result;
+            }
+        }
+
+        println_err("{}", line);
+    }
 }
-#endif // CREST_DEBUG
+#endif
+
 
 void dump_cir_package(CIRPackage *pkg) {
 #if defined(CREST_DEBUG)
-    println_err("CIRPackage {{");
-    for (CIRBlockRef b = 0; b < pkg->blocks.count; b++) {
-        auto& blk = pkg->blocks[b];
-        for (auto ref : blk) {
-            dump_inst_compact(pkg, ref, true);
-        }
-    }
-    println_err("}}");
+    const isize block_count = pkg->blocks.count;
 
-    println_err("\n--- total blocks: {} ---", pkg->blocks.count);
+    isize total_insts = 0;
+    for (isize b = 0; b < block_count; b++) {
+        total_insts += pkg->blocks[b].insts.count();
+    }
+
+    println_err("CIRPackage {{ {} blocks, {} insts }}", block_count, total_insts);
+
+    for (isize b = 0; b < block_count; b++) {
+        dump_cir_block(pkg, b);
+    }
+
+    println_err("");
+    println_err("--- {} blocks, {} insts ---", block_count, total_insts);
 #endif
 }

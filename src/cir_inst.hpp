@@ -11,13 +11,12 @@
 #include "span.hpp"
 #include "scope.hpp"
 #include "error_msg.hpp"
-#include "debug_fmt.hpp"
 
 #include "print.hpp"
 
 #include "cir_instruction_ref.hpp"
 
-enum TokenType : u8;  // forward declare, avoid circular include via tokenizer.hpp
+enum TokenType : u8;
 struct Ast;
 
 
@@ -116,10 +115,8 @@ enum class CIROperator {
 #undef X
 };
 
-
-inline const char *string(CIROperator op) {
-    return dbg::to_string(op);
-}
+// 名字字符串池只生成一份，实例化在 cir_inst.cpp
+extern template const char *to_string<CIROperator>(CIROperator);
 
 
 //
@@ -504,7 +501,7 @@ struct CIRInstruction {
     CIRInstruction& operator=(const CIRInstruction&) = default;
 
     const char *to_string() const {
-        return string(op);
+        return ::to_string(op);
     }
     
     // C++23 deducing this：按 op 取对应 payload（Op = CIROperator 枚举值）
@@ -539,11 +536,418 @@ private:
 };
 
 
-// dbg::debug 的 tagged-union 支持：判别式是 op，tag→成员 复用已有的 info<Op>()
-template <>
-struct dbg::TagUnionTrait<CIRInstruction> {
-    static auto tag(const CIRInstruction& x) { return x.op; }
+//
+// payload → 文本
+//
+// 集中一处，每个类型一个 CIRFormat 特化：格式显式写死，输出不随结构体成员名 / 顺序漂移。
+// 不占用 std::formatter，只给 CIR dump 用。新增 op 不写特化就编不过。
+//
+template <typename T>
+struct CIRFormat {
+    static void write(std::string& out, const T& v) {
+        std::format_to(std::back_inserter(out), "{}", v);
+    }
+};
 
-    template <CIROperator E>
-    static decltype(auto) union_val(const CIRInstruction& x) { return x.info<E>(); }
+template <typename T>
+void write_field(std::string& out, std::string_view name, const T& v) {
+    std::format_to(std::back_inserter(out), " {}=", name);
+    CIRFormat<T>::write(out, v);
+}
+
+
+// ── 值类型 ──────────────────────────────────────────────
+
+template<> struct CIRFormat<CIRInstructionRef> {
+    static void write(std::string& out, const CIRInstructionRef& v) {
+        if (v.block_ref < 0)  { out += "-"; return; }
+        if (v.inst_index < 0) { std::format_to(std::back_inserter(out), "block#{}", v.block_ref); return; }
+        std::format_to(std::back_inserter(out), "{}.{}", v.block_ref, v.inst_index);
+    }
+};
+
+template<> struct CIRFormat<EnumFieldInit> {
+    static void write(std::string& out, const EnumFieldInit& v) {
+        write_field(out, "name", v.name);
+        write_field(out, "value_inst", v.value_inst);
+    }
+};
+
+template <typename T> struct CIRFormat<Ref<T>> {
+    static void write(std::string& out, const Ref<T>& v) {
+        std::format_to(std::back_inserter(out), "{}", v.index);
+    }
+};
+
+template<> struct CIRFormat<Ref<SymbolInfo>> {
+    static void write(std::string& out, const Ref<SymbolInfo>& v) {
+        CIRFormat<xpString>::write(out, v.name);
+    }
+};
+
+template <typename T> struct CIRFormat<Array<T>> {
+    static void write(std::string& out, const Array<T>& v) {
+        out += "[";
+        for (isize i = 0; i < v.count; i++) {
+            if (i > 0) out += ", ";
+            CIRFormat<T>::write(out, v[i]);
+        }
+        out += "]";
+    }
+};
+
+template<> struct CIRFormat<Ast *> {
+    static void write(std::string& out, Ast * v) {
+        std::format_to(std::back_inserter(out), "{}", (const void *)v);
+    }
+};
+
+template<> struct CIRFormat<Pointer> {
+    static void write(std::string& out, const Pointer& v) {
+        std::format_to(std::back_inserter(out), "{}:{}", ::to_string(v.kind), v.offset);
+    }
+};
+
+template<> struct CIRFormat<TokenType> {
+    static void write(std::string& out, TokenType v) {
+        std::format_to(std::back_inserter(out), "{}", ::to_string(v));
+    }
+};
+
+
+// ── payload ────────────────────────────────────────────
+
+template<> struct CIRFormat<CIRConstDeclInfo> {
+    static void write(std::string& out, const CIRConstDeclInfo& p) {
+        write_field(out, "ident", p.ident);
+        write_field(out, "symbol", p.symbol);
+        write_field(out, "value_inst", p.value_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRVariableDeclInfo> {
+    static void write(std::string& out, const CIRVariableDeclInfo& p) {
+        write_field(out, "name", p.name);
+        write_field(out, "symbol", p.symbol);
+        write_field(out, "slot", p.slot);
+        write_field(out, "is_var_arg", p.is_var_arg);
+        write_field(out, "is_param", p.is_param);
+        write_field(out, "no_zero_init", p.no_zero_init);
+    }
+};
+
+template<> struct CIRFormat<CIRFunctionDeclInfo> {
+    static void write(std::string& out, const CIRFunctionDeclInfo& p) {
+        write_field(out, "body_inst", p.body_inst);
+        write_field(out, "return_type_inst", p.return_type_inst);
+        write_field(out, "arg_type_insts", p.arg_type_insts);
+        write_field(out, "arg_decl_insts", p.arg_decl_insts);
+        write_field(out, "return_count", p.return_count);
+        write_field(out, "is_extern_c", p.is_extern_c);
+        write_field(out, "is_comptime", p.is_comptime);
+        write_field(out, "is_builtin", p.is_builtin);
+        write_field(out, "slot_count", p.slot_count);
+        write_field(out, "has_generic_param_type", p.has_generic_param_type);
+        write_field(out, "generic_param_type_var_insts", p.generic_param_type_var_insts);
+        write_field(out, "generic_param_type_var_param_indices", p.generic_param_type_var_param_indices);
+        write_field(out, "all_param_type_and_return_type_inst_blk_ref", p.all_param_type_and_return_type_inst_blk_ref);
+    }
+};
+
+template<> struct CIRFormat<CIRCondBrInfo> {
+    static void write(std::string& out, const CIRCondBrInfo& p) {
+        write_field(out, "condition_inst", p.condition_inst);
+        write_field(out, "true_block", p.true_block);
+        write_field(out, "false_block", p.false_block);
+        write_field(out, "is_short_circuit", p.is_short_circuit);
+    }
+};
+
+template<> struct CIRFormat<CIRIfExprInfo> {
+    static void write(std::string& out, const CIRIfExprInfo& p) {
+        write_field(out, "condition_inst", p.condition_inst);
+        write_field(out, "true_block", p.true_block);
+        write_field(out, "false_block", p.false_block);
+    }
+};
+
+template<> struct CIRFormat<CIRBreakInfo> {
+    static void write(std::string& out, const CIRBreakInfo& p) {
+        write_field(out, "break_block", p.break_block);
+        write_field(out, "break_value_inst", p.break_value_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRLoadInfo> {
+    static void write(std::string& out, const CIRLoadInfo& p) {
+        write_field(out, "ptr_inst", p.ptr_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRStoreInfo> {
+    static void write(std::string& out, const CIRStoreInfo& p) {
+        write_field(out, "var_inst", p.var_inst);
+        write_field(out, "value_inst", p.value_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRTypeAscribeInfo> {
+    static void write(std::string& out, const CIRTypeAscribeInfo& p) {
+        write_field(out, "var_inst", p.var_inst);
+        write_field(out, "type_inst", p.type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRCallInfo> {
+    static void write(std::string& out, const CIRCallInfo& p) {
+        write_field(out, "called_thing", p.called_thing);
+        write_field(out, "arg_insts", p.arg_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRHookInfo> {
+    static void write(std::string& out, const CIRHookInfo& p) {
+        write_field(out, "name", p.name);
+        write_field(out, "arg_insts", p.arg_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRInstantiateFuncInfo> {
+    static void write(std::string& out, const CIRInstantiateFuncInfo& p) {
+        write_field(out, "called_thing", p.called_thing);
+        write_field(out, "arg_insts", p.arg_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRBinaryInfo> {
+    static void write(std::string& out, const CIRBinaryInfo& p) {
+        write_field(out, "op", p.op);
+        write_field(out, "left_inst", p.left_inst);
+        write_field(out, "right_inst", p.right_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRUnaryInfo> {
+    static void write(std::string& out, const CIRUnaryInfo& p) {
+        write_field(out, "op", p.op);
+        write_field(out, "operand_inst", p.operand_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRCastInfo> {
+    static void write(std::string& out, const CIRCastInfo& p) {
+        write_field(out, "expr_inst", p.expr_inst);
+        write_field(out, "target_type_inst", p.target_type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRFieldAccessInfo> {
+    static void write(std::string& out, const CIRFieldAccessInfo& p) {
+        write_field(out, "parent_inst", p.parent_inst);
+        write_field(out, "field_name", p.field_name);
+    }
+};
+
+template<> struct CIRFormat<CIRIndexInfo> {
+    static void write(std::string& out, const CIRIndexInfo& p) {
+        write_field(out, "array_inst", p.array_inst);
+        write_field(out, "index_inst", p.index_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRStructInitInfo> {
+    static void write(std::string& out, const CIRStructInitInfo& p) {
+        write_field(out, "struct_type_inst", p.struct_type_inst);
+        write_field(out, "field_init_insts", p.field_init_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRArrayInitInfo> {
+    static void write(std::string& out, const CIRArrayInitInfo& p) {
+        write_field(out, "element_insts", p.element_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRPointerTypeInfo> {
+    static void write(std::string& out, const CIRPointerTypeInfo& p) {
+        write_field(out, "pointed_type_inst", p.pointed_type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRArrayTypeInfo> {
+    static void write(std::string& out, const CIRArrayTypeInfo& p) {
+        write_field(out, "element_type_inst", p.element_type_inst);
+        write_field(out, "count_inst", p.count_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRSliceTypeInfo> {
+    static void write(std::string& out, const CIRSliceTypeInfo& p) {
+        write_field(out, "element_type_inst", p.element_type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRGetOrInitStructInfo> {
+    static void write(std::string& out, const CIRGetOrInitStructInfo& p) {
+        write_field(out, "decl_ast", p.decl_ast);
+        write_field(out, "symbol", p.symbol);
+    }
+};
+
+template<> struct CIRFormat<CIRStructFieldInfo> {
+    static void write(std::string& out, const CIRStructFieldInfo& p) {
+        write_field(out, "type_block_inst", p.type_block_inst);
+        write_field(out, "name", p.name);
+    }
+};
+
+template<> struct CIRFormat<CIRFinishStructInfo> {
+    static void write(std::string& out, const CIRFinishStructInfo& p) {
+        write_field(out, "struct_decl_inst", p.struct_decl_inst);
+        write_field(out, "field_insts", p.field_insts);
+    }
+};
+
+template<> struct CIRFormat<CIREnumDeclInitInfo> {
+    static void write(std::string& out, const CIREnumDeclInitInfo& p) {
+        write_field(out, "tag_type_inst", p.tag_type_inst);
+        write_field(out, "decl_ast", p.decl_ast);
+        write_field(out, "symbol", p.symbol);
+        write_field(out, "scope", p.scope);
+        write_field(out, "fields", p.fields);
+    }
+};
+
+template<> struct CIRFormat<CIRGetOrInitUnionInfo> {
+    static void write(std::string& out, const CIRGetOrInitUnionInfo& p) {
+        write_field(out, "decl_ast", p.decl_ast);
+        write_field(out, "symbol", p.symbol);
+        write_field(out, "scope", p.scope);
+    }
+};
+
+template<> struct CIRFormat<CIRFinishUnionInfo> {
+    static void write(std::string& out, const CIRFinishUnionInfo& p) {
+        write_field(out, "union_decl_inst", p.union_decl_inst);
+        write_field(out, "field_insts", p.field_insts);
+    }
+};
+
+template<> struct CIRFormat<CIRDetermineTypeInfo> {
+    static void write(std::string& out, const CIRDetermineTypeInfo& p) {
+        write_field(out, "determining_inst", p.determining_inst);
+        write_field(out, "type_inst", p.type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRAddrOfInfo> {
+    static void write(std::string& out, const CIRAddrOfInfo& p) {
+        write_field(out, "lval_inst", p.lval_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRFuncParamTypeInfo> {
+    static void write(std::string& out, const CIRFuncParamTypeInfo& p) {
+        write_field(out, "type_of_func_type_inst", p.type_of_func_type_inst);
+        write_field(out, "param_index", p.param_index);
+    }
+};
+
+template<> struct CIRFormat<CIRFieldTypeOfStructInfo> {
+    static void write(std::string& out, const CIRFieldTypeOfStructInfo& p) {
+        write_field(out, "struct_type_inst", p.struct_type_inst);
+        write_field(out, "field_index", p.field_index);
+    }
+};
+
+template<> struct CIRFormat<CIRTypeOfInstResultInfo> {
+    static void write(std::string& out, const CIRTypeOfInstResultInfo& p) {
+        write_field(out, "target_inst", p.target_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRFuncTypeInfo> {
+    static void write(std::string& out, const CIRFuncTypeInfo& p) {
+        write_field(out, "param_type_insts", p.param_type_insts);
+        write_field(out, "return_type_inst", p.return_type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRDerefInfo> {
+    static void write(std::string& out, const CIRDerefInfo& p) {
+        write_field(out, "operand_inst", p.operand_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRStringLiteralInfo> {
+    static void write(std::string& out, const CIRStringLiteralInfo& p) {
+        write_field(out, "data", p.data);
+        write_field(out, "count", p.count);
+        write_field(out, "str", p.str);
+        write_field(out, "string_type_inst", p.string_type_inst);
+    }
+};
+
+template<> struct CIRFormat<CIRConstantValueInfo> {
+    static void write(std::string& out, const CIRConstantValueInfo& p) {
+        write_field(out, "value", p.value);
+    }
+};
+
+template<> struct CIRFormat<CIRBlockRefInfo> {
+    static void write(std::string& out, const CIRBlockRefInfo& p) {
+        write_field(out, "block_ref", p.block_ref);
+        write_field(out, "in_which_block", p.in_which_block);
+    }
+};
+
+template<> struct CIRFormat<CIRIdentRefInfo> {
+    static void write(std::string& out, const CIRIdentRefInfo& p) {
+        write_field(out, "ident", p.ident);
+    }
+};
+
+template<> struct CIRFormat<CIRIdentValInfo> {
+    static void write(std::string& out, const CIRIdentValInfo& p) {
+        write_field(out, "ident", p.ident);
+    }
+};
+
+template<> struct CIRFormat<CIRFieldPtrInfo> {
+    static void write(std::string& out, const CIRFieldPtrInfo& p) {
+        write_field(out, "parent_inst", p.parent_inst);
+        write_field(out, "field_name", p.field_name);
+    }
+};
+
+template<> struct CIRFormat<CIRIndexPtrInfo> {
+    static void write(std::string& out, const CIRIndexPtrInfo& p) {
+        write_field(out, "array_inst", p.array_inst);
+        write_field(out, "index_inst", p.index_inst);
+    }
+};
+
+template<> struct CIRFormat<CIREnterScopeInfo> {
+    static void write(std::string& out, const CIREnterScopeInfo& p) {
+        write_field(out, "scope", p.scope);
+    }
+};
+
+template<> struct CIRFormat<CIRExitScopeInfo> {
+    static void write(std::string& out, const CIRExitScopeInfo& p) {
+        write_field(out, "scope", p.scope);
+    }
+};
+
+template<> struct CIRFormat<CIRImportPackageInfo> {
+    static void write(std::string& out, const CIRImportPackageInfo& p) {
+        write_field(out, "path", p.path);
+    }
+};
+
+template<> struct CIRFormat<CIRPublishReturnValueInfo> {
+    static void write(std::string& out, const CIRPublishReturnValueInfo& p) {
+        write_field(out, "target_block", p.target_block);
+        write_field(out, "value_inst", p.value_inst);
+    }
 };

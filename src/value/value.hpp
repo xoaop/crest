@@ -91,6 +91,7 @@ enum class ActualValueType {
     Pointer,   // comptime 指针：Pointer{mem, offset}，type 字段指向 *T
     Type,      // 类型值：TypeRef 存储在 union 中
     Package,   // 包值：Package* 存储在 union 中
+    ValueRef,  
 };
 
 

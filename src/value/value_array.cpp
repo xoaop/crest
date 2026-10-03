@@ -1,34 +1,50 @@
 #include "value_array.hpp"
 
 
-void ValueArray::init(xpAllocator allocator) {
-    this->allocator = allocator;
-    values = make_array<Value>(allocator);
+static ValueRef alloc_value(xpAllocator allocator);
+
+ValueArray ValueArray::init(xpAllocator allocator) {
+    ValueArray va;
+    va.allocator = allocator;
+    va._count = 0;
+    return va;
 }
 
 ValueRef ValueArray::alloc_value() {
-    values.push_back(make_value());
-    return Ref<Value>{values.count - 1};
+    auto vr = ::alloc_value(this->allocator);
+    *vr = make_value();
+
+    this->_count += 1;
+
+    return vr;
 }
 
 ValueRef ValueArray::alloc_value(TypeRef type) {
-    values.push_back(make_value(type));
-    return Ref<Value>{values.count - 1};
+    auto vr = ::alloc_value(this->allocator);
+    *vr = make_value(type);
+
+    this->_count += 1;
+
+    return vr;
 }
 
 ValueRef ValueArray::alloc_value(const Value& v) {
-    values.push_back(v);
-    return Ref<Value>{values.count - 1};
+    auto vr = this->alloc_value();
+    *vr = clone_value(v, this->allocator);
+
+    return vr;
 }
 
-Value& ValueArray::operator[](ValueRef r) {
-    return values[r.index];
-}
-const Value& ValueArray::operator[](ValueRef r) const {
-    return values[r.index];
-}
 
 
 isize ValueArray::count() const {
-    return values.count;
+    return this->_count;
+}
+
+
+
+static ValueRef alloc_value(xpAllocator allocator) {
+    ValueRef vr = xp_alloc<Value>(allocator);
+    new (vr) Value();
+    return vr;
 }

@@ -132,7 +132,7 @@ bool Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
 
     if(expected_op.has_value()) {
         if(inst.op != expected_op.value()) {
-            DEBUG_PANIC("Expected instruction {} at curr_inst() {}, but got {}", string(expected_op.value()), curr_inst_ref(), string(inst.op));
+            DEBUG_PANIC("Expected instruction {} at curr_inst() {}, but got {}", to_string(expected_op.value()), curr_inst_ref(), to_string(inst.op));
         }
     }
 
@@ -1657,7 +1657,7 @@ AnalyzeResult Interpreter::analyze_AddrOf(const CIRAddrOfInfo& info, CIRInstruct
             got_fv = true;
         } else {
             const auto& lval = pkg->inst(lval_inst);
-            SymbolInfo* sym = try_access_val(lval.symbol);
+            SymbolInfo* sym = lval.symbol.try_get();
             if(sym && sym->is_const_decl_and_func()) {
                 auto r = sym->result(curr_cache_key());
                 if(r.state == CIRResultState::WholeValue) {
@@ -2233,7 +2233,7 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
     }
 
     std::optional<xpString> enum_name = std::nullopt;
-    SymbolInfo *enum_sym = try_access_val(info.symbol);
+    SymbolInfo *enum_sym = info.symbol.try_get();
     if(enum_sym != nullptr) {
         enum_name = enum_sym->name;
     }
@@ -2246,7 +2246,7 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
 
     {
         // 副作用：枚举符号绑定 type 值 + Solved
-        SymbolInfo *enum_sym2 = try_access_val(info.symbol);
+        SymbolInfo *enum_sym2 = info.symbol.try_get();
         if(enum_sym2 != nullptr) {
             enum_sym2->val(v);
             enum_sym2->state = SymbolState::Solved;
@@ -2341,7 +2341,7 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
 // handler: GetOrInitUnion（写自身 type/value；未完成 union 类型 + 早绑符号）
 AnalyzeResult Interpreter::analyze_GetOrInitUnion(const CIRGetOrInitUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     std::optional<xpString> union_name = std::nullopt;
-    SymbolInfo *union_sym = try_access_val(info.symbol);
+    SymbolInfo *union_sym = info.symbol.try_get();
     if(union_sym != nullptr) {
         union_name = union_sym->name;
     }
@@ -2423,7 +2423,7 @@ AnalyzeResult Interpreter::analyze_GetOrInitStruct(const CIRGetOrInitStructInfo&
     auto res = eval_GetOrInitStruct(pc_ref);
 
     // 副作用：未完成类型创建后立即绑定符号（自引用字段 *S 不再误判循环依赖，镜像函数签名确定即绑定）
-    SymbolInfo *sym = try_access_val(info.symbol);
+    SymbolInfo *sym = info.symbol.try_get();
     if(sym != nullptr && sym->state != SymbolState::Solved) {
         sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, result_context().call_instance()));
         sym->state = SymbolState::Solved;
@@ -2630,7 +2630,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
 
         // 符号照常绑定并 Solved: 否则 IdentVal(add) 命中 Solving 会误报循环依赖
-        if(SymbolInfo* sym = try_access_val(inst(pc_ref).symbol)) {
+        if(SymbolInfo* sym = inst(pc_ref).symbol.try_get()) {
             sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, {}));
             sym->state = SymbolState::Solved;
         }
@@ -2677,7 +2677,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
     AnalyzeResult r;   // 自身函数类型值 + 可选 body 跳转
 
-    SymbolInfo* sym = try_access_val(inst(pc_ref).symbol);
+    SymbolInfo* sym = inst(pc_ref).symbol.try_get();
     {
         TypeRef func_type_type = function_type(param_types, return_type);
         Value v = make_value(func_type_type);

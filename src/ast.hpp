@@ -9,7 +9,6 @@
 #include "symbol.hpp"
 
 #include "value.hpp"
-#include "debug_fmt.hpp"
 
 
 struct Ast;
@@ -222,21 +221,6 @@ struct Ast {
     SourceLocation src_loc; // 该AST节点对应的源代码位置, 主要用于错误提示
 };
 
-
-// dbg::debug 的 tagged-union 支持：判别式是 type，tag→成员 由 AST_INFOS 生成
-template <>
-struct dbg::TagUnionTrait<Ast> {
-    static auto tag(const Ast& x) { return x.type; }
-
-    template <AstType E>
-    static decltype(auto) union_val(const Ast& x) {
-#define AST_INFO(type_name, type_str, ...) if constexpr (E == XP_JOIN_2(AstType_, type_name)) return (x.type_name);
-        AST_INFOS
-#undef AST_INFO
-        if constexpr (E == AstType_COUNT) return (x.Undefined);   // COUNT 非真实节点，占位
-    }
-};
-
 extern const char *ast_strs[];
 
 
@@ -245,6 +229,8 @@ Ast *ast_alloc(AstType type);
 Ast *ast_alloc(AstType type, Token token);
 Ast *ast_alloc(AstType type, Token token, SourceLocation src_loc);
 Ast ast_make(AstType type);
+
+const char *ast_string(AstType type);
 
 
 bool is_binary_op(TokenType type);
@@ -257,9 +243,7 @@ bool is_logic_operator(TokenType t);
 bool is_bitwise_operator(TokenType t);
 bool is_return_bool_operator(TokenType t);
 
-const char *ast_string(AstType type);
 
-void print_ast(Array<Ast*> a_arr, i32 depth = 0, bool is_last = true);
 
 xpAllocator ast_allocator();
 

@@ -923,7 +923,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
 
     const auto& inst = result_ctx.pkg()->inst(ref);
-    DEBUG_TRACE("gen_ir_inst ref=%{} op={}, loc= {}", ref, string(inst.op), inst.src_loc);
+    DEBUG_TRACE("gen_ir_inst ref=%{} op={}, loc= {}", ref, to_string(inst.op), inst.src_loc);
 
     auto op = inst.op;
 
