@@ -51,6 +51,7 @@ static void crest_helper() {
     println_out("  -features <f>  Override target features, e.g. \"+avx2,-sse4.2\" (default: from cpu)");
     println_out("  -subsystem <s> Link subsystem: console (default) | windows (Windows targets only)");
     println_out("  -crt <k>       CRT kind: static (default) | dynamic | static-debug | dynamic-debug (MSVC only)");
+    println_out("  -linker <arg>  Pass an argument through to the linker, verbatim (repeatable)");
 }
 
 static void crest_targets() {
@@ -220,6 +221,19 @@ int main(int argc_raw, char** argv_raw) {
                 return -1;
             }
             crt_given = true;
+        } else if(strcmp(argv[i], "-linker") == 0) {
+            i += 1; // 跳过 "-linker" 参数
+
+            if(i >= argc) {
+                err("Missing argument for -linker option");
+                return -1;
+            }
+            if(argv[i][0] == '\0') {
+                err("-linker needs a non-empty argument");
+                return -1;
+            }
+
+            context()->linker_args.push_back(argv[i]);
         }
 
         else if(main_path == nullptr) {
@@ -248,6 +262,10 @@ int main(int argc_raw, char** argv_raw) {
         }
         if(crt_given) {
             err("-crt has no effect with -c (compile only)");
+            return -1;
+        }
+        if(!context()->linker_args.empty()) {
+            err("-linker has no effect with -c (compile only)");
             return -1;
         }
     } else if(!target_is_windows()) {

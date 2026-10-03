@@ -209,7 +209,7 @@ static std::string read_sdk_root() {
     return "";
 }
 
-// lld-link 优先级：bin/ → CREST_LINKER → VS 自带 → PATH
+// lld-link 优先级：bin/ → VS 自带 → PATH
 static std::string find_lld_link(const std::string& vs) {
     namespace fs = std::filesystem;
 
@@ -222,11 +222,6 @@ static std::string find_lld_link(const std::string& vs) {
                 return p.string();
             }
         }
-    }
-
-    const std::string env = get_utf8_env("CREST_LINKER");
-    if(!env.empty()) {
-        return env;
     }
 
     {
@@ -300,11 +295,6 @@ static std::string subsystem_name(LinkSubsystem sub) {
 #endif  // _WIN32
 
 static std::string find_cc_driver() {
-    const std::string env = get_utf8_env("CREST_LINKER");
-    if(!env.empty()) {
-        return env;
-    }
-
 #ifdef _WIN32
     const char* probe = "where %s >nul 2>&1";
     const char* names[] = {"g++", "gcc", "clang"};
@@ -363,6 +353,11 @@ bool link_objects(const LinkRequest& req) {
             cmd += " -mwindows";
         }
         println_out("[link] linker = {}", cc);
+    }
+
+    for(const auto& arg : context()->linker_args) {
+        cmd += " ";
+        cmd += arg.contains(' ') ? ("\"" + arg + "\"") : arg;
     }
 
     println_out("[link] {}", cmd);

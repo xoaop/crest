@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "package.hpp"
 #include "error_msg.hpp"
@@ -28,6 +29,7 @@ struct Context {
     const char *target_features = nullptr; // -features 显式指定；null → 用 cpu 自带特性
     LinkSubsystem link_subsystem = LinkSubsystem::Console;
     LinkCrt link_crt = LinkCrt::Static;
+    std::vector<std::string> linker_args;     // -linker，原样透传给链接器，可重复
 
 
     xpString main_src_dir_path;
