@@ -48,7 +48,7 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
                 }
             }
         }
-        auto *res = xp_hash_map_get(inst_key.cir_package->results, inst_key.inst_ref);
+        auto *res = inst_key.cir_package->results.result_ptr_of(inst_key.inst_ref);
         if(res) return *res;
     }
 

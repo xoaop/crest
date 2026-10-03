@@ -115,13 +115,10 @@ struct CIRPackage {
     Array<xpString> string_literals;
 
 
-    xpHashMap<CIRInstructionRef, CIRInstResult> results;
+    CIRResultInstance results;
     xpHashMap<FuncCallKey, Ref<CIRResultInstance>> result_instance_map;
 
     Array<CIRResultInstance> result_instances;
-
-    // @deprecated
-    Array<FuncCallKey> comptime_func_calls;
 
 
     CIRInstruction& inst_mut(CIRInstructionRef ref);

@@ -125,8 +125,7 @@ struct std::hash<Ref<CIRResultInstance>> {
 
 
 // 引用 CIRPackage 中某个指令的结果值
-// result_instance == INVALID_REF → 值在 cir_package->results[inst_ref] 中
-// result_instance != INVALID_REF → 值在 result_instance->results[inst_ref] 中
+// 值总在某张 CIRResultInstance 里：result_instance 为空 → 包级那张；否则 → 实例自己那张
 template<>
 struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     CIRPackage*                            cir_package = nullptr;

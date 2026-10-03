@@ -14,10 +14,9 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     cir_package.blocks = make_array<CIRBlock>(allocator);
 
     cir_package.string_literals = make_array<xpString>(allocator);
-    cir_package.results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(allocator);
+    cir_package.results = CIRResultInstance::make(allocator);
     cir_package.result_instances = make_array<CIRResultInstance>(allocator);
     cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, Ref<CIRResultInstance>>(allocator);
-    cir_package.comptime_func_calls = make_array<FuncCallKey>(allocator);
     return cir_package;
 }
 
@@ -70,13 +69,13 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
 
 
 CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
-    CIRResultInstance* inst = instance.try_get();
+    auto *inst = instance.try_get();
     if(inst != nullptr) {
-        return inst->result_of_or(ref, [&]{ return result_of(ref); });
+        return inst->result_of_or(ref, [&]{ return results.result_of(ref); });
     }
 
 
-    return results.get(ref);
+    return results.result_of(ref);
 }
 
 
@@ -363,9 +362,9 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
             }
         }
 
-        auto *entry = pkg->results.get_entry(ref);
-        if (entry) {
-            CIRInstResult& res = entry->value;
+        auto *res_ptr = pkg->results.result_ptr_of(ref);
+        if (res_ptr) {
+            const auto& res = *res_ptr;
 
             std::string result;
             switch (res.state) {
