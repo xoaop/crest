@@ -1496,7 +1496,7 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
         }
 
         if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
-            context()->reporter.report_error(inst(pc_ref).src_loc, "联合体字段访问的编译期求值尚未实现");
+            return make_result(pc_ref, inst_error(pc_ref, "联合体字段访问的编译期求值尚未实现"));
         }
 
         return make_result(pc_ref, ResultDesc::make_type_only(field_type));
@@ -1572,7 +1572,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
         }
 
         if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
-            context()->reporter.report_error(inst(pc_ref).src_loc, "联合体字段指针访问的编译期求值尚未实现");
+            return make_result(pc_ref, inst_error(pc_ref, "联合体字段指针访问的编译期求值尚未实现"));
         }
 
         return make_result(pc_ref, ResultDesc::make_type_only(field_type, CIRValueKind::LValue));
@@ -1593,9 +1593,12 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
 
             if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
                 Pointer ptr = ResultValue(parent_inst).pointer_val();
-                if(is_pointer_type(ResultType(parent_inst)) && is_struct_type(ResultType(parent_inst)->pointed_type)) {
-                    Value inner = ptr.load();
-                    ptr = inner.pointer_val();
+                if(is_pointer_type(parent_type)) {
+                    // 父是指针左值：槽里装的是指针本身，先读出来
+                    ptr = ptr.load().pointer_val();
+                    if(ptr.is_null()) {
+                        return make_result(pc_ref, inst_error(pc_ref, "对空指针取字段指针"));
+                    }
                 }
 
                 Value addr = make_value(pointer_type(field_type));

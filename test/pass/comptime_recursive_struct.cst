@@ -1,0 +1,24 @@
+// @pass
+// @run
+
+// 编译期构造自引用指针 struct 的值：指针字段按空指针起手，不会往 pointee 里递归
+
+Node :: $(T: type) -> type {
+    return struct {
+        val: T;
+        next: *Node(T);
+    };
+}
+
+make_val :: $(n: i32) -> i32 {
+    x: Node(i32);
+    x.val = 42;
+    x.next = null;
+    return x.val;
+}
+
+main :: () -> i32 {
+    v := make_val(1);
+    if v != 42 { return 1; }
+    return 0;
+}
