@@ -1,4 +1,5 @@
 #include "value.hpp"
+#include "value_array.hpp"
 #include "type.hpp"
 
 #include "error_msg.hpp"
@@ -128,6 +129,29 @@ Value Value::array_element_val(isize index) const {
     return struct_or_array_fields[index];
 }
 
+ValueRef Value::struct_field_ref(isize index) {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
+    XP_ASSERT_DEFAULT(index >= 0 && index < struct_or_array_fields.count);
+
+    return &struct_or_array_fields[index];
+}
+
+ValueRef Value::array_element_ref(isize index) {
+    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
+    XP_ASSERT_DEFAULT(index >= 0 && index < struct_or_array_fields.count);
+
+    return &struct_or_array_fields[index];
+}
+
+ValueRef Value::element_ref(isize index) {
+    // 只有实际握着元素缓冲的值才有"元素"这回事
+    if(actual_value_type != ActualValueType::Array
+       || index < 0 || index >= struct_or_array_fields.count) {
+        return nullptr;
+    }
+    return &struct_or_array_fields[index];
+}
+
 // TODO: 重构
 FuncValue Value::func_val() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
@@ -144,6 +168,16 @@ FuncValue Value::unresolved_func_val() const {
     XP_ASSERT_DEFAULT(type == undefined_type());
     return func_value;
 }
+
+// 闲置：ValueMemory 体系的字节指针
+// void Value::mem_pointer_val(MemPointer ptr) {
+//     actual_value_type = ActualValueType::Pointer;
+//     mem_pointer_value = ptr;
+// }
+// MemPointer Value::mem_pointer_val() const {
+//     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Pointer);
+//     return mem_pointer_value;
+// }
 
 void Value::pointer_val(Pointer ptr) {
     actual_value_type = ActualValueType::Pointer;
@@ -216,133 +250,149 @@ Value clone_value(const Value& v, xpAllocator allocator) {
 }
 
 
-// ============================================================
-// 类型序列化布局函数
-// ============================================================
+//
+// 闲置：类型序列化布局函数（comptime 字节级内存模型）
+//
 
-static isize basic_type_serialize_size(TypeKind kind) {
-    switch(kind) {
-        case Type_i8:  case Type_u8:  case Type_bool:  return 1;
-        case Type_i16: case Type_u16:                  return 2;
-        case Type_i32: case Type_u32: case Type_f32:    return 4;
-        case Type_i64: case Type_u64: case Type_f64:    return 8;
-        case Type_untyped_int:  case Type_untyped_float: return 8;
-        case Type_void:                                  return 0;
-        case Type_pointer:                               return Pointer::BYTE_SIZE;
-        case Type_isize:  case Type_usize:              return sizeof(void*);
-        default:                                         return 8; // type/function/package/etc.
-    }
-}
+// static isize basic_type_serialize_size(TypeKind kind) {
+//    switch(kind) {
+//        case Type_i8:  case Type_u8:  case Type_bool:  return 1;
+//        case Type_i16: case Type_u16:                  return 2;
+//        case Type_i32: case Type_u32: case Type_f32:    return 4;
+//        case Type_i64: case Type_u64: case Type_f64:    return 8;
+//        case Type_untyped_int:  case Type_untyped_float: return 8;
+//        case Type_void:                                  return 0;
+//        case Type_pointer:                               return MemPointer::BYTE_SIZE;
+//        case Type_isize:  case Type_usize:              return sizeof(void*);
+//        default:                                         return 8; // type/function/package/etc.
+//    }
+// }
 
-static isize basic_type_serialize_align(TypeKind kind) {
-    if (kind == Type_pointer) return 8;  // Pointer::mem+offset 只需 8 字节对齐
-    if (kind == Type_isize || kind == Type_usize) return sizeof(void*);
-    return basic_type_serialize_size(kind); // 自然对齐：对齐 == 大小
-}
+// static isize basic_type_serialize_align(TypeKind kind) {
+//    if (kind == Type_pointer) return 8;  // MemPointer::mem+offset 只需 8 字节对齐
+//    if (kind == Type_isize || kind == Type_usize) return sizeof(void*);
+//    return basic_type_serialize_size(kind); // 自然对齐：对齐 == 大小
+// }
 
-isize type_serialize_size(TypeRef type) {
-    switch(type->kind) {
-        case Type_array:
-            return (isize)type->array_info.count * type_serialize_size(type->array_info.element_type);
-        case Type_struct: {
-            if(type->struct_info.struct_fields.count == 0) return 0;
-            auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
-            return field_serialize_offset(type, type->struct_info.struct_fields.count - 1)
-                 + type_serialize_size(last.type);
-        }
-        case Type_union: {
-            Ref<Scope> scope = type->union_info.union_scope;
-            isize max_size = 0;
-            isize max_align = 1;
-            for(const auto& entry : *scope) {
-                TypeRef ft = union_field_type(type, entry.value.name);
-                isize s = type_serialize_size(ft);
-                if(s > max_size) {
-                    max_size = s;
-                }
-                isize a = type_serialize_align(ft);
-                if(a > max_align) {
-                    max_align = a;
-                }
-            }
-            return serialize_align_up(max_size, max_align);
-        }
-        default:
-            return basic_type_serialize_size(type->kind);
-    }
-}
+// isize type_serialize_size(TypeRef type) {
+//    switch(type->kind) {
+//        case Type_array:
+//            return (isize)type->array_info.count * type_serialize_size(type->array_info.element_type);
+//        case Type_struct: {
+//            if(type->struct_info.struct_fields.count == 0) return 0;
+//            auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
+//            return field_serialize_offset(type, type->struct_info.struct_fields.count - 1)
+//                 + type_serialize_size(last.type);
+//        }
+//        case Type_union: {
+//            Ref<Scope> scope = type->union_info.union_scope;
+//            isize max_size = 0;
+//            isize max_align = 1;
+//            for(const auto& entry : *scope) {
+//                TypeRef ft = union_field_type(type, entry.value.name);
+//                isize s = type_serialize_size(ft);
+//                if(s > max_size) {
+//                    max_size = s;
+//                }
+//                isize a = type_serialize_align(ft);
+//                if(a > max_align) {
+//                    max_align = a;
+//                }
+//            }
+//            return serialize_align_up(max_size, max_align);
+//        }
+//        default:
+//            return basic_type_serialize_size(type->kind);
+//    }
+// }
 
-isize type_serialize_align(TypeRef type) {
-    switch(type->kind) {
-        case Type_struct: {
-            isize max_align = 1;
-            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-                isize a = type_serialize_align(type->struct_info.struct_fields[i].type);
-                if(a > max_align) max_align = a;
-            }
-            return max_align;
-        }
-        case Type_array:
-            return type_serialize_align(type->array_info.element_type);
-        case Type_union: {
-            isize max_align = 1;
-            Ref<Scope> scope = type->union_info.union_scope;
-            for(const auto& entry : *scope) {
-                isize a = type_serialize_align(union_field_type(type, entry.value.name));
-                if(a > max_align) {
-                    max_align = a;
-                }
-            }
-            return max_align;
-        }
-        default:
-            return basic_type_serialize_align(type->kind);
-    }
-}
+// isize type_serialize_align(TypeRef type) {
+//    switch(type->kind) {
+//        case Type_struct: {
+//            isize max_align = 1;
+//            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+//                isize a = type_serialize_align(type->struct_info.struct_fields[i].type);
+//                if(a > max_align) max_align = a;
+//            }
+//            return max_align;
+//        }
+//        case Type_array:
+//            return type_serialize_align(type->array_info.element_type);
+//        case Type_union: {
+//            isize max_align = 1;
+//            Ref<Scope> scope = type->union_info.union_scope;
+//            for(const auto& entry : *scope) {
+//                isize a = type_serialize_align(union_field_type(type, entry.value.name));
+//                if(a > max_align) {
+//                    max_align = a;
+//                }
+//            }
+//            return max_align;
+//        }
+//        default:
+//            return basic_type_serialize_align(type->kind);
+//    }
+// }
 
-isize type_serialize_stride(TypeRef type) {
-    return type_serialize_size(type);
-}
+// isize type_serialize_stride(TypeRef type) {
+//    return type_serialize_size(type);
+// }
 
-isize field_serialize_offset(TypeRef struct_or_union_type, isize index) {
-    if(is_union_type(struct_or_union_type)) {
-        return 0;   // union 成员全部 offset 0
-    }
-    XP_ASSERT_DEFAULT(is_struct_type(struct_or_union_type));
-    isize offset = 0;
-    for(isize i = 0; i < index; i++) {
-        TypeRef ft = struct_or_union_type->struct_info.struct_fields[i].type;
-        isize align = type_serialize_align(ft);
-        offset = serialize_align_up(offset, align);
-        offset += type_serialize_size(ft);
-    }
-    // 对齐当前字段
-    if(index < struct_or_union_type->struct_info.struct_fields.count) {
-        TypeRef ft = struct_or_union_type->struct_info.struct_fields[index].type;
-        offset = serialize_align_up(offset, type_serialize_align(ft));
-    }
-    return offset;
-}
+// isize field_serialize_offset(TypeRef struct_or_union_type, isize index) {
+//    if(is_union_type(struct_or_union_type)) {
+//        return 0;   // union 成员全部 offset 0
+//    }
+//    XP_ASSERT_DEFAULT(is_struct_type(struct_or_union_type));
+//    isize offset = 0;
+//    for(isize i = 0; i < index; i++) {
+//        TypeRef ft = struct_or_union_type->struct_info.struct_fields[i].type;
+//        isize align = type_serialize_align(ft);
+//        offset = serialize_align_up(offset, align);
+//        offset += type_serialize_size(ft);
+//    }
+//    // 对齐当前字段
+//    if(index < struct_or_union_type->struct_info.struct_fields.count) {
+//        TypeRef ft = struct_or_union_type->struct_info.struct_fields[index].type;
+//        offset = serialize_align_up(offset, type_serialize_align(ft));
+//    }
+//    return offset;
+// }
 
-isize serialize_align_up(isize value, isize alignment) {
-    return xp_align_up_isize(value, alignment);
-}
+// isize serialize_align_up(isize value, isize alignment) {
+//    return xp_align_up_isize(value, alignment);
+// }
 
 
 Value Value::zero(TypeRef type) {
+    return zero(type, permanent_allocator());
+}
+
+Value Value::zero(TypeRef type, xpAllocator allocator) {
     Value v = make_value(type);
 
-
-    // TODO: 配合ValueMemory来实现任意类型的零值, 因为涉及到内存
     if(is_integer_type(type)) {
         v.integer_val(0);
     } else if(is_float_type(type)) {
         v.float_val(0.0);
     } else if(type->kind == Type_bool) {
         v.bool_val(false);
-    } else {
-        DEBUG_PANIC("unsupported type for zero value");
+    } else if(type->kind == Type_pointer) {
+        v.pointer_val(Pointer::make_null());
+        v.is_null = true;
+    } else if(is_struct_type(type)) {
+        Array<Value> fields = make_array<Value>(allocator);
+        for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+            fields.push_back(zero(type->struct_info.struct_fields[i].type, allocator));
+        }
+        v.struct_fields_val(fields);
+    } else if(is_array_type(type)) {
+        Array<Value> elems = make_array<Value>(allocator);
+        for(isize i = 0; i < type->array_info.count; i++) {
+            elems.push_back(zero(type->array_info.element_type, allocator));
+        }
+        v.array_element_values(elems);
     }
+    // 其余类型（void/type/function/package）没有数据载荷，留 Nothing
 
     return v;
 }
@@ -371,311 +421,354 @@ Value TypeProgress::Finished() {
 }
 
 
-// ============================================================
-// [NEW] Value ↔ 字节序列化（comptime 字节级内存模型）
-// ============================================================
-
-void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
-    TypeRef t = v.type;
-    isize size = type_serialize_size(t);
-    switch (v.actual_type()) {
-        case ActualValueType::Type: {
-            isize ptr = (isize)(v.type_val());
-            memcpy(&bytes[offset], &ptr, (size_t)size);
-            break;
-        }
-        case ActualValueType::Package: {
-            isize ptr = v.package_val().index;
-            memcpy(&bytes[offset], &ptr, (size_t)size);
-            break;
-        }
-        case ActualValueType::Integer: {
-            i128 val = v.integer_val();
-            memcpy(&bytes[offset], &val, (size_t)size);
-            break;
-        }
-        case ActualValueType::Float: {
-            double val = v.float_val();
-            if (t->kind == Type_f32) {
-                float f = (float)val;
-                memcpy(&bytes[offset], &f, (size_t)size);
-            } else {
-                memcpy(&bytes[offset], &val, (size_t)size);
-            }
-            break;
-        }
-        case ActualValueType::Bool: {
-            u8 b = v.bool_val() ? 1 : 0;
-            memcpy(&bytes[offset], &b, (size_t)size);
-            break;
-        }
-        case ActualValueType::Pointer: {
-            v.pointer_val().to_bytes(bytes, offset);
-            break;
-        }
-        case ActualValueType::Struct: {
-            auto fields = v.struct_fields_val();
-            if(is_union_type(t)) {
-                // union 成员共享 offset 0；写 max-size 成员即覆盖全部语义字节（无损拷贝）
-                Ref<Scope> scope = t->union_info.union_scope;
-                isize max_idx = 0;
-                isize max_size = 0;
-                isize i = 0;
-                for(const auto& entry : *scope) {
-                    isize s = type_serialize_size(union_field_type(t, entry.value.name));
-                    if(s > max_size) {
-                        max_size = s;
-                        max_idx = i;
-                    }
-                    i++;
-                }
-                write_value_to_bytes(bytes, offset, fields[max_idx]);
-                break;
-            }
-            ASSERT(is_struct_type(t));
-            for (isize i = 0; i < fields.count; i++) {
-                isize field_off = field_serialize_offset(t, i);
-                write_value_to_bytes(bytes, offset + field_off, fields[i]);
-            }
-            break;
-        }
-        case ActualValueType::Array: {
-            auto elems = v.array_element_values();
-            ASSERT(is_array_type(t));
-            TypeRef et = t->array_info.element_type;
-            isize stride = type_serialize_stride(et);
-            for (isize i = 0; i < elems.count; i++) {
-                write_value_to_bytes(bytes, offset + i * stride, elems[i]);
-            }
-            break;
-        }
-        case ActualValueType::Function: {
-            Ref<CIRInstResult> key = v.func_val().func_key;
-            memcpy(&bytes[offset], &key.inst_ref, (size_t)size);
-            break;
-        }
-        case ActualValueType::Nothing: {
-            if (size > 0) memset(&bytes[offset], 0, (size_t)size);
-            break;
-        }
-    }
-}
-
-Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, xpAllocator allocator) {
-    isize size = type_serialize_size(type);
-
-    switch (type->kind) {
-        case Type_i8: case Type_u8: case Type_i16: case Type_u16:
-        case Type_i32: case Type_u32:
-        case Type_i64: case Type_u64: case Type_isize: case Type_usize:
-        case Type_untyped_int: {
-            i128 val = 0;
-            memcpy(&val, &bytes[offset], (size_t)size);
-            if (is_signed_type(type) && size < 16) {
-                isize bits = size * 8;
-                val = (val << (128 - bits)) >> (128 - bits);
-            }
-            Value v = make_value(type);
-            v.integer_val(val);
-            return v;
-        }
-        case Type_f32: {
-            float val; memcpy(&val, &bytes[offset], (size_t)size);
-            Value v = make_value(type); v.float_val((double)val); return v;
-        }
-        case Type_f64: case Type_untyped_float: {
-            double val; memcpy(&val, &bytes[offset], (size_t)size);
-            Value v = make_value(type); v.float_val(val); return v;
-        }
-        case Type_bool: {
-            u8 val; memcpy(&val, &bytes[offset], (size_t)size);
-            Value v = make_value(type); v.bool_val(val != 0); return v;
-        }
-        case Type_pointer: {
-            Pointer ptr = Pointer::from_bytes(bytes, offset);
-            Value v = make_value(type);
-            v.pointer_val(ptr);
-            return v;
-        }
-        case Type_type: {
-            isize ptr;
-            memcpy(&ptr, &bytes[offset], (size_t)size);
-            Value v = make_value(type);
-            v.type_val((TypeRef)ptr);
-            return v;
-        }
-        case Type_package: {
-            isize ptr;
-            memcpy(&ptr, &bytes[offset], (size_t)size);
-            Value v = make_value(type);
-            v.package_val(Ref<Package>{ptr});
-            return v;
-        }
-        case Type_function: {
-            CIRInstructionRef inst_ref;
-            memcpy(&inst_ref, &bytes[offset], (size_t)size);
-            Value v = make_value(type);
-            Ref<CIRInstResult> key = {};
-            key.inst_ref = inst_ref;
-            v.func_val_key(key);
-            return v;
-        }
-        case Type_struct: {
-            Value v = make_value(type);
-            Array<Value> fields = make_array_count<Value>(allocator, type->struct_info.struct_fields.count);
-            for (isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-                TypeRef ft = type->struct_info.struct_fields[i].type;
-                isize field_off = field_serialize_offset(type, i);
-                fields[i] = read_value_from_bytes(bytes, offset + field_off, ft, allocator);
-            }
-            v.struct_fields_val(fields);
-            return v;
-        }
-        case Type_array: {
-            TypeRef et = type->array_info.element_type;
-            isize count = type->array_info.count;
-            isize stride = type_serialize_stride(et);
-
-            Value v = make_value(type);
-            Array<Value> elems = make_array_count<Value>(allocator, count);
-            for (isize i = 0; i < count; i++) {
-                elems[i] = read_value_from_bytes(bytes, offset + i * stride, et, allocator);
-            }
-            v.array_element_values(elems);
-            return v;
-        }
-        case Type_union: {
-            Ref<Scope> scope = type->union_info.union_scope;
-            Value v = make_value(type);
-            Array<Value> fields = make_array<Value>(allocator);
-            for(const auto& entry : *scope) {
-                fields.push_back(read_value_from_bytes(bytes, offset, union_field_type(type, entry.value.name), allocator));   // 全部 offset 0
-            }
-            v.struct_fields_val(fields);
-            return v;
-        }
-        default:
-            return make_value(type);
-    }
-}
-
 //
-// ValueMemory
+// 闲置：Value ↔ 字节序列化（comptime 字节级内存模型）
 //
 
-void ValueMemory::init(MemoryKind kind, xpAllocator allocator) {
-    this->kind = kind;
-    bytes = make_array<u8>(allocator);
-}
+// void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v) {
+//    TypeRef t = v.type;
+//    isize size = type_serialize_size(t);
+//    switch (v.actual_type()) {
+//        case ActualValueType::Type: {
+//            isize ptr = (isize)(v.type_val());
+//            memcpy(&bytes[offset], &ptr, (size_t)size);
+//            break;
+//        }
+//        case ActualValueType::Package: {
+//            isize ptr = v.package_val().index;
+//            memcpy(&bytes[offset], &ptr, (size_t)size);
+//            break;
+//        }
+//        case ActualValueType::Integer: {
+//            i128 val = v.integer_val();
+//            memcpy(&bytes[offset], &val, (size_t)size);
+//            break;
+//        }
+//        case ActualValueType::Float: {
+//            double val = v.float_val();
+//            if (t->kind == Type_f32) {
+//                float f = (float)val;
+//                memcpy(&bytes[offset], &f, (size_t)size);
+//            } else {
+//                memcpy(&bytes[offset], &val, (size_t)size);
+//            }
+//            break;
+//        }
+//        case ActualValueType::Bool: {
+//            u8 b = v.bool_val() ? 1 : 0;
+//            memcpy(&bytes[offset], &b, (size_t)size);
+//            break;
+//        }
+//        case ActualValueType::Pointer: {
+//            v.mem_pointer_val().to_bytes(bytes, offset);
+//            break;
+//        }
+//        case ActualValueType::Struct: {
+//            auto fields = v.struct_fields_val();
+//            if(is_union_type(t)) {
+//                // union 成员共享 offset 0；写 max-size 成员即覆盖全部语义字节（无损拷贝）
+//                Ref<Scope> scope = t->union_info.union_scope;
+//                isize max_idx = 0;
+//                isize max_size = 0;
+//                isize i = 0;
+//                for(const auto& entry : *scope) {
+//                    isize s = type_serialize_size(union_field_type(t, entry.value.name));
+//                    if(s > max_size) {
+//                        max_size = s;
+//                        max_idx = i;
+//                    }
+//                    i++;
+//                }
+//                write_value_to_bytes(bytes, offset, fields[max_idx]);
+//                break;
+//            }
+//            ASSERT(is_struct_type(t));
+//            for (isize i = 0; i < fields.count; i++) {
+//                isize field_off = field_serialize_offset(t, i);
+//                write_value_to_bytes(bytes, offset + field_off, fields[i]);
+//            }
+//            break;
+//        }
+//        case ActualValueType::Array: {
+//            auto elems = v.array_element_values();
+//            ASSERT(is_array_type(t));
+//            TypeRef et = t->array_info.element_type;
+//            isize stride = type_serialize_stride(et);
+//            for (isize i = 0; i < elems.count; i++) {
+//                write_value_to_bytes(bytes, offset + i * stride, elems[i]);
+//            }
+//            break;
+//        }
+//        case ActualValueType::Function: {
+//            Ref<CIRInstResult> key = v.func_val().func_key;
+//            memcpy(&bytes[offset], &key.inst_ref, (size_t)size);
+//            break;
+//        }
+//        case ActualValueType::Nothing: {
+//            if (size > 0) memset(&bytes[offset], 0, (size_t)size);
+//            break;
+//        }
+//    }
+// }
 
-void ValueMemory::free() {
-    array_free(&bytes);
-}
+// Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, xpAllocator allocator) {
+//    isize size = type_serialize_size(type);
 
-Pointer ValueMemory::alloc_bytes(isize size, isize align) {
-    isize addr = serialize_align_up(bytes.count, align);
-    isize new_count = addr + size;
-    bytes.resize(new_count);
+//    switch (type->kind) {
+//        case Type_i8: case Type_u8: case Type_i16: case Type_u16:
+//        case Type_i32: case Type_u32:
+//        case Type_i64: case Type_u64: case Type_isize: case Type_usize:
+//        case Type_untyped_int: {
+//            i128 val = 0;
+//            memcpy(&val, &bytes[offset], (size_t)size);
+//            if (is_signed_type(type) && size < 16) {
+//                isize bits = size * 8;
+//                val = (val << (128 - bits)) >> (128 - bits);
+//            }
+//            Value v = make_value(type);
+//            v.integer_val(val);
+//            return v;
+//        }
+//        case Type_f32: {
+//            float val; memcpy(&val, &bytes[offset], (size_t)size);
+//            Value v = make_value(type); v.float_val((double)val); return v;
+//        }
+//        case Type_f64: case Type_untyped_float: {
+//            double val; memcpy(&val, &bytes[offset], (size_t)size);
+//            Value v = make_value(type); v.float_val(val); return v;
+//        }
+//        case Type_bool: {
+//            u8 val; memcpy(&val, &bytes[offset], (size_t)size);
+//            Value v = make_value(type); v.bool_val(val != 0); return v;
+//        }
+//        case Type_pointer: {
+//            MemPointer ptr = MemPointer::from_bytes(bytes, offset);
+//            Value v = make_value(type);
+//            v.mem_pointer_val(ptr);
+//            return v;
+//        }
+//        case Type_type: {
+//            isize ptr;
+//            memcpy(&ptr, &bytes[offset], (size_t)size);
+//            Value v = make_value(type);
+//            v.type_val((TypeRef)ptr);
+//            return v;
+//        }
+//        case Type_package: {
+//            isize ptr;
+//            memcpy(&ptr, &bytes[offset], (size_t)size);
+//            Value v = make_value(type);
+//            v.package_val(Ref<Package>{ptr});
+//            return v;
+//        }
+//        case Type_function: {
+//            CIRInstructionRef inst_ref;
+//            memcpy(&inst_ref, &bytes[offset], (size_t)size);
+//            Value v = make_value(type);
+//            Ref<CIRInstResult> key = {};
+//            key.inst_ref = inst_ref;
+//            v.func_val_key(key);
+//            return v;
+//        }
+//        case Type_struct: {
+//            Value v = make_value(type);
+//            Array<Value> fields = make_array_count<Value>(allocator, type->struct_info.struct_fields.count);
+//            for (isize i = 0; i < type->struct_info.struct_fields.count; i++) {
+//                TypeRef ft = type->struct_info.struct_fields[i].type;
+//                isize field_off = field_serialize_offset(type, i);
+//                fields[i] = read_value_from_bytes(bytes, offset + field_off, ft, allocator);
+//            }
+//            v.struct_fields_val(fields);
+//            return v;
+//        }
+//        case Type_array: {
+//            TypeRef et = type->array_info.element_type;
+//            isize count = type->array_info.count;
+//            isize stride = type_serialize_stride(et);
 
-    Pointer p = Pointer::make(this, addr);
+//            Value v = make_value(type);
+//            Array<Value> elems = make_array_count<Value>(allocator, count);
+//            for (isize i = 0; i < count; i++) {
+//                elems[i] = read_value_from_bytes(bytes, offset + i * stride, et, allocator);
+//            }
+//            v.array_element_values(elems);
+//            return v;
+//        }
+//        case Type_union: {
+//            Ref<Scope> scope = type->union_info.union_scope;
+//            Value v = make_value(type);
+//            Array<Value> fields = make_array<Value>(allocator);
+//            for(const auto& entry : *scope) {
+//                fields.push_back(read_value_from_bytes(bytes, offset, union_field_type(type, entry.value.name), allocator));   // 全部 offset 0
+//            }
+//            v.struct_fields_val(fields);
+//            return v;
+//        }
+//        default:
+//            return make_value(type);
+//    }
+// }
 
-    return p;
-}
+//
+// ValueMemory（闲置）
+//
 
-void ValueMemory::write_bytes(isize offset, const void* src, isize size) {
-    XP_ASSERT(offset >= 0 && offset + size <= bytes.count);
-    memcpy(&bytes[offset], src, size);
-}
+// void ValueMemory::init(MemoryKind kind, xpAllocator allocator) {
+//    this->kind = kind;
+//    bytes = make_array<u8>(allocator);
+// }
 
-void ValueMemory::read_bytes(isize offset, void* dst, isize size) const {
-    XP_ASSERT(offset >= 0 && offset + size <= bytes.count);
-    memcpy(dst, &bytes[offset], size);
-}
+// void ValueMemory::free() {
+//    array_free(&bytes);
+// }
+
+// MemPointer ValueMemory::alloc_bytes(isize size, isize align) {
+//    isize addr = serialize_align_up(bytes.count, align);
+//    isize new_count = addr + size;
+//    bytes.resize(new_count);
+
+//    MemPointer p = MemPointer::make(this, addr);
+
+//    return p;
+// }
+
+// void ValueMemory::write_bytes(isize offset, const void* src, isize size) {
+//    XP_ASSERT(offset >= 0 && offset + size <= bytes.count);
+//    memcpy(&bytes[offset], src, size);
+// }
+
+// void ValueMemory::read_bytes(isize offset, void* dst, isize size) const {
+//    XP_ASSERT(offset >= 0 && offset + size <= bytes.count);
+//    memcpy(dst, &bytes[offset], size);
+// }
 
 
+
+
+//
+// MemPointer（闲置：ValueMemory 体系的字节指针）
+//
+
+// MemPointer MemPointer::make(ValueMemory *mem, isize offset) {
+//    MemPointer p{};
+//    p.mem = mem;
+//    p.kind = mem->kind;
+//    p.offset = offset;
+//    return p;
+// }
+
+// MemPointer MemPointer::make_null() {
+//    MemPointer p{};
+//    p.mem = nullptr;
+//    p.kind = MemoryKind::Heap;
+//    p.offset = -1;
+//    return p;
+// }
+
+// bool MemPointer::is_null() const {
+//    return mem == nullptr || offset < 0;
+// }
+
+
+// MemPointer MemPointer::add(MemPointer p, isize offset, isize elem_size) {
+//    ASSERT(!p.is_null());
+
+//    MemPointer new_p = p;
+//    new_p.offset += offset * elem_size;
+//    return new_p;
+// }
+
+
+// Value MemPointer::load(TypeRef type, xpAllocator allocator) const {
+//    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
+//    return read_value_from_bytes(mem->bytes, offset, type, allocator);
+// }
+
+// Value MemPointer::load(TypeRef type, isize offset, xpAllocator allocator) const {
+//    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
+//    return read_value_from_bytes(mem->bytes, this->offset + offset, type, allocator);
+// }
+
+// void MemPointer::load_bytes(isize offset, void* dst, isize size) const {
+//    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
+//    mem->read_bytes(this->offset + offset, dst, size);
+// }
+
+// void MemPointer::store(Value v) const {
+//    ASSERT_MSG(!is_null(), "Cannot store to a null pointer");
+//    write_value_to_bytes(mem->bytes, offset, v);
+// }
+
+// void MemPointer::store_bytes(const void* src, isize size) const {
+//    ASSERT_MSG(!is_null(), "Cannot store to a null pointer");
+//    mem->write_bytes(offset, src, size);
+// }
+
+
+// void MemPointer::to_bytes(Array<u8>& bytes, isize offset) const {
+//    // kind, offset, mem 各自直接存入
+//    u8 k = (u8)kind;
+//    memcpy(&bytes[offset], &k, sizeof(k));
+//    memcpy(&bytes[offset + sizeof(k)], &this->offset, sizeof(this->offset));
+//    isize mem_addr = (isize)mem;
+//    memcpy(&bytes[offset + sizeof(k) + sizeof(this->offset)], &mem_addr, sizeof(mem_addr));
+// }
+
+
+// MemPointer MemPointer::from_bytes(const Array<u8>& bytes, isize offset) {
+//    u8 k;
+//    memcpy(&k, &bytes[offset], sizeof(k));
+//    isize off;
+//    memcpy(&off, &bytes[offset + sizeof(k)], sizeof(off));
+//    isize mem_addr;
+//    memcpy(&mem_addr, &bytes[offset + sizeof(k) + sizeof(off)], sizeof(mem_addr));
+
+//    MemPointer ptr{};
+//    ptr.kind = (MemoryKind)k;
+//    ptr.offset = off;
+//    ptr.mem = (ValueMemory*)mem_addr;
+//    return ptr;
+// }
 
 
 //
 // Pointer
 //
 
-Pointer Pointer::make(ValueMemory *mem, isize offset) {
+Pointer Pointer::make_slot(ValueRef slot) {
     Pointer p{};
-    p.mem = mem;
-    p.kind = mem->kind;
-    p.offset = offset;
+    p.slot = slot;
     return p;
 }
 
 Pointer Pointer::make_null() {
-    Pointer p{};
-    p.mem = nullptr;
-    p.kind = MemoryKind::Heap;
-    p.offset = -1;
-    return p;
+    return Pointer{};
 }
 
 bool Pointer::is_null() const {
-    return mem == nullptr || offset < 0;
+    return slot == nullptr;
 }
 
+Pointer Pointer::add(isize index) const {
+    ASSERT(!is_null());
 
-Pointer Pointer::add(Pointer p, isize offset, isize elem_size) {
-    ASSERT(!p.is_null());
+    ValueRef elem = slot->element_ref(index);
+    ASSERT_MSG(elem != nullptr, "指针只能按元素走：目标不是数组或索引越界");
 
-    Pointer new_p = p;
-    new_p.offset += offset * elem_size;
-    return new_p;
+    return Pointer::make_slot(elem);
 }
 
-
-Value Pointer::load(TypeRef type, xpAllocator allocator) const {
-    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
-    return read_value_from_bytes(mem->bytes, offset, type, allocator);
-}
-
-Value Pointer::load(TypeRef type, isize offset, xpAllocator allocator) const {
-    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
-    return read_value_from_bytes(mem->bytes, this->offset + offset, type, allocator);
-}
-
-void Pointer::load_bytes(isize offset, void* dst, isize size) const {
-    ASSERT_MSG(!is_null(), "Cannot load from a null pointer");
-    mem->read_bytes(this->offset + offset, dst, size);
+Value Pointer::load() const {
+    ASSERT_MSG(slot != nullptr, "Cannot load from a null pointer");
+    return *slot;
 }
 
 void Pointer::store(Value v) const {
-    ASSERT_MSG(!is_null(), "Cannot store to a null pointer");
-    write_value_to_bytes(mem->bytes, offset, v);
+    store(v, permanent_allocator());
 }
 
-void Pointer::store_bytes(const void* src, isize size) const {
-    ASSERT_MSG(!is_null(), "Cannot store to a null pointer");
-    mem->write_bytes(offset, src, size);
-}
-
-
-void Pointer::to_bytes(Array<u8>& bytes, isize offset) const {
-    // kind, offset, mem 各自直接存入
-    u8 k = (u8)kind;
-    memcpy(&bytes[offset], &k, sizeof(k));
-    memcpy(&bytes[offset + sizeof(k)], &this->offset, sizeof(this->offset));
-    isize mem_addr = (isize)mem;
-    memcpy(&bytes[offset + sizeof(k) + sizeof(this->offset)], &mem_addr, sizeof(mem_addr));
-}
-
-
-Pointer Pointer::from_bytes(const Array<u8>& bytes, isize offset) {
-    u8 k;
-    memcpy(&k, &bytes[offset], sizeof(k));
-    isize off;
-    memcpy(&off, &bytes[offset + sizeof(k)], sizeof(off));
-    isize mem_addr;
-    memcpy(&mem_addr, &bytes[offset + sizeof(k) + sizeof(off)], sizeof(mem_addr));
-
-    Pointer ptr{};
-    ptr.kind = (MemoryKind)k;
-    ptr.offset = off;
-    ptr.mem = (ValueMemory*)mem_addr;
-    return ptr;
+void Pointer::store(Value v, xpAllocator allocator) const {
+    ASSERT_MSG(slot != nullptr, "Cannot store to a null pointer");
+    // 深拷：槽自己持有数据，不跟源值共享 Array
+    *slot = clone_value(v, allocator);
 }

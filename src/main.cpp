@@ -326,7 +326,9 @@ int main(int argc_raw, char** argv_raw) {
     context()->all_packages = make_array_capacity<Package>(permanent_allocator(), 128);
 
     context()->all_scopes = make_array<Scope>(permanent_allocator());
-    context()->static_mem.init(MemoryKind::String, permanent_allocator());
+    // 闲置：static_mem
+    // context()->static_mem.init(MemoryKind::String, permanent_allocator());
+    context()->static_values = ValueArray::init(permanent_allocator());
     context()->lcir_modules = xp_hash_map_make<Ref<Package>, lcir::Module>(permanent_allocator());
 
     // 各包的 stage arena 统一在退出时回收（含以下所有报错早退路径）

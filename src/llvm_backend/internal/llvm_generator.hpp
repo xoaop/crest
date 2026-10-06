@@ -99,7 +99,7 @@ public:
     xpHashMap<Ref<CIRInstResult>, LLVMValueRef> inst_vals;
 
     xpHashMap<CIRBlockRef, Array<LLVMBasicBlockMapper>> block_to_bbs;
-    xpHashMap<isize, LLVMValueRef> string_globals;  // static_mem offset → @str_N
+    xpHashMap<ValueRef, LLVMValueRef> string_globals;  // 字面量字节的槽 → @str_N
 
     LLVMState curr_state;
 

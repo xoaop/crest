@@ -54,7 +54,7 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     };
     inst_vals = xp_hash_map_make<Ref<CIRInstResult>, LLVMValueRef>(allocator);
     block_to_bbs = xp_hash_map_make<CIRBlockRef, Array<LLVMBasicBlockMapper>>(allocator);
-    string_globals = xp_hash_map_make<isize, LLVMValueRef>(allocator);
+    string_globals = xp_hash_map_make<ValueRef, LLVMValueRef>(allocator);
 }
 
 void LLVMGenerator::deinit() {
@@ -741,31 +741,28 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
             }
 
             // TODO: HARDCODE, 这里的情况只处理字符串, 别的类型数据不能处理
-            // 非空 comptime 指针：从 static_mem 读取字符串数据，创建 LLVM 全局
+            // 非空 comptime 指针：目标是字面量字节的 [N]u8 槽（末尾补 0），逐元素读到 0 建全局
             if(value.actual_type() == ActualValueType::Pointer) {
                 Pointer ptr = value.pointer_val();
 
-                if(LLVMValueRef* cached = xp_hash_map_get(string_globals, ptr.offset); cached != nullptr) {
-                    llvm_val = *cached;
-                    break;
-                }
-
-                if(ptr.kind == MemoryKind::String) {
-                    // 扫描 null 结尾确定长度
-                    auto& bytes = ptr.mem->bytes;
-                    isize max_len = bytes.count - ptr.offset;
-                    isize str_len = 0;
-                    for(isize i = 0; i < max_len; i++) {
-                        if(bytes[ptr.offset + i] == 0) { str_len = i; break; }
+                if(ptr.slot != nullptr && ptr.slot->actual_type() == ActualValueType::Array) {
+                    if(LLVMValueRef* cached = xp_hash_map_get(string_globals, ptr.slot); cached != nullptr) {
+                        llvm_val = *cached;
+                        break;
                     }
 
-                    xpAutoArenaRestore t{temp_allocator()};
-                    char *str = static_cast<char *>(xp_alloc(temp_allocator(), str_len + 1));
-                    ptr.load_bytes(0, str, str_len);
-                    str[str_len] = '\0';
+                    Array<char> chars = make_array<char>(stage_allocator());
+                    for(isize i = 0; ; i++) {
+                        const auto elem = ptr.slot->element_ref(i);
+                        if(elem == nullptr || elem->integer_val() == 0) {
+                            break;
+                        }
+                        chars.push_back(cast(char)elem->integer_val());
+                    }
+                    chars.push_back('\0');
 
-                    auto str_val = LLVMBuildGlobalString(unit.builder, str, "strptr");
-                    xp_hash_map_insert(&string_globals, ptr.offset, str_val);
+                    auto str_val = LLVMBuildGlobalString(unit.builder, chars.data, "strptr");
+                    xp_hash_map_insert(&string_globals, ptr.slot, str_val);
                     llvm_val = str_val;
                     break;
                 }

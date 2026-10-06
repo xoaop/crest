@@ -12,6 +12,8 @@
 #include "cir_builder.hpp"
 #include "scope.hpp"
 
+#include "value_array.hpp"
+
 #include "lcir.hpp"
 
 struct ThreadPool;
@@ -47,7 +49,11 @@ struct Context {
 
     xpHashMap<Ref<Package>, lcir::Module> lcir_modules;
 
-    ValueMemory static_mem;
+    // 闲置：ValueMemory 体系的静态内存区
+    // ValueMemory static_mem;
+
+    // 编译期产出的 Value 槽（字面量字节、变量槽）：permanent，不回收
+    ValueArray static_values;
 
     ThreadPool *thread_pool;
 };

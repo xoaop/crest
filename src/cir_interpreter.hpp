@@ -142,17 +142,14 @@ struct AnalyzeParams {
 // 求值实例 — 每次编译期函数调用创建一个
 struct EvalInstance {
 
-    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, isize frame_base, xpAllocator allocator);
+    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, xpAllocator allocator);
 
     static void free(EvalInstance *inst);
 
     CIRResultContext ctx;
     Array<Pointer> var_ptrs;
 
-    isize frame_base = 0; // 栈帧基址（stack_mem 中的偏移）
-
     // 用于恢复调用者上下文
-    CIRPackage *caller_pkg = nullptr;
     CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
     Ref<Scope> caller_scope;
 };
@@ -165,14 +162,14 @@ struct EvalInstance {
 //
 
 struct Interpreter {
-    Interpreter(xpAllocator allocator);
+    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref);
     ~Interpreter();
 
 
 
     void set_scope(Ref<Scope> scope);
 
-    void analyze_cir_package(Ref<Package> pkg_ref);
+    void analyze_cir_package();
 
     bool analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
     bool analyze_instruction_at(CIRInstructionRef at_ref);
@@ -264,8 +261,9 @@ struct Interpreter {
 
 public:
 
-    Ref<Package> pkg_ref;
-    CIRPackage *pkg;
+    // 本 interp 只看得见这一个包：跨包一律另起一个 interp
+    const Ref<Package> pkg_ref;
+    CIRPackage *const pkg;
 
     Ref<Scope> scope;
 
@@ -274,5 +272,6 @@ public:
     Array<EvalMode> eval_mode_stack;
     Array<CIRInstructionRef> loop_stack; // 当前嵌套的 Loop 指令栈
 
-    ValueMemory stack_mem;
+    // 闲置：ValueMemory 体系的字节级栈内存
+    // ValueMemory stack_mem;
 };

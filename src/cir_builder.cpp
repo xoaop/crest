@@ -1009,17 +1009,17 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
             auto count_str = str.length;
 
-            // 把字符串放到静态内存里
-            auto ptr = context()->static_mem.alloc_bytes(count_str + 1, 1); // +1 for null terminator
-            ptr.store_bytes(str.c_str, count_str);
-            ptr.mem->write_bytes(ptr.offset + count_str, "\0", 1);
+            // 字面量字节本身就在 permanent 内存里（parser 造的），无需再抄一份
+            // 闲置：static_mem 分配
+            // auto ptr = context()->static_mem.alloc_bytes(count_str + 1, 1); // +1 for null terminator
+            // ptr.store_bytes(str.c_str, count_str);
+            // ptr.mem->write_bytes(ptr.offset + count_str, "\0", 1);
 
 
             auto string_ident = New_Instruction(ctx, CIROperator::IdentVal, expr);
             Instruction(ctx, string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, xp_string_c("string"));
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(ctx, expr, {
-                .data = ptr,
                 .count = count_str,
                 .str = str,
                 .string_type_inst = string_ident,

@@ -406,7 +406,8 @@ struct CIRDerefInfo {
 };
 
 struct CIRStringLiteralInfo {
-    Pointer data;
+    // 闲置：ValueMemory 体系的字节指针
+    // MemPointer data;
     isize count;
     xpString str;
     CIRInstructionRef string_type_inst;
@@ -602,11 +603,12 @@ template<> struct CIRFormat<Ast *> {
     }
 };
 
-template<> struct CIRFormat<Pointer> {
-    static void write(std::string& out, const Pointer& v) {
-        std::format_to(std::back_inserter(out), "{}:{}", ::to_string(v.kind), v.offset);
-    }
-};
+// 闲置：ValueMemory 体系的字节指针
+// template<> struct CIRFormat<MemPointer> {
+//     static void write(std::string& out, const MemPointer& v) {
+//         std::format_to(std::back_inserter(out), "{}:{}", ::to_string(v.kind), v.offset);
+//     }
+// };
 
 template<> struct CIRFormat<TokenType> {
     static void write(std::string& out, TokenType v) {
@@ -881,7 +883,7 @@ template<> struct CIRFormat<CIRDerefInfo> {
 
 template<> struct CIRFormat<CIRStringLiteralInfo> {
     static void write(std::string& out, const CIRStringLiteralInfo& p) {
-        write_field(out, "data", p.data);
+        // write_field(out, "data", p.data);
         write_field(out, "count", p.count);
         write_field(out, "str", p.str);
         write_field(out, "string_type_inst", p.string_type_inst);

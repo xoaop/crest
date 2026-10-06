@@ -12,8 +12,6 @@
 struct Value;
 struct ValueArray;
 
-using ValueRef = Value *;
-
 static constexpr ValueRef INVALID_VALUE = nullptr;
 
 struct ValueArray {
