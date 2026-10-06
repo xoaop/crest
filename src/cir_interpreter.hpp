@@ -117,7 +117,7 @@ struct AnalyzeResult {
     AnalyzeResult();
     AnalyzeResult(ResultDesc result, CIRInstructionRef ref);
 
-    inline bool has_error() {
+    inline bool has_error() const {
         for(const auto& w: writes) {
             if(w.result.state == CIRResultState::Error) {
                 return true;
@@ -150,9 +150,34 @@ struct EvalInstance {
     Array<Pointer> var_ptrs;
 
     // 用于恢复调用者上下文
-    CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
-    Ref<Scope> caller_scope;
+    // CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
+    // Ref<Scope> caller_scope;
 };
+
+
+// 求值实例栈 —— 帧的存放处（调用链），归 interp 之外的持有者
+// 定长数组：帧地址天生稳定，不存在"扩容搬家"（interp 从生到死握着帧指针）
+struct EvalStack {
+    static constexpr isize CAPACITY = 64;
+
+    EvalInstance frames[CAPACITY] = {};
+    isize count = 0;
+
+    isize depth() const;                     // 活帧数（含根帧）
+
+    EvalInstance *push(EvalInstance inst);   // 入链，返回这一帧
+    void pop();                              // 出链
+};
+
+// 闲置：改成定长数组后不需要分配/释放了
+//
+// struct EvalStack {
+//     Array<EvalInstance> frames = {};
+//
+//     static EvalStack init(xpAllocator allocator);
+//     ...
+// };
+// void eval_stack_free(EvalStack *eval_stack);
 
 
 
@@ -162,8 +187,12 @@ struct EvalInstance {
 //
 
 struct Interpreter {
-    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref);
+    // inst 是本 interp 的帧：构造即入链，析构即出链，一生不换
+    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, EvalStack *eval_stack, EvalInstance inst);
     ~Interpreter();
+
+    // 不能拷贝：析构有副作用（出链），拷一份就多 pop 一次
+    Interpreter(const Interpreter&) = delete;
 
 
 
@@ -228,11 +257,12 @@ struct Interpreter {
 
     CIRResultContext result_context() const;
 
-    void push_eval_instance(EvalInstance inst);
-    void pop_eval_instance();
+    // void push_eval_instance(EvalInstance inst);   // 当前帧换新的
+    // void push_comptime_frame(EvalInstance inst, FuncCallKey cache_key);   // 开一帧编译期调用帧
+    // void pop_eval_instance();
 
     CIRInstructionRef& curr_inst_ref();   // 当前指令位置 = inst_stack 栈顶
-    EvalInstance* curr_instance();
+    EvalInstance* curr_instance();   // 当前调用帧；在根（没进调用）时 nullptr
 
 
     void apply_result(CIRInstructionRef target, const ResultDesc& result);
@@ -259,18 +289,30 @@ struct Interpreter {
         Array<Ref<CIRInstResult>> key_refs,
         Array<TypeRef> type_args);
 
+    // 跑完一具编译期函数体（this = 调用方 interp）
+    AnalyzeResult run_comptime_body(
+        Interpreter& callee_interp,
+        CIRInstructionRef pc_ref,
+        const CIRFunctionDeclInfo& func,
+        const CIRCallInfo& call_info,
+        Ref<CIRResultInstance> callee_result_instance,
+        TypeRef called_type,
+        FuncCallKey cache_key);
+
 public:
 
     // 本 interp 只看得见这一个包：跨包一律另起一个 interp
     const Ref<Package> pkg_ref;
     CIRPackage *const pkg;
 
+    // 调用链在外部（EvalStack）；本 interp 只绑链上的一帧，从生到死不换
+    EvalStack *const eval_stack;
+    EvalInstance *const curr_frame;
+
     Ref<Scope> scope;
 
-    Array<EvalInstance> instance_stack; // 嵌套调用栈
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）
     Array<EvalMode> eval_mode_stack;
-    Array<CIRInstructionRef> loop_stack; // 当前嵌套的 Loop 指令栈
 
     // 闲置：ValueMemory 体系的字节级栈内存
     // ValueMemory stack_mem;
