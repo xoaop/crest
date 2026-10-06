@@ -844,7 +844,7 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
         if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || has_result_val(ptr_inst))) {
             Pointer ptr = ResultValue(ptr_inst).pointer_val();
             // 深拷一份：结果自己持有数据，不跟槽里的数组共享
-            Value val = clone_value(ptr.load(), permanent_allocator());
+            Value val = clone_value(ptr.load(loaded_type), permanent_allocator());
             return make_result(pc_ref, ResultDesc::make_value(loaded_type, val));
         }
         return make_result(pc_ref, ResultDesc::make_type_only(loaded_type));
@@ -857,7 +857,7 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
 
     if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || has_result_val(ptr_inst))) {
         Pointer ptr = ResultValue(ptr_inst).pointer_val();
-        Value val = clone_value(ptr.load(), permanent_allocator());
+        Value val = clone_value(ptr.load(ptr_type->pointed_type), permanent_allocator());
         return make_result(pc_ref, ResultDesc::make_value(ptr_type->pointed_type, val));
     }
     return make_result(pc_ref, ResultDesc::make_type_only(ptr_type->pointed_type));
@@ -883,7 +883,7 @@ AnalyzeResult Interpreter::analyze_Deref(const CIRDerefInfo& info, CIRInstructio
 
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
         Pointer ptr = ResultValue(ptr_inst).pointer_val();
-        Value val = clone_value(ptr.load(), permanent_allocator());
+        Value val = clone_value(ptr.load(pointed), permanent_allocator());
         res.set_val(val);
     }
 
@@ -1595,7 +1595,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
                 Pointer ptr = ResultValue(parent_inst).pointer_val();
                 if(is_pointer_type(parent_type)) {
                     // 父是指针左值：槽里装的是指针本身，先读出来
-                    ptr = ptr.load().pointer_val();
+                    ptr = ptr.load(parent_type).pointer_val();
                     if(ptr.is_null()) {
                         return make_result(pc_ref, inst_error(pc_ref, "对空指针取字段指针"));
                     }
@@ -1642,7 +1642,7 @@ AnalyzeResult Interpreter::analyze_IndexPtr(const CIRIndexPtrInfo& info, CIRInst
             ptr = Pointer::make_slot(base.slot->array_element_ref(idx));
         } else {
             // 切片：data 指向一段连续元素，槽实际握着元素缓冲，元素槽在它的缓冲里
-            base = base.load().struct_field_val(0).pointer_val();
+            base = base.load(array_type_ref).struct_field_val(0).pointer_val();
             ASSERT_MSG(!base.is_null() && base.slot->actual_type() == ActualValueType::Array,
                        "切片 data 指向的槽必须握着连续元素");
             ptr = Pointer::make_slot(base.slot->array_element_ref(idx));

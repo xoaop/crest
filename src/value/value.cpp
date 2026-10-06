@@ -749,17 +749,17 @@ bool Pointer::is_null() const {
     return slot == nullptr;
 }
 
-Pointer Pointer::add(isize index) const {
-    ASSERT(!is_null());
 
-    ValueRef elem = slot->element_ref(index);
-    ASSERT_MSG(elem != nullptr, "指针只能按元素走：目标不是数组或索引越界");
-
-    return Pointer::make_slot(elem);
-}
-
-Value Pointer::load() const {
+Value Pointer::load(TypeRef pointee_type) const {
     ASSERT_MSG(slot != nullptr, "Cannot load from a null pointer");
+
+    // 指针声明指向单个 T，而槽实际握着 [N]T（连续元素）：指向的是首元素
+    if(slot->actual_type() == ActualValueType::Array && !is_array_type(pointee_type)) {
+        ValueRef first = slot->element_ref(0);
+        ASSERT_MSG(first != nullptr, "指针目标是个空数组槽");
+        return *first;
+    }
+
     return *slot;
 }
 

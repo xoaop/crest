@@ -60,10 +60,10 @@ struct Pointer {
     static Pointer make_null();
     bool is_null() const;
 
-    // 元素：往目标的第 index 个元素走
-    Pointer add(isize index) const;
 
-    Value load() const;
+    // 取指针指向的值。pointee_type 是指针声明指向的类型：
+    // 声明指向单个 T 而槽实际握着 [N]T（连续元素）时，取的是首元素
+    Value load(TypeRef pointee_type) const;
     void store(Value v) const;
     void store(Value v, xpAllocator allocator) const;   // 先深拷再落，槽自己持有数据
 };
