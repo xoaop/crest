@@ -4,6 +4,7 @@
 #include <meta>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "xoaop.h"
 #include "ref.hpp"
@@ -53,4 +54,36 @@ const char *to_string(const T value) {
 
     UNREACHABLE();
     return nullptr;
+}
+
+
+
+template<typename T>
+consteval auto annotations_of_type(std::meta::info entity) {
+    std::vector<T> out;
+    for(auto ann: std::meta::annotations_of(entity)) {
+        if(std::meta::type_of(ann) == ^^T) {
+            out.push_back(std::meta::extract<T>(std::meta::constant_of(ann)));
+        }
+    }
+
+    return std::define_static_array(out);
+}
+
+template<typename T, typename EntityType>
+consteval auto annotations_of_type() {
+    constexpr auto entity = ^^EntityType;
+    return annotations_of_type<T>(entity);
+}
+
+// 实体上有没有标这个注解值
+template<typename T>
+consteval bool has_annotation(std::meta::info entity, T value) {
+    for(auto v: annotations_of_type<T>(entity)) {
+        if(v == value) {
+            return true;
+        }
+    }
+
+    return false;
 }

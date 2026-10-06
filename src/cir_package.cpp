@@ -329,9 +329,33 @@ bool is_pure_comptime_func(const CIRFunctionDeclInfo& func, const CIRResultConte
 }
 
 #if defined(CREST_DEBUG)
-// 打印单个 block：块头 + 块内每条指令
-static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
+// 子块字段取值：CIRBlockRef 直接用；裸块句柄（CIRInstructionRef）取它的块号
+static CIRBlockRef child_block_of(CIRBlockRef block) { return block; }
+static CIRBlockRef child_block_of(CIRInstructionRef ref) { return ref.block_ref; }
+
+// 闲置：换成 common.hpp 的 has_annotation
+//
+// // 成员是不是标了指定的 CIRFieldTag
+// consteval bool has_field_tag(std::meta::info member, CIRFieldTag tag) {
+//     for (auto ann : std::meta::annotations_of(member)) {
+//         if (std::meta::extract<CIRFieldTag>(std::meta::constant_of(ann)) == tag) {
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+
+// 打印单个 block：块头 + 块内每条指令；带 ChildBlock 注解的字段指到的子块就地展开
+static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
+    if (block == INVALID_BLOCK) {
+        return; 
+    }
+
     CIRBlock& blk = pkg->blocks[block];
+
+    // 块头在 depth 层，块内容（指令 + 子块头）再进一层
+    const std::string indent(depth * 2, ' ');
+    const std::string body_indent((depth + 1) * 2, ' ');
 
     std::string flags;
     if (blk.is_comptime)    flags += " comptime";
@@ -339,8 +363,10 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
     if (blk.is_loop)        flags += " loop";
     if (blk.yields_value)   flags += " yields";
 
-    println_err("");
-    println_err("block #{} {{ {} insts{} }}", block, blk.insts.count(), flags);
+    if (depth == 0) {
+        println_err("");
+    }
+    println_err("{}block #{} ({} insts{}) {{", indent, block, blk.insts.count(), flags);
 
     for (auto ref : blk) {
         const CIRInstruction& inst = pkg->inst(ref);
@@ -348,9 +374,9 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
         std::string ref_str = std::format("{}", ref);
         std::string op_name = inst.to_string();
 
-        std::string line;
-        line.append(ref_str.size() < 6 ? 6 - ref_str.size() : 0, ' ');
+        std::string line = body_indent;
         line += ref_str;
+        line.append(ref_str.size() < 6 ? 6 - ref_str.size() : 0, ' ');
         line += "  ";
         line += op_name;
         line.append(op_name.size() < 15 ? 15 - op_name.size() : 1, ' ');
@@ -358,7 +384,14 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
         template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
             if (inst.op == [:e:]) {
                 const auto& payload = inst.info<([:e:])>();
-                CIRFormat<std::remove_cvref_t<decltype(payload)>>::write(line, payload);
+
+                // 布局在这一层定：每字段一格 " 名字=值"
+                for (auto& [name, value] : CIRFields<std::remove_cvref_t<decltype(payload)>>::field_strings(payload)) {
+                    line += ' ';
+                    line += name;
+                    line += '=';
+                    line += value;
+                }
             }
         }
 
@@ -384,7 +417,23 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block) {
         }
 
         println_err("{}", line);
+
+        // 子块：payload 里带 CIRFieldTag::ChildBlock 注解的字段，一律就地展开（层层包裹）
+        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
+            if (inst.op == [:e:]) {
+                const auto& payload = inst.info<([:e:])>();
+                using Payload = std::remove_cvref_t<decltype(payload)>;
+
+                template for (constexpr auto m : std::define_static_array(std::meta::nonstatic_data_members_of(^^Payload, std::meta::access_context::current()))) {
+                    if constexpr (has_annotation(m, CIRFieldTag::ChildBlock)) {
+                        dump_cir_block(pkg, child_block_of(payload.[:m:]), depth + 1);
+                    }
+                }
+            }
+        }
     }
+
+    println_err("{}", indent + "}");
 }
 #endif
 
@@ -400,9 +449,8 @@ void dump_cir_package(CIRPackage *pkg) {
 
     println_err("CIRPackage {{ {} blocks, {} insts }}", block_count, total_insts);
 
-    for (isize b = 0; b < block_count; b++) {
-        dump_cir_block(pkg, b);
-    }
+    // 从 top_blk 递归进去，子块在各自父块里就地展开
+    dump_cir_block(pkg, pkg->top_blk, 0);
 
     println_err("");
     println_err("--- {} blocks, {} insts ---", block_count, total_insts);
