@@ -1,0 +1,24 @@
+// @pass
+// @run
+// @skip  TODO: 现在是崩溃，见下
+
+// 编译期解引用切片的 data 指针，取回被改过的那个字节。
+//
+// 现状：crest 以 STATUS_ILLEGAL_INSTRUCTION (0xC000001D) 退出，断言在
+// value.cpp:75 的 Value::integer_val()。^s.data 拿到的是"数据指针"本身
+// （actual 是 Pointer）却挂着 u8 的类型，codegen 按 u8 去 integer_val()。
+// 期望：^s.data == 'Z'(90)，也就是少了一层解引用。
+//
+// 修好后删掉 @skip。
+
+bump :: $(n: i32) -> u8 {
+    s := "ABC";
+    s[0] = cast(u8)90;          // 'Z'
+    return ^s.data;
+}
+
+main :: () -> i32 {
+    v := bump(1);
+    if v != cast(u8)90 { return 1; }
+    return 0;
+}

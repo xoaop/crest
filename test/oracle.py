@@ -36,6 +36,8 @@ CRASH_CODES = {
     0xC0000409: "STATUS_STACK_BUFFER_OVERRUN",
     0xC0000017: "STATUS_NO_MEMORY",
     0xC000013A: "STATUS_CONTROL_C_EXIT",
+    # xoaop 的 XP_TRAP() 在 clang 下是 __builtin_trap()，即 ud2
+    0xC000001D: "STATUS_ILLEGAL_INSTRUCTION",
 }
 
 # POSIX signals that mean "the process died abnormally".
@@ -54,6 +56,10 @@ CRASH_SIGNALS = {
 #
 # so a real abort looks like `[ASSERT] F:/Crest/src/print.hpp:78: ...`.
 #
+# xoaop's XP_ASSERT_* (third_party/xoaop/xoaop.h) instead writes
+# `Assert FAILED at <file>:<line>: ` and then XP_TRAP()s — a second form
+# that has to be matched too, or every xoaop assert is invisible here.
+#
 # This must be matched *structurally*, not by bare substring: the fuzzer
 # feeds arbitrary text to the compiler, and the compiler echoes offending
 # source lines back in diagnostics.  A generated file containing the word
@@ -61,8 +67,12 @@ CRASH_SIGNALS = {
 # tag plus a .cpp/.hpp path plus a line number makes a collision
 # effectively impossible.
 ABORT_LINE_RE = re.compile(
-    r"^\[(?:PANIC|ASSERT|ASSERT_MSG)\]"   # print.hpp tag
+    r"^(?:"
+    r"\[(?:PANIC|ASSERT|ASSERT_MSG)\]"    # print.hpp tag
     r".*\.(?:cpp|hpp):\d+:"               # source_location
+    r"|Assert FAILED at "                 # xoaop XP_ASSERT_MSG
+    r".*\.(?:cpp|hpp):\d+:"
+    r")"
 )
 
 # Verdicts
