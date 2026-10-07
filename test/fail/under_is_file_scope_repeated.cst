@@ -1,0 +1,13 @@
+// @fail
+// @error "repeated"
+
+// 同一个文件里只能写一次 #under_is_file_scope
+#under_is_file_scope
+
+v :: 1;
+
+#under_is_file_scope
+
+main :: () -> i32 {
+    return v;
+}

@@ -117,6 +117,22 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
             continue;
         }
 
+        // #under_is_file_scope：它下面的顶层声明落文件作用域
+        if(curr_token(&p).type == TokenType::Hash && next_token(&p).type == TokenType::Ident
+           && xp_string_equal(next_token(&p).token_str, xp_string_c("under_is_file_scope"))) {
+            const auto hash_token = curr_token(&p);
+            const auto name_token = next_token(&p);
+
+            advance_token(&p);
+            advance_token(&p);
+
+            // 留个标记节点，analyser 靠它数重复、定下面的声明落哪
+            auto *marker_ast = ast_alloc(AstType_UnderIsFileScope, hash_token, merge(hash_token.src_loc, name_token.src_loc));
+            p.top_levels.push_back(marker_ast);
+
+            continue;
+        }
+
         p.top_levels.push_back(parse_stmt(&p));
     }
 

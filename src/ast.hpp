@@ -91,6 +91,7 @@ struct Ast;
         Ast *type_ast;                                                               \
         bool is_var_arg;                                                             \
     })                                                                               \
+    AST_INFO(UnderIsFileScope, "under is file scope", struct {})                     \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})                  \
     AST_INFO(Constant, "constant", struct {                                          \
         Value value;                                                                 \

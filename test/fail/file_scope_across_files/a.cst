@@ -1,0 +1,7 @@
+// @fail
+// @error "undefined symbol 'hidden'"
+
+// 文件作用域的顶层 const 只在本文件可见，同包另一个文件看不到
+#under_is_file_scope
+
+hidden :: 1;

@@ -46,7 +46,7 @@ Analyser make_analyser(AstFile *curr_ast_file, Ref<Package> pkg) {
 
 
 void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg);
-void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser);
+void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool under_file_scope);
 
 
 
@@ -68,14 +68,26 @@ void collect_top_level_symbols_in_package(Ref<Package> pkg) {
 void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg) {
 
     ast_file->file_scope = alloc_scope(&context()->all_scopes, curr_pkg.unwrap().package_scope, ScopeType::File, permanent_allocator());
+
+    bool under_file_scope = false;
+
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
         Ast *top_level = ast_file->top_levels[i];
+
+        // #under_is_file_scope 每个文件只能有一条；它下面的顶层声明落文件作用域
+        if(top_level->type == AstType_UnderIsFileScope) {
+            if(under_file_scope) {
+                context()->reporter.report_error(top_level->src_loc, "directive '#under_is_file_scope' repeated");
+            }
+            under_file_scope = true;
+            continue;
+        }
 
         Analyser analyser = make_analyser(ast_file, curr_pkg);
         switch(top_level->type) {
         case AstType_ConstDecl: {
-            collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
-        } break;    
+            collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg), under_file_scope);
+        } break;
         
         // case AstType_VariableDecl: {
         //     collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
@@ -88,18 +100,19 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
 }    
 
 
-void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
+void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool under_file_scope) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
 
     Ast *value_ast = const_decl_ast->ConstDecl.value_ast;
 
-    // #builtin 无值；import 落文件作用域，其余（含 builtin）落包作用域
+    // #builtin 无值；import 和 #under_is_file_scope 之下的声明落文件作用域，其余（含 builtin）落包作用域
     bool is_import = (value_ast != nullptr && value_ast->type == AstType_Import);
+    bool to_file_scope = is_import || under_file_scope;
 
     // 先检查有没有重复符号
     Ref<SymbolInfo> info = Ref<SymbolInfo>::INVALID_REF;
-    if(is_import) {
-        // Import符号在文件作用域
+    if(to_file_scope) {
+        // 文件作用域的符号
 
         info = find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
     } else {
@@ -117,12 +130,27 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser) {
         return;
     }
 
-    SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
-    if(is_import) {
-        add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
-    } else {
-        add_symbol_to_scope(&analyser.pkg.unwrap().package_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
+    const auto target_scope = to_file_scope ? analyser.current_scope : analyser.pkg.unwrap().package_scope;
+
+    const auto *shadowed = find_symbol_until_global(&target_scope.unwrap(), const_decl_ast->ConstDecl.name);
+    if(shadowed != nullptr && shadowed->no_shadow) {
+        context()->reporter.report_error(
+            const_decl_ast->src_loc,
+            "symbol '{}' cannot be shadowed",
+            const_decl_ast->ConstDecl.name
+        );
+        return;
     }
+
+    auto new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
+    new_symbol.no_shadow = const_decl_ast->ConstDecl.is_builtin;
+
+    add_symbol_to_scope(&target_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
+
+    const_decl_ast->ast_symbol = Ref<SymbolInfo>{
+        .scope = target_scope,
+        .name = const_decl_ast->ConstDecl.name
+    };
 
     return;
 }
@@ -288,8 +316,11 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
     switch (ast->type) {
 
         case AstType_ConstDecl: {
-            ast->ast_symbol = find_symbol_ref_until_global(analyser.current_scope, ast->ConstDecl.name);
-            ASSERT(ast->ast_symbol != Ref<SymbolInfo>::INVALID_REF);
+            // 符号在 collect 阶段建好，ref 已经记在 ast_symbol 上，不按名字重找（同名遮蔽会找错那条）。
+            // 没建上说明 collect 已经报过错（重复定义 / 不可遮蔽），这里不再解析
+            if(ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+                break;
+            }
 
             // #builtin：无值标记，仅 builtin 包合法
             if(ast->ConstDecl.is_builtin) {
@@ -305,6 +336,10 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             }
 
             resolve_const_decl_local(ast, analyser);
+        } break;
+
+        case AstType_UnderIsFileScope: {
+            // 指令标记，无内容
         } break;
 
 
@@ -380,7 +415,18 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     Ref<SymbolInfo> symbol_ref;
     if(analyser.current_scope->scope_type != ScopeType::File) {
         // 局部 const：在当前作用域现场建符号
-        SymbolInfo new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
+        
+        const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name);
+        if(shadowed != nullptr && shadowed->no_shadow) {
+            context()->reporter.report_error(
+                const_decl_ast->src_loc,
+                "symbol '{}' cannot be shadowed",
+                const_decl_ast->ConstDecl.name
+            );
+            return;
+        }
+
+        const auto new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
         add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
 
         symbol_ref = Ref<SymbolInfo>{
@@ -388,8 +434,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             .name = const_decl_ast->ConstDecl.name
         };
     } else {
-        // 顶层 const：符号已在包作用域（collect 阶段建），解析取用
-        symbol_ref = find_symbol_ref_until_global(analyser.current_scope, const_decl_ast->ConstDecl.name);
+        // 顶层 const：符号在 collect 阶段建好了，直接用它登记的那个
+        symbol_ref = const_decl_ast->ast_symbol;
     }
 
     if(val_ast->type == AstType_IfExpr) {
@@ -534,7 +580,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 
         ASSERT(param->type == AstType_ParamDecl);
 
-        Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, param->ParamDecl.name);
+        const auto existing = find_symbol_ref_curr(analyser.current_scope, param->ParamDecl.name);
         if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 param->src_loc,
@@ -550,7 +596,17 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             );
         }
 
-        SymbolInfo param_symbol = make_symbol(param->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param);
+        const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), param->ParamDecl.name);
+        if(shadowed != nullptr && shadowed->no_shadow) {
+            context()->reporter.report_error(
+                param->src_loc,
+                "symbol '{}' cannot be shadowed",
+                param->ParamDecl.name
+            );
+            return;
+        }
+
+        const auto param_symbol = make_symbol(param->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param);
         add_symbol_to_scope(&analyser.current_scope.unwrap(), param->ParamDecl.name, param_symbol);
         param->ast_symbol = Ref<SymbolInfo>{
             .scope = analyser.current_scope,
@@ -577,7 +633,17 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
                 }
 
 
-                SymbolInfo info = make_symbol(type_var_name, analyser.pkg, analyser.curr_ast_file, type_ast);
+                const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), type_var_name);
+                if(shadowed != nullptr && shadowed->no_shadow) {
+                    context()->reporter.report_error(
+                        type_ast->src_loc,
+                        "symbol '{}' cannot be shadowed",
+                        type_var_name
+                    );
+                    break;
+                }
+
+                const auto info = make_symbol(type_var_name, analyser.pkg, analyser.curr_ast_file, type_ast);
                 add_symbol_to_scope(&analyser.current_scope.unwrap(), type_var_name, info);
                 type_ast->ast_symbol = Ref<SymbolInfo>{
                     .scope = analyser.current_scope,
@@ -597,7 +663,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     XP_ASSERT_DEFAULT(param_ast->type == AstType_ParamDecl);
 
-    Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, param_ast->ParamDecl.name);
+    const auto existing = find_symbol_ref_curr(analyser.current_scope, param_ast->ParamDecl.name);
     if(existing != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
             param_ast->src_loc,
@@ -606,7 +672,17 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
         );
     }
 
-    SymbolInfo param_symbol = make_symbol(param_ast->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param_ast);
+    const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), param_ast->ParamDecl.name);
+    if(shadowed != nullptr && shadowed->no_shadow) {
+        context()->reporter.report_error(
+            param_ast->src_loc,
+            "symbol '{}' cannot be shadowed",
+            param_ast->ParamDecl.name
+        );
+        return;
+    }
+
+    const auto param_symbol = make_symbol(param_ast->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param_ast);
     add_symbol_to_scope(&analyser.current_scope.unwrap(), param_ast->ParamDecl.name, param_symbol);
     param_ast->ast_symbol = Ref<SymbolInfo>{
         .scope = analyser.current_scope,
@@ -769,7 +845,17 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     }
 
 
-    SymbolInfo info = make_symbol(var_decl_ast->VariableDecl.var_name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
+    const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), var_decl_ast->VariableDecl.var_name);
+    if(shadowed != nullptr && shadowed->no_shadow) {
+        context()->reporter.report_error(
+            var_decl_ast->src_loc,
+            "symbol '{}' cannot be shadowed",
+            var_decl_ast->VariableDecl.var_name
+        );
+        return;
+    }
+
+    const auto info = make_symbol(var_decl_ast->VariableDecl.var_name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
     add_symbol_to_scope(&analyser.current_scope.unwrap(), var_decl_ast->VariableDecl.var_name, info);
     var_decl_ast->ast_symbol = Ref<SymbolInfo>{
         .scope = analyser.current_scope,

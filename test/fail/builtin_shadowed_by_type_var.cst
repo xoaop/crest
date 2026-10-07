@@ -1,0 +1,11 @@
+// @fail
+// @error "cannot be shadowed"
+
+// $T 类型变量不能遮蔽 #builtin 符号
+foo :: (a: $sizeof, b: sizeof) -> sizeof {
+    return b;
+}
+
+main :: () -> i32 {
+    return 0;
+}

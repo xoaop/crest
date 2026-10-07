@@ -80,6 +80,9 @@ void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
                     top_inst = build_inst_for_const_decl(ctx, ast);
                 } break;
 
+                case AstType_UnderIsFileScope: {
+                } break;
+
                 default: {
                     context()->reporter.report_error(SourceLocation(ast_file.source_code, ast->src_loc.span), "Unsupported top-level AST type for CIR generation");
                 } break;

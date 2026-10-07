@@ -1,0 +1,9 @@
+// @fail
+// @error "unexpected token '#'"
+
+// 指令只在顶层认，写进函数体里就是个非法语句
+main :: () -> i32 {
+    #under_is_file_scope
+
+    return 0;
+}

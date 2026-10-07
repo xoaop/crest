@@ -1,0 +1,8 @@
+// @fail
+// @error "cannot be shadowed"
+
+// 局部变量不能遮蔽 #builtin 符号
+main :: () -> i32 {
+    sizeof: i32 = 1;
+    return 0;
+}

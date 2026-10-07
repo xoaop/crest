@@ -1,0 +1,12 @@
+// @fail
+// @error "repeated definition"
+
+// 指令下面的两个同名顶层 const 都落同一个文件作用域，照样要报重复
+#under_is_file_scope
+
+dup :: 1;
+dup :: 2;
+
+main :: () -> i32 {
+    return 0;
+}

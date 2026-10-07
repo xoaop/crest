@@ -1,0 +1,12 @@
+// @pass
+// @run
+
+// 没标 no_shadow 的符号照常可以被遮蔽（局部 const 盖住包级 const）
+shared :: 1;
+
+main :: () -> i32 {
+    shared :: 2;
+    if shared != 2i32 { return 1; }
+
+    return 0;
+}

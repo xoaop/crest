@@ -1,0 +1,9 @@
+// @fail
+// @error "cannot be shadowed"
+
+// #builtin 符号标了 no_shadow，顶层 const 不能同名遮蔽它
+sizeof :: 1;
+
+main :: () -> i32 {
+    return 0;
+}

@@ -1,0 +1,13 @@
+// @pass
+// @run
+
+// 函数写在指令上面，照样能引用下面的文件作用域符号（collect 阶段先建全部符号）
+main :: () -> i32 {
+    if later != 1i32 { return 1; }
+
+    return 0;
+}
+
+#under_is_file_scope
+
+later :: 1;

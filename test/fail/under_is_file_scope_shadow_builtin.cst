@@ -1,0 +1,11 @@
+// @fail
+// @error "cannot be shadowed"
+
+// #under_is_file_scope 下面的顶层 const 一样不能遮蔽 #builtin 符号
+#under_is_file_scope
+
+sizeof :: 1;
+
+main :: () -> i32 {
+    return 0;
+}

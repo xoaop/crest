@@ -39,6 +39,7 @@ struct SymbolInfo {
     AstFile *file;
     Ast *ast;
 
+    bool no_shadow = false;   // true = 不可被遮蔽，子 scope 不能出现同名符号
 
 
     ValueStoreType value_store_type;

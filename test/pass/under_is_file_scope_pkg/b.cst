@@ -1,0 +1,4 @@
+// 同名的顶层 const 各在自己的文件作用域里，跟 a.cst 的 shared 不冲突
+#under_is_file_scope
+
+shared :: 9;

@@ -1,0 +1,7 @@
+use :: () -> i32 {
+    return hidden;
+}
+
+main :: () -> i32 {
+    return use();
+}

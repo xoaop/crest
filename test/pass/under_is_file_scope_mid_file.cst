@@ -1,0 +1,15 @@
+// @pass
+// @run
+
+// 指令写在文件中间：它上面的落包作用域，下面的落文件作用域，同名不冲突
+pkg_shared :: 1;
+
+#under_is_file_scope
+
+pkg_shared :: 2;
+
+main :: () -> i32 {
+    if pkg_shared != 2i32 { return 1; }
+
+    return 0;
+}
