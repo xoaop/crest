@@ -329,50 +329,53 @@ bool is_pure_comptime_func(const CIRFunctionDeclInfo& func, const CIRResultConte
 }
 
 #if defined(CREST_DEBUG)
-// 子块字段取值：CIRBlockRef 直接用；裸块句柄（CIRInstructionRef）取它的块号
-static CIRBlockRef child_block_of(CIRBlockRef block) { return block; }
-static CIRBlockRef child_block_of(CIRInstructionRef ref) { return ref.block_ref; }
 
-// 闲置：换成 common.hpp 的 has_annotation
-//
-// // 成员是不是标了指定的 CIRFieldTag
-// consteval bool has_field_tag(std::meta::info member, CIRFieldTag tag) {
-//     for (auto ann : std::meta::annotations_of(member)) {
-//         if (std::meta::extract<CIRFieldTag>(std::meta::constant_of(ann)) == tag) {
-//             return true;
-//         }
-//     }
-//     return false;
-// }
+// 子块字段取值：CIRBlockRef 直接用；裸块句柄（CIRInstructionRef）取它的块号
+static CIRBlockRef child_block_of(CIRBlockRef block) {
+    return block;
+}
+
+static CIRBlockRef child_block_of(CIRInstructionRef ref) {
+    return ref.block_ref;
+}
+
 
 // 打印单个 block：块头 + 块内每条指令；带 ChildBlock 注解的字段指到的子块就地展开
 static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
-    if (block == INVALID_BLOCK) {
-        return; 
+    if(block == INVALID_BLOCK) {
+        return;
     }
 
-    CIRBlock& blk = pkg->blocks[block];
+    const auto& blk = pkg->blocks[block];
 
     // 块头在 depth 层，块内容（指令 + 子块头）再进一层
     const std::string indent(depth * 2, ' ');
     const std::string body_indent((depth + 1) * 2, ' ');
 
     std::string flags;
-    if (blk.is_comptime)    flags += " comptime";
-    if (blk.immediate_eval) flags += " immediate";
-    if (blk.is_loop)        flags += " loop";
-    if (blk.yields_value)   flags += " yields";
+    if(blk.is_comptime) {
+        flags += " comptime";
+    }
+    if(blk.immediate_eval) {
+        flags += " immediate";
+    }
+    if(blk.is_loop) {
+        flags += " loop";
+    }
+    if(blk.yields_value) {
+        flags += " yields";
+    }
 
-    if (depth == 0) {
+    if(depth == 0) {
         println_err("");
     }
     println_err("{}block #{} ({} insts{}) {{", indent, block, blk.insts.count(), flags);
 
-    for (auto ref : blk) {
-        const CIRInstruction& inst = pkg->inst(ref);
+    for(auto ref : blk) {
+        const auto& inst = pkg->inst(ref);
 
-        std::string ref_str = std::format("{}", ref);
-        std::string op_name = inst.to_string();
+        const auto ref_str = std::format("{}", ref);
+        const std::string op_name = inst.to_string();
 
         std::string line = body_indent;
         line += ref_str;
@@ -381,12 +384,12 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
         line += op_name;
         line.append(op_name.size() < 15 ? 15 - op_name.size() : 1, ' ');
 
-        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
-            if (inst.op == [:e:]) {
+        template for(constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
+            if(inst.op == [:e:]) {
                 const auto& payload = inst.info<([:e:])>();
 
                 // 布局在这一层定：每字段一格 " 名字=值"
-                for (auto& [name, value] : CIRFields<std::remove_cvref_t<decltype(payload)>>::field_strings(payload)) {
+                for(auto& [name, value] : CIRFields<std::remove_cvref_t<decltype(payload)>>::field_strings(inst, payload)) {
                     line += ' ';
                     line += name;
                     line += '=';
@@ -395,8 +398,8 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
             }
         }
 
-        auto *res_ptr = pkg->results.result_ptr_of(ref);
-        if (res_ptr) {
+        const auto *res_ptr = pkg->results.result_ptr_of(ref);
+        if(res_ptr) {
             const auto& res = *res_ptr;
 
             std::string result;
@@ -407,9 +410,11 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
                 case CIRResultState::WholeValue: result = std::format("{} = {}", get_type_kind_str(res.type()->kind), res.actual_val()); break;
                 case CIRResultState::Error:      result = "<error>"; break;
             }
-            if (res.value_kind == CIRValueKind::LValue) result += " [lvalue]";
+            if(res.value_kind == CIRValueKind::LValue) {
+                result += " [lvalue]";
+            }
 
-            if (!result.empty()) {
+            if(!result.empty()) {
                 constexpr usize arrow_col = 78;
                 line.append(line.size() < arrow_col ? arrow_col - line.size() : 2, ' ');
                 line += "-> " + result;
@@ -419,13 +424,13 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
         println_err("{}", line);
 
         // 子块：payload 里带 CIRFieldTag::ChildBlock 注解的字段，一律就地展开（层层包裹）
-        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
-            if (inst.op == [:e:]) {
+        template for(constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^CIROperator))) {
+            if(inst.op == [:e:]) {
                 const auto& payload = inst.info<([:e:])>();
                 using Payload = std::remove_cvref_t<decltype(payload)>;
 
-                template for (constexpr auto m : std::define_static_array(std::meta::nonstatic_data_members_of(^^Payload, std::meta::access_context::current()))) {
-                    if constexpr (has_annotation(m, CIRFieldTag::ChildBlock)) {
+                template for(constexpr auto m : std::define_static_array(std::meta::nonstatic_data_members_of(^^Payload, std::meta::access_context::current()))) {
+                    if constexpr(has_annotation(m, CIRFieldTag::ChildBlock)) {
                         dump_cir_block(pkg, child_block_of(payload.[:m:]), depth + 1);
                     }
                 }
@@ -443,7 +448,7 @@ void dump_cir_package(CIRPackage *pkg) {
     const isize block_count = pkg->blocks.count;
 
     isize total_insts = 0;
-    for (isize b = 0; b < block_count; b++) {
+    for(isize b = 0; b < block_count; b++) {
         total_insts += pkg->blocks[b].insts.count();
     }
 
