@@ -4,6 +4,7 @@
 #include "path.hpp"
 
 #include "context.hpp"
+#include <functional>
 
 
 struct Parser {
@@ -117,6 +118,8 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
             continue;
         }
 
+        Ast *top_level = nullptr;
+
         // #under_is_file_scope：它下面的顶层声明落文件作用域
         if(curr_token(&p).type == TokenType::Hash && next_token(&p).type == TokenType::Ident
            && xp_string_equal(next_token(&p).token_str, xp_string_c("under_is_file_scope"))) {
@@ -127,13 +130,12 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
             advance_token(&p);
 
             // 留个标记节点，analyser 靠它数重复、定下面的声明落哪
-            auto *marker_ast = ast_alloc(AstType_UnderIsFileScope, hash_token, merge(hash_token.src_loc, name_token.src_loc));
-            p.top_levels.push_back(marker_ast);
-
-            continue;
+            top_level = ast_alloc(AstType_UnderIsFileScope, hash_token, merge(hash_token.src_loc, name_token.src_loc));
+        } else {
+            top_level = parse_stmt(&p);
         }
 
-        p.top_levels.push_back(parse_stmt(&p));
+        p.top_levels.push_back(top_level);
     }
 
     #ifdef CREST_DEBUG
