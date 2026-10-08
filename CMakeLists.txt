@@ -17,6 +17,9 @@ file(GLOB CREST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/thread_pool/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/symbol/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ast/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cir/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/internal/*.cpp"
 )
@@ -35,6 +38,9 @@ target_link_libraries(crest PRIVATE Threads::Threads)
 target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/symbol"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ast"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cir"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")

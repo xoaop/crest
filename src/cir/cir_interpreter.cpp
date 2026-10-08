@@ -3316,6 +3316,7 @@ bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
             return sub.analyze_symbol_of_package(sym);
         }
 
+        // TODO: 抽象泄露
         // 临时把当前实例上下文切到本包全局上下文，结果落全局，不污染触发实例
         CIRResultContext saved_ctx = curr_frame->ctx;
         curr_frame->ctx = CIRResultContext::create(pkg);
