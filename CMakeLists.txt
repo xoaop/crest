@@ -29,6 +29,11 @@ add_executable(crest ${CREST_SOURCES})
 find_package(Threads REQUIRED)
 target_link_libraries(crest PRIVATE Threads::Threads)
 
+find_library(MATH_LIBRARY m)
+if(MATH_LIBRARY)
+    target_link_libraries(crest PRIVATE ${MATH_LIBRARY})
+endif()
+
 # src/ 为顶层 include 根（parser.hpp 等），llvm_backend/ 供
 # main.cpp 直接引 llvm_generate_ir.hpp
 # third_party/ 下有两类外部依赖：
