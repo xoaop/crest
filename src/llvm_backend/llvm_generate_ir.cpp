@@ -17,6 +17,7 @@
 #include "scope.hpp"
 
 #include "lcir.hpp"
+#include "llvm-c/Core.h"
 
 LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref) {
     LLVMValueRef *val = xp_hash_map_get(ir_syms->local_vals, symbol_ref);
@@ -1834,7 +1835,7 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
     } else if(is_float_type(type)) {
 
         if(is_not_equal) {
-            return LLVMBuildFCmp(unit.builder, LLVMRealONE, left, right, "noteqtmp");
+            return LLVMBuildFCmp(unit.builder, LLVMRealUNE, left, right, "noteqtmp");
         } 
         return LLVMBuildFCmp(unit.builder, LLVMRealOEQ, left, right, "eqtmp");
     } else {
