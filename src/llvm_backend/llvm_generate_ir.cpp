@@ -1821,6 +1821,11 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
             }
         }
 
+        // if the struct has no fields, set result to true manually, or LLVMBuildNot() will crash because result is nullptr
+        if(result == nullptr) {
+            result = LLVMConstInt(LLVMInt1Type(), 1, false);
+        }
+
         if(is_not_equal) {
             result = LLVMBuildNot(unit.builder, result, "noteqtmp");
         }
