@@ -43,6 +43,7 @@ static void crest_helper() {
     println_out("Options:");
     println_out("  -o <path>      Output directory");
     println_out("  -c             Compile only, do not link");
+    println_out("  -O0..-O3, -Os, -Oz  Optimization level (default: -O0)");
     println_out("  -trace         Enable debug trace output");
     println_out("  -cir_dump      Dump CIR instructions");
     println_out("  -scope_dump    Dump scope tree");
@@ -96,6 +97,7 @@ int main(int argc_raw, char** argv_raw) {
 
     char const *main_path = nullptr;
     bool compile_only = false;
+    LLVMIROptimizationLevel opt_level = LLVMIROptimizationLevel::O0;
     TargetInfo target_arg;
     bool target_given = false;
     bool crt_given = false;
@@ -154,6 +156,18 @@ int main(int argc_raw, char** argv_raw) {
             context()->scope_dump = true;
         } else if(strcmp(argv[i], "-c") == 0) {
             compile_only = true;
+        } else if(strcmp(argv[i], "-O0") == 0) {
+            opt_level = LLVMIROptimizationLevel::O0;
+        } else if(strcmp(argv[i], "-O1") == 0) {
+            opt_level = LLVMIROptimizationLevel::O1;
+        } else if(strcmp(argv[i], "-O2") == 0) {
+            opt_level = LLVMIROptimizationLevel::O2;
+        } else if(strcmp(argv[i], "-O3") == 0) {
+            opt_level = LLVMIROptimizationLevel::O3;
+        } else if(strcmp(argv[i], "-Os") == 0) {
+            opt_level = LLVMIROptimizationLevel::Os;
+        } else if(strcmp(argv[i], "-Oz") == 0) {
+            opt_level = LLVMIROptimizationLevel::Oz;
         } else if(strcmp(argv[i], "-o") == 0) {
             // TODO(xoaop): 输出文件路径参数解析
             i += 1; // 跳过 "-o" 参数
@@ -395,6 +409,7 @@ int main(int argc_raw, char** argv_raw) {
     std::filesystem::create_directories(context()->output_path);
 
     LLVMIRGenerateConfig llvm_config;
+    llvm_config.optimization_level = opt_level;
     Array<xpString> obj_paths = gen_ir_all_packages(context()->lcir_modules, llvm_config);
     
     mark_stage("generate LLVM IR");
