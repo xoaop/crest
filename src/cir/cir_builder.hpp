@@ -22,6 +22,12 @@
 struct CIRBuilder;
 
 struct CIRBuildContext {
+
+
+    static CIRBuildContext init(xpAllocator allocator);
+    static void free(CIRBuildContext& ctx);
+
+
     xpAllocator allocator;
 
     CIRPackage *pkg;

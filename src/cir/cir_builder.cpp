@@ -29,17 +29,37 @@
 
 
 
-CIRBuilder::CIRBuilder(xpAllocator allocator) {
+CIRBuildContext CIRBuildContext::init(xpAllocator allocator) {
+    CIRBuildContext ctx = {};
     ctx.allocator = allocator;
+
+    ctx.func = nullptr;
+    ctx.pkg = nullptr;
+    ctx.pkg_ref = Ref<Package>::INVALID_REF;
+    ctx.scope = Ref<Scope>::INVALID_REF;
+    ctx.func_body_block = INVALID_INST;
+    ctx.building_return_type_decl = false;
+
     ctx.block_stack = make_array<CIRBlockRef>(allocator);
     ctx.loop_body_block_stack = make_array<CIRInstructionRef>(allocator);
     ctx.loop_stack = make_array<CIRInstructionRef>(allocator);
+
+    return ctx;
 }
 
-CIRBuilder::~CIRBuilder() {
+void CIRBuildContext::free(CIRBuildContext& ctx) {
     array_free(&ctx.block_stack);
     array_free(&ctx.loop_body_block_stack);
     array_free(&ctx.loop_stack);
+}
+
+
+CIRBuilder::CIRBuilder(xpAllocator allocator) {
+    ctx = CIRBuildContext::init(allocator);
+}
+
+CIRBuilder::~CIRBuilder() {
+    CIRBuildContext::free(ctx);
 }
 
 
