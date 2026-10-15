@@ -74,6 +74,7 @@ Ast *parse_for(Parser *p);
 
 Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition);
 
+Ast *parse_comptime_if(Parser *p, bool is_after_else = false);
 
 Ast *parse_expr_factor(Parser *p);
 Ast *parse_expr(Parser *p, isize min_prec = 0);
@@ -710,6 +711,15 @@ Ast *parse_stmt(Parser *p) {
 
         break;
 
+    case TokenType::Hash:
+        if(next.type == TokenType::KW_if) {
+            a = parse_comptime_if(p);
+        } else {
+            a = parse_assignment_or_expr(p);
+        }
+
+        break;
+    
     default:
         a = parse_assignment_or_expr(p);
         break;
@@ -781,6 +791,47 @@ Ast *parse_if(Parser *p) {
     }
 
     return a;
+}
+
+Ast *parse_comptime_if(Parser *p, bool is_after_else) {
+    const auto& first_token = curr_token(p);
+
+
+    if(!is_after_else) {
+        expect(p, TokenType::Hash);
+    }
+    expect(p, TokenType::KW_if);
+
+    auto a = ast_make(AstType_ComptimeIf);
+
+    auto *cond_ast = parse_expr(p);
+    auto *then_block = parse_block(p);
+
+    Ast *else_block = nullptr;
+    if(curr_token(p).type == TokenType::KW_else) {
+        expect(p, TokenType::KW_else);
+        if(curr_token(p).type == TokenType::KW_if) {
+            else_block = ast_alloc(AstType_Block, curr_token(p)); // 虚拟的Block节点, 只是为了else if的情况, 让else if的条件和then块都成为这个Block节点的子节点, 这样就能统一else if和else的处理了
+            else_block->Block.statements = make_array<Ast *>(ast_allocator());
+            else_block->Block.statements.push_back(parse_comptime_if(p, true));
+
+            else_block->src_loc = else_block->Block.statements[0]->src_loc;
+        } else {
+            else_block = parse_block(p);
+        }
+    }
+
+    const auto loc = merge(first_token.src_loc, else_block ? else_block->src_loc : then_block->src_loc);
+
+    a.ComptimeIf.condition = cond_ast;
+    a.ComptimeIf.then_block = then_block;
+    a.ComptimeIf.else_block = else_block;
+    a.src_loc = loc;
+
+    auto* ast = ast_alloc(AstType_ComptimeIf);
+    *ast = a;
+
+    return ast;
 }
 
 // if / condition 已消费，接着 then / else 两臂

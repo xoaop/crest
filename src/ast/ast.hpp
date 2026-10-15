@@ -92,6 +92,11 @@ struct Ast;
         bool is_var_arg;                                                             \
     })                                                                               \
     AST_INFO(UnderIsFileScope, "under is file scope", struct {})                     \
+    AST_INFO(ComptimeIf, "comptime if", struct {                                     \
+        Ast *condition;                                                              \
+        Ast *then_block;                                                             \
+        Ast *else_block;                                                             \
+    })                                                                               \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})                  \
     AST_INFO(Constant, "constant", struct {                                          \
         Value value;                                                                 \
