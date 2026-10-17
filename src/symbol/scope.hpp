@@ -61,6 +61,8 @@ inline const char* to_string(ScopeType t) {
     }
 }
 
+struct ScopeIterator;
+
 
 struct Scope {
     ScopeType scope_type;
@@ -71,10 +73,36 @@ struct Scope {
     xpHashMap<Ast*, Ref<Scope>> ast_to_scope;
     Array<Ref<Scope>> children;
 
-    auto begin() { return symbols.symbols.begin(); }
-    auto end()   { return symbols.symbols.end(); }
+    ScopeIterator begin() const;
+    ScopeIterator end() const;
 
     SymbolInfo& operator[](xpString name);
+};
+
+
+struct ScopeIterator {
+    struct ScopeEntry {
+        const xpString &name;
+        const SymbolInfo &value;
+    };
+
+    xpHashMapIterator<xpString, Array<SymbolInfo>> outer;
+
+    ScopeIterator(xpHashMapIterator<xpString, Array<SymbolInfo>> it) {
+        outer = it;
+    }
+
+    bool operator!=(const ScopeIterator &other) const {
+        return outer != other.outer;
+    }
+
+    ScopeEntry operator*() const {
+        return ScopeEntry{ outer->key, outer->value[0] };
+    }
+
+    void operator++() {
+        ++outer;
+    }
 };
 
 
@@ -85,8 +113,8 @@ void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 
-bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
-bool add_symbol_to_scope(Scope *scope, SymbolInfo info);
+void add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
+void add_symbol_to_scope(Scope *scope, SymbolInfo info);
 
 SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident);
 SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);

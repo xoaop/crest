@@ -73,18 +73,13 @@ SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *
 
 
 struct SymbolTable {
-
-    SymbolInfo *operator[](xpString name);
-
-
-    xpHashMap<xpString, SymbolInfo> symbols;
+    xpHashMap<xpString, Array<SymbolInfo>> symbols;
 };
 SymbolTable make_symbol_table(xpAllocator allocator);
-void free_symbol_table(SymbolTable *table);
 
-b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
+void add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
 SymbolInfo *find_symbol(SymbolTable *table, xpString name);
-
+Array<SymbolInfo>& find_symbol_all_same_name(SymbolTable *table, xpString name);
 
 
 template<>
@@ -135,7 +130,9 @@ struct std::formatter<SymbolTable> {
     template<typename FormatContext>
     auto format(const SymbolTable& symbol_table, FormatContext& ctx) const {
         for (const auto& entry : symbol_table.symbols) {
-            std::format_to(ctx.out(), "  '{}': {}\n", entry.key, entry.value);
+            for (const SymbolInfo& sym : entry.value) {
+                std::format_to(ctx.out(), "  '{}': {}\n", entry.key, sym);
+            }
         }
         return ctx.out();
     }
