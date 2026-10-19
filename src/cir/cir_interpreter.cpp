@@ -104,7 +104,7 @@ void EvalStack::pop() {
 
 
 Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, EvalStack *eval_stack, EvalInstance inst)
-    : pkg_ref(pkg_ref), pkg(&pkg_ref->cir_package), eval_stack(eval_stack),
+    : pkg_ref(pkg_ref), pkg(&get_cir_package(pkg_ref)), eval_stack(eval_stack),
       curr_frame(eval_stack->push(std::move(inst))) {
     inst_stack = make_array<CIRInstructionRef>(allocator);
     eval_mode_stack = make_array<EvalMode>(allocator);
@@ -136,12 +136,14 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
 void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
     DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
 
-    context()->lcir_modules.insert(pkg, lcir::Module::init(permanent_allocator()));
+    context()->lcir_modules.get_or_insert(pkg, [&]() {
+        return lcir::Module::init(permanent_allocator());
+    });
 
     EvalStack eval_stack = {};
 
     // 根帧：包的全局上下文
-    auto root = EvalInstance::make(&pkg->cir_package, 0, allocator);
+    auto root = EvalInstance::make(&get_cir_package(pkg), 0, allocator);
 
     Interpreter interpreter(allocator, pkg, &eval_stack, root);
     interpreter.analyze_cir_package();
@@ -294,7 +296,7 @@ void Interpreter::analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef>
 }
 
 bool Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target) {
-    auto& block_info = pkg->block(blk);
+    const auto inst_count = pkg->block(blk).insts.count();
 
     bool result = true;
     for(;;) {
@@ -302,7 +304,7 @@ bool Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstruct
         // @note: 目前假设执行一个block时, 执行完一条指令, package不会被修改, 即使是Call了不同package的function, 执行完了也会回到当前package
         // 也就是说执行任何一条指令前后, package不变, 但指令执行中间不保证
         bool is_in_same_block = curr_inst_ref().block_ref == blk;
-        bool is_in_bounds = curr_inst_ref().inst_index < block_info.insts.count();
+        bool is_in_bounds = curr_inst_ref().inst_index < inst_count;
         bool no_target_result = !(target.has_value() && has_result_val(target.value()));
 
         if(is_in_same_block && is_in_bounds && no_target_result) {
@@ -384,11 +386,11 @@ bool Interpreter::propagate_error(Array<CIRInstructionRef>& refs) {
 // }
 
 bool Interpreter::has_instance() const {
-    return eval_stack->depth() > 1;   // 根帧占一格：>1 表示本 interp 在编译期调用里
+    return curr_frame->ctx.in_call();
 }
 
 std::optional<FuncCallKey> Interpreter::curr_cache_key() const {
-    if(has_instance()) {
+    if(curr_frame->ctx.in_call()) {
         return curr_frame->ctx.call_key();
     }
     return std::nullopt;
@@ -3301,6 +3303,13 @@ AnalyzeResult Interpreter::analyze_PublishReturnValue(const CIRPublishReturnValu
 
 bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
     if(sym->state == SymbolState::Unsolved) {
+        if(sym->value_store_type == ValueStoreType::Nothing
+           && sym->ast != nullptr
+           && sym->ast->type == AstType_ConstDecl
+           && sym->ast->ConstDecl.resolved) {
+            CIRBuilder::build_inst_for_const_decl(sym->package, sym->ast);
+        }
+
         // 符号尚未绑定指令（其 CIR 未建/未分析）：无 CIR 可跑，放行走调用点的
         // "无可用结果"检查报错（返回 false 会被译成"循环依赖"，不准确）
         if(sym->value_store_type == ValueStoreType::Nothing) {

@@ -824,8 +824,8 @@ Ast *parse_comptime_if(Parser *p, bool is_after_else) {
     const auto loc = merge(first_token.src_loc, else_block ? else_block->src_loc : then_block->src_loc);
 
     a.ComptimeIf.condition = cond_ast;
-    a.ComptimeIf.then_block = then_block;
-    a.ComptimeIf.else_block = else_block;
+    a.ComptimeIf.true_branch = then_block;
+    a.ComptimeIf.false_branch = else_block;
     a.src_loc = loc;
 
     auto* ast = ast_alloc(AstType_ComptimeIf);

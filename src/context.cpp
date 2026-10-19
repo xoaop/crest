@@ -7,6 +7,22 @@ Context *context() {
 }
 
 
+CIRPackage &get_cir_package(Ref<Package> pkg_ref) {
+    Package *pkg = &pkg_ref.unwrap();
+
+    if(!pkg->cir_package_key.is_valid()) {
+        CIRPackage cir = make_cir_package(permanent_allocator());
+        cir.package_scope = pkg->package_scope;
+        cir.package_ref = pkg_ref;
+        cir.top_blk = cir.create_block(true, true, false, false);
+
+        pkg->cir_package_key = context()->all_cir_packages.insert(cir);
+    }
+
+    return context()->all_cir_packages[pkg->cir_package_key];
+}
+
+
 
 Ref<Package> add_package(Context *ctx, Package pkg) {
     ctx->all_packages.push_back(pkg);
@@ -28,5 +44,5 @@ Scope *Ref<Scope>::resolve() const {
 
 const CIRInstruction& inst(CIRInstructionRef ref) {
     ASSERT(ref.pkg_index >= 0);
-    return context()->all_packages[ref.pkg_index].cir_package.inst(ref);
+    return get_cir_package(Ref<Package>(ref.pkg_index)).inst(ref);
 }

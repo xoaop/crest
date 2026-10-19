@@ -54,34 +54,19 @@ void CIRBuildContext::free(CIRBuildContext& ctx) {
 }
 
 
-CIRBuilder::CIRBuilder(xpAllocator allocator) {
-    ctx = CIRBuildContext::init(allocator);
-}
-
-CIRBuilder::~CIRBuilder() {
-    CIRBuildContext::free(ctx);
-}
-
-
-
-
 void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
-    ctx.pkg_ref = pkg_ref;
-
     Package *pkg = &pkg_ref.unwrap();
+
+    CIRBuildContext ctx = CIRBuildContext::init(pkg->stage_allocator);
+    defer(CIRBuildContext::free(ctx));
+
+    ctx.pkg_ref = pkg_ref;
     ctx.scope = pkg->package_scope;
 
-    pkg->cir_package = make_cir_package(permanent_allocator());
-    ctx.pkg = &pkg->cir_package;
-    ctx.pkg->package_scope = pkg->package_scope;
+    auto &cir_pkg = get_cir_package(pkg_ref);
+    ctx.pkg = &cir_pkg;
 
-    ctx.pkg->package_ref = pkg_ref;
-
-
-    auto& cir_pkg = pkg->cir_package;
-
-    // 添加package的顶级Block
-    ctx.pkg->top_blk = Begin_Block(ctx, true, true);
+    ctx.block_stack.push_back(cir_pkg.top_blk);
     defer(ctx.block_stack.pop_back());
 
 
@@ -93,33 +78,44 @@ void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
         auto enter_scope = Make_Instruction<CIROperator::EnterScope>(ctx, nullptr, { .scope = ast_file.file_scope });
 
         for(Ast *ast : ast_file.top_levels) {
-            CIRInstructionRef top_inst = INVALID_INST;
-
-            switch(ast->type) {
-                case AstType_ConstDecl: {
-                    top_inst = build_inst_for_const_decl(ctx, ast);
-                } break;
-
-                case AstType_UnderIsFileScope: {
-                } break;
-
-                default: {
-                    context()->reporter.report_error(SourceLocation(ast_file.source_code, ast->src_loc.span), "Unsupported top-level AST type for CIR generation");
-                } break;
-            }
-
-
-
+            build_top_stmt(ctx, ast);
         }
     }
 
     ctx.scope = pkg->package_scope;
+}
 
+
+void CIRBuilder::build_top_stmt(CIRBuildContext& ctx, Ast *ast) {
+    switch(ast->type) {
+        case AstType_ConstDecl: {
+            build_inst_for_const_decl(ctx, ast);
+        } break;
+
+        case AstType_UnderIsFileScope: {
+        } break;
+
+        case AstType_ComptimeIf: {
+            auto &ci = ast->ComptimeIf;
+
+            Ast *live = ci.cond_value ? ci.true_branch : ci.false_branch;
+            if(live != nullptr) {
+                for(Ast *s : live->Block.statements) {
+                    build_top_stmt(ctx, s);
+                }
+            }
+        } break;
+
+        default: {
+            context()->reporter.report_error(ast->src_loc, "Unsupported top-level AST type for CIR generation");
+        } break;
+    }
 }
 
 
 CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
+
     SymbolInfo &sym = const_decl_ast->ast_symbol.unwrap();
 
     // 内建：无值，符号仅作识别（is_built_in() 读 AST），标 Solved、不建值块
@@ -128,10 +124,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, As
         return INVALID_INST;
     }
 
+    if(sym.value_store_type != ValueStoreType::Nothing) {
+        return INVALID_INST;
+    }
+
     // 前置：先建值块（发射 BlockRef 指令），再建 ConstDecl。
     // 迭代先分析值块，ConstDecl 只读结果——无感知。
     auto value_ast = const_decl_ast->ConstDecl.value_ast;
-    CIRInstructionRef value_inst = build_block_inst_for_expr(ctx, value_ast, true, true);
+    CIRInstructionRef value_inst = build_block_ref_inst_for_expr(ctx, value_ast, true, true);
 
     auto const_decl = Make_Instruction<CIROperator::ConstDecl>(ctx, const_decl_ast, {
         .ident = const_decl_ast->ConstDecl.name,
@@ -143,6 +143,24 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, As
     sym.val(Ref<CIRInstResult>::init(ctx.pkg, const_decl));
 
     return const_decl;
+}
+
+
+CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ref<Package> pkg_ref, Ast *const_decl_ast) {
+    Package *pkg = &pkg_ref.unwrap();
+
+    CIRBuildContext ctx = CIRBuildContext::init(pkg->stage_allocator);
+    defer(CIRBuildContext::free(ctx));
+
+    ctx.pkg_ref = pkg_ref;
+    ctx.pkg = &get_cir_package(pkg_ref);
+    ctx.scope = const_decl_ast->ast_symbol.scope;
+    ctx.block_stack.push_back(ctx.pkg->top_blk);
+
+    auto inst = build_inst_for_const_decl(ctx, const_decl_ast);
+
+    ctx.block_stack.pop_back();
+    return inst;
 }
 
 
@@ -195,7 +213,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
             auto ident_val_for_type_type = Make_Instruction<CIROperator::IdentVal>(ctx, type_var_ast, {
                 .ident = type_str
             });
-            Instruction(ctx, ident_val_for_type_type).symbol = find_symbol_ref_curr(context()->global_blank_package->cir_package.package_scope, type_str);
+            Instruction(ctx, ident_val_for_type_type).symbol = find_symbol_ref_curr(get_cir_package(context()->global_blank_package).package_scope, type_str);
 
             auto type_ascribe_inst = Make_Instruction<CIROperator::TypeAscribe>(ctx, type_var_ast, {
                 .var_inst  = type_var_inst,
@@ -217,7 +235,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
 
         auto param_type = INVALID_INST;
         if(!param->ParamDecl.is_var_arg) {
-            param_type = build_block_inst_for_expr(ctx, param->ParamDecl.type_ast, true, true);
+            param_type = build_block_ref_inst_for_expr(ctx, param->ParamDecl.type_ast, true, true);
         }
 
         CIRVariableDeclInfo var = {};
@@ -235,7 +253,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
     if(fd->FunctionDeclValue.infer_return_type) {
         func.return_type_inst = INVALID_INST;
     } else if(fd->FunctionDeclValue.return_type_ast != nullptr) {
-        func.return_type_inst = build_block_inst_for_expr(ctx, fd->FunctionDeclValue.return_type_ast, true, true);
+        func.return_type_inst = build_block_ref_inst_for_expr(ctx, fd->FunctionDeclValue.return_type_ast, true, true);
     } else {
         CIRBlockRef rt_blk = Begin_Block(ctx, true, true);
 
@@ -543,7 +561,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast 
     //    没有 TypeAscribe 意味着类型由后续 store 的值推导
     CIRInstructionRef type_block_inst = INVALID_INST;
     if(vd_ast.type_ast != nullptr) {
-        type_block_inst = build_block_inst_for_expr(ctx, vd_ast.type_ast, true, true);
+        type_block_inst = build_block_ref_inst_for_expr(ctx, vd_ast.type_ast, true, true);
         auto ta = Make_Instruction<CIROperator::TypeAscribe>(ctx, vd_ast.type_ast, {
             .var_inst  = vd,
             .type_inst = type_block_inst,
@@ -622,14 +640,21 @@ void CIRBuilder::build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_st
 
 
 
-CIRInstructionRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval) {
+CIRInstructionRef CIRBuilder::build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval) {
+    const auto blk = build_block_inst_for_expr(ctx, expr, is_comptime_block, immediate_eval);    
+
+    return New_BlockRef(ctx, expr, blk);   // 父块补发下降标记，消费方读它经回填拿块值
+}
+
+CIRBlockRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval) {
     CIRBlockRef blk = Begin_Block(ctx, is_comptime_block, immediate_eval, true);
 
     auto value_inst = build_inst_for_expr(ctx, expr);
     New_Break(ctx, CIRInstructionRef(blk), value_inst, expr);   // break 到块自己（裸句柄）
 
     End_Block(ctx);
-    return New_BlockRef(ctx, expr, blk);   // 父块补发下降标记，消费方读它经回填拿块值
+
+    return blk;
 }
 
 
@@ -957,7 +982,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         } break;
 
         case AstType_StructInitExpr: {
-            auto struct_type_inst = build_block_inst_for_expr(ctx, expr->StructInitExpr.struct_type_ident, true, true);
+            auto struct_type_inst = build_block_ref_inst_for_expr(ctx, expr->StructInitExpr.struct_type_ident, true, true);
 
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
             for (isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
@@ -1110,7 +1135,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             for (Ast *field : expr->StructDeclValue.fields) {
                 XP_ASSERT_DEFAULT(field->type == AstType_StructField);
 
-                auto type_block = build_block_inst_for_expr(ctx, field->StructField.type_ast, true, false);
+                auto type_block = build_block_ref_inst_for_expr(ctx, field->StructField.type_ast, true, false);
 
                 auto sf = Make_Instruction<CIROperator::StructField>(ctx, field, {
                     .type_block_inst = type_block,
@@ -1137,7 +1162,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
             CIRInstructionRef tag_type_inst;
             if(expr->EnumDecl.type_ast != nullptr) {
-                tag_type_inst = build_block_inst_for_expr(ctx, expr->EnumDecl.type_ast, true, false);
+                tag_type_inst = build_block_ref_inst_for_expr(ctx, expr->EnumDecl.type_ast, true, false);
             } else {
                 CIRBlockRef ti_blk = Begin_Block(ctx, true, false);
 
@@ -1218,7 +1243,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             for (Ast *field : expr->UnionDecl.fields) {
                 ASSERT(field->type == AstType_StructField);
 
-                auto type_block = build_block_inst_for_expr(ctx, field->StructField.type_ast, true, false);
+                auto type_block = build_block_ref_inst_for_expr(ctx, field->StructField.type_ast, true, false);
 
                 auto sf = Make_Instruction<CIROperator::StructField>(ctx, field, {
                     .type_block_inst = type_block,

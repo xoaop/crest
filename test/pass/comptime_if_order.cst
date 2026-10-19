@@ -1,0 +1,18 @@
+// @pass
+// @run
+
+#if true {
+    FLAG :: true
+} else {
+    FLAG :: false
+}
+
+#if FLAG {
+    x :: 1
+} else {
+    x :: 2
+}
+
+main :: () -> i32 {
+    return x - 1;
+}

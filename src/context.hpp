@@ -11,6 +11,7 @@
 
 #include "cir_builder.hpp"
 #include "scope.hpp"
+#include "slot_map.hpp"
 
 #include "value_array.hpp"
 
@@ -47,6 +48,7 @@ struct Context {
 
     Array<Scope> all_scopes;
 
+    SlotMap<CIRPackage> all_cir_packages;
     xpHashMap<Ref<Package>, lcir::Module> lcir_modules;
 
     // 闲置：ValueMemory 体系的静态内存区
@@ -57,6 +59,9 @@ struct Context {
 
     ThreadPool *thread_pool;
 };
+
+
+CIRPackage &get_cir_package(Ref<Package> pkg);
 
 Ref<Package> add_package(Context *ctx, Package pkg);
 

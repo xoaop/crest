@@ -53,6 +53,8 @@ struct SlotMap {
         return SlotMap(allocator);
     }
 
+    SlotMap() = default;
+
     template<typename... Args>
     SlotIndex emplace(Args&&... args) {
         const auto idx = this->_free_head != FREE_LIST_END ? this->pop_free() : this->append_slot();
@@ -210,12 +212,12 @@ private:
         this->chunks.push_back(Chunk{cast(u8 *)xp_alloc(this->allocator, sizeof(T) * chunk_size)});
     }
 
-    xpAllocator allocator;
-    Array<Chunk> chunks;
-    Array<SlotInfo> slots;
+    xpAllocator allocator = {};
+    Array<Chunk> chunks = {};
+    Array<SlotInfo> slots = {};
 
-    i32 _free_head;
-    isize _count;
+    i32 _free_head = 0;
+    isize _count = 0;
 };
 
 

@@ -1,0 +1,14 @@
+// @pass
+// @run
+
+flag :: false
+
+#if flag {
+    x :: 1 + true
+} else {
+    x :: 7
+}
+
+main :: () -> i32 {
+    return x - 7;
+}

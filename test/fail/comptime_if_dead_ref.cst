@@ -1,0 +1,10 @@
+// @fail
+// @error "undefined symbol"
+
+#if false {
+    x :: 1
+}
+
+main :: () -> i32 {
+    return x;
+}

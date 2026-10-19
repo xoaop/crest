@@ -5,7 +5,7 @@
 #include "ast.hpp"
 #include "ast_file.hpp"
 #include "scope.hpp"
-#include "cir_package.hpp"
+#include "slot_map.hpp"
 
 
 struct CIRPackage;
@@ -30,7 +30,7 @@ struct Package {
     //
     // cir build
     //
-    CIRPackage cir_package;
+    SlotIndex cir_package_key;
 };
 
 Package make_package(xpString path, xpAllocator allocator);

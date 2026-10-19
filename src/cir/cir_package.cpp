@@ -81,11 +81,12 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstanc
 
 template<>
 CIRPackage* Ref<CIRPackage>::resolve() const {
-    if(this->index < 0) {
+    if(this->index < 0 || this->index >= context()->all_packages.count) {
         return nullptr;
     }
 
-    return &context()->all_packages[this->index].cir_package;
+    const SlotIndex key = context()->all_packages[this->index].cir_package_key;
+    return context()->all_cir_packages.try_get(key);
 }
 
 

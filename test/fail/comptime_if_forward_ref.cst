@@ -1,0 +1,8 @@
+// @fail
+// @error "无可用结果"
+
+#if flag {
+    x :: 1
+}
+
+flag :: true

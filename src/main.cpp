@@ -338,6 +338,7 @@ int main(int argc_raw, char** argv_raw) {
 
     // TODO: CIRPackage * has risk
     context()->all_packages = make_array_capacity<Package>(permanent_allocator(), 128);
+    context()->all_cir_packages = SlotMap<CIRPackage>::init(permanent_allocator());
 
     context()->all_scopes = make_array<Scope>(permanent_allocator());
     // 闲置：static_mem

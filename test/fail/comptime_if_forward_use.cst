@@ -1,0 +1,18 @@
+// @fail
+// @error "undefined symbol"
+
+x :: get_one()
+
+#if true {
+    get_one :: () -> i32 {
+        return 1;
+    }
+} else {
+    get_zero :: () -> i32 {
+        return 0;
+    }
+}
+
+main :: () -> i32 {
+    return x - 1;
+}

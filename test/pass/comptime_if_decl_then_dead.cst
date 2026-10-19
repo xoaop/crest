@@ -1,0 +1,12 @@
+// @pass
+// @run
+
+x :: 2
+
+#if false {
+    x :: 1
+}
+
+main :: () -> i32 {
+    return x - 2;
+}

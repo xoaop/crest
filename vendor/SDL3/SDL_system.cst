@@ -16,7 +16,9 @@
 //  \since This datatype is available since SDL 3.2.0.
 //
 //  \sa SDL_SetWindowsMessageHook, SDL_HINT_WINDOWS_ENABLE_MESSAGELOOP
-SDL_WindowsMessageHook :: ((*void, *MSG) -> bool)
+#if TARGET_IS_WINDOWS {
+    SDL_WindowsMessageHook :: ((*void, *MSG) -> bool)
+}
 //  A callback to be used with SDL_SetX11EventHook. This callback may modify the event, and should
 //   return true if the event should continue to be processed, or false to prevent further
 //   processing. As this is processing an event directly from the X11 event loop, this callback
@@ -32,7 +34,9 @@ SDL_WindowsMessageHook :: ((*void, *MSG) -> bool)
 //  \since This datatype is available since SDL 3.2.0.
 //
 //  \sa SDL_SetX11EventHook
-SDL_X11EventHook :: ((*void, *XEvent) -> bool)
+#if TARGET_IS_LINUX {
+    SDL_X11EventHook :: ((*void, *XEvent) -> bool)
+}
 SDL_Sandbox :: i32
 
 // ── 常量 ──
@@ -55,7 +59,8 @@ SDL_SANDBOX_UNKNOWN_CONTAINER :: 1
 //  \since This function is available since SDL 3.2.0.
 //
 //  \sa SDL_WindowsMessageHook, SDL_HINT_WINDOWS_ENABLE_MESSAGELOOP
-SDL_SetWindowsMessageHook :: (callback: *SDL_WindowsMessageHook, userdata: *void) -> void extern_C
+#if TARGET_IS_WINDOWS {
+    SDL_SetWindowsMessageHook :: (callback: *SDL_WindowsMessageHook, userdata: *void) -> void extern_C
 //  Get the D3D9 adapter index that matches the specified display. The returned adapter index can be
 //   passed to `IDirect3D9::CreateDevice` and controls on which monitor a full screen application
 //   will appear.
@@ -66,7 +71,7 @@ SDL_SetWindowsMessageHook :: (callback: *SDL_WindowsMessageHook, userdata: *void
 //   information.
 //
 //  \since This function is available since SDL 3.2.0.
-SDL_GetDirect3D9AdapterIndex :: (displayID: SDL_DisplayID) -> i32 extern_C
+    SDL_GetDirect3D9AdapterIndex :: (displayID: SDL_DisplayID) -> i32 extern_C
 //  Get the DXGI Adapter and Output indices for the specified display. The DXGI Adapter and Output
 //   indices can be passed to `EnumAdapters` and `EnumOutputs` respectively to get the objects
 //   required to create a DX10 or DX11 device and swap chain.
@@ -78,7 +83,8 @@ SDL_GetDirect3D9AdapterIndex :: (displayID: SDL_DisplayID) -> i32 extern_C
 //  \returns true on success or false on failure; call SDL_GetError() for more information.
 //
 //  \since This function is available since SDL 3.2.0.
-SDL_GetDXGIOutputInfo :: (displayID: SDL_DisplayID, adapterIndex: *i32, outputIndex: *i32) -> bool extern_C
+    SDL_GetDXGIOutputInfo :: (displayID: SDL_DisplayID, adapterIndex: *i32, outputIndex: *i32) -> bool extern_C
+}
 //  Set a callback for every X11 event. The callback may modify the event, and should return true if
 //   the event should continue to be processed, or false to prevent further processing.
 //
@@ -88,7 +94,9 @@ SDL_GetDXGIOutputInfo :: (displayID: SDL_DisplayID, adapterIndex: *i32, outputIn
 //  \param userdata — a pointer to pass to every iteration of `callback`.
 //
 //  \since This function is available since SDL 3.2.0.
-SDL_SetX11EventHook :: (callback: *SDL_X11EventHook, userdata: *void) -> void extern_C
+#if TARGET_IS_LINUX {
+    SDL_SetX11EventHook :: (callback: *SDL_X11EventHook, userdata: *void) -> void extern_C
+}
 //  Query if the current device is a tablet. If SDL can't determine this, it will return false.
 //
 //  It is safe to call this function from any thread.
@@ -169,38 +177,52 @@ SDL_OnApplicationWillEnterForeground :: () -> void extern_C
 //  \since This function is available since SDL 3.2.0.
 SDL_OnApplicationDidEnterForeground :: () -> void extern_C
 
-// ── 平台独有（approach a：全量声明；不在本平台调用则不进链接，调用了才在链接期暴露）──
+// ── 平台独有（按 target 常量裁剪）──
 
 // 独有类型 / 回调 / 不透明句柄（MSG/XEvent 已在 SDL_stdinc 定义）
-SDL_iOSAnimationCallback :: ((*void) -> void)
-SDL_RequestAndroidPermissionCallback :: ((*void, *u8, bool) -> void)
-XTaskQueueObject :: struct {}
-XUser :: struct {}
+#if TARGET_IS_IOS {
+    SDL_iOSAnimationCallback :: ((*void) -> void)
+}
+#if TARGET_IS_ANDROID {
+    SDL_RequestAndroidPermissionCallback :: ((*void, *u8, bool) -> void)
+}
+#if TARGET_IS_GDK {
+    XTaskQueueObject :: struct {}
+    XUser :: struct {}
+}
 
 // Linux
-SDL_SetLinuxThreadPriority :: (threadID: i64, priority: i32) -> bool extern_C
-SDL_SetLinuxThreadPriorityAndPolicy :: (threadID: i64, sdlPriority: i32, schedPolicy: i32) -> bool extern_C
+#if TARGET_IS_LINUX {
+    SDL_SetLinuxThreadPriority :: (threadID: i64, priority: i32) -> bool extern_C
+    SDL_SetLinuxThreadPriorityAndPolicy :: (threadID: i64, sdlPriority: i32, schedPolicy: i32) -> bool extern_C
+}
 
 // iOS
-SDL_SetiOSAnimationCallback :: (window: *SDL_Window, interval: i32, callback: *SDL_iOSAnimationCallback, callbackParam: *void) -> bool extern_C
-SDL_SetiOSEventPump :: (enabled: bool) -> void extern_C
-SDL_OnApplicationDidChangeStatusBarOrientation :: () -> void extern_C
+#if TARGET_IS_IOS {
+    SDL_SetiOSAnimationCallback :: (window: *SDL_Window, interval: i32, callback: *SDL_iOSAnimationCallback, callbackParam: *void) -> bool extern_C
+    SDL_SetiOSEventPump :: (enabled: bool) -> void extern_C
+    SDL_OnApplicationDidChangeStatusBarOrientation :: () -> void extern_C
+}
 
 // Android
-SDL_GetAndroidJNIEnv :: () -> *void extern_C
-SDL_GetAndroidActivity :: () -> *void extern_C
-SDL_GetAndroidSDKVersion :: () -> i32 extern_C
-SDL_IsChromebook :: () -> bool extern_C
-SDL_IsDeXMode :: () -> bool extern_C
-SDL_SendAndroidBackButton :: () -> void extern_C
-SDL_GetAndroidInternalStoragePath :: () -> *u8 extern_C
-SDL_GetAndroidExternalStorageState :: () -> u32 extern_C
-SDL_GetAndroidExternalStoragePath :: () -> *u8 extern_C
-SDL_GetAndroidCachePath :: () -> *u8 extern_C
-SDL_RequestAndroidPermission :: (permission: *u8, cb: *SDL_RequestAndroidPermissionCallback, userdata: *void) -> bool extern_C
-SDL_ShowAndroidToast :: (message: *u8, duration: i32, gravity: i32, xoffset: i32, yoffset: i32) -> bool extern_C
-SDL_SendAndroidMessage :: (command: u32, param: i32) -> bool extern_C
+#if TARGET_IS_ANDROID {
+    SDL_GetAndroidJNIEnv :: () -> *void extern_C
+    SDL_GetAndroidActivity :: () -> *void extern_C
+    SDL_GetAndroidSDKVersion :: () -> i32 extern_C
+    SDL_IsChromebook :: () -> bool extern_C
+    SDL_IsDeXMode :: () -> bool extern_C
+    SDL_SendAndroidBackButton :: () -> void extern_C
+    SDL_GetAndroidInternalStoragePath :: () -> *u8 extern_C
+    SDL_GetAndroidExternalStorageState :: () -> u32 extern_C
+    SDL_GetAndroidExternalStoragePath :: () -> *u8 extern_C
+    SDL_GetAndroidCachePath :: () -> *u8 extern_C
+    SDL_RequestAndroidPermission :: (permission: *u8, cb: *SDL_RequestAndroidPermissionCallback, userdata: *void) -> bool extern_C
+    SDL_ShowAndroidToast :: (message: *u8, duration: i32, gravity: i32, xoffset: i32, yoffset: i32) -> bool extern_C
+    SDL_SendAndroidMessage :: (command: u32, param: i32) -> bool extern_C
+}
 
 // GDK
-SDL_GetGDKTaskQueue :: (outTaskQueue: **XTaskQueueObject) -> bool extern_C
-SDL_GetGDKDefaultUser :: (outUserHandle: **XUser) -> bool extern_C
+#if TARGET_IS_GDK {
+    SDL_GetGDKTaskQueue :: (outTaskQueue: **XTaskQueueObject) -> bool extern_C
+    SDL_GetGDKDefaultUser :: (outUserHandle: **XUser) -> bool extern_C
+}

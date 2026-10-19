@@ -12,6 +12,14 @@ SymbolInfo& Scope::operator[](xpString name) {
     return *info;
 }
 
+ScopeIterator Scope::begin() const {
+    return ScopeIterator{ symbols.symbols.begin() };
+}
+
+ScopeIterator Scope::end() const {
+    return ScopeIterator{ symbols.symbols.end() };
+}
+
 
 
 Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator) {
@@ -59,12 +67,12 @@ Scope *get_upper_scope_with_type(Scope *scope, ScopeType type) {
 }
 
 
-bool add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info) {
-    return add_symbol(&scope->symbols, symbol_ident, info);
+void add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info) {
+    add_symbol(&scope->symbols, symbol_ident, info);
 }
 
-bool add_symbol_to_scope(Scope *scope, SymbolInfo info) {
-    return add_symbol(&scope->symbols, info.name, info);
+void add_symbol_to_scope(Scope *scope, SymbolInfo info) {
+    add_symbol(&scope->symbols, info.name, info);
 }
 
 SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident) {

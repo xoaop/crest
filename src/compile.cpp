@@ -52,7 +52,14 @@ xpOption<Ref<Package>> compile_package_from_import(xpString import_path, xpStrin
         return xpOption<Ref<Package>>::none();
     }
 
-    return compile_package_from_path(resolved.unwrap(), cycle_err);
+    auto pkg_opt = compile_package_from_path(resolved.unwrap(), cycle_err);
+    if(pkg_opt.is_none()) {
+        return pkg_opt;
+    } else if(pkg_opt.unwrap().unwrap().state == SymbolState::Error) {
+        return xpOption<Ref<Package>>::none();
+    }
+    
+    return pkg_opt;
 }
 
 
@@ -73,6 +80,9 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
                 if(cycle_err) {
                     *cycle_err = make_import_cycle_message(Ref<Package>{i});
                 }
+                return xpOption<Ref<Package>>::none();
+            }
+            if(context()->all_packages[i].state == SymbolState::Error) {
                 return xpOption<Ref<Package>>::none();
             }
             return xpOption<Ref<Package>>::some(Ref<Package>{i});
@@ -101,9 +111,11 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
 
     ref.unwrap().state = SymbolState::Solving;
 
-    compile_package(ref);
-    
-    ref.unwrap().state = SymbolState::Solved;
+    if(!compile_package(ref)) {
+        ref.unwrap().state = SymbolState::Error;
+    } else {
+        ref.unwrap().state = SymbolState::Solved;
+    }
 
     return xpOption<Ref<Package>>::some(ref);
 }
@@ -126,12 +138,11 @@ bool compile_package(Ref<Package> pkg_ref) {
         return false;
     }
 
-    CIRBuilder builder{pkg.stage_allocator};
-    builder.build_cir_package(pkg_ref);
+    CIRBuilder::build_cir_package(pkg_ref);
     xp_arena_allocator_clear(pkg.stage_allocator);
 
     if(context()->cir_dump) {
-        dump_cir_package(&pkg.cir_package);
+        dump_cir_package(&get_cir_package(pkg_ref));
     }
 
     analyze_package(pkg_ref, pkg.stage_allocator);

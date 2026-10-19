@@ -73,18 +73,12 @@ SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *
 
 
 struct SymbolTable {
-
-    SymbolInfo *operator[](xpString name);
-
-
     xpHashMap<xpString, SymbolInfo> symbols;
 };
 SymbolTable make_symbol_table(xpAllocator allocator);
-void free_symbol_table(SymbolTable *table);
 
-b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
+void add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
 SymbolInfo *find_symbol(SymbolTable *table, xpString name);
-
 
 
 template<>

@@ -1,0 +1,5 @@
+#if true {
+    FLAG :: true
+} else {
+    FLAG :: false
+}

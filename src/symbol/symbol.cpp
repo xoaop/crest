@@ -125,35 +125,22 @@ SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *
 
 
 SymbolTable make_symbol_table(xpAllocator allocator) {
+    ASSERT(allocator.proc != xp_heap_allocator().proc); // TODO: 加个重载，而不是比proc
+
     SymbolTable table = {};
     table.symbols = xp_hash_map_make<xpString, SymbolInfo>(allocator);
+
     return table;
 }
 
-void free_symbol_table(SymbolTable *table) {
-    xp_hash_map_free(table->symbols);
-}
 
-SymbolInfo *SymbolTable::operator[](xpString name) {
-    return find_symbol(this, name);
-}
-
-
-b8 add_symbol(SymbolTable *table, xpString name, SymbolInfo info) {
-    xpHashMap<xpString, SymbolInfo> *map = &table->symbols;
-    if(xp_hash_map_get(*map, name) != NULL) {
-        return false;
-    }
-
-    xp_hash_map_insert(map, name, info);
-    return true;
+void add_symbol(SymbolTable *table, xpString name, SymbolInfo info) {
+    xp_hash_map_insert(&table->symbols, name, info);
 }
 
 
 SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
-    xpHashMap<xpString, SymbolInfo> *map = &table->symbols;
-    SymbolInfo *info = xp_hash_map_get(*map, name);
-    return info;
+    return xp_hash_map_get(table->symbols, name);
 }
 
 SymbolInfo *Ref<SymbolInfo>::resolve() const {

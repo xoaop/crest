@@ -1,0 +1,8 @@
+// @fail
+// @error "symbol 'x' repeated definition"
+
+#if true {
+    x :: 1
+}
+
+x :: 2

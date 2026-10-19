@@ -94,8 +94,9 @@ struct Ast;
     AST_INFO(UnderIsFileScope, "under is file scope", struct {})                     \
     AST_INFO(ComptimeIf, "comptime if", struct {                                     \
         Ast *condition;                                                              \
-        Ast *then_block;                                                             \
-        Ast *else_block;                                                             \
+        Ast *true_branch;                                                            \
+        Ast *false_branch;                                                           \
+        bool cond_value;                                                             \
     })                                                                               \
     AST_INFO(__START__OF__EXPR__, "__start__of__expr__", struct {})                  \
     AST_INFO(Constant, "constant", struct {                                          \
@@ -165,6 +166,7 @@ struct Ast;
         Ast *type_ast;                                                               \
         Ast *value_ast;                                                              \
         bool is_builtin;                                                             \
+        bool resolved;                                                               \
     })                                                                               \
     AST_INFO(__END__OF__EXPR__, "__end__of__expr__", struct {})                      \
 /**/

@@ -54,11 +54,13 @@ struct CIRBuilder {
 
     
     static CIRInstructionRef build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast);
+    static CIRInstructionRef build_inst_for_const_decl(Ref<Package> pkg_ref, Ast *const_decl_ast);
     static CIRInstructionRef build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
     static CIRInstructionRef build_inst_for_ast_block(CIRBuildContext& ctx, Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
     static CIRInstructionRef build_inst_for_stmt(CIRBuildContext& ctx, Ast *stmt);
     static CIRInstructionRef build_inst_for_expr(CIRBuildContext& ctx, Ast *expr);
-    static CIRInstructionRef build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
+    static CIRInstructionRef build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
+    static CIRBlockRef build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
     static CIRInstructionRef build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast *expr);
     
     static CIRInstructionRef build_inst_for_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast);
@@ -91,13 +93,8 @@ struct CIRBuilder {
     static void Exit_Scope(CIRBuildContext& ctx);
     
 
-    CIRBuilder(xpAllocator allocator);
-    ~CIRBuilder();
-
-    void build_cir_package(Ref<Package> pkg);
-public:
-
-    CIRBuildContext ctx;
+    static void build_cir_package(Ref<Package> pkg);
+    static void build_top_stmt(CIRBuildContext& ctx, Ast *ast);
 };
 
 

@@ -24,12 +24,14 @@
 
 #include "path.hpp"
 #include "value_ops.hpp"
+#include "cir_interpreter.hpp"
 
 
 struct Analyser {
     Ref<Package> pkg;
     Ref<Scope> current_scope;
     AstFile *curr_ast_file;
+    bool under_file_scope = false;
 };
 
 
@@ -83,7 +85,6 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
             continue;
         }
 
-        Analyser analyser = make_analyser(ast_file, curr_pkg);
         switch(top_level->type) {
         case AstType_ConstDecl: {
             collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg), under_file_scope);
@@ -91,7 +92,7 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
         
         // case AstType_VariableDecl: {
         //     collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
-        // } break;    
+        // } break;
 
         default:
             continue;
@@ -109,21 +110,13 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
     bool is_import = (value_ast != nullptr && value_ast->type == AstType_Import);
     bool to_file_scope = is_import || under_file_scope;
 
-    // 先检查有没有重复符号
-    Ref<SymbolInfo> info = Ref<SymbolInfo>::INVALID_REF;
-    if(to_file_scope) {
-        // 文件作用域的符号
-
-        info = find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name);
-    } else {
-        // 其他符号在包作用域
-
-        info = find_symbol_ref_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
-    }
+    Ref<SymbolInfo> info = to_file_scope
+        ? find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name)
+        : find_symbol_ref_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
 
     if(info != Ref<SymbolInfo>::INVALID_REF) {
         context()->reporter.report_error(
-            SourceLocation(analyser.curr_ast_file->source_code, const_decl_ast->src_loc.span),
+            const_decl_ast->src_loc,
             "symbol '{}' repeated definition",
             const_decl_ast->ConstDecl.name
         );
@@ -303,7 +296,14 @@ void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
     analyser.curr_ast_file = ast_file;
 
     for(isize i = 0; i < ast_file->top_levels.count; i++) {
-        resolve_top_stmt(ast_file->top_levels[i], analyser);
+        Ast *top_level = ast_file->top_levels[i];
+
+        if(top_level->type == AstType_UnderIsFileScope) {
+            analyser.under_file_scope = true;
+            continue;
+        }
+
+        resolve_top_stmt(top_level, analyser);
     }
 
     return;
@@ -332,10 +332,65 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
             // @NOTE: import 的符号求解已移到 CIR 阶段（ImportPackage 指令），这里只收集符号
             if(ast->ConstDecl.value_ast->type == AstType_Import) {
+                ast->ConstDecl.resolved = true;
                 break;
             }
 
             resolve_const_decl_local(ast, analyser);
+            ast->ConstDecl.resolved = true;
+        } break;
+
+        case AstType_ComptimeIf: {
+            auto &ci = ast->ComptimeIf;
+
+            resolve_expr(ci.condition, analyser);
+
+            auto &cir = get_cir_package(analyser.pkg);
+
+            CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg.unwrap().stage_allocator);
+            defer(CIRBuildContext::free(ctx));
+
+            ctx.pkg_ref = analyser.pkg;
+            ctx.pkg = &cir;
+            ctx.scope = analyser.current_scope;
+            
+
+            CIRBlockRef blk = CIRBuilder::build_block_inst_for_expr(ctx, ci.condition, true, true);
+
+            EvalStack eval_stack = {};
+            Interpreter interp(ctx.allocator, analyser.pkg, &eval_stack,
+                               EvalInstance::make(ctx.pkg, 0, ctx.allocator));
+
+            CIRInstructionRef blk_ref(blk);
+            interp.analyze_block(blk, blk_ref);
+
+            if(!interp.has_result_val(blk_ref)) {
+                break;
+            }
+
+            Value cond = interp.ResultValue(blk_ref);
+
+            if(cond.type != easy_type(Type_bool)) {
+                context()->reporter.report_error(ci.condition->src_loc, "#if 的条件必须是 bool");
+                break;
+            }
+
+            ci.cond_value = cond.bool_val();
+
+            Ast *live = ci.cond_value ? ci.true_branch : ci.false_branch;
+
+            if(live != nullptr) {
+                for(Ast *s : live->Block.statements) {
+                    if(s->type == AstType_ConstDecl) {
+                        collect_const_decl_symbol(s, analyser, analyser.under_file_scope);
+                    }
+                }
+
+                for(Ast *s : live->Block.statements) {
+                    resolve_top_stmt(s, analyser);
+                }
+            }
+
         } break;
 
         case AstType_UnderIsFileScope: {

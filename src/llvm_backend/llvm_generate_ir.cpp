@@ -47,7 +47,7 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     LLVMDisposeMessage(mod_datalayout);
 
     this->pkg = pkg_ref;
-    result_ctx = CIRResultContext::create(&pkg_ref.unwrap().cir_package);
+    result_ctx = CIRResultContext::create(&get_cir_package(pkg_ref));
     this->curr_state = {nullptr, nullptr};
     curr_blk = INVALID_BLOCK;
     syms = IRSymbolTable{

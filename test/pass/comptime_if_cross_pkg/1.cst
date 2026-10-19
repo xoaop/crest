@@ -1,0 +1,14 @@
+// @pass
+// @run
+
+import "foo"
+
+#if foo.FLAG {
+    x :: 42
+} else {
+    x :: 0
+}
+
+main :: () -> i32 {
+    return x - 42;
+}
