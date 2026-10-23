@@ -22,6 +22,7 @@ file(GLOB CREST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cir/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/llvm_backend/internal/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/container/*.cpp"
 )
 
 add_executable(crest ${CREST_SOURCES})
@@ -42,6 +43,7 @@ endif()
 #               源码里写作 #include "llvm-c/Core.h"，故目录名必须是 llvm-c
 target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/container"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/value"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/symbol"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ast"
