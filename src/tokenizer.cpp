@@ -1,4 +1,4 @@
-﻿///
+///
 // TODO: UTF-8: 目前还不支持utf-8中非ascii字符当作一个character, 
 // 会导致中文后面的token的位置信息不正确(中文占不止一个character, 但编辑器里是当作一个位置的), 
 // eg: 
@@ -183,7 +183,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         }
 
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
-        xpString str = xp_make_string_capacity(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        xpString str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
         TokenType *type = nullptr;
         if((type = xp_hash_map_get(keyword_map, str)) != nullptr) {
             token.type = *type;
@@ -459,7 +459,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             return xp_make_pair(xpOption<Token>::none(), true);
         }
 
-        token.token_str = xp_make_string_capacity(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        token.token_str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
     }
 
 
@@ -690,7 +690,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     token->type = token_type;
 
-    token->number_info.pure_number_str = xp_make_string_capacity(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+    token->number_info.pure_number_str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
     
     
     advance_characters(t, len);

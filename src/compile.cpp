@@ -184,7 +184,15 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
 
 AstFile tokenize_and_parse_file(const char *path) {
-    xpString code_str = file_to_string(path, permanent_allocator());
+    auto text = file_to_string_utf8(path, permanent_allocator());
+
+    xpString code_str = xp_make_string(permanent_allocator(), "");
+    if(text.is_none()) {
+        context()->reporter.report_error("源文件不是合法 UTF-8: {}", path);
+    } else {
+        code_str = text.unwrap();
+    }
+
     SourceCode src_code = make_source_code(xp_make_string(permanent_allocator(), path), code_str, permanent_allocator());
     Array<Token> tokens = tokenize(&src_code);
 

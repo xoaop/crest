@@ -1,5 +1,7 @@
 #include "file.hpp"
 
+#include "utf8.hpp"
+
 
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -150,4 +152,31 @@ std::string get_utf8_env(const char *name) {
     const char *value = std::getenv(name);
     return value ? std::string(value) : std::string();
 #endif
+}
+
+
+void init_utf8_console() {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+}
+
+
+xpOption<xpString> file_to_string_utf8(char const *path, xpAllocator allocator) {
+    xpString text = file_to_string(path, allocator);
+
+    if(text.length >= 3
+       && static_cast<u8>(text[0]) == 0xEF
+       && static_cast<u8>(text[1]) == 0xBB
+       && static_cast<u8>(text[2]) == 0xBF) {
+        text.c_str += 3;
+        text.length -= 3;
+    }
+
+    if(!is_valid_utf8(text)) {
+        return xpOption<xpString>::none();
+    }
+
+    return xpOption<xpString>::some(text);
 }

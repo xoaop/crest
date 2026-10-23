@@ -50,6 +50,7 @@ build_verify/
 
 # 测试：源码要提交（含种子语料），构建产物与生成的 fuzz case 排除
 test/build_test/
+test/build_perf/
 test/build_fuzz/
 test/__pycache__/
 

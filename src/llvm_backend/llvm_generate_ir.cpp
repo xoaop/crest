@@ -441,7 +441,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
 
     if(LLVMPrintModuleToFile(unit.module, ll_file_path_utf8.c_str(), &error)) {
-        err("Error writing .ll file: {}", error);
+        err("Error writing .ll file [{}]: {}", ll_file_path_utf8, error);
         LLVMDisposeMessage(error);
     }
     
@@ -495,7 +495,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         LLVMObjectFile,
         &error
     )) {
-        err("Error writing object file: {}", error);
+        err("Error writing object file [{}]: {}", obj_file_path_utf8, error);
         LLVMDisposeMessage(error);
     }
 

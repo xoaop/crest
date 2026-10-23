@@ -33,11 +33,16 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     rewind(file);
 
     xpString str = xp_make_string_capacity(allocator, nullptr, size);
-    fread(str.c_str, 1, size, file);
+    const size_t read = fread(str.c_str, 1, static_cast<size_t>(size), file);
 
-    str.length = xp_strlen_c(str.c_str);
+    str.length = static_cast<isize>(read);
+
+    str.c_str[str.length] = '\0';
 
     fclose(file);
 
     return str;
 }
+
+
+xpOption<xpString> file_to_string_utf8(char const *path, xpAllocator allocator);

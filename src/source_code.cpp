@@ -1,4 +1,4 @@
-﻿#include "source_code.hpp"
+#include "source_code.hpp"
 
 SourceCode make_source_code(xpString file_path, xpString code_string, Array<isize> line_start_indices) {
     SourceCode source_code;
