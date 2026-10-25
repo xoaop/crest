@@ -6,7 +6,7 @@
 
 struct Ast;
 
-SymbolInfo& Scope::operator[](xpString name) {
+SymbolInfo& Scope::operator[](GlobalStringIndex name) {
     SymbolInfo *info = find_symbol_until_global(this, name);
     XP_ASSERT_DEFAULT(info != nullptr);
     return *info;
@@ -67,7 +67,7 @@ Scope *get_upper_scope_with_type(Scope *scope, ScopeType type) {
 }
 
 
-void add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info) {
+void add_symbol_to_scope(Scope *scope, GlobalStringIndex symbol_ident, SymbolInfo info) {
     add_symbol(&scope->symbols, symbol_ident, info);
 }
 
@@ -75,14 +75,14 @@ void add_symbol_to_scope(Scope *scope, SymbolInfo info) {
     add_symbol(&scope->symbols, info.name, info);
 }
 
-SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident) {
+SymbolInfo *find_symbol_curr(Scope *scope, GlobalStringIndex symbol_ident) {
     XP_ASSERT_DEFAULT(scope != NULL);
 
     return find_symbol(&scope->symbols, symbol_ident);
 }
 
 
-SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident) {
+SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident) {
     XP_ASSERT_DEFAULT(scope != NULL);
 
     Scope *curr = scope;
@@ -103,12 +103,12 @@ SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString s
     return NULL;
 }
 
-SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident) {
+SymbolInfo *find_symbol_until_global(Scope *scope, GlobalStringIndex symbol_ident) {
     return find_symbol_until(ScopeType::Global, scope, symbol_ident);
 }
 
 
-Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, xpString symbol_ident) {
+Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, GlobalStringIndex symbol_ident) {
     Ref<Scope> curr = scope;
     while (curr != Ref<Scope>::INVALID_REF) {
         Scope &s = curr.unwrap();
@@ -127,11 +127,11 @@ Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope
     return Ref<SymbolInfo>::INVALID_REF;
 }
 
-Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, xpString symbol_ident) {
+Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, GlobalStringIndex symbol_ident) {
     return find_symbol_ref_until(ScopeType::Global, scope, symbol_ident);
 }
 
-Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, xpString symbol_ident) {
+Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, GlobalStringIndex symbol_ident) {
     Scope &s = scope.unwrap();
     SymbolInfo *info = find_symbol(&s.symbols, symbol_ident);
     if (info != nullptr) {
@@ -145,7 +145,7 @@ Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, xpString symbol_ident) {
 
 
 
-SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind) {
+SymbolInfo *find_symbol_curr_spec_v(Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind) {
     XP_ASSERT_DEFAULT(scope != NULL);
 
     SymbolInfo *info = find_symbol_curr(scope, symbol_ident);
@@ -162,7 +162,7 @@ SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKin
 }
 
 
-SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind) {
+SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind) {
     XP_ASSERT_DEFAULT(scope != NULL);
 
     SymbolInfo *info = find_symbol_until(top_scope_type, scope, symbol_ident);

@@ -1,4 +1,4 @@
-﻿
+
 
 
 
@@ -118,7 +118,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
         context()->reporter.report_error(
             const_decl_ast->src_loc,
             "symbol '{}' repeated definition",
-            const_decl_ast->ConstDecl.name
+            get_global_string(const_decl_ast->ConstDecl.name)
         );
         return;
     }
@@ -130,7 +130,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
         context()->reporter.report_error(
             const_decl_ast->src_loc,
             "symbol '{}' cannot be shadowed",
-            const_decl_ast->ConstDecl.name
+            get_global_string(const_decl_ast->ConstDecl.name)
         );
         return;
     }
@@ -217,7 +217,7 @@ void init_global_symbols() {
 
 
     {
-        xpString type_string = xp_string_c("type");
+        GlobalStringIndex type_string = context()->known_global_strings.type;
         TypeRef type_type_ref = type_type();
         Value type_type_value = make_value(type_type_ref);
         type_type_value.type_val(type_type_ref);
@@ -431,7 +431,7 @@ static bool is_named_decl_value(Ast *a) {
 }
 
 void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef target_type) {
-    xpString const_ident = const_decl_ast->ConstDecl.name;
+    GlobalStringIndex const_ident = const_decl_ast->ConstDecl.name;
 
     // #builtin 无值标记，只能在 builtin 包顶层声明；到这里说明是局部/非法位置
     if(const_decl_ast->ConstDecl.is_builtin) {
@@ -445,7 +445,7 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             context()->reporter.report_error(
                 const_decl_ast->src_loc,
                 "symbol '{}' already declared in the same scope",
-                const_decl_ast->ConstDecl.name
+                get_global_string(const_decl_ast->ConstDecl.name)
             );
         }
     }
@@ -476,7 +476,7 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
             context()->reporter.report_error(
                 const_decl_ast->src_loc,
                 "symbol '{}' cannot be shadowed",
-                const_decl_ast->ConstDecl.name
+                get_global_string(const_decl_ast->ConstDecl.name)
             );
             return;
         }
@@ -559,7 +559,7 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
         if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
-                "duplicate struct field '{}'", field->StructField.name
+                "duplicate struct field '{}'", get_global_string(field->StructField.name)
             );
         }
 
@@ -583,7 +583,7 @@ void resolve_union_decl(Ast *decl, Analyser analyser) {
         if(existing != Ref<SymbolInfo>::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
-                "duplicate union field '{}'", field->StructField.name
+                "duplicate union field '{}'", get_global_string(field->StructField.name)
             );
         }
 
@@ -612,13 +612,13 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
         if(field->type == AstType_ConstDecl) {
             resolve_const_decl_local(field, enum_analyser);
         } else {
-            xpString field_name = field->Ident.name;
+            GlobalStringIndex field_name = field->Ident.name;
 
             Ref<SymbolInfo> existing = find_symbol_ref_curr(enum_analyser.current_scope, field_name);
             if(existing != Ref<SymbolInfo>::INVALID_REF) {
                 context()->reporter.report_error(
                     field->src_loc,
-                    "duplicate enum field '{}'", field_name
+                    "duplicate enum field '{}'", get_global_string(field_name)
                 );
             }
 
@@ -640,7 +640,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             context()->reporter.report_error(
                 param->src_loc,
                 "duplicate parameter name '{}'",
-                param->ParamDecl.name
+                get_global_string(param->ParamDecl.name)
             );
         }
 
@@ -656,7 +656,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             context()->reporter.report_error(
                 param->src_loc,
                 "symbol '{}' cannot be shadowed",
-                param->ParamDecl.name
+                get_global_string(param->ParamDecl.name)
             );
             return;
         }
@@ -682,7 +682,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
                     context()->reporter.report_error(
                         type_ast->src_loc,
                         "type variable '{}' already declared in the same scope",
-                        type_var_name
+                        get_global_string(type_var_name)
                     );
                     break;
                 }
@@ -693,7 +693,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
                     context()->reporter.report_error(
                         type_ast->src_loc,
                         "symbol '{}' cannot be shadowed",
-                        type_var_name
+                        get_global_string(type_var_name)
                     );
                     break;
                 }
@@ -723,7 +723,7 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
         context()->reporter.report_error(
             param_ast->src_loc,
             "duplicate parameter name '{}'",
-            param_ast->ParamDecl.name
+            get_global_string(param_ast->ParamDecl.name)
         );
     }
 
@@ -732,7 +732,7 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
         context()->reporter.report_error(
             param_ast->src_loc,
             "symbol '{}' cannot be shadowed",
-            param_ast->ParamDecl.name
+            get_global_string(param_ast->ParamDecl.name)
         );
         return;
     }
@@ -878,7 +878,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
             "symbol '{}' already declared in the same scope",
-            var_decl_ast->VariableDecl.var_name
+            get_global_string(var_decl_ast->VariableDecl.var_name)
         );
 
         return;
@@ -905,7 +905,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
             "symbol '{}' cannot be shadowed",
-            var_decl_ast->VariableDecl.var_name
+            get_global_string(var_decl_ast->VariableDecl.var_name)
         );
         return;
     }
@@ -1119,7 +1119,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 }
 
 
-SymbolInfo *resolve_string_as_ident(xpString str, Analyser analyser) {
+SymbolInfo *resolve_string_as_ident(GlobalStringIndex str, Analyser analyser) {
     SymbolInfo *info = find_symbol_until_global(&analyser.current_scope.unwrap(), str);
     if(info == NULL) {
         return NULL;
@@ -1130,14 +1130,14 @@ SymbolInfo *resolve_string_as_ident(xpString str, Analyser analyser) {
 
 
 void resolve_ident(Ast *ident_ast, Analyser analyser) {
-    xpString ident_str = ident_ast->Ident.name;
+    GlobalStringIndex ident_str = ident_ast->Ident.name;
     SymbolInfo *info = resolve_string_as_ident(ident_str, analyser);
 
     if(info == NULL) {
         context()->reporter.report_error(
             ident_ast->src_loc,
             "undefined symbol '{}'",
-            ident_str
+            get_global_string(ident_str)
         );
     }
 
@@ -1149,7 +1149,7 @@ void resolve_ident(Ast *ident_ast, Analyser analyser) {
 
 void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Ast *parent_ast = field_access_ast->FieldAccess.parent;
-    xpString field_name = field_access_ast->FieldAccess.field_name;
+    GlobalStringIndex field_name = field_access_ast->FieldAccess.field_name;
 
     resolve_expr2(parent_ast, analyser);
 
@@ -1177,7 +1177,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
             context()->reporter.report_error(
                 field_access_ast->src_loc,
                 "undefined symbol '{}' in package '{}'",
-                field_name, parent_symbol_info.name
+                get_global_string(field_name), get_global_string(parent_symbol_info.name)
             );
 
             return;

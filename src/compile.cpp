@@ -40,7 +40,8 @@ bool check_file_legal(xpString path);
 xpString make_import_cycle_message(Ref<Package> target) {
     Package *p = &target.unwrap();
     std::string msg = "import 循环依赖: '";
-    msg.append(p->path.c_str, (size_t)p->path.length);
+    StringRef path = get_global_string(p->path);
+    msg.append(path.data(), path.count());
     msg += "'";
     return xp_make_string_capacity(permanent_allocator(), msg.data(), (isize)msg.size());
 }
@@ -73,9 +74,9 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
     // TODO: 优化
     // 如果已经存在于 context()->all_packages 中，则直接返回已有的 Ref<Package>；
     // 若该包仍在编译中（state == Solving，尚未编译完成的祖先包）→ import 循环依赖
-    xpString abs_path = normalize_path(path, permanent_allocator());
+    GlobalStringIndex abs_path = get_or_insert_global_string(normalize_path(path, permanent_allocator()));
     for(isize i = 0; i < context()->all_packages.count; i++) {
-        if(xp_string_equal(context()->all_packages[i].path, abs_path)) {
+        if(context()->all_packages[i].path == abs_path) {
             if(context()->all_packages[i].state == SymbolState::Solving) {
                 if(cycle_err) {
                     *cycle_err = make_import_cycle_message(Ref<Package>{i});
@@ -171,7 +172,7 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
     Array<xpString> crest_files = scan_crest_files(path_of_package_dir, permanent_allocator());
 
     // 解析每个文件
-    Package package = make_package(package_dir_path, permanent_allocator());
+    Package package = make_package(get_or_insert_global_string(package_dir_path), permanent_allocator());
     for(isize i = 0; i < crest_files.count; i++) {
         xpString crest_file_path = crest_files[i];
         AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
@@ -193,7 +194,8 @@ AstFile tokenize_and_parse_file(const char *path) {
         code_str = text.unwrap();
     }
 
-    SourceCode src_code = make_source_code(xp_make_string(permanent_allocator(), path), code_str, permanent_allocator());
+    SourceCode src_code = make_source_code(get_or_insert_global_string(path), code_str, permanent_allocator());
+
     Array<Token> tokens = tokenize(&src_code);
 
     return make_ast_file(parse(tokens, &src_code), src_code);

@@ -4,6 +4,7 @@
 #include "print.hpp"
 
 #include "ast.hpp"
+#include "context.hpp"
 
 
 // Ast字符串列表定义
@@ -206,7 +207,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
             break;
 
         case AstType_VariableDecl: {
-            print_line(depth + 1, false, "name: {}", a->VariableDecl.var_name.c_str);
+            print_line(depth + 1, false, "name: {}", get_global_string(a->VariableDecl.var_name));
             print_ast(a->VariableDecl.expr, depth + 1, true);
             print_ast(a->VariableDecl.type_ast, depth + 1, true);
             print_line(depth + 1, true, "no_zero_init: {}", a->VariableDecl.no_zero_init ? "true" : "false");
@@ -343,12 +344,12 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         case AstType_FieldAccess: {
             print_line(depth + 1, false, "parent:");
             print_ast(a->FieldAccess.parent, depth + 2, false);
-            print_line(depth + 1, true, "field: {}", a->FieldAccess.field_name.c_str);
+            print_line(depth + 1, true, "field: {}", get_global_string(a->FieldAccess.field_name));
             break;
         }
 
         case AstType_StructField: {
-            print_line(depth + 1, false, "name: {}", a->StructField.name.c_str);
+            print_line(depth + 1, false, "name: {}", get_global_string(a->StructField.name));
             print_line(depth + 1, true, "type:");
             print_ast(a->StructField.type_ast, depth + 2, true);
             break;
@@ -375,7 +376,7 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_EasyType: {
-            print_line(depth + 1, true, "type: {}", get_type_kind_str(a->EasyType.kind).c_str);
+            print_line(depth + 1, true, "type: {}", get_global_string(get_type_kind_str(a->EasyType.kind)));
 
             break;
         }
@@ -406,19 +407,19 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_Ident: {
-            print_line(depth + 1, true, "name: {}", a->Ident.name.c_str);
+            print_line(depth + 1, true, "name: {}", get_global_string(a->Ident.name));
             break;
         }
 
         case AstType_ConstDecl: {
-            print_line(depth + 1, false, "name: {}", a->ConstDecl.name.c_str);
+            print_line(depth + 1, false, "name: {}", get_global_string(a->ConstDecl.name));
             print_line(depth + 1, true, "value:");
             print_ast(a->ConstDecl.value_ast, depth + 2, true);
             break;
         }
 
         case AstType_ParamDecl: {
-            print_line(depth + 1, false, "name: {}", a->ParamDecl.name.c_str);
+            print_line(depth + 1, false, "name: {}", get_global_string(a->ParamDecl.name));
             print_line(depth + 1, false, "is_var_arg: {}", a->ParamDecl.is_var_arg ? "true" : "false");
             print_line(depth + 1, true, "type:");
             print_ast(a->ParamDecl.type_ast, depth + 2, true);
@@ -454,12 +455,12 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         }
 
         case AstType_Import: {
-            print_line(depth + 1, true, "path: {}", a->Import.path.c_str);
+            print_line(depth + 1, true, "path: {}", get_global_string(a->Import.path));
             break;
         }
 
         case AstType_StringLiteralExpr: {
-            print_line(depth + 1, true, "value: {}", a->StringLiteralExpr.str.c_str);
+            print_line(depth + 1, true, "value: {}", get_global_string(a->StringLiteralExpr.str));
             break;
         }
 

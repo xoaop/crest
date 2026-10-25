@@ -13,7 +13,7 @@ CIRPackage make_cir_package(xpAllocator allocator) {
 
     cir_package.blocks = make_array<CIRBlock>(allocator);
 
-    cir_package.string_literals = make_array<xpString>(allocator);
+    cir_package.string_literals = make_array<GlobalStringIndex>(allocator);
     cir_package.results = CIRResultInstance::make(allocator);
     cir_package.result_instances = make_array<CIRResultInstance>(allocator);
     cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, Ref<CIRResultInstance>>(allocator);
@@ -406,9 +406,9 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
             std::string result;
             switch (res.state) {
                 case CIRResultState::NothingYet: break;
-                case CIRResultState::OnlyType:   result = std::format("{}", get_type_kind_str(res.type()->kind)); break;
+                case CIRResultState::OnlyType:   result = std::format("{}", get_global_string(get_type_kind_str(res.type()->kind))); break;
                 case CIRResultState::InProgress: result = "<in-progress>"; break;
-                case CIRResultState::WholeValue: result = std::format("{} = {}", get_type_kind_str(res.type()->kind), res.actual_val()); break;
+                case CIRResultState::WholeValue: result = std::format("{} = {}", get_global_string(get_type_kind_str(res.type()->kind)), res.actual_val()); break;
                 case CIRResultState::Error:      result = "<error>"; break;
             }
             if(res.value_kind == CIRValueKind::LValue) {

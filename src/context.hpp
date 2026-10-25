@@ -15,6 +15,9 @@
 
 #include "value_array.hpp"
 
+#include "string_ref.hpp"
+#include "global_string.hpp"
+
 #include "lcir.hpp"
 
 struct ThreadPool;
@@ -57,6 +60,9 @@ struct Context {
     // 编译期产出的 Value 槽（字面量字节、变量槽）：permanent，不回收
     ValueArray static_values;
 
+    GlobalStringArray global_strings;
+    KnownGlobalStrings known_global_strings;
+
     ThreadPool *thread_pool;
 };
 
@@ -69,3 +75,7 @@ Ref<Package> add_package(Context *ctx, Package pkg);
 const CIRInstruction& inst(CIRInstructionRef ref);
 
 Context *context();
+
+GlobalStringIndex get_or_insert_global_string(const char *str);
+GlobalStringIndex get_or_insert_global_string(const char *str, size_t count);
+GlobalStringIndex get_or_insert_global_string(const xpString& str);

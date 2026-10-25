@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // Block 分类速查
 // ============================================================================
 // comptime block (is_comptime=true) — 编译期求值，不生成 LLVM IR
@@ -209,11 +209,11 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
             func.generic_param_type_var_insts.push_back(type_var_inst);
 
             
-            const xpString type_str = "type";
+            GlobalStringIndex type_str = context()->known_global_strings.type;
             auto ident_val_for_type_type = Make_Instruction<CIROperator::IdentVal>(ctx, type_var_ast, {
                 .ident = type_str
             });
-            Instruction(ctx, ident_val_for_type_type).symbol = find_symbol_ref_curr(get_cir_package(context()->global_blank_package).package_scope, type_str);
+            Instruction(ctx, ident_val_for_type_type).symbol = find_symbol_ref_curr(get_cir_package(context()->global_blank_package).package_scope, context()->known_global_strings.type);
 
             auto type_ascribe_inst = Make_Instruction<CIROperator::TypeAscribe>(ctx, type_var_ast, {
                 .var_inst  = type_var_inst,
@@ -1051,11 +1051,11 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         } break;
 
         case AstType_StringLiteralExpr: {
-            xpString str = expr->StringLiteralExpr.str;
+            GlobalStringIndex str = expr->StringLiteralExpr.str;
 
             ctx.pkg->string_literals.push_back(str);
 
-            auto count_str = str.length;
+            auto count_str = static_cast<isize>(get_global_string(str).count());
 
             // 字面量字节本身就在 permanent 内存里（parser 造的），无需再抄一份
             // 闲置：static_mem 分配
@@ -1065,7 +1065,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
 
             auto string_ident = New_Instruction(ctx, CIROperator::IdentVal, expr);
-            Instruction(ctx, string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, xp_string_c("string"));
+            Instruction(ctx, string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, context()->known_global_strings.string);
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(ctx, expr, {
                 .count = count_str,
@@ -1302,7 +1302,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
 
 
-CIRInstructionRef CIRBuilder::Alloc_Var(CIRBuildContext& ctx, xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param) {
+CIRInstructionRef CIRBuilder::Alloc_Var(CIRBuildContext& ctx, GlobalStringIndex name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param) {
     isize slot = ctx.func ? ctx.func->slot_count++ : -1;
     auto vd = Make_Instruction<CIROperator::VariableDecl>(ctx, ast, {
         .name = name,

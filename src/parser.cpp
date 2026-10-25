@@ -1,4 +1,4 @@
-﻿
+
 #include "parser.hpp"
 
 #include "path.hpp"
@@ -123,7 +123,7 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
 
         // #under_is_file_scope：它下面的顶层声明落文件作用域
         if(curr_token(&p).type == TokenType::Hash && next_token(&p).type == TokenType::Ident
-           && xp_string_equal(next_token(&p).token_str, xp_string_c("under_is_file_scope"))) {
+           && next_token(&p).token_str == context()->known_global_strings.under_is_file_scope) {
             const auto hash_token = curr_token(&p);
             const auto name_token = next_token(&p);
 
@@ -161,7 +161,7 @@ Ast *parse_import(Parser *p) {
         return ast_alloc(AstType_BadDecl, import_token);
     }
     
-    xpString raw_path = path_succ.first.token_str;
+    xpString raw_path = context()->global_strings.strings[path_succ.first.token_str];
     raw_path.c_str = raw_path.c_str + 1;  // 去掉开头的引号
     raw_path.length -= 2;                 // 去掉结尾的引号
 
@@ -171,7 +171,7 @@ Ast *parse_import(Parser *p) {
     }
 
     Ast *a = ast_alloc(AstType_Import, import_token, merge(import_token.src_loc, path_succ.first.src_loc));
-    a->Import.path = normalize_path(raw_path, ast_allocator());
+    a->Import.path = get_or_insert_global_string(normalize_path(raw_path, ast_allocator()));
     
 
     return a;
@@ -387,7 +387,7 @@ bool parse_function_tail(Parser *p, FunctionTail *out) {
     out->is_builtin = false;
     if(curr_token(p).type == TokenType::Hash && next_token(p).type == TokenType::Ident) {
         Token directive_token = next_token(p);
-        if(xp_string_equal(directive_token.token_str, xp_string_c("builtin"))) {
+        if(directive_token.token_str == context()->known_global_strings.builtin) {
             advance_token(p);
             advance_token(p);
             out->is_builtin = true;
@@ -395,7 +395,7 @@ bool parse_function_tail(Parser *p, FunctionTail *out) {
             context()->reporter.report_error(
                 directive_token.src_loc,
                 "unknown directive '{}', expected 'builtin'",
-                directive_token.token_str
+                get_global_string(directive_token.token_str)
             );
         }
     }
@@ -416,7 +416,7 @@ Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
         for(isize i = 0; i < pre.params.count; i++) {
             if(pre.params[i]->type != AstType_ParamDecl) {
                 Ast *pd = ast_alloc(AstType_ParamDecl, pre.rb);
-                pd->ParamDecl.name = xp_string_c("");
+                pd->ParamDecl.name = context()->known_global_strings.empty;
                 pd->ParamDecl.type_ast = pre.params[i];
                 pd->ParamDecl.is_var_arg = false;
                 pd->src_loc = pre.params[i]->src_loc;
@@ -522,7 +522,7 @@ Ast *parse_const_decl(Parser *p) {
     // `name :: #builtin`：内建标记（非值），仅 builtin 包合法（在分析期校验）
     bool is_builtin = false;
     if(curr.type == TokenType::Hash && next_token(p).type == TokenType::Ident
-       && xp_string_equal(next_token(p).token_str, xp_string_c("builtin"))) {
+       && next_token(p).token_str == context()->known_global_strings.builtin) {
         expect(p, TokenType::Hash);
         expect(p, TokenType::Ident);
         is_builtin = true;
@@ -703,7 +703,7 @@ Ast *parse_stmt(Parser *p) {
         {
             Ast *import_ast = a;
             a = ast_alloc(AstType_ConstDecl, import_ast->token);
-            a->ConstDecl.name = get_last_component_of_path(import_ast->Import.path, ast_allocator());
+            a->ConstDecl.name = get_or_insert_global_string(get_last_component_of_path(to_xp_str(get_global_string(import_ast->Import.path), ast_allocator()), ast_allocator()));
             a->ConstDecl.value_ast = import_ast;
             a->src_loc = import_ast->src_loc;
         }
@@ -952,7 +952,7 @@ Ast *parse_string_literal(Parser *p) {
 
     Token str_token = expect(p, TokenType::StringLiteral);
 
-    xpString raw_str_with_quotes = str_token.token_str;
+    xpString raw_str_with_quotes = context()->global_strings.strings[str_token.token_str];
     XP_ASSERT_DEFAULT(raw_str_with_quotes.c_str[0] == '"' && raw_str_with_quotes.c_str[raw_str_with_quotes.length - 1] == '"');
 
 
@@ -1108,7 +1108,7 @@ Ast *parse_string_literal(Parser *p) {
         // 代表解析成功
 
         Ast *a = ast_alloc(AstType_StringLiteralExpr, str_token, str_token.src_loc);
-        a->StringLiteralExpr.str = parsed_str;
+        a->StringLiteralExpr.str = get_or_insert_global_string(parsed_str);
         return a;
     } else {
         // 代表解析失败, 已经报告了错误, 这里返回一个BadExpr占位符就行了
@@ -1546,12 +1546,12 @@ Ast *parse_constant(Parser *p) {
     
     
     if(curr.type == TokenType::Integer) {
-        parse_integer(curr.number_info.pure_number_str.c_str, curr.number_info.type_kind_of_number, a, p);
+        parse_integer(get_global_string(curr.number_info.number_str).data(), curr.number_info.type_kind_of_number, a, p);
         expect(p, TokenType::Integer);
     }
 
     if(curr.type == TokenType::Float) {
-        parse_float(curr.number_info.pure_number_str.c_str, curr.number_info.type_kind_of_number, a, p);
+        parse_float(get_global_string(curr.number_info.number_str).data(), curr.number_info.type_kind_of_number, a, p);
         expect(p, TokenType::Float);
     }
 
@@ -1835,7 +1835,7 @@ void report_unexpected(Parser *p, Token token, xpString expected_string) {
             ErrorLevel::Error, 
             token.src_loc,
             "unexpected token '{}', expected {}",
-            token.token_str,
+            get_global_string(token.token_str),
             expected_string
         );
     }

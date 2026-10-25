@@ -6,6 +6,7 @@
 #include "array.hpp"
 #include "common.hpp"
 #include "scope.hpp"
+#include "global_string.hpp"
 
 struct CIRResultInstance;   // 前向声明（union_info.creation_instance）
 
@@ -52,7 +53,7 @@ enum TypeKind: int {
 
 };
 
-TypeKind string_to_type_kind(xpString str);
+TypeKind string_to_type_kind(GlobalStringIndex str);
 
 template<>
 struct std::formatter <TypeKind> : std::formatter<std::string_view> {
@@ -84,7 +85,7 @@ struct Ast;
 struct TypeHashKey {
 
     TypeHashKey(Ast *decl_ast) : decl_ast(decl_ast) {}
-    TypeHashKey(Ast *decl_ast, xpString name) : decl_ast(decl_ast), name(name) {}
+    TypeHashKey(Ast *decl_ast, GlobalStringIndex name) : decl_ast(decl_ast), name(name) {}
 
     u64 hash() const;
     bool operator==(const TypeHashKey& other) const;
@@ -92,7 +93,7 @@ struct TypeHashKey {
     TypeHashKey clone(xpAllocator allocator) const;
 
     Ast *decl_ast; // 结构体/枚举/联合体的声明AST节点
-    std::optional<xpString> name;
+    std::optional<GlobalStringIndex> name;
     u64 unique_id = 0; // 用于让 add_type 总能插入成功，0 表示由 get_or_add_type 去重
 };
 
@@ -108,7 +109,7 @@ bool is_equal_type(Type a, Type b);
 
 struct Type {
     TypeKind kind;
-    xpString type_name;
+    GlobalStringIndex type_name = GLOBAL_STRING_NONE;
 
     union {
         
@@ -164,13 +165,13 @@ struct Type {
         return is_equal_type(*this, other);
     }
 
-    xpString name();   // 符号名, 可能是结构体的名字, 包的名字, 基本类型的名字等
-    xpString t_name(); // 纯类型名, 可能是type(struct)
+    StringRef name();   // 符号名, 可能是结构体的名字, 包的名字, 基本类型的名字等
+    StringRef t_name(); // 纯类型名, 可能是type(struct)
 };
 
 
 struct StructField {
-    xpString name;
+    GlobalStringIndex name;
     TypeRef type;
 };
 
@@ -238,9 +239,9 @@ bool check_float_overflow(double val, TypeRef type);
 
 
 
-xpString get_type_name(TypeRef type, bool is_pure_type_name = false);
-xpString get_type_kind_str(TypeKind kind);
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name = false);
+GlobalStringIndex get_type_name(TypeRef type, bool is_pure_type_name = false);
+GlobalStringIndex get_type_kind_str(TypeKind kind);
+GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name = false);
 
 
 const char *to_string(TypeKind kind);
@@ -282,7 +283,7 @@ struct std::formatter<Type> {
             }
         } break;
         case Type_struct:
-            return std::format_to(out, "struct {}", type.type_name);
+            return std::format_to(out, "struct {}", type.type_name == GLOBAL_STRING_NONE ? StringRef::init("?") : get_global_string(type.type_name));
         case Type_untyped_int:
             return std::format_to(out, "literal");
         case Type_Undefined:
@@ -334,7 +335,7 @@ TypeRef pointer_type(TypeRef pointed_type);
 TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
 TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
-TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields);
+TypeRef struct_type(Ast *decl, GlobalStringIndex name, Array<StructField> fields);
 TypeRef type_type();
 TypeRef package_type(Ref<Package> package_info);
 TypeRef undefined_type();
@@ -343,13 +344,13 @@ TypeRef error_type();
 TypeRef add_type_unique(Type type);
 
 TypeRef unfinished_anonymous_struct_type(Ast *decl);
-TypeRef unfinished_struct_type(Ast *decl, xpString ident);
+TypeRef unfinished_struct_type(Ast *decl, GlobalStringIndex ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Ref<Scope> scope);
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, Ref<Scope> scope);
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope> scope);
-TypeRef union_field_type(TypeRef union_type, xpString field_name);   // 按创建实例解析字段类型
+TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, Ref<Scope> scope);
+TypeRef union_field_type(TypeRef union_type, GlobalStringIndex field_name);   // 按创建实例解析字段类型
 bool type_contains_by_value(TypeRef outer, TypeRef inner);   // 判断 outer 是否按值包含 inner（指针处截断）
 
 isize type_size_of(TypeRef type);

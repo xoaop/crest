@@ -21,7 +21,7 @@ struct Ast;
     AST_INFO(BadExpr, "bad expr", struct {})                                         \
     AST_INFO(BadType, "bad type", struct {})                                         \
     AST_INFO(Import, "import", struct {                                              \
-        xpString path;                                                               \
+        GlobalStringIndex path;                                                               \
     })                                                                               \
     AST_INFO(EasyType, "easy type", struct {                                         \
         TypeKind kind;                                                               \
@@ -41,10 +41,10 @@ struct Ast;
         Ast *return_type_ast;                                                        \
     })                                                                               \
     AST_INFO(Ident, "ident", struct {                                                \
-        xpString name;                                                               \
+        GlobalStringIndex name;                                                               \
     })                                                                               \
     AST_INFO(StructField, "struct field", struct {                                   \
-        xpString name;                                                               \
+        GlobalStringIndex name;                                                               \
         Ast *type_ast;                                                               \
     })                                                                               \
     AST_INFO(Block, "block", struct {                                                \
@@ -70,13 +70,13 @@ struct Ast;
         Ast *expr;                                                                   \
     })                                                                               \
     AST_INFO(VariableDecl, "variable decl", struct {                                 \
-        xpString var_name;                                                           \
+        GlobalStringIndex var_name;                                                           \
         Ast *expr;                                                                   \
         Ast *type_ast;                                                               \
         bool no_zero_init;                                                           \
     })                                                                               \
     AST_INFO(TypeVariableDeclInParam, "type variable decl in param", struct {        \
-        xpString name;                                                               \
+        GlobalStringIndex name;                                                               \
     })                                                                               \
     AST_INFO(Assignment, "assignment", struct {                                      \
         Ast *left_var_expr;                                                          \
@@ -84,10 +84,10 @@ struct Ast;
     })                                                                               \
     AST_INFO(FieldAccess, "field access", struct {                                   \
         Ast *parent;                                                                 \
-        xpString field_name;                                                         \
+        GlobalStringIndex field_name;                                                         \
     })                                                                               \
     AST_INFO(ParamDecl, "function parameter", struct {                               \
-        xpString name;                                                               \
+        GlobalStringIndex name;                                                               \
         Ast *type_ast;                                                               \
         bool is_var_arg;                                                             \
     })                                                                               \
@@ -136,7 +136,7 @@ struct Ast;
         Ast *index_expr;                                                             \
     })                                                                               \
     AST_INFO(StringLiteralExpr, "string literal expr", struct {                      \
-        xpString str;                                                                \
+        GlobalStringIndex str;                                                                \
     })                                                                               \
     AST_INFO(FunctionDeclValue, "function decl value", struct {                      \
         Array<Ast *> params;                                                         \
@@ -162,7 +162,7 @@ struct Ast;
         Array<Ast *> fields;                                                         \
     })                                                                               \
     AST_INFO(ConstDecl, "const decl", struct {                                       \
-        xpString name;                                                               \
+        GlobalStringIndex name;                                                               \
         Ast *type_ast;                                                               \
         Ast *value_ast;                                                              \
         bool is_builtin;                                                             \

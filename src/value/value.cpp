@@ -3,6 +3,7 @@
 #include "type.hpp"
 
 #include "error_msg.hpp"
+#include "context.hpp"
 #include "print.hpp"
 
 #include <cstring>
@@ -107,7 +108,7 @@ Value Value::struct_field_val(xpString field_name) const {
     for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
         auto field = type->struct_info.struct_fields[i];
 
-        if(xp_string_equal(field.name, field_name)) {
+        if(field.name == get_or_insert_global_string(field_name)) {
             return struct_field_val(i);
         }
     }

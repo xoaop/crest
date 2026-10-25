@@ -54,7 +54,7 @@ struct std::formatter<SourceLocation> {
         auto end = cal_line_column_index_of_byte_pos(loc.src_code, loc.span.end);
 
         return std::format_to(ctx.out(), "{}:{}:{} - {}:{}",
-            loc.src_code.file_path,
+            get_global_string(loc.src_code.file_path),
             start.first, start.second,
             end.first, end.second
         );

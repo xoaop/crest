@@ -1,4 +1,4 @@
-﻿#include <cfloat>
+#include <cfloat>
 #include <atomic>
 
 #include "print.hpp"
@@ -38,7 +38,7 @@ u64 TypeHashKey::hash() const {
     auto hash = reinterpret_cast<u64>(decl_ast);
 
     if(name.has_value()) {
-        hash = xp_hash_combine_u64(hash, std::hash<xpString>{}(name.value()));
+        hash = xp_hash_combine_u64(hash, static_cast<u64>(name.value()));
     }
 
     hash = xp_hash_combine_u64(hash, unique_id);
@@ -55,10 +55,7 @@ bool TypeHashKey::operator==(const TypeHashKey& other) const {
     bool same_name_or_no_name = true;
 
     if(name.has_value() && other.name.has_value()) {
-        xpString n1 = name.value();
-        xpString n2 = other.name.value();
-
-        same_name_or_no_name = xp_string_equal(n1, n2);
+        same_name_or_no_name = name.value() == other.name.value();
     }
 
     return same_decl && same_name_or_no_name;
@@ -66,22 +63,16 @@ bool TypeHashKey::operator==(const TypeHashKey& other) const {
 
 
 TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
-    TypeHashKey copy = *this;
-    if(name.has_value()) {
-        copy.name = xp_string_copy(allocator, name.value());
-    }
-    return copy;
+    return *this;
 }
 
 
 
-TypeKind string_to_type_kind(xpString str) {
-    if(sizeof(type_strings) <= 0) {
-        return Type_Undefined;
-    }
+TypeKind string_to_type_kind(GlobalStringIndex str) {
+    StringRef str_ref = get_global_string(str);
 
     for(size_t i = 0; i < sizeof(type_strings) / sizeof(type_strings[0]); i++) {
-        if(xp_string_equal(str, xp_string_c(type_strings[i]))) {
+        if(str_ref == StringRef::init(type_strings[i])) {
             return static_cast<TypeKind>(i);
         }
     }
@@ -93,7 +84,7 @@ TypeKind string_to_type_kind(xpString str) {
 Type make_type(TypeKind kind) {
     Type t{};  // 零初始化
     t.kind = kind;
-    t.type_name = xp_make_string_zero();
+    t.type_name = GLOBAL_STRING_NONE;
 
     return t;
 }
@@ -110,10 +101,7 @@ Type *alloc_type(xpAllocator allocator, TypeKind kind) {
 Type copy_type(Type *src) {
     Type t{};
     t.kind = src->kind;
-    t.kind = src->kind;
-    if(src->type_name != xp_make_string_zero()) {
-        t.type_name = xp_string_copy(type_allocator(), src->type_name);
-    }
+    t.type_name = src->type_name;
 
 
     switch(src->kind) {
@@ -161,12 +149,12 @@ Type copy_type(Type *src) {
 }
 
 
-xpString Type::name() {
-    return get_type_name(this);
+StringRef Type::name() {
+    return get_global_string(get_type_name(this));
 }
 
-xpString Type::t_name() {
-    return get_type_name(this, true);
+StringRef Type::t_name() {
+    return get_global_string(get_type_name(this, true));
 }
 
 
@@ -461,11 +449,17 @@ bool is_slice_struct_type(TypeRef type) {
         return false;
     }
 
-    if(type->type_name.length <= 0) {
+    if(type->type_name == GLOBAL_STRING_NONE) {
         return false;
     }
-    
-    if(type->type_name[0] != '[') {
+
+    StringRef type_name = get_global_string(type->type_name);
+
+    if(type_name.count() <= 0) {
+        return false;
+    }
+
+    if(type_name[0] != '[') {
         return false;
     }
 
@@ -743,7 +737,7 @@ TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields) {
     return type_ref;
 }
 
-TypeRef struct_type(Ast *decl, xpString name, Array<StructField> fields) {
+TypeRef struct_type(Ast *decl, GlobalStringIndex name, Array<StructField> fields) {
     Type t = {};
     t.kind = Type_struct;
     t.type_name = name;
@@ -764,7 +758,7 @@ TypeRef unfinished_anonymous_struct_type(Ast *decl) {
     return add_type_unique(t);
 }
 
-TypeRef unfinished_struct_type(Ast *decl, xpString ident) {
+TypeRef unfinished_struct_type(Ast *decl, GlobalStringIndex ident) {
     Type t = {};
     t.kind = Type_struct;
     t.struct_info.hash_key = TypeHashKey{ decl, ident };
@@ -780,7 +774,7 @@ void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
 }
 
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef elem_type, Ref<Scope> scope) {
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, Ref<Scope> scope) {
     XP_ASSERT_DEFAULT(is_integer_type(elem_type));
 
     Type t{Type_enum};
@@ -795,7 +789,7 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<xpString> ident, TypeRef ele
     return add_type_unique(t);
 }
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope> scope) {
+TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, Ref<Scope> scope) {
     Type t{Type_union};
 
     t.union_info.hash_key = ident.has_value()
@@ -806,7 +800,7 @@ TypeRef union_type_impl(Ast *decl_ast, std::optional<xpString> ident, Ref<Scope>
     return add_type_unique(t);
 }
 
-TypeRef union_field_type(TypeRef union_type, xpString field_name) {
+TypeRef union_field_type(TypeRef union_type, GlobalStringIndex field_name) {
     Ref<SymbolInfo> field_sym = find_symbol_ref_curr(union_type->union_info.union_scope, field_name);
     ASSERT(field_sym != Ref<SymbolInfo>::INVALID_REF);
 
@@ -949,14 +943,15 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     
 
     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
-    xpString elem_str = get_or_make_type_str(elem_type, temp_allocator());
+    xpString elem_str = to_xp_str(get_global_string(get_or_make_type_str(elem_type, temp_allocator())), temp_allocator());
 
     xp_string_append(&slice_struct_name, elem_str);
 
 
     Type t = {};
     t.kind = Type_struct;
-    t.type_name = slice_struct_name;
+    GlobalStringIndex slice_name = get_or_insert_global_string(slice_struct_name);
+    t.type_name = slice_name;
 
 
     Array<StructField> fields = make_array<StructField>(temp_allocator());
@@ -964,11 +959,11 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
 
 
     fields.push_back(StructField { 
-        xp_make_string(type_allocator(), "data"), 
+        context()->known_global_strings.data,
         pointer_type(elem_type) 
     });
     fields.push_back(StructField { 
-        xp_make_string(type_allocator(), "count"), 
+        context()->known_global_strings.count,
         easy_type(Type_isize) 
     });
 
@@ -978,21 +973,31 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
      * 那它们的slice类型就会被认为是同一个类型, 这显然不对, 因此必须加上decl来区分
     */
     Ast *decl = is_struct_type(elem_type) ? elem_type->struct_info.hash_key.decl_ast : nullptr;
-    return struct_type(decl, slice_struct_name, fields);
+    return struct_type(decl, slice_name, fields);
 }
 
 
 
 
 
-xpString get_type_kind_str(TypeKind kind) {
-    return xp_string_c(type_strings[kind]);
+GlobalStringIndex get_type_kind_str(TypeKind kind) {
+    static GlobalStringIndex kind_strings[sizeof(type_strings) / sizeof(type_strings[0])] = {};
+    static bool inited = false;
+
+    if(!inited) {
+        for(size_t i = 0; i < sizeof(type_strings) / sizeof(type_strings[0]); i++) {
+            kind_strings[i] = get_or_insert_global_string(type_strings[i]);
+        }
+        inited = true;
+    }
+
+    return kind_strings[kind];
 }
 
-xpString get_type_name(TypeRef type, bool is_pure_type_name) {
+GlobalStringIndex get_type_name(TypeRef type, bool is_pure_type_name) {
 
     // 如果已经有名字就直接返回
-    if(type->type_name.capacity != 0) {
+    if(type->type_name != GLOBAL_STRING_NONE) {
         return type->type_name;
     }
 
@@ -1007,7 +1012,7 @@ xpString get_type_name(TypeRef type, bool is_pure_type_name) {
 }
 
 
-xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name) {
+GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name) {
 
     if(is_easy_type_kind(type->kind)) {
 
@@ -1016,11 +1021,11 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         xpString base_str = xp_make_string(allocator, "*");
 
         // 因为可能有多级指针，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString pointed_type_str = get_or_make_type_str(type->pointed_type, temp_allocator(), is_pure_type_name);
+        xpString pointed_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->pointed_type, temp_allocator(), is_pure_type_name)), temp_allocator());
 
         xp_string_append(&base_str, pointed_type_str);
 
-        return base_str;
+        return get_or_insert_global_string(base_str);
 
     } else if(is_struct_type(type) || type->kind == Type_enum || is_union_type(type)) {
 
@@ -1030,8 +1035,8 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         }
 
         // 直接用类型名；匿名 union 未设 type_name，给个可读的兜底
-        if(type->type_name.capacity == 0) {
-            return xp_make_string(allocator, "union");
+        if(type->type_name == GLOBAL_STRING_NONE) {
+            return get_type_kind_str(Type_union);
         }
         return type->type_name;
 
@@ -1044,18 +1049,18 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         xp_string_append(&base_str, xp_string_c("]"));
 
         // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString elem_type_str = get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name);
+        xpString elem_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name)), temp_allocator());
 
         xp_string_append(&base_str, elem_type_str);
 
-        return base_str;
+        return get_or_insert_global_string(base_str);
 
     } else if(is_function_type(type)) {
         xpString func_str = xp_make_string(allocator, "(");
 
         for(isize i = 0; i < type->function_info.param_types.count; i++) {
 
-            xpString param_type_str = get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), is_pure_type_name);
+            xpString param_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), is_pure_type_name)), temp_allocator());
             xp_string_append(&func_str, param_type_str);
 
             if(i != type->function_info.param_types.count - 1) {
@@ -1069,29 +1074,29 @@ xpString get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_
         xpString rb_arrow_str = xp_string_c(") -> ");
         xp_string_append(&func_str, rb_arrow_str);
 
-        xpString return_type_str = get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name);
+        xpString return_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name)), temp_allocator());
         xp_string_append(&func_str, return_type_str);
-        return func_str;
+        return get_or_insert_global_string(func_str);
     } else if(is_type_type(type)) {
 
         xpString type_str = xp_make_string(allocator, "type(");
-        xpString self_type_str = get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name);
+        xpString self_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name)), temp_allocator());
         xp_string_append(&type_str, self_type_str);
         xp_string_append(&type_str, xp_string_c(")"));
-        return type_str;
+        return get_or_insert_global_string(type_str);
 
     } else if(is_package_type(type)) {
         return type->package_info.unwrap().path;
     } else if(type->kind == Type_error) {
-        return xp_string_c("error");
+        return get_type_kind_str(Type_error);
     } else if(type->kind == Type_Undefined) {
-        return xp_string_c("undefined");
+        return get_type_kind_str(Type_Undefined);
     }
     
     // Unreachable
     DEBUG_PANIC("unhandled type kind in get_or_make_type_str: {}", type->kind);
 
-    return {};
+    return GLOBAL_STRING_NONE;
 }
 
 
@@ -1195,7 +1200,7 @@ struct std::hash<Type> {
 
         case Type_package: {
             u64 hash_package = Type_package;
-            u64 hash_package_info = cast(u64)(std::hash<xpString>{}(type.package_info.unwrap().path));
+            u64 hash_package_info = cast(u64)(type.package_info.unwrap().path);
             u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
             return cast(usize)(hash_value);
         } break;

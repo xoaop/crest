@@ -12,7 +12,7 @@ struct CIRPackage;
 
 
 struct Package {
-    xpString path;
+    GlobalStringIndex path;
 
     // TODO: 换成公共或独有的枚举, 而不是借用 SymbolState
     SymbolState state = SymbolState::Unsolved;
@@ -33,4 +33,4 @@ struct Package {
     SlotIndex cir_package_key;
 };
 
-Package make_package(xpString path, xpAllocator allocator);
+Package make_package(GlobalStringIndex path, xpAllocator allocator);

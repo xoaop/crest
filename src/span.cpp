@@ -36,7 +36,7 @@ void print_span(SourceCode src_code, Span span) {
     auto end = cal_line_column_index_of_byte_pos(src_code, span.end);
 
     print_err("{}:{}:{} - {}:{}",
-        src_code.file_path,
+        get_global_string(src_code.file_path),
         start.first, start.second,
         end.first, end.second
     );

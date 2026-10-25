@@ -1,4 +1,4 @@
-﻿#include <stdio.h>
+#include <stdio.h>
 #include <chrono>
 
 #include "print.hpp"
@@ -313,6 +313,8 @@ int main(int argc_raw, char** argv_raw) {
 
     // 关键字表初始化
     init_keyword_map();
+
+    context()->known_global_strings = make_known_global_strings(context()->global_strings, permanent_allocator());
 
     
     // 初始化context

@@ -1,6 +1,6 @@
 #include "source_code.hpp"
 
-SourceCode make_source_code(xpString file_path, xpString code_string, Array<isize> line_start_indices) {
+SourceCode make_source_code(GlobalStringIndex file_path, xpString code_string, Array<isize> line_start_indices) {
     SourceCode source_code;
     source_code.file_path = file_path;
     source_code.code_string = code_string;
@@ -11,7 +11,7 @@ SourceCode make_source_code(xpString file_path, xpString code_string, Array<isiz
 }
 
 
-SourceCode make_source_code(xpString file_path, xpString code_string, xpAllocator allocator) {
+SourceCode make_source_code(GlobalStringIndex file_path, xpString code_string, xpAllocator allocator) {
     SourceCode source_code = make_source_code(file_path, code_string, make_array<BytePos>(allocator));
 
     // 计算行起始位置
@@ -88,5 +88,5 @@ xpString get_line_str_of_pos(SourceCode code, BytePos pos, xpAllocator allocator
 
 
 bool is_same_src_code(const SourceCode *a, const SourceCode *b) {
-    return xp_string_equal(a->file_path, b->file_path);
+    return a->file_path == b->file_path;
 }

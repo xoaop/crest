@@ -8,6 +8,8 @@
 #include "span.hpp"
 #include "source_code.hpp"
 
+#include "global_string.hpp"
+
 // NOTE: Keyword可以直接加在TOKEN_INFO不用修改别的地方的
 // 而别的Token需要在tokenizer加上处理逻辑
 #define TOKEN_INFOS                                             \
@@ -101,17 +103,16 @@ enum TokenType: u8 {
 
 struct Token {
     TokenType type;
-    xpString token_str;
+    GlobalStringIndex token_str;
 
     union {
         struct {
-            xpString pure_number_str;     // 不带类型后缀的纯数字字符串
+            GlobalStringIndex number_str;     // 不带类型后缀的纯数字字符串
             TypeKind type_kind_of_number; // 用于标记带类型后缀的数字(整数, 浮点数)
         } number_info;
 
     };
 
-    xpString file_path;
     isize line_index;
     isize column_index;
 

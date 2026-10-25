@@ -46,3 +46,21 @@ const CIRInstruction& inst(CIRInstructionRef ref) {
     ASSERT(ref.pkg_index >= 0);
     return get_cir_package(Ref<Package>(ref.pkg_index)).inst(ref);
 }
+
+
+GlobalStringIndex get_or_insert_global_string(const char *str) {
+    return get_or_insert_global_string(context()->global_strings, str, permanent_allocator());
+}
+
+GlobalStringIndex get_or_insert_global_string(const char *str, size_t count) {
+    return get_or_insert_global_string(context()->global_strings, str, count, permanent_allocator());
+}
+
+GlobalStringIndex get_or_insert_global_string(const xpString& str) {
+    return get_or_insert_global_string(context()->global_strings, str, permanent_allocator());
+}
+
+
+StringRef get_global_string(GlobalStringIndex index) {
+    return get_global_string(context()->global_strings, index);
+}

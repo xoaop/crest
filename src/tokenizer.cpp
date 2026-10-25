@@ -57,7 +57,7 @@ const char* token_strings[] = {
     #undef TOKEN_INFO
 };
 
-xp_global xpHashMap<xpString, TokenType> keyword_map;
+xp_global xpHashMap<GlobalStringIndex, TokenType> keyword_map;
 
 
 
@@ -66,16 +66,17 @@ xp_global xpHashMap<xpString, TokenType> keyword_map;
 
 void test_keyword_map() {
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
-        xpHashMapEntry<xpString, TokenType> *entry = xp_hash_map_get_entry(keyword_map, xp_string_c(token_strings[i]));
+        xpHashMapEntry<GlobalStringIndex, TokenType> *entry = xp_hash_map_get_entry(keyword_map, get_or_insert_global_string(token_strings[i]));
         XP_ASSERT_MSG(cast(TokenType)i == entry->value, "test_keyword_map() FAILED: %s\n", token_strings[i]);
     }
 }
 
 void init_keyword_map() {
-    keyword_map = xp_hash_map_make<xpString, TokenType>(permanent_allocator());
+    keyword_map = xp_hash_map_make<GlobalStringIndex, TokenType>(permanent_allocator());
 
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
-        xp_hash_map_insert(&keyword_map, xp_make_string(permanent_allocator(), token_strings[i]), cast(TokenType)i);
+        auto index = get_or_insert_global_string(token_strings[i]);
+        xp_hash_map_insert(&keyword_map, index, cast(TokenType)i);
     }
 }
 
@@ -183,7 +184,8 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         }
 
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
-        xpString str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        GlobalStringIndex str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        
         TokenType *type = nullptr;
         if((type = xp_hash_map_get(keyword_map, str)) != nullptr) {
             token.type = *type;
@@ -459,7 +461,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             return xp_make_pair(xpOption<Token>::none(), true);
         }
 
-        token.token_str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        token.token_str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
     }
 
 
@@ -663,7 +665,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     // 用 kind 判断后缀类别,不依赖 postfix 数组下标
     TypeKind suffix_kind = (i < xp_array_len(postfix))
-                         ? string_to_type_kind(xp_string_c(postfix[i]))
+                         ? string_to_type_kind(get_or_insert_global_string(postfix[i]))
                          : Type_Undefined;
     bool is_float_suffix = (suffix_kind == Type_f32 || suffix_kind == Type_f64);
 
@@ -690,7 +692,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     token->type = token_type;
 
-    token->number_info.pure_number_str = xp_make_string_count(permanent_allocator(), t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+    token->number_info.number_str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, static_cast<size_t>(t->curr_character_index - old_index));
     
     
     advance_characters(t, len);

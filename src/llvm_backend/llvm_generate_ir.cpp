@@ -34,7 +34,7 @@ LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, 
 void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     Package *pkg = &pkg_ref.unwrap();
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
-    unit.module = LLVMModuleCreateWithNameInContext(pkg->path.c_str, g_llvm_session.ctx);
+    unit.module = LLVMModuleCreateWithNameInContext(get_global_string(pkg->path).data(), g_llvm_session.ctx);
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     // 模块级 triple / data layout
@@ -240,7 +240,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
             // TODO: 规范
             auto name_maybe = type->struct_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? type->struct_info.hash_key.name.value() : xp_string_c("anonymous_struct");
+            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_string_c("anonymous_struct");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
             LLVMTypeRef *struct_type = xp_hash_map_insert(&g_llvm_session.struct_types, key, struct_ty);
@@ -267,7 +267,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             }
 
             auto name_maybe = type->union_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? name_maybe.value() : xp_string_c("anonymous_union");
+            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_string_c("anonymous_union");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
             LLVMTypeRef *union_type = xp_hash_map_insert(&g_llvm_session.union_types, key, struct_ty);
@@ -424,7 +424,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
     // 输出 .ll 文件
     char *error = nullptr;
-    const std::filesystem::path pkg_path(as_u8(pkg.unwrap().path));
+    const std::filesystem::path pkg_path(as_u8(to_xp_str(get_global_string(pkg.unwrap().path), stage_allocator())));
     std::string file_name = (const char *)pkg_path.generic_u8string().c_str();
     // 单文件包 path 带扩展名(.cst), 输出文件名不带后缀
     if(pkg_path.has_extension()) {
@@ -1067,7 +1067,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             isize field_idx = -1;
             for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-                if(xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
+                if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
                     field_idx = i;
                     break;
                 }
@@ -1116,7 +1116,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             isize field_idx = -1;
             for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-                if(xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
+                if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
                     field_idx = i;
                     break;
                 }
@@ -1530,7 +1530,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruc
     XP_ASSERT_DEFAULT(inst.op == CIROperator::VariableDecl);
 
     // 1. 分配空间
-    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(inst.info<CIROperator::VariableDecl>().name, stage_allocator()).c_str, get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
+    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()).c_str, get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
 
     // 2. 如果有初始值，生成初始值 IR 并存储
 

@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include "context.hpp"
+#include "print.hpp"
 
 
 xpArena permanent_arena;
@@ -12,6 +13,7 @@ xpArena stage_arena;
 xp_global xpAllocator permanent_memory;
 xp_global xpAllocator temp_memory;
 xp_global xpAllocator stage_memory;
+
 
 xpAllocator permanent_allocator() {
     return permanent_memory;

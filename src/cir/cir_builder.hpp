@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <optional>
 #include <utility>
@@ -68,7 +68,7 @@ struct CIRBuilder {
     static void build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt);
     
     static CIRInstructionRef New_Instruction(CIRBuildContext& ctx, CIROperator op, Ast *ast);
-    static CIRInstructionRef Alloc_Var(CIRBuildContext& ctx, xpString name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param = false);
+    static CIRInstructionRef Alloc_Var(CIRBuildContext& ctx, GlobalStringIndex name, bool is_var_arg, bool no_zero_init, Ast *ast, bool is_param = false);
     static CIRInstructionRef New_Break(CIRBuildContext& ctx, CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast);
     static CIRInstruction& Instruction(CIRBuildContext& ctx, CIRInstructionRef ref);
     

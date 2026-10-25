@@ -2,7 +2,7 @@
 #include "cir_builder.hpp"
 
 
-Package make_package(xpString path, xpAllocator allocator) {
+Package make_package(GlobalStringIndex path, xpAllocator allocator) {
     Package p = {};
     p.path = path;
 

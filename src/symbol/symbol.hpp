@@ -6,6 +6,7 @@
 
 #include "xoaop.h"
 #include "common.hpp"
+#include "global_string.hpp"
 #include "cir_instruction_ref.hpp"
 #include "ref.hpp"
 
@@ -33,7 +34,7 @@ enum class ValueStoreType {
 };
 
 struct SymbolInfo {
-    xpString name;
+    GlobalStringIndex name;
     SymbolState state;
     Ref<Package> package;
     AstFile *file;
@@ -66,25 +67,25 @@ public:
     bool is_built_in();
 };
 
-SymbolInfo make_symbol(xpString name, Value value, Ref<Package> package, AstFile *file, Ast *ast);
-SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(GlobalStringIndex name, Value value, Ref<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(GlobalStringIndex name, Ref<Package> package, AstFile *file, Ast *ast);
 
 
 
 
 struct SymbolTable {
-    xpHashMap<xpString, SymbolInfo> symbols;
+    xpHashMap<GlobalStringIndex, SymbolInfo> symbols;
 };
 SymbolTable make_symbol_table(xpAllocator allocator);
 
-void add_symbol(SymbolTable *table, xpString name, SymbolInfo info);
-SymbolInfo *find_symbol(SymbolTable *table, xpString name);
+void add_symbol(SymbolTable *table, GlobalStringIndex name, SymbolInfo info);
+SymbolInfo *find_symbol(SymbolTable *table, GlobalStringIndex name);
 
 
 template<>
 struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
     Ref<Scope> scope = Ref<Scope>::INVALID_REF;
-    xpString name;
+    GlobalStringIndex name;
 
     SymbolInfo *resolve() const;
 
@@ -98,7 +99,7 @@ template<>
 struct std::hash<Ref<SymbolInfo>> {
     size_t operator()(const Ref<SymbolInfo> &r) const {
         u64 h = xp_hash_combine_u64(0, (u64)(usize)r.scope.index);
-        h = xp_hash_combine_u64(h, std::hash<xpString>()(r.name));
+        h = xp_hash_combine_u64(h, (u64)r.name);
         return h;
     }
 };
@@ -114,7 +115,7 @@ struct std::formatter<SymbolInfo> {
     template<typename FormatContext>
     auto format(const SymbolInfo& symbol_info, FormatContext& ctx) const {
         return std::format_to(ctx.out(), "SymbolInfo {{ name: '{}', state '{}' }}",
-            symbol_info.name,
+            get_global_string(symbol_info.name),
             to_string(symbol_info.state)
         );
     }
@@ -129,7 +130,7 @@ struct std::formatter<SymbolTable> {
     template<typename FormatContext>
     auto format(const SymbolTable& symbol_table, FormatContext& ctx) const {
         for (const auto& entry : symbol_table.symbols) {
-            std::format_to(ctx.out(), "  '{}': {}\n", entry.key, entry.value);
+            std::format_to(ctx.out(), "  '{}': {}\n", get_global_string(entry.key), entry.value);
         }
         return ctx.out();
     }

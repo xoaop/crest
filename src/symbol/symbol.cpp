@@ -98,7 +98,7 @@ bool SymbolInfo::is_built_in() {
 }
 
 
-SymbolInfo make_symbol(xpString name, Value value, Ref<Package> package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(GlobalStringIndex name, Value value, Ref<Package> package, AstFile *file, Ast *ast) {
     SymbolInfo info{};
     info.name = name;
     info.val(value);
@@ -109,7 +109,7 @@ SymbolInfo make_symbol(xpString name, Value value, Ref<Package> package, AstFile
     return info;
 }
 
-SymbolInfo make_symbol(xpString name, Ref<Package> package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(GlobalStringIndex name, Ref<Package> package, AstFile *file, Ast *ast) {
     SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
     info.state = SymbolState::Unsolved;
 
@@ -128,18 +128,18 @@ SymbolTable make_symbol_table(xpAllocator allocator) {
     ASSERT(allocator.proc != xp_heap_allocator().proc); // TODO: 加个重载，而不是比proc
 
     SymbolTable table = {};
-    table.symbols = xp_hash_map_make<xpString, SymbolInfo>(allocator);
+    table.symbols = xp_hash_map_make<GlobalStringIndex, SymbolInfo>(allocator);
 
     return table;
 }
 
 
-void add_symbol(SymbolTable *table, xpString name, SymbolInfo info) {
+void add_symbol(SymbolTable *table, GlobalStringIndex name, SymbolInfo info) {
     xp_hash_map_insert(&table->symbols, name, info);
 }
 
 
-SymbolInfo *find_symbol(SymbolTable *table, xpString name) {
+SymbolInfo *find_symbol(SymbolTable *table, GlobalStringIndex name) {
     return xp_hash_map_get(table->symbols, name);
 }
 

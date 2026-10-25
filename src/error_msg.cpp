@@ -1,4 +1,4 @@
-﻿#include "print.hpp"
+#include "print.hpp"
 
 #include "error_msg.hpp"
 
@@ -60,7 +60,7 @@ void ErrorReporter::print_msg() {
         auto start = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.start);
         auto end = cal_line_column_index_of_byte_pos(msg->src_code, msg->highlight_span.end);
 
-        print_err("{}:{}:{}: ", msg->src_code.file_path, start.first, start.second);
+        print_err("{}:{}:{}: ", get_global_string(msg->src_code.file_path), start.first, start.second);
         print_error_line(msg->level, "{}", msg->msg);
 
         xpString line_str = get_line_str_of_pos(msg->src_code, msg->highlight_span.start, xp_heap_allocator());

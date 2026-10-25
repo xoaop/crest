@@ -1,4 +1,4 @@
-﻿#include "cir_interpreter.hpp"
+#include "cir_interpreter.hpp"
 #include "common.hpp"
 #include "compile.hpp"
 
@@ -134,7 +134,7 @@ CIRInstructionRef& Interpreter::curr_inst_ref() {
 // 分析入口
 //
 void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
-    DEBUG_TRACE("start analyzing package {}", pkg.unwrap().path);
+    DEBUG_TRACE("start analyzing package {}", get_global_string(pkg.unwrap().path));
 
     context()->lcir_modules.get_or_insert(pkg, [&]() {
         return lcir::Module::init(permanent_allocator());
@@ -703,7 +703,7 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
     const bool has_symbol = finst.symbol != Ref<SymbolInfo>::INVALID_REF;
     const xpString nm = lcir::mangle_name(
         fk,
-        has_symbol ? std::optional<xpString>(finst.symbol->name) : std::nullopt,
+        has_symbol ? std::optional<xpString>(to_xp_str(get_global_string(finst.symbol->name), permanent_allocator())) : std::nullopt,
         fdecl.is_extern_c,
         fk.cir_package->package_ref
     );
@@ -834,7 +834,7 @@ AnalyzeResult Interpreter::analyze_StringLiteral(const CIRStringLiteralInfo& inf
     Array<Value> bytes = make_array<Value>(permanent_allocator());
     for(isize i = 0; i < info.count; i++) {
         Value b = make_value(char_type);
-        b.integer_val(cast(u8)info.str.c_str[i]);
+        b.integer_val(cast(u8)get_global_string(info.str)[i]);
         bytes.push_back(b);
     }
     Value terminator = make_value(char_type);
@@ -1172,12 +1172,12 @@ AnalyzeResult Interpreter::analyze_Hook(const CIRHookInfo& info, CIRInstructionR
         return {};
     }
 
-    if(xp_string_equal(info.name, xp_string_c("typeof"))) {
+    if(info.name == context()->known_global_strings.typeof_builtin) {
         return hook_typeof(info, pc_ref);
-    } else if(xp_string_equal(info.name, xp_string_c("sizeof"))) {
+    } else if(info.name == context()->known_global_strings.sizeof_builtin) {
         return hook_sizeof(info, pc_ref);
     } else {
-        return make_result(pc_ref, inst_error(pc_ref, "未知内建 '{}'", info.name));
+        return make_result(pc_ref, inst_error(pc_ref, "未知内建 '{}'", get_global_string(info.name)));
     }
 }
 
@@ -1504,16 +1504,16 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
         Ref<Package> pkg_val = parent_type->package_info;
         auto field_sym = find_symbol_ref_curr(pkg_val->package_scope, info.field_name);
         if(field_sym == Ref<SymbolInfo>::INVALID_REF) {
-            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", get_global_string(info.field_name)));
         }
 
         if(!analyze_symbol_of_package(field_sym)) {
-            return make_result(pc_ref, inst_error(pc_ref, "循环依赖导致包成员 '{}' 无法求值", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "循环依赖导致包成员 '{}' 无法求值", get_global_string(info.field_name)));
         }
 
         auto r = field_sym->result(curr_cache_key());
         if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", get_global_string(info.field_name)));
         }
         if(r.state == CIRResultState::WholeValue) {
             // type = 成员的类型，actual = 成员的实际值（可能来自 value_inst，类型不同）
@@ -1524,7 +1524,7 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
     } else if(TypeRef struct_type = get_struct_type(parent_type)) {
 
         for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-            if(xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
+            if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
                 TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
 
                 if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
@@ -1540,21 +1540,21 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
             }
         }
 
-        return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 不存在", info.field_name));
+        return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 不存在", get_global_string(info.field_name)));
 
     } else if(TypeRef union_type = get_union_type(parent_type)) {
 
         Ref<Scope> union_scope = union_type->union_info.union_scope;
         TypeRef field_type = nullptr;
         for(const auto& entry : *union_scope) {
-            if(xp_string_equal(entry.value.name, info.field_name)) {
+            if(entry.value.name == info.field_name) {
                 field_type = union_field_type(union_type, entry.value.name);
                 break;
             }
         }
 
         if(field_type == nullptr) {
-            return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' 不存在", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' 不存在", get_global_string(info.field_name)));
         }
 
         if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
@@ -1570,7 +1570,7 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
         TypeRef enum_type = ResultValue(parent_inst).type_val();
         Ref<SymbolInfo> field_sym = find_symbol_ref_curr(enum_type->enum_info.enum_scope, info.field_name);
         if(field_sym == Ref<SymbolInfo>::INVALID_REF) {
-            return make_result(pc_ref, inst_error(pc_ref, "枚举变体 '{}' 不存在", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "枚举变体 '{}' 不存在", get_global_string(info.field_name)));
         }
         auto r = field_sym->result(curr_cache_key());
         if(r.state == CIRResultState::WholeValue) {
@@ -1594,21 +1594,21 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
         auto field_sym = find_symbol_ref_curr(pkg_val->package_scope, info.field_name);
 
         if(field_sym == Ref<SymbolInfo>::INVALID_REF) {
-            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不存在", get_global_string(info.field_name)));
         }
 
         if(!analyze_symbol_of_package(field_sym)) {
-            return make_result(pc_ref, inst_error(pc_ref, "循环依赖导致包成员 '{}' 无法求值", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "循环依赖导致包成员 '{}' 无法求值", get_global_string(info.field_name)));
         }
 
         auto r = field_sym->result(curr_cache_key());
 
         if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 无可用结果（未求值或出错）", get_global_string(info.field_name)));
         }
 
         if(!field_sym->is_var_decl() && !field_sym->is_const_decl_and_func()) {
-            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不是可寻址实体", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "包成员 '{}' 不是可寻址实体", get_global_string(info.field_name)));
         }
 
         if(r.state == CIRResultState::WholeValue) {
@@ -1630,7 +1630,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
 
         TypeRef field_type = union_field_type(union_type, info.field_name);
         if(field_type == nullptr) {
-            return make_result(pc_ref, inst_error(pc_ref, "FieldPtr：联合体字段 '{}' 不存在", info.field_name));
+            return make_result(pc_ref, inst_error(pc_ref, "FieldPtr：联合体字段 '{}' 不存在", get_global_string(info.field_name)));
         }
 
         if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
@@ -1650,7 +1650,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
     }
 
     for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-        if(xp_string_equal(struct_type->struct_info.struct_fields[i].name, info.field_name)) {
+        if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
             TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
 
             if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
@@ -1672,7 +1672,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
         }
     }
 
-    return make_result(pc_ref, inst_error(pc_ref, "FieldPtr：结构体字段 '{}' 不存在", info.field_name));
+    return make_result(pc_ref, inst_error(pc_ref, "FieldPtr：结构体字段 '{}' 不存在", get_global_string(info.field_name)));
 }
 
 // handler: IndexPtr（结果 = LValue）
@@ -2318,7 +2318,7 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
         return make_result(pc_ref, inst_error(pc_ref, "枚举的底层类型必须是整数类型，实际类型 '{}'", elem_type->name()));
     }
 
-    std::optional<xpString> enum_name = std::nullopt;
+    std::optional<GlobalStringIndex> enum_name = std::nullopt;
     SymbolInfo *enum_sym = info.symbol.try_get();
     if(enum_sym != nullptr) {
         enum_name = enum_sym->name;
@@ -2395,7 +2395,7 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
                 auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
-                    return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' {}", field_info.name, e.value()));
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' {}", get_global_string(field_info.name), e.value()));
                 }
                 TypeRef field_type = ResultValue(field_info.type_block_inst).type_val();
 
@@ -2405,7 +2405,7 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
                 fields.push_back(sf);
 
                 if(type_contains_by_value(sf.type, st)) {
-                    return make_result(pc_ref, inst_error(pc_ref, "结构体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", sf.name));
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", get_global_string(sf.name)));
                 }
             }
 
@@ -2426,7 +2426,7 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
 
 // handler: GetOrInitUnion（写自身 type/value；未完成 union 类型 + 早绑符号）
 AnalyzeResult Interpreter::analyze_GetOrInitUnion(const CIRGetOrInitUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    std::optional<xpString> union_name = std::nullopt;
+    std::optional<GlobalStringIndex> union_name = std::nullopt;
     SymbolInfo *union_sym = info.symbol.try_get();
     if(union_sym != nullptr) {
         union_name = union_sym->name;
@@ -2481,12 +2481,12 @@ AnalyzeResult Interpreter::analyze_FinishUnion(const CIRFinishUnionInfo& info, C
                 auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
-                    return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' {}", field_info.name, e.value()));
+                    return make_result(pc_ref, inst_error(pc_ref, "联合体字段 '{}' {}", get_global_string(field_info.name), e.value()));
                 }
                 TypeRef field_type = ResultValue(field_info.type_block_inst).type_val();
 
                 if(type_contains_by_value(field_type, ut)) {
-                    return make_result(pc_ref, inst_error(pc_ref, "联合体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", field_info.name));
+                    return make_result(pc_ref, inst_error(pc_ref, "联合体 '{}' 包含自身（未通过指针间接引用），将导致无限大小", get_global_string(field_info.name)));
                 }
 
                 Ref<SymbolInfo> field_sym = find_symbol_ref_curr(union_scope, field_info.name);
@@ -3163,11 +3163,11 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
     auto sym = inst(pc_ref).symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
-        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentRef>().ident));
+        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", get_global_string(inst(pc_ref).info<CIROperator::IdentRef>().ident)));
     }
 
     if(sym->is_built_in()) {
-        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", get_global_string(sym->name)));
     }
 
     if(!sym->is_var_decl() && !sym->is_const_decl_and_func()) {
@@ -3180,11 +3180,11 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
             }
         }
 
-        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 不是可寻址实体", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 不是可寻址实体", get_global_string(sym->name)));
     }
 
     if(!analyze_symbol_of_package(sym)) {
-        return make_result(pc_ref, inst_error(pc_ref, "求值 '{}' 时检测到循环依赖", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "求值 '{}' 时检测到循环依赖", get_global_string(sym->name)));
     }
 
     // 注：val 绑定指令不是本 op 的 refs（符号经 symbol 字段），dispatch 短路不覆盖，这里显式传播
@@ -3196,7 +3196,7 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
 
     auto r = sym->result(curr_cache_key());
     if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 无可用结果（符号未求值或出错）", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 无可用结果（符号未求值或出错）", get_global_string(sym->name)));
     }
     if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || r.state == CIRResultState::WholeValue)) {
         if(sym->is_var_decl()) {
@@ -3237,25 +3237,25 @@ AnalyzeResult Interpreter::analyze_IdentVal(const CIRIdentValInfo& info, CIRInst
     auto sym = inst(pc_ref).symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
-        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", inst(pc_ref).info<CIROperator::IdentVal>().ident));
+        return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", get_global_string(inst(pc_ref).info<CIROperator::IdentVal>().ident)));
     }
 
     if(sym->is_built_in()) {
-        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "内建 '{}' 只能被调用", get_global_string(sym->name)));
     }
 
     if(sym->is_var_decl()) {
-        return make_result(pc_ref, inst_error(pc_ref, "IdentVal 只应作用于常量，'{}' 是变量", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "IdentVal 只应作用于常量，'{}' 是变量", get_global_string(sym->name)));
     }
 
     // 以支持顶层constDecl的顺序无关声明
     if(!analyze_symbol_of_package(sym)) {
-        return make_result(pc_ref, inst_error(pc_ref, "求值 '{}' 时检测到循环依赖", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "求值 '{}' 时检测到循环依赖", get_global_string(sym->name)));
     }
 
     auto r = sym->result(curr_cache_key());
     if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
-        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 无可用结果（符号未求值或出错）", sym->name));
+        return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 无可用结果（符号未求值或出错）", get_global_string(sym->name)));
     }
     if(r.state == CIRResultState::WholeValue) {
         return make_result(pc_ref, ResultDesc::make_value(r.actual_val()));
@@ -3272,12 +3272,12 @@ AnalyzeResult Interpreter::analyze_ImportPackage(const CIRImportPackageInfo& inf
 
     // import 是编译期求值：compile_package_from_import 解析路径→查表/现场构建（循环 import 在查表时检测报错）
     xpString cycle_err = xp_string_c("");
-    auto pkg_opt = compile_package_from_import(info.path, &cycle_err);
+    auto pkg_opt = compile_package_from_import(to_xp_str(get_global_string(info.path), permanent_allocator()), &cycle_err);
     if(pkg_opt.is_none()) {
         if(cycle_err.length > 0) {
             return make_result(pc_ref, inst_error(pc_ref, "{}", cycle_err));
         }
-        return make_result(pc_ref, inst_error(pc_ref, "找不到包 '{}'", info.path));
+        return make_result(pc_ref, inst_error(pc_ref, "找不到包 '{}'", get_global_string(info.path)));
     }
 
     Ref<Package> pkg_ref{pkg_opt.unwrap().index};

@@ -130,7 +130,7 @@ enum class CIRFieldTag {
 };
 
 struct CIRConstDeclInfo {
-    xpString ident;
+    GlobalStringIndex ident;
     Ref<SymbolInfo> symbol;
     CIRInstructionRef value_inst; // 常量值的指令引用
 
@@ -138,7 +138,7 @@ struct CIRConstDeclInfo {
 };
 
 struct CIRVariableDeclInfo {
-    xpString name;
+    GlobalStringIndex name;
     Ref<SymbolInfo> symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
@@ -148,14 +148,14 @@ struct CIRVariableDeclInfo {
 };
 
 struct EnumFieldInit {
-    xpString name;
+    GlobalStringIndex name;
     CIRInstructionRef value_inst;  // INVALID_INST 表示自增
 
     CIR_REFS(&EnumFieldInit::value_inst)
 };
 
 struct CIRFunctionDeclInfo {
-    // xpString name;                      // 函数名（symbol_find / call 目标）
+    // GlobalStringIndex name;                      // 函数名（symbol_find / call 目标）
     // Ref<SymbolInfo> symbol;
 
     [[ =CIRFieldTag::ChildBlock ]]
@@ -241,7 +241,7 @@ struct CIRCallInfo {
 
 // 内建 hook：编译器开的口子，name 决定语义，interp 里硬编码 switch 处理
 struct CIRHookInfo {
-    xpString name;
+    GlobalStringIndex name;
     Array<CIRInstructionRef> arg_insts;
 
     CIR_REFS(&CIRHookInfo::arg_insts)
@@ -282,7 +282,7 @@ struct CIRCastInfo {
 
 struct CIRFieldAccessInfo {
     CIRInstructionRef parent_inst;
-    xpString field_name;
+    GlobalStringIndex field_name;
 
     CIR_REFS(&CIRFieldAccessInfo::parent_inst)
 };
@@ -334,7 +334,7 @@ struct CIRGetOrInitStructInfo {
 
 struct CIRStructFieldInfo {
     CIRInstructionRef type_block_inst;
-    xpString          name;
+    GlobalStringIndex name;
 
     CIR_REFS(&CIRStructFieldInfo::type_block_inst)
 };
@@ -420,7 +420,7 @@ struct CIRStringLiteralInfo {
     // 闲置：ValueMemory 体系的字节指针
     // MemPointer data;
     isize count;
-    xpString str;
+    GlobalStringIndex str;
     CIRInstructionRef string_type_inst;
 
     CIR_REFS(&CIRStringLiteralInfo::string_type_inst)
@@ -439,17 +439,17 @@ struct CIRBlockRefInfo {
 };
 
 struct CIRIdentRefInfo {
-    xpString ident;   // 标识符名（undefined 错误消息用）
+    GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
 };
 struct CIRIdentValInfo {
-    xpString ident;   // 标识符名（undefined 错误消息用）
+    GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
 };
 
 
 // 每个 op 独立的 payload 类型（op ↔ payload 一一映射，无共享）
 struct CIRFieldPtrInfo {
     CIRInstructionRef parent_inst;
-    xpString field_name;
+    GlobalStringIndex field_name;
 
     CIR_REFS(&CIRFieldPtrInfo::parent_inst)
 };
@@ -470,7 +470,7 @@ struct CIRExitScopeInfo {
 };
 
 struct CIRImportPackageInfo {
-    xpString path;
+    GlobalStringIndex path;
 };
 
 // 提前登记返回值（return <type-decl> 用）
@@ -572,6 +572,17 @@ struct CIRFormat {
 
 // ── 值类型 ──────────────────────────────────────────────
 
+// 名字类字段存的是全局字符串表下标，dump 时取回文本
+template<> struct CIRFormat<GlobalStringIndex> {
+    static std::string as_string(GlobalStringIndex v) {
+        if(v == GLOBAL_STRING_NONE) {
+            return "-";
+        }
+        StringRef r = get_global_string(v);
+        return std::string(r.data(), r.count());
+    }
+};
+
 template<> struct CIRFormat<CIRInstructionRef> {
     static std::string as_string(const CIRInstructionRef& v) {
         if(v.block_ref < 0) {
@@ -588,7 +599,7 @@ template<> struct CIRFormat<CIRInstructionRef> {
 template<> struct CIRFormat<EnumFieldInit> {
     static std::string as_string(const EnumFieldInit& v) {
         return std::format("name={} value_inst={}",
-            CIRFormat<xpString>::as_string(v.name),
+            std::format("{}", get_global_string(v.name)),
             CIRFormat<CIRInstructionRef>::as_string(v.value_inst));
     }
 };
@@ -605,7 +616,7 @@ template<> struct CIRFormat<Ref<SymbolInfo>> {
             return "-";
         }
 
-        return CIRFormat<xpString>::as_string(v.name);
+        return CIRFormat<xpString>::as_string(to_xp_str(get_global_string(v.name), permanent_allocator()));
     }
 };
 

@@ -2,6 +2,7 @@
 
 #include "symbol.hpp"
 #include "cir_inst.hpp"
+#include "context.hpp"
 
 namespace lcir {
 
@@ -40,12 +41,12 @@ xpString mangle_name(Ref<CIRInstResult> key, std::optional<xpString> base_name_o
         //     }
         // }
 
-        if(xp_string_equal(base_name, xp_string_c("main")) || is_extern_c) {
+        if(StringRef::init(base_name) == get_global_string(context()->known_global_strings.main) || is_extern_c) {
             return base_name;
         }
 
         return xp_string_concat_mid(
-            package != Ref<Package>::INVALID_REF ? package->path : xp_string_c(""),
+            package != Ref<Package>::INVALID_REF ? to_xp_str(get_global_string(package->path), permanent_allocator()) : xp_string_c(""),
             base_name,
             xpOption<xpString>(xp_string_c(".")),
             permanent_allocator()

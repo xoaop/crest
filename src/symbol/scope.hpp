@@ -76,19 +76,19 @@ struct Scope {
     ScopeIterator begin() const;
     ScopeIterator end() const;
 
-    SymbolInfo& operator[](xpString name);
+    SymbolInfo& operator[](GlobalStringIndex name);
 };
 
 
 struct ScopeIterator {
     struct ScopeEntry {
-        const xpString &name;
+        const GlobalStringIndex &name;
         const SymbolInfo &value;
     };
 
-    xpHashMapIterator<xpString, SymbolInfo> outer;
+    xpHashMapIterator<GlobalStringIndex, SymbolInfo> outer;
 
-    ScopeIterator(xpHashMapIterator<xpString, SymbolInfo> it) {
+    ScopeIterator(xpHashMapIterator<GlobalStringIndex, SymbolInfo> it) {
         outer = it;
     }
 
@@ -113,18 +113,18 @@ void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
 
-void add_symbol_to_scope(Scope *scope, xpString symbol_ident, SymbolInfo info);
+void add_symbol_to_scope(Scope *scope, GlobalStringIndex symbol_ident, SymbolInfo info);
 void add_symbol_to_scope(Scope *scope, SymbolInfo info);
 
-SymbolInfo *find_symbol_curr(Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_until_global(Scope *scope, xpString symbol_ident);
-SymbolInfo *find_symbol_curr_spec_v(Scope *scope, xpString symbol_ident, TypeKind type_kind);
-SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, xpString symbol_ident, TypeKind type_kind);
+SymbolInfo *find_symbol_curr(Scope *scope, GlobalStringIndex symbol_ident);
+SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident);
+SymbolInfo *find_symbol_until_global(Scope *scope, GlobalStringIndex symbol_ident);
+SymbolInfo *find_symbol_curr_spec_v(Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind);
+SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind);
 
-Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, xpString symbol_ident);
-Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, xpString symbol_ident);
-Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, xpString symbol_ident);
+Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, GlobalStringIndex symbol_ident);
+Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, GlobalStringIndex symbol_ident);
+Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, GlobalStringIndex symbol_ident);
 
 
 Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
