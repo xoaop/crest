@@ -413,14 +413,14 @@ Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
     }
 
     if(!pre.is_named) {
-        for(isize i = 0; i < pre.params.count; i++) {
-            if(pre.params[i]->type != AstType_ParamDecl) {
+        for(auto&& it : pre.params) {
+            if(it->type != AstType_ParamDecl) {
                 Ast *pd = ast_alloc(AstType_ParamDecl, pre.rb);
                 pd->ParamDecl.name = context()->known_global_strings.empty;
-                pd->ParamDecl.type_ast = pre.params[i];
+                pd->ParamDecl.type_ast = it;
                 pd->ParamDecl.is_var_arg = false;
-                pd->src_loc = pre.params[i]->src_loc;
-                pre.params[i] = pd;
+                pd->src_loc = it->src_loc;
+                it = pd;
             }
         }
     }

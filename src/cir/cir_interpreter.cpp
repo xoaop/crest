@@ -626,8 +626,8 @@ EvalInstance EvalInstance::make(CIRPackage *callee_pkg, isize var_count, xpAlloc
     EvalInstance inst{};
     inst.ctx = CIRResultContext::create(callee_pkg);
     inst.var_ptrs = make_array_count<Pointer>(allocator, var_count);
-    for(isize i = 0; i < var_count; i++) {
-        inst.var_ptrs[i] = Pointer::make_null();
+    for(auto&& it : inst.var_ptrs) {
+        it = Pointer::make_null();
     }
 
     return inst;
@@ -2179,8 +2179,8 @@ TypeRef Interpreter::determine_type_of(CIRInstructionRef determined_inst,
                 Array<Value> elems = result_val.array_element_values();
                 if(elems.count > 0) {
                     elem_t = get_compliable_const_type(elems[0]);
-                    for(isize i = 0; i < elems.count; i++) {
-                        elems[i].type = elem_t;
+                    for(auto&& it : elems) {
+                        it.type = elem_t;
                     }
                     result_val.array_element_values(elems);
                     out_writes.push_back({determined_inst, ResultDesc::make_value(result_val)});

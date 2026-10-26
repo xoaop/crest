@@ -443,7 +443,7 @@ static void test_slot_map() {
         for (isize i = 0; i < BIG; i++) m.remove(keys[i]);
         XP_ASSERT_DEFAULT(m.count() == 0);
 
-        for (isize i = 0; i < BIG; i++) keys[i] = m.emplace(i32(i * 2));
+        FOR_MUT(keys) { it = m.emplace(i32(it_index * 2)); }
         XP_ASSERT_DEFAULT(m.count() == BIG);
         XP_ASSERT_DEFAULT(m.slot_count() == BIG);
         for (isize i = 0; i < BIG; i++) XP_ASSERT_DEFAULT(m[keys[i]] == i32(i * 2));
