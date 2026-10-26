@@ -355,11 +355,12 @@ bool Interpreter::propagate_error(std::initializer_list<CIRInstructionRef> refs)
 }
 
 bool Interpreter::propagate_error(Array<CIRInstructionRef>& refs) {
-    for (isize i = 0; i < refs.count; i++)
-        if (has_error(refs[i])) {
+    FOR(refs) {
+        if (has_error(it)) {
             Set_ResultError(curr_inst_ref());
             return true;
         }
+    }
     return false;
 }
 
