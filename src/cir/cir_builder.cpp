@@ -229,8 +229,8 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
 
     // 1. 每个参数：类型 block + 分配 slot
     auto param_decls = make_array<CIRVariableDeclInfo>(ctx.pkg_ref->stage_allocator);
-    for(isize i = 0; i < fd->FunctionDeclValue.params.count; i++) {
-        Ast *param = fd->FunctionDeclValue.params[i];
+    FOR(fd->FunctionDeclValue.params) {
+        Ast *param = it;
         XP_ASSERT_DEFAULT(param->type == AstType_ParamDecl);
 
         auto param_type = INVALID_INST;
@@ -241,7 +241,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
         CIRVariableDeclInfo var = {};
         var.name = param->ParamDecl.name;
         var.symbol = param->ast_symbol;
-        var.slot = i;                       // 参数槽位: 0, 1, 2, ...
+        var.slot = it_index;                       // 参数槽位: 0, 1, 2, ...
         var.is_var_arg = param->ParamDecl.is_var_arg;
         param_decls.push_back(var);
         func.arg_type_insts.push_back(param_type);
@@ -291,16 +291,16 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
 
         {
             ScopeGuard _func_scope_guard(ctx, fd);
-            for(isize i = 0; i < param_decls.count; i++) {
-                auto& var = param_decls[i];
+            FOR_MUT(param_decls) {
+                auto& var = it;
 
                 // 参数一定由 caller 传值，零初始化会被后面的参数 store 覆盖
-                auto vd = Alloc_Var(ctx, var.name, var.is_var_arg, true, fd->FunctionDeclValue.params[i], true /*is_param*/);
+                auto vd = Alloc_Var(ctx, var.name, var.is_var_arg, true, fd->FunctionDeclValue.params[it_index], true /*is_param*/);
                 func.arg_decl_insts.push_back(vd);
 
-                auto param_type = func.arg_type_insts[i];
+                auto param_type = func.arg_type_insts[it_index];
                 if(param_type != INVALID_INST) {
-                    auto ta = Make_Instruction<CIROperator::TypeAscribe>(ctx, fd->FunctionDeclValue.params[i], {
+                    auto ta = Make_Instruction<CIROperator::TypeAscribe>(ctx, fd->FunctionDeclValue.params[it_index], {
                         .var_inst  = vd,
                         .type_inst = param_type,
                     });
@@ -780,14 +780,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             });
 
             // 每个实参: FunParamType + DetermineType
-            for(isize i = 0; i < arg_insts.count; i++) {
-                Ast *arg = expr->FunctionCallExpr.args[i];
-                auto arg_inst = arg_insts[i];
+            FOR(arg_insts) {
+                Ast *arg = expr->FunctionCallExpr.args[it_index];
+                auto arg_inst = it;
 
                 // 获取函数参数类型
                 auto fpt = Make_Instruction<CIROperator::FuncParamType>(ctx, arg, {
                     .type_of_func_type_inst = typeof_func,
-                    .param_index = i,
+                    .param_index = it_index,
                 });
 
                 auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, arg, {
@@ -985,8 +985,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             auto struct_type_inst = build_block_ref_inst_for_expr(ctx, expr->StructInitExpr.struct_type_ident, true, true);
 
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-            for (isize i = 0; i < expr->StructInitExpr.field_inits.count; i++) {
-                Ast *field_init = expr->StructInitExpr.field_inits[i];
+            FOR(expr->StructInitExpr.field_inits) {
+                Ast *field_init = it;
 
                 auto field_value_inst = build_inst_for_expr(ctx, field_init);
 
@@ -994,7 +994,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                 // 确定化各个field的类型
                 auto field_type_of_struct = Make_Instruction<CIROperator::FieldTypeOfStruct>(ctx, field_init, {
                     .struct_type_inst = struct_type_inst,
-                    .field_index = i,
+                    .field_index = it_index,
                 });
 
                 auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, field_init, {

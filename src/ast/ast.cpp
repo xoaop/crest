@@ -492,9 +492,9 @@ void print_ast(Array<Ast *> a_arr, i32 depth, bool is_last) {
         return;
     }
 
-    for (isize i = 0; i < a_arr.count; i++) {
-        bool last = (i == a_arr.count - 1);
-        print_ast(a_arr[i], depth, last);
+    FOR(a_arr) {
+        bool last = (it_index == a_arr.count - 1);
+        print_ast(it, depth, last);
     }
 }
 #endif // CREST_DEBUG

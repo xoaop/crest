@@ -630,8 +630,8 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
 
 
 void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
-    for(isize i = 0; i < params.count; i++) {
-        Ast *param = params[i];
+    FOR(params) {
+        Ast *param = it;
 
         ASSERT(param->type == AstType_ParamDecl);
 
@@ -644,7 +644,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             );
         }
 
-        if(param->ParamDecl.is_var_arg && i != params.count - 1) {
+        if(param->ParamDecl.is_var_arg && it_index != params.count - 1) {
             context()->reporter.report_error(
                 param->src_loc,
                 "variadic parameter must be the last parameter"
@@ -754,8 +754,8 @@ void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
     if(ast->Block.is_function_body) {
 
 
-        for(isize i = 0; i < ast->Block.statements.count; i++) {
-            resolve_local_stmt(ast->Block.statements[i], analyser);
+        FOR(ast->Block.statements) {
+            resolve_local_stmt(it, analyser);
         }
         return;
     }
@@ -764,8 +764,8 @@ void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope) {
         analyser = new_scope(analyser, ScopeType::Block, ast);
     }
     
-    for(isize i = 0; i < ast->Block.statements.count; i++) {
-        resolve_local_stmt(ast->Block.statements[i], analyser);
+    FOR(ast->Block.statements) {
+        resolve_local_stmt(it, analyser);
     }
 }
 
@@ -946,8 +946,8 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             // 检查函数标识符符号是否存在
             resolve_expr2(expr_ast->FunctionCallExpr.func_ident, analyser);
 
-            for(isize i = 0; i < expr_ast->FunctionCallExpr.args.count; i++) {
-                resolve_expr2(expr_ast->FunctionCallExpr.args[i], analyser);
+            FOR(expr_ast->FunctionCallExpr.args) {
+                resolve_expr2(it, analyser);
             }
 
 
@@ -989,8 +989,8 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         case AstType_StructInitExpr: {
             resolve_expr(expr_ast->StructInitExpr.struct_type_ident, analyser);
 
-            for(isize i = 0; i < expr_ast->StructInitExpr.field_inits.count; i++) {
-                resolve_expr2(expr_ast->StructInitExpr.field_inits[i], analyser);
+            FOR(expr_ast->StructInitExpr.field_inits) {
+                resolve_expr2(it, analyser);
             }
         } break;
 
@@ -1006,8 +1006,8 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
                 );
             }
 
-            for(isize i = 0; i < expr_ast->ArrayInitExpr.elements.count; i++) {
-                resolve_expr2(expr_ast->ArrayInitExpr.elements[i], analyser);
+            FOR(expr_ast->ArrayInitExpr.elements) {
+                resolve_expr2(it, analyser);
             }
         } break;
 
@@ -1041,8 +1041,8 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_FunctionType: {
-            for(isize i = 0; i < expr_ast->FunctionType.param_types.count; i++) {
-                resolve_expr2(expr_ast->FunctionType.param_types[i], analyser);
+            FOR(expr_ast->FunctionType.param_types) {
+                resolve_expr2(it, analyser);
             }
 
             resolve_expr2(expr_ast->FunctionType.return_type_ast, analyser);
@@ -1218,8 +1218,8 @@ bool may_fall_through(Ast *ast) {
         break;
     case AstType_Block: {
         Ast *last_stmt = NULL;
-        for(isize i = 0; i < ast->Block.statements.count; i++) {
-            if(!may_fall_through(ast->Block.statements[i])) {
+        FOR(ast->Block.statements) {
+            if(!may_fall_through(it)) {
                 return false;
             }
         }

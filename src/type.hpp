@@ -262,9 +262,9 @@ struct std::formatter<Type> {
         switch(type.kind) {
         case Type_function: {
             out = std::format_to(out, "func(");
-            for(isize i = 0; i < type.function_info.param_types.count; i++) {
-                out = std::format_to(out, "{}", *type.function_info.param_types[i]);
-                if(i != type.function_info.param_types.count - 1) {
+            FOR(type.function_info.param_types) {
+                out = std::format_to(out, "{}", *it);
+                if(it_index != type.function_info.param_types.count - 1) {
                     out = std::format_to(out, ", ");
                 }
             }

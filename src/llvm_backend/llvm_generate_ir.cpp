@@ -676,7 +676,7 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 //     return str_struct;
 // }
 
-LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<TypeRef> expected_type) {
+LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optional<TypeRef> expected_type) {
      // TODO 其他类型的常量
 
     LLVMValueRef llvm_val = nullptr;
@@ -726,8 +726,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
                 Array<LLVMValueRef> field_values = make_array<LLVMValueRef>(stage_allocator());
 
                 Array<Value> field_vals = value.struct_fields_val();
-                for(isize i = 0; i < field_vals.count; i++) {
-                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(field_vals[i]);
+                FOR(field_vals) {
+                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(it);
                     field_values.push_back(field_llvm_val);
                 }
 
@@ -991,9 +991,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMTypeRef llvm_struct_type = get_llvm_type_from_type(struct_type);
             LLVMValueRef struct_val = LLVMGetUndef(llvm_struct_type);
 
-            for(isize i = 0; i < info.field_init_insts.count; i++) {
-                LLVMValueRef field_val = get_llvm_val_from_inst_ref(info.field_init_insts[i]);
-                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, (unsigned)i, "insertfieldtmp");
+            FOR(info.field_init_insts) {
+                LLVMValueRef field_val = get_llvm_val_from_inst_ref(it);
+                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, (unsigned)it_index, "insertfieldtmp");
             }
             save_llvm_val_of_inst(ref, struct_val);
         } break;
@@ -1003,9 +1003,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMTypeRef llvm_array_type = get_llvm_type_from_type(array_type);
             LLVMValueRef array_val = LLVMGetUndef(llvm_array_type);
 
-            for(isize i = 0; i < info.element_insts.count; i++) {
-                LLVMValueRef elem_val = get_llvm_val_from_inst_ref(info.element_insts[i]);
-                array_val = LLVMBuildInsertValue(unit.builder, array_val, elem_val, (unsigned)i, "insertelemtmp");
+            FOR(info.element_insts) {
+                LLVMValueRef elem_val = get_llvm_val_from_inst_ref(it);
+                array_val = LLVMBuildInsertValue(unit.builder, array_val, elem_val, (unsigned)it_index, "insertelemtmp");
             }
             save_llvm_val_of_inst(ref, array_val);
         } break;
@@ -1069,9 +1069,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             XP_ASSERT_DEFAULT(is_struct_type(struct_type));
 
             isize field_idx = -1;
-            for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-                if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
-                    field_idx = i;
+            FOR(struct_type->struct_info.struct_fields) {
+                if(it.name == info.field_name) {
+                    field_idx = it_index;
                     break;
                 }
             }
@@ -1118,9 +1118,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             XP_ASSERT_DEFAULT(struct_type != nullptr);
 
             isize field_idx = -1;
-            for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-                if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
-                    field_idx = i;
+            FOR(struct_type->struct_info.struct_fields) {
+                if(it.name == info.field_name) {
+                    field_idx = it_index;
                     break;
                 }
             }
@@ -1246,17 +1246,17 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             if(sret_slot != nullptr) {
                 args.push_back(sret_slot);
             }
-            for(isize i = 0; i < info.arg_insts.count; i++) {
-                LLVMValueRef arg_val = get_llvm_val_from_inst_ref(info.arg_insts[i]);
+            FOR(info.arg_insts) {
+                LLVMValueRef arg_val = get_llvm_val_from_inst_ref(it);
 
-                TypeRef arg_type = result_ctx.result_of(info.arg_insts[i]).actual_type();
-                TypeRef param_type = i < func_type->function_info.param_types.count ? func_type->function_info.param_types[i] : nullptr;
+                TypeRef arg_type = result_ctx.result_of(it).actual_type();
+                TypeRef param_type = it_index < func_type->function_info.param_types.count ? func_type->function_info.param_types[it_index] : nullptr;
                 // TODO: 统一数组→切片隐式转换的调用点
                 if(is_array_type(arg_type) && is_slice_struct_type(param_type)) {
                     arg_val = gen_ir_cast(arg_type, param_type, arg_val);
                 }
 
-                if(is_var_arg_function(func_type) && i >= get_fixed_param_count(func_type)) {
+                if(is_var_arg_function(func_type) && it_index >= get_fixed_param_count(func_type)) {
                     if(arg_type == easy_type(Type_f32)) {
                         arg_val = gen_ir_cast(arg_type, easy_type(Type_f64), arg_val);
                     } else if(
@@ -1269,8 +1269,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                         arg_val = gen_ir_cast(arg_type, easy_type(Type_i32), arg_val);
                     }
                     args.push_back(arg_val);
-                } else if(callee_is_extern_c && i < abi_plan.params.count) {
-                    const ABIParamPlan& pp = abi_plan.params[i];
+                } else if(callee_is_extern_c && it_index < abi_plan.params.count) {
+                    const ABIParamPlan& pp = abi_plan.params[it_index];
                     switch(pp.kind) {
                     case ABIParamPlan::Kind::Scalar: {
                         args.push_back(arg_val);
@@ -1871,11 +1871,11 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
         
         
         LLVMValueRef result = nullptr;
-        for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, i, "leftextracttmp");
-            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, i, "rightextracttmp");
+        FOR(type->struct_info.struct_fields) {
+            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, it_index, "leftextracttmp");
+            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, it_index, "rightextracttmp");
             
-            LLVMValueRef field_cmp = compare_two_values(left_field, right_field, type->struct_info.struct_fields[i].type, false);
+            LLVMValueRef field_cmp = compare_two_values(left_field, right_field, it.type, false);
             
             if(result == nullptr) {
                 result = field_cmp;

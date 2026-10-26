@@ -623,11 +623,11 @@ template<> struct CIRFormat<Ref<SymbolInfo>> {
 template <typename T> struct CIRFormat<Array<T>> {
     static std::string as_string(const Array<T>& v) {
         std::string out = "[";
-        for(isize i = 0; i < v.count; i++) {
-            if(i > 0) {
+        FOR(v) {
+            if(it_index > 0) {
                 out += ", ";
             }
-            out += CIRFormat<T>::as_string(v[i]);
+            out += CIRFormat<T>::as_string(it);
         }
         out += "]";
         return out;

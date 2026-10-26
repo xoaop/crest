@@ -467,8 +467,8 @@ Ast *parse_function_type(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
 
     Array<Ast*> param_types = make_array<Ast*>(ast_allocator());
     if(pre.is_named) {
-        for(isize i = 0; i < pre.params.count; i++) {
-            param_types.push_back(pre.params[i]->ParamDecl.type_ast);
+        FOR(pre.params) {
+            param_types.push_back(it->ParamDecl.type_ast);
         }
     } else {
         param_types = pre.params;

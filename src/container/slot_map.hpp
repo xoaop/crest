@@ -120,18 +120,18 @@ struct SlotMap {
     // 遍历所有存活元素
     template<typename F>
     void for_each(F &&f) {
-        for (isize i = 0; i < this->slots.count; i++) {
-            if (this->is_occupied(i)) {
-                f(this->chunk_of(i)[i % chunk_size], SlotIndex{i32(i), this->slot_version(i)});
+        FOR_0_TO(this->slots.count) {
+            if (this->is_occupied(it)) {
+                f(this->chunk_of(it)[it % chunk_size], SlotIndex{i32(it), this->slot_version(it)});
             }
         }
     }
 
     template<typename F>
     void for_each(F &&f) const {
-        for (isize i = 0; i < this->slots.count; i++) {
-            if (this->is_occupied(i)) {
-                f(this->chunk_of(i)[i % chunk_size], SlotIndex{i32(i), this->slot_version(i)});
+        FOR_0_TO(this->slots.count) {
+            if (this->is_occupied(it)) {
+                f(this->chunk_of(it)[it % chunk_size], SlotIndex{i32(it), this->slot_version(it)});
             }
         }
     }
@@ -224,9 +224,9 @@ private:
 template<typename T, isize chunk_size>
 void free(SlotMap<T, chunk_size> *m) {
     if constexpr (!std::is_trivially_destructible_v<T>) {
-        for (isize i = 0; i < m->slots.count; i++) {
-            if (m->is_occupied(i)) {
-                m->chunk_of(i)[i % chunk_size].~T();
+        FOR_0_TO(m->slots.count) {
+            if (m->is_occupied(it)) {
+                m->chunk_of(it)[it % chunk_size].~T();
             }
         }
     }

@@ -457,9 +457,9 @@ void Interpreter::Set_ResultError(CIRInstructionRef ref) {
     // 裸块句柄 {blk,-1}（函数体/if 臂 break 目标）没有 BlockRef 指令，无 targets 可传播
     if(ref.inst_index != INVALID_INST_INDEX) {
         auto tgt = targets_of(&pkg->inst(ref), permanent_allocator());
-        for(isize i = 0; i < tgt.count; i++) {
-            if(tgt[i] != INVALID_INST) {
-                Set_ResultError(tgt[i]);
+        FOR(tgt) {
+            if(it != INVALID_INST) {
+                Set_ResultError(it);
             }
         }
     }
@@ -836,9 +836,9 @@ AnalyzeResult Interpreter::analyze_StringLiteral(const CIRStringLiteralInfo& inf
     // 字面量字节就是普通的 comptime 值：permanent 的 [count+1]u8（末尾补 0），data 指向它
     const TypeRef char_type = string_type->struct_info.struct_fields[0].type->pointed_type;
     Array<Value> bytes = make_array<Value>(permanent_allocator());
-    for(isize i = 0; i < info.count; i++) {
+    FOR_0_TO(info.count) {
         Value b = make_value(char_type);
-        b.integer_val(cast(u8)get_global_string(info.str)[i]);
+        b.integer_val(cast(u8)get_global_string(info.str)[it]);
         bytes.push_back(b);
     }
     Value terminator = make_value(char_type);
@@ -1122,14 +1122,14 @@ AnalyzeResult Interpreter::analyze_FuncType(const CIRFuncTypeInfo& info, CIRInst
     Array<TypeRef> param_types = make_array<TypeRef>(permanent_allocator());
     defer(array_free(&param_types));
 
-    for(isize i = 0; i < info.param_type_insts.count; i++) {
-        if(!has_result_val(info.param_type_insts[i])) {
+    FOR(info.param_type_insts) {
+        if(!has_result_val(it)) {
             return make_result(pc_ref, ResultDesc::make_type_only(type_type()));
         }
-        if(ResultType(info.param_type_insts[i]) != type_type()) {
-            return make_result(pc_ref, inst_error(pc_ref, "函数类型第 {} 个参数需要一个类型参数", i));
+        if(ResultType(it) != type_type()) {
+            return make_result(pc_ref, inst_error(pc_ref, "函数类型第 {} 个参数需要一个类型参数", it_index));
         }
-        TypeRef pt = ResultValue(info.param_type_insts[i]).type_val();
+        TypeRef pt = ResultValue(it).type_val();
         param_types.push_back(pt);
     }
 
@@ -1274,8 +1274,8 @@ AnalyzeResult Interpreter::analyze_FuncParamType(const CIRFuncParamTypeInfo& inf
     } else {
         // 越界: 只有变参函数才允许，视为 var_arg
         bool any_var_arg = false;
-        for(isize i = 0; i < param_types.count; i++) {
-            if(param_types[i] == easy_type(Type_var_arg_c)) {
+        FOR(param_types) {
+            if(it == easy_type(Type_var_arg_c)) {
                 any_var_arg = true;
                 break;
             }
@@ -1315,12 +1315,12 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
     }
 
     // 字段类型检查
-    for(isize i = 0; i < info.field_init_insts.count; i++) {
-        TypeRef field_type = ResultType(info.field_init_insts[i]);
-        TypeRef expected = st->struct_info.struct_fields[i].type;
-        std::optional<TypeRef> implicit_type = result_context().result_of(info.field_init_insts[i]).implicit_type;
+    FOR(info.field_init_insts) {
+        TypeRef field_type = ResultType(it);
+        TypeRef expected = st->struct_info.struct_fields[it_index].type;
+        std::optional<TypeRef> implicit_type = result_context().result_of(it).implicit_type;
         if(field_type != expected && ((!implicit_type.has_value()) || implicit_type != expected)) {
-            return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段类型与定义不匹配（字段 {}：实际 '{}'，期望 '{}'）", i, field_type->name(), expected->name()));
+            return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段类型与定义不匹配（字段 {}：实际 '{}'，期望 '{}'）", it_index, field_type->name(), expected->name()));
         }
     }
 
@@ -1328,8 +1328,8 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
         Value v = make_value(st);
         v.set_type(st);
         Array<Value> field_values = make_array<Value>(permanent_allocator());
-        for(isize i = 0; i < info.field_init_insts.count; i++) {
-            field_values.push_back(ResultValue(info.field_init_insts[i]));
+        FOR(info.field_init_insts) {
+            field_values.push_back(ResultValue(it));
         }
         v.struct_fields_val(field_values);
         return make_result(pc_ref, ResultDesc::make_value(v));
@@ -1366,8 +1366,8 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
     // 有具体类型则将其他 untyped 元素传染为该类型（副作用进 writes；溢出检查用传染后的类型）
     AnalyzeResult r;   // 累积 writes：传染 + 自身结果
     if(!is_untyped_type(elem_type)) {
-        for(isize i = 0; i < info.element_insts.count; i++) {
-            auto ei = info.element_insts[i];
+        FOR(info.element_insts) {
+            auto ei = it;
             TypeRef t = ResultType(ei);
 
             if(is_untyped_type(t)) {
@@ -1376,7 +1376,7 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
                 if(is_val_overflow(v)) {
                     return make_result(pc_ref, inst_error(pc_ref, 
                         "数组初始化元素值溢出（元素 {}）", 
-                        i
+                        it_index
                     ));
                 }
 
@@ -1384,7 +1384,7 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
             } else if(t != elem_type) {
                 return make_result(pc_ref, inst_error(pc_ref, 
                     "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", 
-                    i, t->name(), elem_type->name()
+                    it_index, t->name(), elem_type->name()
                 ));
             }
         }
@@ -1398,8 +1398,8 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
         Value v = make_value(arr_type);
         v.set_type(arr_type);
         Array<Value> elem_values = make_array<Value>(permanent_allocator());
-        for(isize i = 0; i < info.element_insts.count; i++) {
-            Value ev = ResultValue(info.element_insts[i]);
+        FOR(info.element_insts) {
+            Value ev = ResultValue(it);
 
             if(is_untyped_type(ev.type) && elem_type != nullptr) {
                 ev.set_type(elem_type);   // 传染延迟生效：模拟元素值传染
@@ -1532,16 +1532,16 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
 
     } else if(TypeRef struct_type = get_struct_type(parent_type)) {
 
-        for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-            if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
-                TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
+        FOR(struct_type->struct_info.struct_fields) {
+            if(it.name == info.field_name) {
+                TypeRef field_type = it.type;
 
                 if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
                     if(is_pointer_type(parent_type)) {
                         return make_result(pc_ref, inst_error(pc_ref, "通过指针读字段的编译期求值尚未实现"));
                     }
 
-                    Value field_val = ResultValue(parent_inst).struct_field_val(i);
+                    Value field_val = ResultValue(parent_inst).struct_field_val(it_index);
                     return make_result(pc_ref, ResultDesc::make_value(field_type, field_val));
                 }
 
@@ -1658,9 +1658,9 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
         return make_result(pc_ref, inst_error(pc_ref, "字段指针访问仅支持结构体/联合体类型或指向它们的指针，实际收到 '{}'", parent_type->name()));
     }
 
-    for(isize i = 0; i < struct_type->struct_info.struct_fields.count; i++) {
-        if(struct_type->struct_info.struct_fields[i].name == info.field_name) {
-            TypeRef field_type = struct_type->struct_info.struct_fields[i].type;
+    FOR(struct_type->struct_info.struct_fields) {
+        if(it.name == info.field_name) {
+            TypeRef field_type = it.type;
 
             if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
                 Pointer ptr = ResultValue(parent_inst).pointer_val();
@@ -1673,7 +1673,7 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
                 }
 
                 Value addr = make_value(pointer_type(field_type));
-                addr.pointer_val(Pointer::make_slot(ptr.slot->struct_field_ref(i)));
+                addr.pointer_val(Pointer::make_slot(ptr.slot->struct_field_ref(it_index)));
 
                 return make_result(pc_ref, ResultDesc::make_value(field_type, addr, CIRValueKind::LValue));
             }
@@ -2736,22 +2736,22 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
     // 解析参数类型
     Array<TypeRef> param_types = make_array<TypeRef>(permanent_allocator());
 
-    for(isize i = 0; i < func.arg_type_insts.count; i++) {
-        if(func.arg_type_insts[i] != INVALID_INST) {
-            if(auto e = check_var_type(temp_allocator(), ResultValue(func.arg_type_insts[i]), true)) {
+    FOR(func.arg_type_insts) {
+        if(it != INVALID_INST) {
+            if(auto e = check_var_type(temp_allocator(), ResultValue(it), true)) {
                 return make_result(pc_ref, inst_error(pc_ref, "函数形参 {}", e.value()));
             }
-            param_types.push_back(ResultValue(func.arg_type_insts[i]).type_val());
+            param_types.push_back(ResultValue(it).type_val());
         } else {
             // var_arg
             param_types.push_back(easy_type(Type_var_arg_c));
         }
     }
 
-    for(isize i = 0; i < func.arg_decl_insts.count; i++) {
-        if(!func.is_comptime && func.arg_type_insts[i] != INVALID_INST) {
-            if(is_type_type(ResultValue(func.arg_type_insts[i]).type_val())) {
-                return make_result(pc_ref, inst_error(func.arg_decl_insts[i],
+    FOR(func.arg_decl_insts) {
+        if(!func.is_comptime && func.arg_type_insts[it_index] != INVALID_INST) {
+            if(is_type_type(ResultValue(func.arg_type_insts[it_index]).type_val())) {
+                return make_result(pc_ref, inst_error(it,
                     "类型 'type' 的参数要求函数声明为 comptime（用 '$()' 包裹参数列表）"));
             }
         }
@@ -2869,10 +2869,10 @@ std::optional<Value> Interpreter::instantiate_generic_func(
 
     // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
     // 查 result_instance_map 命中本实例的这个槽
-    for(isize k = 0; k < func.generic_param_type_var_insts.count; k++) {
+    FOR(func.generic_param_type_var_insts) {
         Value tv = make_value(type_type());
-        tv.type_val(type_args[k]);
-        result_context().result_of(func.generic_param_type_var_insts[k])
+        tv.type_val(type_args[it_index]);
+        result_context().result_of(it)
             .set_val(clone_value(tv, permanent_allocator()));
     }
 
@@ -2970,17 +2970,17 @@ AnalyzeResult Interpreter::run_comptime_body(
     const auto return_type = called_type->function_info.return_type;
     auto *frame = callee_interp.curr_frame;
 
-    for(isize i = 0; i < func.arg_decl_insts.count; i++) {
+    FOR_0_TO(func.arg_decl_insts.count) {
         // 实参在调用侧取好，槽在 callee 侧分配
-        const auto arg_type = ResultType(arg_insts[i]);
-        const auto arg_val = ResultValue(arg_insts[i]);
+        const auto arg_type = ResultType(arg_insts[it]);
+        const auto arg_val = ResultValue(arg_insts[it]);
 
         // 副作用：参数槽分配 + 写值
         const auto slot = context()->static_values.alloc_value(arg_type);
         *slot = Value::zero(arg_type, permanent_allocator());
         Pointer::make_slot(slot).store(arg_val, permanent_allocator());
 
-        frame->var_ptrs[i] = Pointer::make_slot(slot);
+        frame->var_ptrs[it] = Pointer::make_slot(slot);
     }
 
     // 副作用：分析 callee 函数体（body_inst 是裸块句柄，显式进块）
@@ -3036,8 +3036,8 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
     // 参数数量检查
     isize non_var_arg_count = 0;
     bool has_var_arg = false;
-    for(isize i = 0; i < param_types.count; i++) {
-        if(param_types[i] == easy_type(Type_var_arg_c)) {
+    FOR(param_types) {
+        if(it == easy_type(Type_var_arg_c)) {
             has_var_arg = true;
         } else {
             non_var_arg_count++;

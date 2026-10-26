@@ -123,8 +123,8 @@ private:
     Array<Index>  order;   // 逻辑顺序：order[logical_pos] = subscript
 
     isize _pos_of(Index sub) const {
-        for (isize i = 0; i < order.count; i++) {
-            if (order[i] == sub) return i;
+        FOR(order) {
+            if (it == sub) return it_index;
         }
         return -1;
     }

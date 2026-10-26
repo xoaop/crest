@@ -105,11 +105,11 @@ Value Value::struct_field_val(xpString field_name) const {
     XP_ASSERT_DEFAULT(is_struct_type(type));
 
 
-    for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-        auto field = type->struct_info.struct_fields[i];
+    FOR(type->struct_info.struct_fields) {
+        auto field = it;
 
         if(field.name == get_or_insert_global_string(field_name)) {
-            return struct_field_val(i);
+            return struct_field_val(it_index);
         }
     }
 
@@ -232,16 +232,16 @@ Value clone_value(const Value& v, xpAllocator allocator) {
         case ActualValueType::Struct: {
             Array<Value> fields = make_array<Value>(allocator);
             auto src = v.struct_fields_val();
-            for (isize i = 0; i < src.count; i++) {
-                fields.push_back(clone_value(src[i], allocator));
+            FOR(src) {
+                fields.push_back(clone_value(it, allocator));
             }
             copy.struct_fields_val(fields);
         } break;
         case ActualValueType::Array: {
             Array<Value> elems = make_array<Value>(allocator);
             auto src = v.array_element_values();
-            for (isize i = 0; i < src.count; i++) {
-                elems.push_back(clone_value(src[i], allocator));
+            FOR(src) {
+                elems.push_back(clone_value(it, allocator));
             }
             copy.array_element_values(elems);
         } break;
@@ -382,8 +382,8 @@ Value Value::zero(TypeRef type, xpAllocator allocator) {
         v.is_null = true;
     } else if(is_struct_type(type)) {
         Array<Value> fields = make_array<Value>(allocator);
-        for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-            fields.push_back(zero(type->struct_info.struct_fields[i].type, allocator));
+        FOR(type->struct_info.struct_fields) {
+            fields.push_back(zero(it.type, allocator));
         }
         v.struct_fields_val(fields);
     } else if(is_array_type(type)) {

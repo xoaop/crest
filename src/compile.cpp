@@ -75,18 +75,18 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
     // 如果已经存在于 context()->all_packages 中，则直接返回已有的 Ref<Package>；
     // 若该包仍在编译中（state == Solving，尚未编译完成的祖先包）→ import 循环依赖
     GlobalStringIndex abs_path = get_or_insert_global_string(normalize_path(path, permanent_allocator()));
-    for(isize i = 0; i < context()->all_packages.count; i++) {
-        if(context()->all_packages[i].path == abs_path) {
-            if(context()->all_packages[i].state == SymbolState::Solving) {
+    FOR(context()->all_packages) {
+        if(it.path == abs_path) {
+            if(it.state == SymbolState::Solving) {
                 if(cycle_err) {
-                    *cycle_err = make_import_cycle_message(Ref<Package>{i});
+                    *cycle_err = make_import_cycle_message(Ref<Package>{it_index});
                 }
                 return xpOption<Ref<Package>>::none();
             }
-            if(context()->all_packages[i].state == SymbolState::Error) {
+            if(it.state == SymbolState::Error) {
                 return xpOption<Ref<Package>>::none();
             }
-            return xpOption<Ref<Package>>::some(Ref<Package>{i});
+            return xpOption<Ref<Package>>::some(Ref<Package>{it_index});
         }
     }
 

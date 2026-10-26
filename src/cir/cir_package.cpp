@@ -142,14 +142,14 @@ u64 FuncCallKey::hash() const {
         return h;
     }
 
-    for(isize i = 0; i < comptime_arg_refs.count; i++) {
-        auto* res = comptime_arg_refs[i].get_result();
+    FOR(comptime_arg_refs) {
+        auto* res = it.get_result();
         if(res && res->state >= CIRResultState::WholeValue) {
             Value v = res->actual_val();
             if(is_type_type(v.type)) {
                 h = xp_hash_combine_u64(h, reinterpret_cast<u64>(v.type_val()));
             } else {
-                h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(comptime_arg_refs[i]));
+                h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(it));
             }
         }
     }
@@ -171,9 +171,9 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
 
     // $T 实例: 同上, 比类型不比指令身份
     if(is_generic_instance) {
-        for(isize i = 0; i < comptime_arg_refs.count; i++) {
-            auto* ra = comptime_arg_refs[i].get_result();
-            auto* rb = other.comptime_arg_refs[i].get_result();
+        FOR(comptime_arg_refs) {
+            auto* ra = it.get_result();
+            auto* rb = other.comptime_arg_refs[it_index].get_result();
             if(!ra || !rb) return false;
             if(ra->state < CIRResultState::OnlyType || rb->state < CIRResultState::OnlyType) return false;
             if(ra->actual_type() != rb->actual_type()) return false;
@@ -181,9 +181,9 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
         return true;
     }
 
-    for(isize i = 0; i < comptime_arg_refs.count; i++) {
-        auto* ra = comptime_arg_refs[i].get_result();
-        auto* rb = other.comptime_arg_refs[i].get_result();
+    FOR(comptime_arg_refs) {
+        auto* ra = it.get_result();
+        auto* rb = other.comptime_arg_refs[it_index].get_result();
         if(!ra || !rb) return false;
         if(ra->state < CIRResultState::WholeValue || rb->state < CIRResultState::WholeValue) return false;
         Value va = ra->actual_val();
@@ -191,7 +191,7 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
         if(is_type_type(va.type) && is_type_type(vb.type)) {
             if(va.type_val() != vb.type_val()) return false;
         } else {
-            if(!(comptime_arg_refs[i] == other.comptime_arg_refs[i])) return false;
+            if(!(it == other.comptime_arg_refs[it_index])) return false;
         }
     }
     return true;

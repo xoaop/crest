@@ -215,8 +215,8 @@ bool is_equal_type(Type a, Type b) {
         if(a.function_info.param_types.count != b.function_info.param_types.count) {
             return false;
         }
-        for(isize i = 0; i < a.function_info.param_types.count; i++) {
-            if(!is_equal_type(*(a.function_info.param_types[i]), *(b.function_info.param_types[i]))) {
+        FOR(a.function_info.param_types) {
+            if(!is_equal_type(*(it), *(b.function_info.param_types[it_index]))) {
                 return false;
             }
         }
@@ -821,8 +821,8 @@ bool type_contains_by_value(TypeRef outer, TypeRef inner) {
         case Type_array:
             return type_contains_by_value(outer->array_info.element_type, inner);
         case Type_struct:
-            for(isize i = 0; i < outer->struct_info.struct_fields.count; i++) {
-                if(type_contains_by_value(outer->struct_info.struct_fields[i].type, inner)) {
+            FOR(outer->struct_info.struct_fields) {
+                if(type_contains_by_value(it.type, inner)) {
                     return true;
                 }
             }
@@ -1058,12 +1058,12 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
     } else if(is_function_type(type)) {
         xpString func_str = xp_make_string(allocator, "(");
 
-        for(isize i = 0; i < type->function_info.param_types.count; i++) {
+        FOR(type->function_info.param_types) {
 
-            xpString param_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.param_types[i], temp_allocator(), is_pure_type_name)), temp_allocator());
+            xpString param_type_str = to_xp_str(get_global_string(get_or_make_type_str(it, temp_allocator(), is_pure_type_name)), temp_allocator());
             xp_string_append(&func_str, param_type_str);
 
-            if(i != type->function_info.param_types.count - 1) {
+            if(it_index != type->function_info.param_types.count - 1) {
                 xpString comma_str = xp_string_c(", ");
                 xp_string_append(&func_str, comma_str);
             }
@@ -1307,8 +1307,8 @@ isize type_align_of(TypeRef type) {
     switch(type->kind) {
         case Type_struct: {
             isize max_align = 1;
-            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-                isize a = type_align_of(type->struct_info.struct_fields[i].type);
+            FOR(type->struct_info.struct_fields) {
+                isize a = type_align_of(it.type);
                 if(a > max_align) max_align = a;
             }
             return max_align;

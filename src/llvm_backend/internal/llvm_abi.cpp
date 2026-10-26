@@ -57,9 +57,9 @@ static void classify_into(TypeRef t, isize offset, ChunkAcc acc[2], bool& memory
 
     switch(t->kind) {
     case Type_struct: {
-        for(isize i = 0; i < t->struct_info.struct_fields.count; i++) {
-            TypeRef ft = t->struct_info.struct_fields[i].type;
-            classify_into(ft, offset + field_offset_in_struct(t, i), acc, memory);
+        FOR(t->struct_info.struct_fields) {
+            TypeRef ft = it.type;
+            classify_into(ft, offset + field_offset_in_struct(t, it_index), acc, memory);
             if(memory) return;
         }
         return;
