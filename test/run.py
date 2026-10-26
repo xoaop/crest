@@ -8,6 +8,7 @@ Directives (in source as  // @name value  comments):
     // @skip              Skip this test (e.g. multi-file helper)
     // @run               Link .o → .exe with clang++, run it; non-zero exit → FAIL
     // @error "fragment"  For fail tests: compiler output must contain this
+    // @link-c <file>     Compile <file> with cc and link it in (C ABI tests)
 
 Fail tests are judged strictly: a compiler crash (assert/panic/segfault)
 is never "the expected error".  Crash classification lives in oracle.py,
@@ -25,6 +26,7 @@ import oracle
 
 CREST = oracle.default_crest()
 CLANG = "clang++"
+C_COMPILER = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.join(SCRIPT_DIR, "build_test")
 
@@ -49,13 +51,13 @@ def parse_directives(text):
     """Extract // @key value directives from source text."""
     directives = {}
     for line in text.splitlines():
-        m = re.match(r"\s*//\s*@(\w+)\s*(.*)", line)
+        m = re.match(r"\s*//\s*@([\w-]+)\s*(.*)", line)
         if not m:
             continue
         key, raw_val = m.group(1), m.group(2).strip()
         if key in ("pass", "fail", "run", "skip"):
             directives[key] = True
-        elif key == "error":
+        elif key in ("error", "link-c"):
             directives[key] = raw_val.strip('"').strip("'")
     return directives
 
@@ -65,7 +67,11 @@ def collect_directives(item):
     files = sorted(item.rglob("*.cst")) if item.is_dir() else [item]
     result = {}
     for f in files:
-        result.update(parse_directives(f.read_text(encoding="utf-8")))
+        d = parse_directives(f.read_text(encoding="utf-8"))
+        if "link-c" in d:
+            # 相对 .cst 所在目录解析，测试目录可整体移动
+            d["link-c"] = str((f.parent / d["link-c"]).resolve())
+        result.update(d)
     return result, files
 
 
@@ -104,6 +110,10 @@ def main():
 
             if directives.get("skip"):
                 print(f"  [SKIP] {item}")
+                continue
+
+            if directives.get("link-c") and C_COMPILER is None:
+                print(f"  [SKIP] {item}  (no C compiler for @link-c)")
                 continue
 
             is_fail = (category == "fail")
@@ -157,6 +167,21 @@ def main():
                         f"{oracle.tail(combined, 300)}"))
                 elif directives.get("run"):
                     exe_path = os.path.join(RUN_DIR, "test.exe")
+
+                    link_c = directives.get("link-c")
+                    if link_c:
+                        c_obj = os.path.join(RUN_DIR, pathlib.Path(link_c).stem + ".o")
+                        comp = subprocess.run(
+                            [C_COMPILER, "-c", link_c, "-o", c_obj],
+                            capture_output=True, text=True,
+                        )
+                        if comp.returncode != 0:
+                            print(f"  [FAIL] {item}  (C compile failed)")
+                            failed += 1
+                            failures.append((str(item),
+                                f"C compile error ({link_c}):\n{comp.stderr[:300]}"))
+                            clean_dir(RUN_DIR)
+                            continue
 
                     obj_files = [os.path.join(RUN_DIR, f)
                                  for f in os.listdir(RUN_DIR) if f.endswith(".o")]

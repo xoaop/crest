@@ -1,0 +1,9 @@
+// @pass
+// @run
+
+import "foo"
+
+main :: () -> i32 {
+    foo.run(1i32);
+    return 0;
+}

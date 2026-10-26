@@ -1,0 +1,9 @@
+// @fail
+// @error "转换成 bool"
+
+main :: () -> i32 {
+    x: i32 = 100;
+    b := cast(bool)x;
+    if !b { return 1; }
+    return 0;
+}

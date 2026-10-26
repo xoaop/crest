@@ -8,7 +8,7 @@
 
 bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref, TypeRef casted_expr_type, TypeRef target_type) {
 
-    if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type) || casted_expr_type->kind == Type_bool) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type) || target_type->kind == Type_bool)) {
+    if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type)) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type))) {
         // 任意数字类型之间都可以转化
 
         return true;
@@ -48,6 +48,31 @@ bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref
         }
     }
 
+}
+
+
+
+bool check_extern_c_func(xpAllocator allocator, const Array<TypeRef>& param_types, TypeRef return_type, xpString& err_msg) {
+    for(TypeRef pt : param_types) {
+        if(!is_array_type(pt)) {
+            continue;
+        }
+
+        std::string msg = std::format(
+            "extern \"C\" 形参不能是数组：C 会把数组形参退化为指针，请改用 '*{}'",
+            pt->array_info.element_type->name()
+        );
+
+        err_msg = xp_make_string(allocator, msg.c_str());
+        return false;
+    }
+
+    if(is_array_type(return_type)) {
+        err_msg = xp_make_string(allocator, "extern \"C\" 函数不能返回数组（C 不支持按值返回数组）");
+        return false;
+    }
+
+    return true;
 }
 
 

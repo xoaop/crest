@@ -1,0 +1,8 @@
+// @fail
+// @error "不能返回数组"
+
+bar :: () -> [3]i32 extern_C
+
+main :: () -> i32 {
+    return 0;
+}

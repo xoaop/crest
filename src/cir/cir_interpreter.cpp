@@ -681,8 +681,12 @@ static Array<CIRInstructionRef> targets_of(const CIRInstruction* inst, xpAllocat
 // 把一个被引用的函数值登记进 lcir 工作表：owner 包发定义，跨包引用在调用方补声明。
 // 纯编译期函数、编译期调用里顺带重分析的函数都不发运行期符号。
 void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
-    // 编译期调用里顺带重分析的函数不是运行期单态，跳过（真 $T 实例 is_generic_instance=true 仍收）
-    if(has_instance() && !curr_cache_key()->is_generic_instance) {
+    // 编译期执行（FullEval）里顺带重分析的函数不是运行期单态，跳过。
+    // TypeOnly 分析的是运行期函数体（含编译期函数返回的闭包体），其中引用的
+    // 函数必须登记，否则 phase1 不会在调用方模块声明它，phase2 生成调用时崩溃。
+    // 真 $T 实例 is_generic_instance=true 无论哪种模式都收。
+    if(has_instance() && curr_eval_mode() == EvalMode::FullEval
+       && !curr_cache_key()->is_generic_instance) {
         return;
     }
 
@@ -1021,6 +1025,11 @@ AnalyzeResult Interpreter::analyze_Cast(const CIRCastInfo& info, CIRInstructionR
     TypeRef target_type = ResultValue(target_type_inst).type_val();
 
     if(!check_explicit_type_cast(pkg, expr_inst, expr_type, target_type)) {
+        // 数字转 bool 会被 check_explicit_type_cast 一并拒绝，这里给出更具体的说明
+        if(target_type->kind == Type_bool) {
+            return make_result(pc_ref, inst_error(pc_ref,
+                "不能把 '{}' 转换成 bool", expr_type->name()));
+        }
         return make_result(pc_ref, inst_error(pc_ref, "不能在这些类型之间进行转换：'{}' → '{}'", expr_type->name(), target_type->name()));
     }
 
@@ -2793,6 +2802,14 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         }
     }
 
+
+    // extern_C 签名约束（数组形参/返回值等）由 type_check 统一判定
+    if(func.is_extern_c) {
+        xpString sig_err = {};
+        if(!check_extern_c_func(permanent_allocator(), param_types, return_type, sig_err)) {
+            return make_result(pc_ref, inst_error(pc_ref, "{}", sig_err));
+        }
+    }
 
     bool is_pure_comptime = is_pure_comptime_func(func, result_context());
     if(func.is_extern_c || func.is_builtin) {

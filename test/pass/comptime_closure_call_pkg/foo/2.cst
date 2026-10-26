@@ -1,0 +1,10 @@
+bar :: import "bar"
+
+// 编译期函数返回的闭包体里引用另一个包的函数：该引用必须登记进 lcir 工作表，
+// 否则调用方模块 phase1 不会声明 bar.sink，phase2 生成调用时断言失败。
+run :: (v: i32) -> ? {
+    return () -> void {
+        bar.sink(v);
+        return;
+    };
+}

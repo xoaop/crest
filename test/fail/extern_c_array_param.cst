@@ -1,0 +1,10 @@
+// @fail
+// @error "不能是数组"
+
+foo :: (a: [3]i32) -> void extern_C
+
+main :: () -> i32 {
+    a: [3]i32;
+    foo(a);
+    return 0;
+}

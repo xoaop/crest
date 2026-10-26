@@ -1,0 +1,3 @@
+sink :: (v: i32) -> void {
+    return;
+}

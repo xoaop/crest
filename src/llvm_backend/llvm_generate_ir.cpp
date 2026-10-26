@@ -174,26 +174,18 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     return nullptr;
 }
 
-// 把实参降级成 C ABI 要求的形状。
+// 把聚合实参落成内存地址。
 // 实参在 LLVM 里可能是内存地址（局部变量、Deref 等），也可能是聚合值
-// （常量 struct 走 LLVMConstNamedStruct）。>8 字节的要传指针，所以先统一
-// 落到一块临时 alloca 上，再按需取地址或按整数读回——clang 也是这么做的。
-LLVMValueRef LLVMGenerator::gen_abi_arg(LLVMValueRef val, int size) {
-    LLVMValueRef addr = val;
-    if(LLVMGetTypeKind(LLVMTypeOf(val)) != LLVMPointerTypeKind) {
-        LLVMTypeRef t = LLVMTypeOf(val);
-        addr = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abitmp", t);
-        LLVMBuildStore(unit.builder, val, addr);
+// （常量 struct 走 LLVMConstNamedStruct）。C ABI 降级需要按字节读块或传指针，
+// 所以先统一成地址——clang 也是这么做的。
+LLVMValueRef LLVMGenerator::gen_abi_arg_address(LLVMValueRef val) {
+    if(LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind) {
+        return val;
     }
 
-    int width = int_width_for(size);
-    if(width != 0) {
-        // ≤8 字节：当同宽整数读出来
-        LLVMTypeRef int_t = LLVMIntTypeInContext(g_llvm_session.ctx, (unsigned)width);
-        return LLVMBuildLoad2(unit.builder, int_t, addr, "abiint");
-    }
-
-    // >8 字节：传指针
+    LLVMTypeRef t = LLVMTypeOf(val);
+    LLVMValueRef addr = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abitmp", t);
+    LLVMBuildStore(unit.builder, val, addr);
     return addr;
 }
 
@@ -381,15 +373,24 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         const auto& fdecl = fk.cir_package->inst(fk.inst_ref).info<CIROperator::FunctionDecl>();
         TypeRef sig = fk.cir_package->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
 
-        LLVMTypeRef fn_type = fdecl.is_extern_c
-            ? gen_abi_func_type(sig)
-            : get_llvm_type_from_type(sig);
+        ABIFunctionPlan abi_plan;
+        LLVMTypeRef fn_type = nullptr;
+        if(fdecl.is_extern_c) {
+            abi_plan = make_c_abi_plan(sig, current_abi(context()->target.os));
+            fn_type = abi_plan.fn_type;
+        } else {
+            fn_type = get_llvm_type_from_type(sig);
+        }
 
         LLVMValueRef f = LLVMAddFunction(
             unit.module,
             xp_string_to_c_style(fd.raw_name, stage_allocator()).c_str,
             fn_type
         );
+
+        if(fdecl.is_extern_c) {
+            apply_c_abi_attrs(f, abi_plan, false);
+        }
 
         xp_hash_map_insert(&inst_vals, fk, f);
     }
@@ -637,9 +638,11 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
         }
     }
 
-    // bool ⇄ integer (i1)
+    // bool ← integer: 非零即真（与编译期 exec_cast 一致）。语言层面已禁止该转换，
+    // 这里保持语义一致，避免将来放开时运行期与编译期走叉。
     if(to_type == easy_type(Type_bool) && is_integer_or_untyped_type(from_type)) {
-        return LLVMBuildTrunc(unit.builder, value, LLVMInt1TypeInContext(g_llvm_session.ctx), "booltrunctmp");
+        LLVMValueRef zero = LLVMConstNull(LLVMTypeOf(value));
+        return LLVMBuildICmp(unit.builder, LLVMIntNE, value, zero, "boolneztmp");
     }
     if(from_type == easy_type(Type_bool) && is_integer_or_untyped_type(to_type)) {
         return LLVMBuildZExt(unit.builder, value, get_llvm_type_from_type(to_type), "boolzexttmp");
@@ -1217,23 +1220,29 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 }
             }
 
-            LLVMTypeRef fn_type = callee_is_extern_c
-                ? gen_abi_func_type(func_type)
-                : get_llvm_type_from_type(func_type);
+            ABIFunctionPlan abi_plan;
+            LLVMTypeRef fn_type = nullptr;
+            if(callee_is_extern_c) {
+                abi_plan = make_c_abi_plan(func_type, current_abi(context()->target.os));
+                fn_type = abi_plan.fn_type;
+            } else {
+                fn_type = get_llvm_type_from_type(func_type);
+            }
 
             LLVMValueRef callee = get_llvm_val_from_inst_ref(info.called_thing);
 
-            // sret：>8 字节的聚合返回，调用方分配缓冲，指针作为首参传进去
+            // sret：聚合返回走隐藏出参，调用方分配缓冲，指针作为首参传进去
             LLVMValueRef sret_slot = nullptr;
-            if(callee_is_extern_c) {
-                TypeRef fret = func_type->function_info.return_type;
-                if(uses_sret(fret, size_of_type(fret))) {
-                    sret_slot = insert_alloca_before_last_inst_which_is_br(
-                        curr_state.entry, "sret", get_llvm_type_from_type(fret));
-                }
+            if(callee_is_extern_c && abi_plan.sret) {
+                sret_slot = insert_alloca_before_last_inst_which_is_br(
+                    curr_state.entry, "sret", get_llvm_type_from_type(abi_plan.ret_type));
             }
 
-            Array<LLVMValueRef> args = make_array_capacity<LLVMValueRef>(stage_allocator(), info.arg_insts.count + 1);
+            LLVMContextRef llvm_ctx = g_llvm_session.ctx;
+            LLVMTypeRef i8_t = LLVMInt8TypeInContext(llvm_ctx);
+            LLVMTypeRef i64_t = LLVMInt64TypeInContext(llvm_ctx);
+
+            Array<LLVMValueRef> args = make_array_capacity<LLVMValueRef>(stage_allocator(), info.arg_insts.count + 2);
             if(sret_slot != nullptr) {
                 args.push_back(sret_slot);
             }
@@ -1259,28 +1268,81 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     ) {
                         arg_val = gen_ir_cast(arg_type, easy_type(Type_i32), arg_val);
                     }
-                } else if(callee_is_extern_c && param_type != nullptr
-                          && (is_struct_type(param_type) || is_union_type(param_type))) {
-                    // 聚合参数按 C ABI 装箱（≤8 字节 → 整数；>8 字节 → 指针）
-                    arg_val = gen_abi_arg(arg_val, size_of_type(param_type));
+                    args.push_back(arg_val);
+                } else if(callee_is_extern_c && i < abi_plan.params.count) {
+                    const ABIParamPlan& pp = abi_plan.params[i];
+                    switch(pp.kind) {
+                    case ABIParamPlan::Kind::Scalar: {
+                        args.push_back(arg_val);
+                    } break;
+                    case ABIParamPlan::Kind::ByValPtr: {
+                        // 聚合体走内存：SysV 带 byval（后端负责复制），MS 是裸指针
+                        LLVMValueRef addr = gen_abi_arg_address(arg_val);
+                        if(abi_plan.abi == ABIKind::MSX64) {
+                            // MS x64：被调方可以改写参数内存，调用方必须先复制一份
+                            LLVMTypeRef agg_t = get_llvm_type_from_type(pp.source_type);
+                            LLVMValueRef copy = insert_alloca_before_last_inst_which_is_br(
+                                curr_state.entry, "abicopy", agg_t);
+                            LLVMValueRef v = LLVMBuildLoad2(unit.builder, agg_t, addr, "abival");
+                            LLVMBuildStore(unit.builder, v, copy);
+                            addr = copy;
+                        }
+                        args.push_back(addr);
+                    } break;
+                    case ABIParamPlan::Kind::Aggregate: {
+                        // 寄存器类聚合体：按 8 字节块从内存读出，逐块压入
+                        LLVMValueRef addr = gen_abi_arg_address(arg_val);
+                        for(int k = 0; k < pp.ntypes; k++) {
+                            LLVMValueRef off = LLVMConstInt(i64_t, (u64)(k * 8), 0);
+                            LLVMValueRef ptr = LLVMBuildInBoundsGEP2(unit.builder, i8_t, addr, &off, 1, "abiptr");
+                            LLVMValueRef chunk = LLVMBuildLoad2(unit.builder, pp.types[k], ptr, "abichunk");
+                            LLVMSetAlignment(chunk, 1);
+                            args.push_back(chunk);
+                        }
+                    } break;
+                    }
+                } else {
+                    args.push_back(arg_val);
                 }
-
-                args.push_back(arg_val);
             }
 
             TypeRef return_type = result_ctx.result_of(ref).actual_type();
-            // sret 调用本身返回 void，不能带名字（LLVM 会校验失败）
-            char const *name = (return_type && return_type->kind == Type_void) ? "" : "calltmp";
-            if(sret_slot != nullptr) {
-                name = "";
+            // 返回 void 的调用不能带名字（LLVM 会校验失败）
+            char const *name = "";
+            if(LLVMGetTypeKind(LLVMGetReturnType(fn_type)) != LLVMVoidTypeKind) {
+                name = (return_type && return_type->kind == Type_void) ? "" : "calltmp";
             }
             LLVMValueRef result = LLVMBuildCall2(unit.builder, fn_type, callee, args.data, (unsigned)args.count, name);
 
-            // sret：函数本身返回 void，从缓冲把聚合值读出来当结果
+            if(callee_is_extern_c) {
+                apply_c_abi_attrs(result, abi_plan, true);
+            }
+
             if(sret_slot != nullptr) {
+                // sret：函数本身返回 void，从缓冲把聚合值读出来当结果
                 result = LLVMBuildLoad2(unit.builder,
-                    get_llvm_type_from_type(func_type->function_info.return_type),
+                    get_llvm_type_from_type(abi_plan.ret_type),
                     sret_slot, "sretval");
+            } else if(callee_is_extern_c && abi_plan.ret_chunks > 0) {
+                // 寄存器类聚合体返回：把返回的块写回聚合体再整体读出
+                LLVMValueRef tmp = insert_alloca_before_last_inst_which_is_br(
+                    curr_state.entry, "abiret", get_llvm_type_from_type(abi_plan.ret_type));
+                for(int k = 0; k < abi_plan.ret_chunks; k++) {
+                    LLVMValueRef chunk = abi_plan.ret_chunks == 1
+                        ? result
+                        : LLVMBuildExtractValue(unit.builder, result, (unsigned)k, "abichunk");
+                    LLVMValueRef off = LLVMConstInt(i64_t, (u64)(k * 8), 0);
+                    LLVMValueRef ptr = LLVMBuildInBoundsGEP2(unit.builder, i8_t, tmp, &off, 1, "abiptr");
+                    LLVMValueRef st = LLVMBuildStore(unit.builder, chunk, ptr);
+                    LLVMSetAlignment(st, 1);
+                }
+                result = LLVMBuildLoad2(unit.builder,
+                    get_llvm_type_from_type(abi_plan.ret_type), tmp, "abiagg");
+            } else if(callee_is_extern_c
+                      && LLVMGetTypeKind(LLVMGetReturnType(fn_type)) == LLVMVoidTypeKind
+                      && return_type && (is_struct_type(return_type) || is_union_type(return_type))) {
+                // 空聚合体的 C 边界：C 无法表达，按无返回值处理
+                result = LLVMGetUndef(get_llvm_type_from_type(return_type));
             }
             save_llvm_val_of_inst(ref, result);
         } break;
