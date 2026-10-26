@@ -749,8 +749,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                 const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
                 if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
                     auto hook_args = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-                    for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
-                        hook_args.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
+                    for(auto&& it : expr->FunctionCallExpr.args) {
+                        hook_args.push_back(build_inst_for_expr(ctx, it));
                     }
                     result = Make_Instruction<CIROperator::Hook>(ctx, expr, {
                         .name = csym->name,
@@ -763,8 +763,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             auto called_thing_inst = build_inst_for_expr(ctx, expr->FunctionCallExpr.func_ident);
 
             Array<CIRInstructionRef> arg_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-            for(isize i = 0; i < expr->FunctionCallExpr.args.count; i++) {
-                arg_insts.push_back(build_inst_for_expr(ctx, expr->FunctionCallExpr.args[i]));
+            for(auto&& it : expr->FunctionCallExpr.args) {
+                arg_insts.push_back(build_inst_for_expr(ctx, it));
             }
 
             // 实例化排在签名消费方之前：$T 模板在此具化，后续拿到的都是真签名

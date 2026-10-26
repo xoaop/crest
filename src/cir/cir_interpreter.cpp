@@ -2351,8 +2351,8 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
     // 注册枚举字段到 enum_scope
     Ref<Scope> enum_scope = enum_type->enum_info.enum_scope;
     i128 next_auto_value = 0;
-    for(isize i = 0; i < info.fields.count; i++) {
-        auto& ef = info.fields[i];
+    for(auto&& it : info.fields) {
+        auto& ef = it;
 
         Value field_val;
         if(ef.value_inst != INVALID_INST) {
@@ -2399,8 +2399,8 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
         bool already_finished = st->struct_info.struct_fields.count > 0;
         if(!already_finished) {
             Array<StructField> fields = make_array<StructField>(type_allocator());
-            for(isize i = 0; i < info.field_insts.count; i++) {
-                auto field_inst = info.field_insts[i];
+            for(auto&& it : info.field_insts) {
+                auto field_inst = it;
                 auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
@@ -2485,8 +2485,8 @@ AnalyzeResult Interpreter::analyze_FinishUnion(const CIRFinishUnionInfo& info, C
         }
 
         if(!already_finished) {
-            for(isize i = 0; i < info.field_insts.count; i++) {
-                auto field_inst = info.field_insts[i];
+            for(auto&& it : info.field_insts) {
+                auto field_inst = it;
                 auto& field_info = pkg->inst(field_inst).info<CIROperator::StructField>();
 
                 if(auto e = check_var_type(temp_allocator(), ResultValue(field_info.type_block_inst))) {
@@ -2928,8 +2928,8 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
     }
 
     // $T 由声明位实参决定：untyped 实参在此补默认类型（复用 DetermineType 的类型确定化）
-    for(isize type_var_index = 0; type_var_index < generic_func.generic_param_type_var_param_indices.count; type_var_index++) {
-        const isize decl_arg_index = generic_func.generic_param_type_var_param_indices[type_var_index];
+    for(auto&& it : generic_func.generic_param_type_var_param_indices) {
+        const isize decl_arg_index = it;
         const CIRInstructionRef decl_arg_inst = info.arg_insts[decl_arg_index];
 
         const TypeRef type_arg = determine_type_of(decl_arg_inst, std::nullopt, decl_arg_inst, r.writes);
@@ -3124,8 +3124,8 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         };
         Ref<CIRResultInstance> parent_instance;
         if(auto* inst_ptr = curr_instance()) { parent_instance = inst_ptr->ctx.call_instance(); }
-        for(isize i = 0; i < call_info.arg_insts.count; i++) {
-            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::init(pkg, call_info.arg_insts[i], parent_instance));
+        for(auto&& it : call_info.arg_insts) {
+            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::init(pkg, it, parent_instance));
         }
  
         // 查询编译期函数调用结果缓存

@@ -123,8 +123,8 @@ struct DAG {
     // ── 孤立节点 ──
 
     void collect_isolated(Array<K> &out, const Array<K> &candidates) const {
-        for (isize i = 0; i < candidates.count; i++) {
-            K node = candidates[i];
+        for(auto&& it : candidates) {
+            K node = it;
             if (!has_node(node)) {
                 out.push_back(node);
             }

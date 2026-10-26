@@ -489,7 +489,7 @@ isize advance_one_character(Tokenizer *t) {
 
 isize advance_characters(Tokenizer *t, isize count) {
     isize advanced = 0;
-    for(isize i = 0; i < count; i++) {
+    FOR_0_TO(count) {
         advanced += advance_one_character(t);
     }
     return advanced;

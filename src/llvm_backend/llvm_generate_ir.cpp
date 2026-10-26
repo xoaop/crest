@@ -240,8 +240,8 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             
             Array<LLVMTypeRef> field_types = make_array_capacity<LLVMTypeRef>(stage_allocator(), type->struct_info.struct_fields.count);
             
-            for(isize i = 0; i < type->struct_info.struct_fields.count; i++) {
-                StructField field = type->struct_info.struct_fields[i];
+            for(auto&& it : type->struct_info.struct_fields) {
+                StructField field = it;
                 LLVMTypeRef field_llvm_type = get_llvm_type_from_type(field.type);
                 field_types.push_back(field_llvm_type);
             }
@@ -713,8 +713,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(Value& value, std::optional<Ty
             Array<LLVMValueRef> element_values = make_array<LLVMValueRef>(stage_allocator());
             
             Array<Value> elem_vals = value.array_element_values();
-            for(isize i = 0; i < elem_vals.count; i++) {
-                auto& val = elem_vals[i];
+            for(auto&& it : elem_vals) {
+                auto& val = it;
                 element_values.push_back(gen_llvm_val_by_value(val));
             }
 

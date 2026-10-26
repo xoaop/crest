@@ -173,8 +173,8 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
     // 解析每个文件
     Package package = make_package(get_or_insert_global_string(package_dir_path), permanent_allocator());
-    for(isize i = 0; i < crest_files.count; i++) {
-        xpString crest_file_path = crest_files[i];
+    for(auto&& it : crest_files) {
+        xpString crest_file_path = it;
         AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
 
         package.ast_files.push_back(ast_file);
@@ -212,8 +212,8 @@ xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator alloca
         return xpOption<xpString>::none();
     }
 
-    for (isize i = 0; i < search_paths.count; i++) {
-        xpString base = search_paths[i];
+    for(auto&& it : search_paths) {
+        xpString base = it;
         xpString candidate = concat_path(base, import_path, allocator);
 
         if (check_directory_legel(candidate)) {

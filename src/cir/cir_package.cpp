@@ -133,8 +133,8 @@ u64 FuncCallKey::hash() const {
 
     // $T 实例: 按实参结果的类型去重(TypeRef 是 interned 指针), 与指令身份无关
     if(is_generic_instance) {
-        for(isize i = 0; i < comptime_arg_refs.count; i++) {
-            auto* res = comptime_arg_refs[i].get_result();
+        for(auto&& it : comptime_arg_refs) {
+            auto* res = it.get_result();
             if(res && res->state >= CIRResultState::OnlyType) {
                 h = xp_hash_combine_u64(h, reinterpret_cast<u64>(res->actual_type()));
             }

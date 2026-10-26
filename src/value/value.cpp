@@ -388,7 +388,7 @@ Value Value::zero(TypeRef type, xpAllocator allocator) {
         v.struct_fields_val(fields);
     } else if(is_array_type(type)) {
         Array<Value> elems = make_array<Value>(allocator);
-        for(isize i = 0; i < type->array_info.count; i++) {
+        FOR_0_TO(type->array_info.count) {
             elems.push_back(zero(type->array_info.element_type, allocator));
         }
         v.array_element_values(elems);

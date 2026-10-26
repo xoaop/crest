@@ -98,11 +98,11 @@ void ErrorReporter::print_msg() {
         const isize caret_end   = hl_end >= win_end ? win_end - 1 : hl_end;
         const isize caret_count = caret_end > caret_start ? caret_end - caret_start : 0;
 
-        for(isize j = 0; j < prefix_len + (caret_start - win_start); j++) {
+        FOR_0_TO(prefix_len + (caret_start - win_start)) {
             print_err(" ");
         }
         print_err("{}", COLOR_GREEN);
-        for(isize j = 0; j < caret_count; j++) {
+        FOR_0_TO(caret_count) {
             print_err("^");
         }
         println_err("{}", COLOR_RESET);

@@ -1153,8 +1153,8 @@ struct std::hash<Type> {
 
         case Type_function: {
             u64 hash_value = Type_function;
-            for(isize i = 0; i < type.function_info.param_types.count; i++) {
-                u64 param_type_hash = cast(u64)(std::hash<Type>{}(*type.function_info.param_types[i]));
+            for(auto&& it : type.function_info.param_types) {
+                u64 param_type_hash = cast(u64)(std::hash<Type>{}(*it));
                 hash_value = xp_hash_combine_u64(hash_value, param_type_hash);
             }
             u64 return_type_hash = cast(u64)(std::hash<Type>{}(*type.function_info.return_type));

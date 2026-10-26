@@ -59,8 +59,8 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
 void collect_top_level_symbols_in_package(Ref<Package> pkg) {
     Package* p = &pkg.unwrap();
 
-    for(isize i = 0; i < p->ast_files.count; i++) {
-        AstFile *ast_file = &p->ast_files[i];
+    for(auto&& it : p->ast_files) {
+        AstFile *ast_file = &it;
         collect_top_level_symbols_in_file(ast_file, pkg);
     }
 }
@@ -73,8 +73,8 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
 
     bool under_file_scope = false;
 
-    for(isize i = 0; i < ast_file->top_levels.count; i++) {
-        Ast *top_level = ast_file->top_levels[i];
+    for(auto&& it : ast_file->top_levels) {
+        Ast *top_level = it;
 
         // #under_is_file_scope 每个文件只能有一条；它下面的顶层声明落文件作用域
         if(top_level->type == AstType_UnderIsFileScope) {
@@ -295,8 +295,8 @@ void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
 
     analyser.curr_ast_file = ast_file;
 
-    for(isize i = 0; i < ast_file->top_levels.count; i++) {
-        Ast *top_level = ast_file->top_levels[i];
+    for(auto&& it : ast_file->top_levels) {
+        Ast *top_level = it;
 
         if(top_level->type == AstType_UnderIsFileScope) {
             analyser.under_file_scope = true;
@@ -552,8 +552,8 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
     Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, value_ast);
 
 
-    for(isize i = 0; i < value_ast->StructDeclValue.fields.count; i++) {
-        auto field = value_ast->StructDeclValue.fields[i];
+    for(auto&& it : value_ast->StructDeclValue.fields) {
+        auto field = it;
 
         Ref<SymbolInfo> existing = find_symbol_ref_curr(struct_analyser.current_scope, field->StructField.name);
         if(existing != Ref<SymbolInfo>::INVALID_REF) {
@@ -606,8 +606,8 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
 
     Analyser enum_analyser = new_scope(analyser, ScopeType::EnumBlock, value_ast);
 
-    for(isize i = 0; i < value_ast->EnumDecl.fields.count; i++) {
-        auto field = value_ast->EnumDecl.fields[i];
+    for(auto&& it : value_ast->EnumDecl.fields) {
+        auto field = it;
 
         if(field->type == AstType_ConstDecl) {
             resolve_const_decl_local(field, enum_analyser);

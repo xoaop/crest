@@ -395,14 +395,14 @@ static void test_slot_map() {
         auto m = SlotMap<i32>::init(xp_default_allocator());
         auto keys = make_array<SlotIndex>(xp_default_allocator());
         auto alive = make_array<b8>(xp_default_allocator());
-        for (isize i = 0; i < N; i++) {
+        FOR_0_TO(N) {
             keys.push_back(SlotIndex{});
             alive.push_back(false);
         }
 
         isize live = 0;
         u64 seed = 12345;
-        for (isize step = 0; step < 20000; step++) {
+        FOR_0_TO(20000) {
             seed = seed * 6364136223846793005ull + 1442695040888963407ull;
             const auto pick = isize((seed >> 33) % N);
 
