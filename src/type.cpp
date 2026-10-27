@@ -1273,6 +1273,8 @@ isize type_size_of(TypeRef type) {
     switch(type->kind) {
         case Type_array:
             return (isize)type->array_info.count * type_size_of(type->array_info.element_type);
+        case Type_enum:
+            return type_size_of(type->enum_info.element_type);
         case Type_struct: {
             if(type->struct_info.struct_fields.count == 0) return 0;
             auto& last = type->struct_info.struct_fields[type->struct_info.struct_fields.count - 1];
@@ -1324,6 +1326,8 @@ isize type_align_of(TypeRef type) {
         }
         case Type_array:
             return type_align_of(type->array_info.element_type);
+        case Type_enum:
+            return type_align_of(type->enum_info.element_type);
         default:
             return basic_type_align(type->kind);
     }
