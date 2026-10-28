@@ -282,8 +282,8 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
 
 
 
-    // TODO: externC特殊处理, 后面完善些, 现在太丑
-    if(!func.is_extern_c && !func.is_builtin) {
+    // 有没有函数体由 AST 决定；extern_C 只影响 ABI 降级，不再是“无体”的同义词
+    if(!func.is_builtin && fd->FunctionDeclValue.block != nullptr) {
         // body 靠 fd.body_inst 显式下降（非父块扫描），不发 BlockRef，句柄即块本身
         CIRBlockRef body_blk = Begin_Block(ctx, false, false);
         auto body_inst = CIRInstructionRef(body_blk);
@@ -1275,6 +1275,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             result = Make_Instruction<CIROperator::FuncType>(ctx, expr, {
                 .param_type_insts = param_type_insts.copy(permanent_allocator()),
                 .return_type_inst = return_type_inst,
+                .is_extern_c = expr->FunctionType.is_extern_c,
             });
         } break;
 

@@ -427,7 +427,9 @@ Ast *parse_function_decl(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
 
     Ast *body = nullptr;
     SourceLocation loc;
-    if(tail.is_extern_c || tail.is_builtin) {
+    // extern "C" 只标记 ABI 边界，不再等同于“没有函数体”：
+    // 后面紧跟 '{' 就是带体的定义，否则是纯声明（libc 那一批）。
+    if(tail.is_builtin || (tail.is_extern_c && curr_token(p).type != TokenType::LeftCurlyBracket)) {
         loc = merge(lb.src_loc, tail.last_token.src_loc);
     } else {
         body = parse_block(p);
@@ -477,6 +479,7 @@ Ast *parse_function_type(Parser *p, Token lb, ParsedParams pre, FunctionTail tai
     Ast *a = ast_alloc(AstType_FunctionType, lb);
     a->FunctionType.param_types = param_types;
     a->FunctionType.return_type_ast = tail.return_type_ast;
+    a->FunctionType.is_extern_c = tail.is_extern_c;
     a->src_loc = merge(lb.src_loc, tail.return_type_ast->src_loc);
     return a;
 }

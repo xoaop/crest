@@ -108,6 +108,7 @@ Type copy_type(Type *src) {
     case Type_function: {
         t.function_info.param_types = src->function_info.param_types.copy(type_allocator());
         t.function_info.return_type = src->function_info.return_type;
+        t.function_info.is_extern_c = src->function_info.is_extern_c;
     } break;
     case Type_pointer: {
         t.pointed_type = src->pointed_type;
@@ -212,6 +213,11 @@ bool is_equal_type(Type a, Type b) {
 
     switch(a.kind) {
     case Type_function:
+        // ABI 边界是类型的一部分：extern_C 函数和内部函数指针不能隐式互转
+        if(a.function_info.is_extern_c != b.function_info.is_extern_c) {
+            return false;
+        }
+
         if(a.function_info.param_types.count != b.function_info.param_types.count) {
             return false;
         }
@@ -707,11 +713,12 @@ TypeRef pointer_type(TypeRef pointed_type) {
 
 
 
-TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type) {
+TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type, bool is_extern_c) {
     Type t = {};
     t.kind = Type_function;
     t.function_info.param_types = param_types;
     t.function_info.return_type = return_type;
+    t.function_info.is_extern_c = is_extern_c;
 
     return get_or_add_type(t);
 }
@@ -1076,6 +1083,10 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
 
         xpString return_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name)), temp_allocator());
         xp_string_append(&func_str, return_type_str);
+        // ABI 边界是类型的一部分，报错时两个类型必须能区分开
+        if(type->function_info.is_extern_c) {
+            xp_string_append(&func_str, xp_string_c(" extern_C"));
+        }
         return get_or_insert_global_string(func_str);
     } else if(is_type_type(type)) {
 
@@ -1153,6 +1164,10 @@ struct std::hash<Type> {
 
         case Type_function: {
             u64 hash_value = Type_function;
+
+            u64 hash_extern_c = type.function_info.is_extern_c ? 1 : 0;
+            hash_value = xp_hash_combine_u64(hash_value, hash_extern_c);
+
             for(auto&& it : type.function_info.param_types) {
                 u64 param_type_hash = cast(u64)(std::hash<Type>{}(*it));
                 hash_value = xp_hash_combine_u64(hash_value, param_type_hash);

@@ -406,6 +406,7 @@ struct CIRTypeOfInstResultInfo {
 struct CIRFuncTypeInfo {
     Array<CIRInstructionRef> param_type_insts;
     CIRInstructionRef return_type_inst;
+    bool is_extern_c = false;   // 该函数类型是否是 C ABI 边界
 
     CIR_REFS(&CIRFuncTypeInfo::param_type_insts, &CIRFuncTypeInfo::return_type_inst)
 };

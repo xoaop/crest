@@ -1,0 +1,3 @@
+dup :: (x: i32) -> i32 extern_C {
+    return x + 1;
+}

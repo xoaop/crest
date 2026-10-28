@@ -388,6 +388,9 @@ int main(int argc_raw, char** argv_raw) {
     
     
 
+    // extern_C 用裸符号名：跨包同名函数必须在链接前对齐签名
+    lcir::check_extern_c_symbols();
+
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
         return 1;

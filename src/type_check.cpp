@@ -53,22 +53,35 @@ bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref
 
 
 bool check_extern_c_func(xpAllocator allocator, const Array<TypeRef>& param_types, TypeRef return_type, xpString& err_msg) {
+    // 空聚合体在 C 里无法表达：零大小的参数/返回值没有 ABI 位置
+    auto is_empty_agg = [](TypeRef t) {
+        return (is_struct_type(t) || is_union_type(t)) && type_size_of(t) == 0;
+    };
+
     for(TypeRef pt : param_types) {
-        if(!is_array_type(pt)) {
-            continue;
+        if(is_array_type(pt)) {
+            std::string msg = std::format(
+                "extern \"C\" 形参不能是数组：C 会把数组形参退化为指针，请改用 '*{}'",
+                pt->array_info.element_type->name()
+            );
+
+            err_msg = xp_make_string(allocator, msg.c_str());
+            return false;
         }
 
-        std::string msg = std::format(
-            "extern \"C\" 形参不能是数组：C 会把数组形参退化为指针，请改用 '*{}'",
-            pt->array_info.element_type->name()
-        );
-
-        err_msg = xp_make_string(allocator, msg.c_str());
-        return false;
+        if(is_empty_agg(pt)) {
+            err_msg = xp_make_string(allocator, "extern \"C\" 形参不能是空聚合体：C 无法表达零大小参数");
+            return false;
+        }
     }
 
     if(is_array_type(return_type)) {
         err_msg = xp_make_string(allocator, "extern \"C\" 函数不能返回数组（C 不支持按值返回数组）");
+        return false;
+    }
+
+    if(is_empty_agg(return_type)) {
+        err_msg = xp_make_string(allocator, "extern \"C\" 函数不能返回空聚合体：C 无法表达零大小返回");
         return false;
     }
 

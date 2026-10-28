@@ -724,7 +724,9 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
         });
 
         owner_mod.functions.get_or_insert(fk, [&]() {
-            const auto linkage = (fdecl.is_extern_c || fdecl.is_builtin)
+            // 纯声明（extern_C/builtin 无体、跨包引用）不生成代码；
+            // 带体就是定义，extern_C 的定义同样要发出去给 C 链接。
+            const auto linkage = (fdecl.body_inst == INVALID_INST)
                 ? lcir::FunctionDecl::Linkage::PureDeclaration
                 : (is_instance || !has_symbol)
                     ? lcir::FunctionDecl::Linkage::MergableDefinition
@@ -1142,7 +1144,7 @@ AnalyzeResult Interpreter::analyze_FuncType(const CIRFuncTypeInfo& info, CIRInst
     }
     TypeRef return_type = ResultValue(info.return_type_inst).type_val();
 
-    TypeRef func_type = function_type(param_types, return_type);
+    TypeRef func_type = function_type(param_types, return_type, info.is_extern_c);
     TypeRef meta = type_type();
 
     Value result = make_value(meta);
@@ -2704,6 +2706,11 @@ AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstruct
 AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     auto& func = inst(pc_ref).info<CIROperator::FunctionDecl>();
 
+    // extern "C" 符号名不做 mangle：泛型多实例会生成同名符号，直接拒绝
+    if(func.is_extern_c && func.has_generic_param_type) {
+        return make_result(pc_ref, inst_error(pc_ref, "extern \"C\" 函数不能是泛型：符号名不做 mangle，多个实例会撞名"));
+    }
+
     // $T 泛型: 形参/返回类型都是 IdentVal(T), T 未填值时整份签名算不出来。
     // 判断条件是"T 有没有值"而非 has_generic_param_type —— 实例化会重跑本指令,
     // 用静态标记会第二次早退, 真签名永远算不出来。
@@ -2775,7 +2782,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
     SymbolInfo* sym = inst(pc_ref).symbol.try_get();
     {
-        TypeRef func_type_type = function_type(param_types, return_type);
+        TypeRef func_type_type = function_type(param_types, return_type, func.is_extern_c);
         Value v = make_value(func_type_type);
 
 
@@ -2807,16 +2814,24 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
     // extern_C 签名约束（数组形参/返回值等）由 type_check 统一判定
     if(func.is_extern_c) {
         xpString sig_err = {};
+
         if(!check_extern_c_func(permanent_allocator(), param_types, return_type, sig_err)) {
             return make_result(pc_ref, inst_error(pc_ref, "{}", sig_err));
+        }
+
+        // 变参定义需要 va_list（尚未提供），现阶段只允许声明
+        if(func.body_inst != INVALID_INST
+            && param_types.count > 0
+            && param_types[param_types.count - 1]->kind == Type_var_arg_c) {
+            return make_result(pc_ref, inst_error(pc_ref, "extern \"C\" 函数暂不支持定义可变参数函数（缺少 va_list）"));
         }
     }
 
     bool is_pure_comptime = is_pure_comptime_func(func, result_context());
-    if(func.is_extern_c || func.is_builtin) {
-        // extern "C" / #builtin 没有函数体，不分析了
+    if(func.body_inst == INVALID_INST) {
+        // 纯声明（extern "C" / #builtin / 跨包引用）：没有函数体可分析
     } else {
-        ASSERT_MSG(func.body_inst != INVALID_INST, "non-extern function must have body");
+        ASSERT_MSG(!func.is_builtin, "builtin function must not have body");
 
 
         if(is_pure_comptime) {

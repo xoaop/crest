@@ -1,0 +1,118 @@
+// @pass
+// @run
+// @link-c defs.c
+
+// extern_C 带函数体：Crest 定义的函数直接导出给 C 调用。
+// 形状与 abi_c_structs 完全镜像，覆盖 prologue 拼参数、epilogue 出参。
+
+S24 :: struct { a: i64; b: i64; c: i64; }
+S3  :: struct { a: i8; b: i8; c: i8; }
+S9  :: struct { a0: i8; a1: i8; a2: i8; a3: i8; a4: i8; a5: i8; a6: i8; a7: i8; a8: i8; }
+U   :: union  { a: i32; b: f32; }
+MIX :: struct { a: i64; b: f64; }
+F4  :: struct { x: f32; y: f32; z: f32; w: f32; }
+FD  :: struct { x: f32; y: f64; }
+IF  :: struct { a: i32; b: f32; }
+NA  :: struct { a: [2]i32; d: f64; }
+V2  :: struct { x: f64; y: f64; }
+A2  :: struct { a: i32; b: i32; }
+P16 :: struct { a: i64; b: i64; }
+D2  :: struct { x: f64; y: f64; }
+E12 :: struct { a: i32; b: i32; c: i32; }
+
+// 24 字节聚合：SysV 走 byval + sret
+s24add_def :: (a: S24, b: S24) -> S24 extern_C {
+    r: S24;
+    r.a = a.a + b.a;
+    r.b = a.b + b.b;
+    r.c = a.c + b.c;
+    return r;
+}
+
+// 3 字节：单块 i24
+s3sum_def :: (v: S3) -> i64 extern_C {
+    return cast(i64)(v.a) + cast(i64)(v.b) + cast(i64)(v.c);
+}
+
+// 9 字节：i64 + i8
+s9sum_def :: (v: S9) -> i64 extern_C {
+    return cast(i64)(v.a0) + cast(i64)(v.a1) + cast(i64)(v.a2) + cast(i64)(v.a3)
+         + cast(i64)(v.a4) + cast(i64)(v.a5) + cast(i64)(v.a6) + cast(i64)(v.a7)
+         + cast(i64)(v.a8);
+}
+
+// union：INTEGER 压过 SSE
+uadd_def :: (a: U, b: U) -> i32 extern_C {
+    return a.a + b.a;
+}
+
+// i64 + f64：两个块，不同寄存器类
+mixsum_def :: (v: MIX) -> f64 extern_C {
+    return cast(f64)(v.a) + v.b;
+}
+
+// 4 × f32：SSE ×2
+f4sum_def :: (v: F4) -> f32 extern_C {
+    return v.x + v.y + v.z + v.w;
+}
+
+// f32 + f64：SSE ×2，块宽不同
+fdsum_def :: (v: FD) -> f64 extern_C {
+    return cast(f64)(v.x) + v.y;
+}
+
+// i32 + f32：同一块 → INTEGER
+ifsum_def :: (v: IF) -> i32 extern_C {
+    return v.a + cast(i32)(v.b);
+}
+
+// 嵌套数组 + double
+nasum_def :: (v: NA) -> i32 extern_C {
+    return v.a[0] + v.a[1] + cast(i32)(v.d);
+}
+
+// 16 字节全 SSE
+v2add_def :: (a: V2, b: V2) -> V2 extern_C {
+    r: V2;
+    r.x = a.x + b.x;
+    r.y = a.y + b.y;
+    return r;
+}
+
+v2sum_def :: (v: V2) -> f64 extern_C {
+    return v.x + v.y;
+}
+
+a2sum_def :: (v: A2) -> i32 extern_C {
+    return v.a + v.b;
+}
+
+// 小整数参数：signext / zeroext
+small_def :: (a: i8, b: i16, c: u8, d: u16) -> i64 extern_C {
+    return cast(i64)(a) + cast(i64)(b) + cast(i64)(c) + cast(i64)(d);
+}
+
+// 寄存器耗尽：整块聚合体落栈（byval）
+many_def :: (a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, p: P16, g: i64) -> i64 extern_C {
+    return a + b + c + d + e + f + p.a + p.b + g;
+}
+
+manyd_def :: (a: f64, b: f64, c: f64, d: f64, e: f64, f: f64, g: f64, h: f64, p: D2, z: f64) -> f64 extern_C {
+    return a + b + c + d + e + f + g + h + p.x + p.y + z;
+}
+
+// 寄存器类聚合体返回：单块 / 两块
+s3id_def :: (v: S3) -> S3 extern_C {
+    return v;
+}
+
+e12id_def :: (v: E12) -> E12 extern_C {
+    return v;
+}
+
+// C 侧的校验入口：它调用上面这些 Crest 定义的函数，返回 0 表示全部通过
+run_checks :: () -> i32 extern_C
+
+main :: () -> i32 {
+    return run_checks();
+}
