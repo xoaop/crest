@@ -923,7 +923,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 void resolve_if_expr(Ast *expr_ast, std::function<void(Ast*, Analyser)> body, Analyser analyser) {
     XP_ASSERT_DEFAULT(expr_ast->type == AstType_IfExpr);
 
-    resolve_expr2(expr_ast->IfExpr.condition, analyser);
+    resolve_expr(expr_ast->IfExpr.condition, analyser);
 
     body(expr_ast->IfExpr.then_expr, analyser);
     body(expr_ast->IfExpr.else_expr, analyser);
@@ -942,12 +942,12 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             resolve_ident(expr_ast, analyser);
         } break;
         case AstType_FunctionCallExpr: {
-            
+
             // 检查函数标识符符号是否存在
-            resolve_expr2(expr_ast->FunctionCallExpr.func_ident, analyser);
+            resolve_expr(expr_ast->FunctionCallExpr.func_ident, analyser);
 
             FOR(expr_ast->FunctionCallExpr.args) {
-                resolve_expr2(it, analyser);
+                resolve_expr(it, analyser);
             }
 
 
@@ -958,28 +958,29 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_BinaryExpr: {
-            resolve_expr2(expr_ast->BinaryExpr.left, analyser);
-            resolve_expr2(expr_ast->BinaryExpr.right, analyser);
+            // 操作数可能是声明节点（匿名函数字面量等），统一走 resolve_expr
+            resolve_expr(expr_ast->BinaryExpr.left, analyser);
+            resolve_expr(expr_ast->BinaryExpr.right, analyser);
 
         } break;
 
         case AstType_UnaryExpr: {
-            resolve_expr2(expr_ast->UnaryExpr.operand, analyser);
+            resolve_expr(expr_ast->UnaryExpr.operand, analyser);
         } break;
 
         case AstType_IfExpr: {
             resolve_if_expr(
-                expr_ast, 
+                expr_ast,
                 [](Ast *branch_expr, Analyser analyser) {
-                    resolve_expr2(branch_expr, analyser);
-                }, 
+                    resolve_expr(branch_expr, analyser);
+                },
                 analyser
             );
         } break;
 
         case AstType_CastExpr: {
-            resolve_expr2(expr_ast->CastExpr.expr, analyser);
-            resolve_expr2(expr_ast->CastExpr.target_type_ast, analyser);
+            resolve_expr(expr_ast->CastExpr.expr, analyser);
+            resolve_expr(expr_ast->CastExpr.target_type_ast, analyser);
         } break;
 
         case AstType_Constant: {
@@ -990,7 +991,7 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             resolve_expr(expr_ast->StructInitExpr.struct_type_ident, analyser);
 
             FOR(expr_ast->StructInitExpr.field_inits) {
-                resolve_expr2(it, analyser);
+                resolve_expr(it, analyser);
             }
         } break;
 
@@ -1007,13 +1008,13 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             }
 
             FOR(expr_ast->ArrayInitExpr.elements) {
-                resolve_expr2(it, analyser);
+                resolve_expr(it, analyser);
             }
         } break;
 
         case AstType_IndexExpr: {
-            resolve_expr2(expr_ast->IndexExpr.array_var_expr, analyser);
-            resolve_expr2(expr_ast->IndexExpr.index_expr, analyser);
+            resolve_expr(expr_ast->IndexExpr.array_var_expr, analyser);
+            resolve_expr(expr_ast->IndexExpr.index_expr, analyser);
         } break;
 
 
@@ -1027,25 +1028,25 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
         } break;
 
         case AstType_PointerType: {
-            resolve_expr2(expr_ast->PointerType.pointed_type_ast, analyser);
+            resolve_expr(expr_ast->PointerType.pointed_type_ast, analyser);
         } break;
 
         // TODO: 统一类型和表达式的解析, 类型也是表达式
         case AstType_ArrayType: {
-            resolve_expr2(expr_ast->ArrayType.element_type_ast, analyser);
-            resolve_expr2(expr_ast->ArrayType.count_expr, analyser);
+            resolve_expr(expr_ast->ArrayType.element_type_ast, analyser);
+            resolve_expr(expr_ast->ArrayType.count_expr, analyser);
         } break;
 
         case AstType_SliceType: {
-            resolve_expr2(expr_ast->SliceType.element_type_ast, analyser);
+            resolve_expr(expr_ast->SliceType.element_type_ast, analyser);
         } break;
 
         case AstType_FunctionType: {
             FOR(expr_ast->FunctionType.param_types) {
-                resolve_expr2(it, analyser);
+                resolve_expr(it, analyser);
             }
 
-            resolve_expr2(expr_ast->FunctionType.return_type_ast, analyser);
+            resolve_expr(expr_ast->FunctionType.return_type_ast, analyser);
         } break;
 
         case AstType_TypeVariableDeclInParam: {
@@ -1151,7 +1152,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
     Ast *parent_ast = field_access_ast->FieldAccess.parent;
     GlobalStringIndex field_name = field_access_ast->FieldAccess.field_name;
 
-    resolve_expr2(parent_ast, analyser);
+    resolve_expr(parent_ast, analyser);
 
 
     // @note: 如果父节点的符号解析失败, 那么这里就不再继续解析了, 否则会报错两次
