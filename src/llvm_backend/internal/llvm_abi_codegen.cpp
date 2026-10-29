@@ -12,6 +12,9 @@
 #include "internal/llvm_generator.hpp"
 #include "internal/llvm_abi.hpp"
 
+#include "context.hpp"
+#include "llvm_generate_ir.hpp"
+
 #include "llvm-c/Core.h"
 
 
@@ -255,4 +258,108 @@ LLVMValueRef LLVMGenerator::gen_ir_call_result_by_abi(const ABIFunctionPlan& pla
     }
 
     return call_result;
+}
+
+
+// ── 跨包 extern_C 符号一致性 ────────────────────────────────────────────
+//
+// extern_C 用裸符号名，跨包同名就是同一个 C 符号。Crest 一次编译所有包，
+// 所以在生成 IR 前统一检查：同名最多一个定义，ABI 签名必须兼容。
+// 比的是 make_c_abi_plan 的结果而不是类型身份——C 的兼容性看布局，
+// 两个包各自声明、布局相同的 struct 本来就是合法的。
+
+struct ExternCSymbol {
+    TypeRef type;          // 只存类型：需要时重算 plan，避免持有跨包 arena 里的数组
+    bool is_definition;
+    Ref<Package> owner;
+};
+
+// LLVM 类型在 context 内唯一化，fn_type 指针相等即返回类型、参数类型与变参性都相同。
+// 属性（sret / byval 由 kind 体现 / signext / zeroext / align）另外比。
+static bool same_abi_signature(const ABIFunctionPlan& a, const ABIFunctionPlan& b) {
+    if(a.fn_type != b.fn_type) {
+        return false;
+    }
+
+    if(a.sret != b.sret || a.ret_signext != b.ret_signext || a.ret_zeroext != b.ret_zeroext) {
+        return false;
+    }
+
+    if(a.params.count != b.params.count) {
+        return false;
+    }
+
+    FOR(a.params) {
+        const ABIParamPlan& pa = it;
+        const ABIParamPlan& pb = b.params[it_index];
+
+        if(pa.kind != pb.kind || pa.signext != pb.signext || pa.zeroext != pb.zeroext || pa.align != pb.align) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// 一个 extern_C 声明/定义与同名记录比对；定义比声明更有代表性，后来的定义成为基准。
+static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
+                                      const Ref<Package> pkg,
+                                      Ref<CIRInstResult> fk,
+                                      const lcir::FunctionDecl& fd,
+                                      ABIKind abi) {
+    auto& inst = fk.cir_package->inst(fk.inst_ref);
+    if(!inst.info<CIROperator::FunctionDecl>().is_extern_c) {
+        return;
+    }
+
+    // 文件作用域下的定义是内部链接，包外看不到，不参与跨包比对
+    if(fd.linkage == lcir::FunctionDecl::Linkage::InternalDefinition) {
+        return;
+    }
+
+    TypeRef sig = fk.cir_package->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
+    const bool is_definition = fd.linkage != lcir::FunctionDecl::Linkage::PureDeclaration;
+
+    ExternCSymbol* prev = xp_hash_map_get(seen, fd.raw_name);
+    if(prev == nullptr) {
+        xp_hash_map_insert(&seen, fd.raw_name, ExternCSymbol { sig, is_definition, pkg });
+        return;
+    }
+
+    if(!same_abi_signature(make_c_abi_plan(prev->type, abi), make_c_abi_plan(sig, abi))) {
+        context()->reporter.report_error(
+            inst.src_loc,
+            "extern \"C\" 符号 '{}' 的 ABI 签名与另一处不一致：'{}' 与 '{}'",
+            fd.raw_name, prev->type->name(), sig->name()
+        );
+    } else if(prev->is_definition && is_definition) {
+        context()->reporter.report_error(
+            inst.src_loc,
+            "extern \"C\" 符号 '{}' 重复定义（另一处在包 '{}'）",
+            fd.raw_name, get_global_string(prev->owner.unwrap().path)
+        );
+    }
+
+    if(is_definition) {
+        prev->is_definition = true;
+        prev->owner = pkg;
+    }
+}
+
+void check_extern_c_symbols(const xpHashMap<Ref<Package>, lcir::Module>& modules) {
+    const ABIKind abi = current_abi(context()->target.os);
+    xpHashMap<xpString, ExternCSymbol> seen = xp_hash_map_make<xpString, ExternCSymbol>(permanent_allocator());
+
+    for(const auto& mod_entry : modules) {
+        const Ref<Package> pkg = mod_entry.key;
+
+        for(const auto& fn_entry : mod_entry.value.functions) {
+            // 调用方侧为跨包引用补的声明：fk 属于被调包，签名必然与 owner 一致
+            if(fn_entry.key.cir_package->package_ref != pkg) {
+                continue;
+            }
+
+            check_one_extern_c_symbol(seen, pkg, fn_entry.key, fn_entry.value, abi);
+        }
+    }
 }

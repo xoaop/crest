@@ -724,13 +724,26 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
         });
 
         owner_mod.functions.get_or_insert(fk, [&]() {
+            // 文件作用域（#under_is_file_scope）下的 extern_C 定义包外不可见，
+            // 符号按内部链接发，两个包各写一个同名函数不会在链接期冲突。
+            const bool is_internal = fdecl.is_extern_c
+                && has_symbol
+                && finst.symbol.scope.is_valid()
+                && finst.symbol.scope->scope_type == ScopeType::File;
+
             // 纯声明（extern_C/builtin 无体、跨包引用）不生成代码；
             // 带体就是定义，extern_C 的定义同样要发出去给 C 链接。
-            const auto linkage = (fdecl.body_inst == INVALID_INST)
-                ? lcir::FunctionDecl::Linkage::PureDeclaration
-                : (is_instance || !has_symbol)
-                    ? lcir::FunctionDecl::Linkage::MergableDefinition
-                    : lcir::FunctionDecl::Linkage::Definition;
+            lcir::FunctionDecl::Linkage linkage;
+            if(fdecl.body_inst == INVALID_INST) {
+                linkage = lcir::FunctionDecl::Linkage::PureDeclaration;
+            } else if(is_internal) {
+                // 文件作用域下的 extern_C 定义：符号不出包
+                linkage = lcir::FunctionDecl::Linkage::InternalDefinition;
+            } else if(is_instance || !has_symbol) {
+                linkage = lcir::FunctionDecl::Linkage::MergableDefinition;
+            } else {
+                linkage = lcir::FunctionDecl::Linkage::Definition;
+            }
 
             return lcir::FunctionDecl{
                 .linkage = linkage,

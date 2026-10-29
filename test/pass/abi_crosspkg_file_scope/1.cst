@@ -1,0 +1,11 @@
+// @pass
+// @run
+
+// 两个包各在 #under_is_file_scope 下定义同名 extern_C 函数：
+// 符号按内部链接发，包外不可见，链接期不应冲突。
+import "a"
+import "b"
+
+main :: () -> i32 {
+    return a.pub_a() + b.pub_b() - 3;
+}

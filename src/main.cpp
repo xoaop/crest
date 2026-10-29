@@ -43,6 +43,8 @@ static void crest_helper() {
     println_out("Options:");
     println_out("  -o <path>      Output directory");
     println_out("  -c             Compile only, do not link");
+    println_out("  -static-lib    Build a static library instead of an executable");
+    println_out("  -shared        Build a shared library instead of an executable");
     println_out("  -O0..-O3, -Os, -Oz  Optimization level (default: -O0)");
     println_out("  -trace         Enable debug trace output");
     println_out("  -cir_dump      Dump CIR instructions");
@@ -97,6 +99,8 @@ int main(int argc_raw, char** argv_raw) {
 
     char const *main_path = nullptr;
     bool compile_only = false;
+    bool static_lib = false;
+    bool shared_lib = false;
     LLVMIROptimizationLevel opt_level = LLVMIROptimizationLevel::O0;
     TargetInfo target_arg;
     bool target_given = false;
@@ -156,6 +160,10 @@ int main(int argc_raw, char** argv_raw) {
             context()->scope_dump = true;
         } else if(strcmp(argv[i], "-c") == 0) {
             compile_only = true;
+        } else if(strcmp(argv[i], "-static-lib") == 0) {
+            static_lib = true;
+        } else if(strcmp(argv[i], "-shared") == 0) {
+            shared_lib = true;
         } else if(strcmp(argv[i], "-O0") == 0) {
             opt_level = LLVMIROptimizationLevel::O0;
         } else if(strcmp(argv[i], "-O1") == 0) {
@@ -269,6 +277,15 @@ int main(int argc_raw, char** argv_raw) {
         LLVMDisposeMessage(host_triple);
     }
 
+    if(static_lib && shared_lib) {
+        err("-static-lib and -shared are mutually exclusive");
+        return -1;
+    }
+    if(compile_only && (static_lib || shared_lib)) {
+        err("-c cannot be combined with -static-lib or -shared");
+        return -1;
+    }
+
     if(compile_only) {
         if(subsystem_given) {
             err("-subsystem has no effect with -c (compile only)");
@@ -294,6 +311,24 @@ int main(int argc_raw, char** argv_raw) {
     } else if(!target_uses_msvc() && crt_given) {
         err("-crt is only supported for MSVC targets (target: {})", context()->target_triple);
         return -1;
+    }
+
+    if(static_lib || shared_lib) {
+        if(subsystem_given) {
+            err("-subsystem has no effect when building a library");
+            return -1;
+        }
+    }
+
+    if(static_lib) {
+        if(crt_given) {
+            err("-crt has no effect with -static-lib (no linking step)");
+            return -1;
+        }
+        if(!context()->linker_args.empty()) {
+            err("-linker has no effect with -static-lib (archiving only)");
+            return -1;
+        }
     }
 
 
@@ -388,9 +423,6 @@ int main(int argc_raw, char** argv_raw) {
     
     
 
-    // extern_C 用裸符号名：跨包同名函数必须在链接前对齐签名
-    lcir::check_extern_c_symbols();
-
     if(context()->reporter.error_count > 0) {
         context()->reporter.print_msg();
         return 1;
@@ -416,11 +448,18 @@ int main(int argc_raw, char** argv_raw) {
 
     LLVMIRGenerateConfig llvm_config;
     llvm_config.optimization_level = opt_level;
+    llvm_config.export_dll_symbols = shared_lib && target_is_windows();
     Array<xpString> obj_paths = gen_ir_all_packages(context()->lcir_modules, llvm_config);
-    
+
     mark_stage("generate LLVM IR");
 
-    // 链接：把各包的 .o 链成可执行文件（-c 时只编译不链接）
+    // IR 生成阶段也会报告错误（跨包 extern_C 符号冲突），不能带着错误去链接
+    if(context()->reporter.error_count > 0) {
+        context()->reporter.print_msg();
+        return 1;
+    }
+
+    // 链接/归档：把各包的 .o 变成可执行文件或库（-c 时只编译）
     if(!compile_only && obj_paths.count > 0) {
         const std::filesystem::path main_p(as_u8(xp_string_c(main_path)));
         std::string binary_stem = (const char *)(main_p.has_extension() ? main_p.stem() : main_p.filename()).generic_u8string().c_str();
@@ -430,13 +469,34 @@ int main(int argc_raw, char** argv_raw) {
 
         LinkRequest link_req;
         link_req.obj_paths = obj_paths;
-        link_req.output_binary_path = (const char *)(context()->output_path / (binary_stem + target_exe_suffix())).generic_u8string().c_str();
+
+        std::string output_name;
+        if(static_lib) {
+            link_req.kind = LinkOutputKind::StaticLibrary;
+            output_name = target_static_lib_name(binary_stem);
+        } else if(shared_lib) {
+            link_req.kind = LinkOutputKind::SharedLibrary;
+            output_name = target_shared_lib_name(binary_stem);
+        } else {
+            link_req.kind = LinkOutputKind::Executable;
+            output_name = binary_stem + target_exe_suffix();
+        }
+
+        link_req.output_binary_path = (const char *)(context()->output_path / output_name).generic_u8string().c_str();
+
+        // Windows 共享库要额外产出导入库，C 侧才能链接这个 DLL
+        if(shared_lib) {
+            const std::string import_name = target_import_lib_name(binary_stem);
+            if(!import_name.empty()) {
+                link_req.import_lib_path = (const char *)(context()->output_path / import_name).generic_u8string().c_str();
+            }
+        }
 
         if(!link_objects(link_req)) {
             return 1;
         }
 
-        mark_stage("link");
+        mark_stage(static_lib ? "archive" : "link");
     }
 
     return 0;

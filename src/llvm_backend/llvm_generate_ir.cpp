@@ -328,6 +328,12 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config) {
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
 
+    // extern_C 用裸符号名：跨包同名必须在生成前对齐 ABI 签名（要等 init_llvm 之后才能算 plan）
+    check_extern_c_symbols(modules);
+    if(context()->reporter.error_count > 0) {
+        return obj_paths;
+    }
+
     for(const auto& entry : modules) {
         const Ref<Package> pkg_ref = entry.key;
         const lcir::Module& module = entry.value;
@@ -372,6 +378,19 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
             xp_string_to_c_style(fd.raw_name, stage_allocator()).c_str,
             fn_type
         );
+
+        // 文件作用域下的 extern_C 定义：符号不出包
+        if(fd.linkage == lcir::FunctionDecl::Linkage::InternalDefinition) {
+            LLVMSetLinkage(f, LLVMInternalLinkage);
+        }
+
+        // 共享库：Windows 的 DLL 默认不导出符号，extern_C 定义要显式 dllexport
+        if(config.export_dll_symbols
+            && fdecl.is_extern_c
+            && fd.linkage != lcir::FunctionDecl::Linkage::PureDeclaration
+            && fd.linkage != lcir::FunctionDecl::Linkage::InternalDefinition) {
+            LLVMSetDLLStorageClass(f, LLVMDLLExportStorageClass);
+        }
 
         if(fdecl.is_extern_c) {
             apply_c_abi_attrs(f, abi_plan, false);
