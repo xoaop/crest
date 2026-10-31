@@ -600,16 +600,17 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     {
     case '0': {
         advance_one_character(t);
+        const auto next = tokenizer_next_character(t);
 
-        if(tokenizer_curr_character(t) == 'x') {
+        if(tokenizer_curr_character(t) == 'x' && xp_is_digit_base_all(next)) {
             advance_one_character(t);
             tokenizer_scan_hex_digit_seq(t);
             token_type = TokenType::Integer;
-        } else if(tokenizer_curr_character(t) == 'b') {
+        } else if(tokenizer_curr_character(t) == 'b' && (next == '0' || next == '1')) {
             advance_one_character(t);
             tokenizer_scan_bin_digit_seq(t);
             token_type = TokenType::Integer;
-        } else if(tokenizer_curr_character(t) == '.' && tokenizer_next_character(t) == '.') {
+        } else if(tokenizer_curr_character(t) == '.' && next == '.') {
             // 0..5 — range syntax, not float
             token_type = TokenType::Integer;
         } else if(tokenizer_curr_character(t) == '.') {
