@@ -1,6 +1,7 @@
 #pragma once
 
 #include "xoaop.h"
+#include <memory>
 #include <type_traits>
 #include <utility>
 #include <cstring>
@@ -12,6 +13,43 @@
 #endif
 
 
+inline static isize new_capacity(isize old_capacity) {
+    XP_ASSERT_DEFAULT(old_capacity >= 0);
+
+    isize new_capacity = old_capacity > 0 ? old_capacity * 2 : 8;
+    return new_capacity;
+}
+
+// [index, count) 右移一格，data[count] 是裸槽
+template<typename T>
+inline static void object_shift_right(T *data, isize index, isize count) {
+    XP_ASSERT_DEFAULT(index >= 0 && index < count);
+
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        memmove(data + index + 1, data + index, (count - index) * sizeof(T));
+    } else {
+        std::construct_at(data + count, std::move(data[count - 1]));
+        for(isize i = count - 1; i > index; i--) {
+            data[i] = std::move(data[i - 1]);
+        }
+    }
+}
+
+// [index, count) 左移一格
+template<typename T>
+inline static void object_shift_left(T *data, isize index, isize count) {
+    XP_ASSERT_DEFAULT(index >= 0 && index < count);
+
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        memmove(data + index, data + index + 1, (count - index - 1) * sizeof(T));
+    } else {
+        std::destroy_at(data + index);
+        for(isize i = index; i < count - 1; i++) {
+            std::construct_at(data + i, std::move(data[i + 1]));
+            std::destroy_at(data + i + 1);
+        }
+    }
+}
 
 
 template<typename T>
@@ -79,6 +117,11 @@ struct Array {
     isize count;
     isize capacity;
 
+
+    static Array<T> init(xpAllocator allocator) {
+        return make_array<T>(allocator);
+    }
+
     
     T& operator[](isize index) {
         XP_ASSERT(index >= 0 && index < count);
@@ -92,16 +135,17 @@ struct Array {
 
     template<typename... Args>
     T *emplace_back(Args&&... args) {
-        resize(count + 1);
-        data[count - 1].~T();
-        new (&data[count - 1]) T(std::forward<Args>(args)...);
+        if(count == capacity) {
+            reserve(new_capacity(capacity));
+        }
+
+        std::construct_at(data + count, std::forward<Args>(args)...);
+        count += 1;
         return &data[count - 1];
     }
 
     T *push_back(T elem) {
-        resize(count + 1);
-        data[count - 1] = std::move(elem);
-        return &data[count - 1];
+        return emplace_back(std::move(elem));
     }
 
     ArrayRef<T> push_back(T *elems, isize n) {
@@ -114,101 +158,97 @@ struct Array {
     T pop_back() {
         XP_ASSERT_DEFAULT(count > 0);
         T p = std::move(data[count - 1]);
-        data[count - 1].~T();
+        std::destroy_at(data + count - 1);
         count -= 1;
         return p;
     }
 
-    void resize(isize new_count) {
-        // 扩容
-        if(new_count > capacity) {
-            isize new_cap = capacity > 0 ? capacity * 2 : 8;
-            if (new_cap < new_count) new_cap = new_count;
-            T* nd = cast(T*)xp_alloc(allocator, new_cap * sizeof(T));
-            if(data != nullptr) {
-                if constexpr (std::is_trivially_copyable_v<T>) {
-                    memcpy(nd, data, count * sizeof(T));
-                } else {
-                    for(isize i = 0; i < count; i++) {
-                        new(&nd[i]) T(std::move(data[i]));
-                        data[i].~T();
-                    }
-                }
-                xp_free(allocator, data);
-            }
-            data = nd;
-            capacity = new_cap;
+    void reserve(isize new_capacity) {
+        XP_ASSERT_DEFAULT(new_capacity >= 0);
+
+        if(new_capacity <= capacity) {
+            return;
         }
 
-        // 缩容：析构多余元素
-        for(isize i = new_count; i < count; i++) {
-            data[i].~T();
+        T *new_data_buffer = static_cast<T*>(xp_alloc(allocator, new_capacity * sizeof(T)));
+
+        if(capacity > 0) {
+            std::uninitialized_move(data, data + count, new_data_buffer);
+            std::destroy(data, data + count);
+            xp_free(allocator, data);
+        }
+
+        data = new_data_buffer;
+        capacity = new_capacity;
+    }
+
+    void resize(isize new_count) {
+        XP_ASSERT_DEFAULT(new_count >= 0);
+
+        if(new_count > capacity) {
+            isize target = new_capacity(capacity);
+            if(target < new_count) {
+                target = new_count;
+            }
+            reserve(target);
+        }
+
+        if(new_count > count) {
+            std::uninitialized_value_construct(data + count, data + new_count);
+        } else {
+            std::destroy(data + new_count, data + count);
         }
 
         count = new_count;
     }
 
-
     void clear() {
-        for (isize i = 0; i < count; i++) {
-            data[i].~T();
-        }
+        std::destroy(data, data + count);
         count = 0;
     }
 
     Array<T>* insert(isize index, T elem) {
         XP_ASSERT_DEFAULT(index >= 0 && index <= count);
-        resize(count + 1);
-        isize n = count - 1 - index;
-        if constexpr (std::is_trivially_copyable_v<T>) {
-            if (n > 0) memmove(&data[index + 1], &data[index], n * sizeof(T));
-        } else {
-            for (isize i = count - 1; i > index; i--) {
-                data[i] = std::move(data[i-1]);
-            }
-        }
-        data[index] = std::move(elem);
-        return this;
-    }
 
-    Array<T>* insert(isize index, T *elems, isize n) {
-        isize old_count = count;
-        resize(old_count + n);
-        for (isize i = old_count - 1; i >= index; i--) {
-            data[i + n] = std::move(data[i]);
+        if(count == capacity) {
+            reserve(new_capacity(capacity));
         }
-        for (isize i = 0; i < n; i++) {
-            data[index + i] = elems[i];
+
+        if(index < count) {
+            object_shift_right(data, index, count);
+            data[index] = std::move(elem);
+        } else {
+            std::construct_at(data + count, std::move(elem));
         }
+
+        count += 1;
         return this;
     }
 
     T rm(isize index) {
         XP_ASSERT_DEFAULT(index >= 0 && index < count);
+
         T r = std::move(data[index]);
-        isize n = count - 1 - index;
-        if constexpr (std::is_trivially_copyable_v<T>) {
-            if (n > 0) memmove(&data[index], &data[index + 1], n * sizeof(T));
-        } else {
-            data[index].~T();
-            for (isize i = index; i < count - 1; i++) {
-                new (&data[i]) T(std::move(data[i+1]));
-                data[i+1].~T();
-            }
-        }
+        object_shift_left(data, index, count);
+
         count -= 1;
+
         return r;
     }
 
     T rm_f(isize index) {
         XP_ASSERT_DEFAULT(index >= 0 && index < count);
+
         T r = std::move(data[index]);
-        data[index].~T();
+        std::destroy_at(data + index);
+
         if(count > 1 && index != count - 1) {
-            new (&data[index]) T(std::move(data[count - 1]));
-            data[count - 1].~T();
+            std::construct_at(data + index, std::move(data[count - 1]));
+            std::destroy_at(data + count - 1);
         }
+
         count -= 1;
+        
         return r;
     }
 
@@ -271,17 +311,6 @@ struct Array {
 };
 
 
-template<typename T>
-ArrayRef<T> array_ref(Array<T> &array) {
-    return {array.data, array.count};
-}
-
-template<typename T>
-ArrayRef<const T> array_ref(const Array<T> &array) {
-    return {array.data, array.count};
-}
-
-
 
 template<typename T>
 Array<T> make_array(xpAllocator allocator) {
@@ -298,11 +327,6 @@ template<typename T>
 Array<T> make_array_count(xpAllocator allocator, isize len) {
     Array<T> array = make_array<T>(allocator);
     array.resize(len);
-    if constexpr (std::is_default_constructible_v<T>) {
-        for (isize i = 0; i < len; i++) {
-            new (&array.data[i]) T();
-        }
-    }
     return array;
 }
 
@@ -333,11 +357,11 @@ void array_free(Array<T>* array) {
 // Array As Buffer
 //
 
-// 注意：仅适用于平凡可构造类型（POD），非POD类型使用会导致未定义行为
+// 注意：仅适用于平凡可拷贝类型（POD），非POD类型使用会导致未定义行为
 template<typename T>
 Array<T> make_array_as_buffer(xpAllocator allocator, isize len) {
-    static_assert(std::is_trivially_default_constructible_v<T>,
-                  "make_array_as_buffer only supports trivially default-constructible types (POD)");
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "make_array_as_buffer only supports trivially copyable types (POD)");
     Array<T> array = make_array<T>(allocator);
     array.data = (T*)xp_alloc(allocator, len * sizeof(T));
     array.count = len;
