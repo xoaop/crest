@@ -661,7 +661,7 @@ CIRBlockRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast *expr) {
     switch(expr->type) {
         case AstType_Ident: {
-            auto inst = New_Instruction(ctx, CIROperator::IdentRef, expr);
+            auto inst = Make_Instruction<CIROperator::IdentRef>(ctx, expr, { .ident = expr->Ident.name });
             Instruction(ctx, inst).symbol = expr->ast_symbol;
             return inst;
         } break;
@@ -723,14 +723,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         case AstType_Ident: {
             SymbolInfo *sym = expr->ast_symbol.try_get();
             if(sym && sym->is_var_decl()) {
-                auto ref = New_Instruction(ctx, CIROperator::IdentRef, expr);
+                auto ref = Make_Instruction<CIROperator::IdentRef>(ctx, expr, { .ident = expr->Ident.name });
                 Instruction(ctx, ref).symbol = expr->ast_symbol;
                 auto load = Make_Instruction<CIROperator::Load>(ctx, expr, { .ptr_inst = ref });
 
                 result = load;
                 break;
             }
-            auto inst = New_Instruction(ctx, CIROperator::IdentVal, expr);
+            auto inst = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = expr->Ident.name });
             Instruction(ctx, inst).symbol = expr->ast_symbol;
 
             result = inst;
@@ -1064,7 +1064,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             // ptr.mem->write_bytes(ptr.offset + count_str, "\0", 1);
 
 
-            auto string_ident = New_Instruction(ctx, CIROperator::IdentVal, expr);
+            auto string_ident = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = context()->known_global_strings.string });
             Instruction(ctx, string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, context()->known_global_strings.string);
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(ctx, expr, {

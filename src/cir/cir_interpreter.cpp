@@ -909,7 +909,7 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
     if(is_lvalue(ptr_inst)) {
         TypeRef loaded_type = ResultType(ptr_inst);
 
-        if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || has_result_val(ptr_inst))) {
+        if(has_instance() && should_eval_for_lazy_eval({ptr_inst})) {
             Pointer ptr = ResultValue(ptr_inst).pointer_val();
             // 深拷一份：结果自己持有数据，不跟槽里的数组共享
             Value val = clone_value(ptr.load(loaded_type), permanent_allocator());
@@ -3244,7 +3244,7 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
     if(r.state == CIRResultState::Error || r.state == CIRResultState::NothingYet) {
         return make_result(pc_ref, inst_error(pc_ref, "标识符 '{}' 无可用结果（符号未求值或出错）", get_global_string(sym->name)));
     }
-    if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || r.state == CIRResultState::WholeValue)) {
+    if(has_instance() && (r.state == CIRResultState::WholeValue)) {
         if(sym->is_var_decl()) {
             Ref<CIRInstResult> var_key = sym->val_as_inst_key();
             const CIRVariableDeclInfo& vd = var_key.cir_package->inst(var_key.inst_ref).info<CIROperator::VariableDecl>();
