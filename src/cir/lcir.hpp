@@ -14,6 +14,7 @@ struct FunctionDecl {
         PureDeclaration = 0,     // 纯声明（无定义）
         Definition,          // 定义（有函数体）
         MergableDefinition,  // 可合并定义（COMDAT）
+        InternalDefinition,  // 内部链接定义（文件作用域，符号不出包）
     } linkage;
 
     xpString raw_name;

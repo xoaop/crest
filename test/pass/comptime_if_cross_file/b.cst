@@ -1,0 +1,6 @@
+// 同包另一文件里的 #if 分支提供 FLAG
+#if true {
+    FLAG :: true
+} else {
+    FLAG :: false
+}

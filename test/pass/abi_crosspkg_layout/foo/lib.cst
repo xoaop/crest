@@ -1,0 +1,4 @@
+S :: struct { a: i32; }
+take :: (v: S) -> i32 extern_C {
+    return v.a + 1;
+}

@@ -1,0 +1,40 @@
+// @pass
+// @run
+
+// 经函数指针调用 extern_C 函数：ABI 标记挂在函数类型上，
+// 具名调用与间接调用必须走同一条 C ABI 路径（大聚合 sret + byval）。
+
+S24 :: struct { a: i64; b: i64; c: i64; }
+
+add24 :: (a: S24, b: S24) -> S24 extern_C {
+    r: S24;
+    r.a = a.a + b.a;
+    r.b = a.b + b.b;
+    r.c = a.c + b.c;
+    return r;
+}
+
+// 回调形参用泛型接住：类型实参就是 &add24 推断出的、带 ABI 标记的函数指针
+apply24 :: (cb: $F, a: S24, b: S24) -> S24 {
+    return cb(a, b);
+}
+
+main :: () -> i32 {
+    a: S24; a.a = 1; a.b = 2; a.c = 3;
+    b: S24; b.a = 10; b.b = 20; b.c = 30;
+
+    // &extern_C 函数推断出的指针类型带 ABI 标记
+    p := &add24;
+    r := p(a, b);
+    if r.a != 11 { return 1; }
+    if r.b != 22 { return 2; }
+    if r.c != 33 { return 3; }
+
+    // 经泛型形参传下去，调用点仍按 C ABI 降级
+    r2 := apply24(&add24, a, b);
+    if r2.a != 11 { return 4; }
+    if r2.b != 22 { return 5; }
+    if r2.c != 33 { return 6; }
+
+    return 0;
+}

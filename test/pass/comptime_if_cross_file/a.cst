@@ -1,0 +1,13 @@
+// @pass
+// @run
+
+// 消费方文件排在前面：FLAG 由 b.cst 的 #if 分支定义，本文件的 #if 要等一轮
+#if FLAG {
+    x :: 1
+} else {
+    x :: 2
+}
+
+main :: () -> i32 {
+    return x - 1;
+}

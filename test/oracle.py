@@ -160,6 +160,6 @@ def run_compiler(crest, args, timeout=10, cwd=None, extra_env=None):
     return p.returncode, (p.stdout or "") + (p.stderr or ""), False
 
 
-def build_args(src, out_dir):
+def build_args(src, out_dir, extra=()):
     """Canonical `crest build` argv for a source path or directory."""
-    return ["build", str(src), "-o", str(out_dir)]
+    return ["build", str(src), "-o", str(out_dir)] + list(extra)

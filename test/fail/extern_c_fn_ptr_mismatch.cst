@@ -1,0 +1,18 @@
+// @fail
+// @error "extern_C"
+
+// 内部函数指针不能隐式接收 extern_C 函数：
+// ABI 边界是函数类型的一部分，两者不兼容（否则运行到 C 侧才崩）。
+CB :: (x: i32) -> i32
+
+ext :: (x: i32) -> i32 extern_C {
+    return x;
+}
+
+apply :: (cb: *CB, v: i32) -> i32 {
+    return cb(v);
+}
+
+main :: () -> i32 {
+    return apply(&ext, 1);
+}

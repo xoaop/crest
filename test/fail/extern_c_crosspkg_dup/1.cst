@@ -1,0 +1,13 @@
+// @fail
+// @error "重复定义"
+
+// 两个包都定义同名 extern_C 函数 → 链接期符号冲突，编译期就该拦
+import "foo"
+
+dup :: (x: i32) -> i32 extern_C {
+    return x + 5;
+}
+
+main :: () -> i32 {
+    return dup(1);
+}

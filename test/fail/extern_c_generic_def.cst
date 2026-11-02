@@ -1,0 +1,11 @@
+// @fail
+// @error "不能是泛型"
+
+// 泛型 + extern_C：符号名不做 mangle，多实例会撞名
+id :: (a: $T) -> T extern_C {
+    return a;
+}
+
+main :: () -> i32 {
+    return 0;
+}

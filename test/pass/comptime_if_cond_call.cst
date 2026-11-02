@@ -1,0 +1,27 @@
+// @pass
+// @run
+
+// 条件不是裸 Ident：调用表达式 + 实参都要走 readiness 检查
+pick :: (b: bool) -> i32 {
+    if b {
+        return 1;
+    } else {
+        return 2;
+    }
+}
+
+#if pick(FLAG) == 1 {
+    x :: 1
+} else {
+    x :: 2
+}
+
+#if true {
+    FLAG :: true
+} else {
+    FLAG :: false
+}
+
+main :: () -> i32 {
+    return x - 1;
+}

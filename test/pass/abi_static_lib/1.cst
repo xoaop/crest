@@ -1,0 +1,13 @@
+// @pass
+// @static-lib
+// @link-c consumer.c
+
+// extern_C 定义打成静态库，C 侧只链接 libabi_static_lib.a
+
+add :: (a: i32, b: i32) -> i32 extern_C {
+    return a + b;
+}
+
+mul :: (a: i32, b: i32) -> i32 extern_C {
+    return a * b;
+}

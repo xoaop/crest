@@ -1,0 +1,11 @@
+// @pass
+// @run
+
+// 跨包 FFI：foo 定义 extern_C 函数，入口只声明并调用
+import "foo"
+
+dup :: (x: i32) -> i32 extern_C
+
+main :: () -> i32 {
+    return dup(41) - 42;
+}

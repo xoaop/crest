@@ -53,7 +53,7 @@ target_include_directories(crest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xoaop")
 
 # 所有配置：禁用异常 + i128 支持
-target_compile_options(crest PRIVATE -fno-exceptions)
+target_compile_options(crest PRIVATE -fno-exceptions -fcoroutines)
 target_compile_definitions(crest PRIVATE XOAOP_I128_SUPPORT)
 
 # C++26 静态反射(P2996)，仅 GCC 的 -freflection 提供；clang 不支持,故只在 GNU 下加。

@@ -117,6 +117,7 @@ struct Type {
         struct {
             Array<TypeRef> param_types;
             TypeRef return_type;
+            bool is_extern_c;
         } function_info;
         
         // 指针
@@ -332,7 +333,7 @@ void free_type_table(Context *ctx);
 
 TypeRef easy_type(TypeKind kind);
 TypeRef pointer_type(TypeRef pointed_type);
-TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type);
+TypeRef function_type(Array<TypeRef> param_types, TypeRef return_type, bool is_extern_c = false);
 TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
 TypeRef struct_type(Ast *decl, GlobalStringIndex name, Array<StructField> fields);

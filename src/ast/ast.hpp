@@ -39,6 +39,7 @@ struct Ast;
     AST_INFO(FunctionType, "function type", struct {                                 \
         Array<Ast *> param_types;                                                    \
         Ast *return_type_ast;                                                        \
+        bool is_extern_c;                                                            \
     })                                                                               \
     AST_INFO(Ident, "ident", struct {                                                \
         GlobalStringIndex name;                                                               \

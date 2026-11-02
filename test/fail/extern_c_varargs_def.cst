@@ -1,0 +1,11 @@
+// @fail
+// @error "可变参数"
+
+// 变参定义需要 va_list，目前只支持声明
+log_fmt :: (fmt: *u8, ...) -> void extern_C {
+    return;
+}
+
+main :: () -> i32 {
+    return 0;
+}

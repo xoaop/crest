@@ -1,0 +1,4 @@
+pub_b :: () -> i32 { return foo(); }
+
+#under_is_file_scope
+foo :: () -> i32 extern_C { return 2; }

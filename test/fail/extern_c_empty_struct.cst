@@ -1,0 +1,14 @@
+// @fail
+// @error "空聚合体"
+
+// C 无法表达零大小参数/返回值
+E :: struct {}
+
+make_empty :: () -> E extern_C {
+    e: E;
+    return e;
+}
+
+main :: () -> i32 {
+    return 0;
+}

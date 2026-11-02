@@ -5,6 +5,8 @@
 
 #include "llvm_generate_ir.hpp"
 
+#include <optional>
+
 #include "xoaop.h"
 #include "array.hpp"
 #include "type.hpp"
@@ -14,6 +16,7 @@
 #include "lcir.hpp"
 
 #include "llvm_global.hpp"
+#include "llvm_abi.hpp"
 #include "llvm_basic_block_mapper.hpp"
 
 
@@ -51,9 +54,27 @@ struct LLVMGenerator {
     void deinit();
 
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
-    LLVMValueRef gen_abi_arg_address(LLVMValueRef val);
+
+    // ── C ABI 降级（实现见 llvm_abi_codegen.cpp）──
+    // 规则与签名计划在 llvm_abi.cpp；这里只按 plan 生成 IR。
+    // 定义点
+    LLVMValueRef gen_ir_param_value_by_abi(const ABIFunctionPlan& plan, unsigned slot);   // ABI 形状的 IR 参数 → 源码参数值
+    void gen_ir_ret_by_abi(const ABIFunctionPlan& plan, LLVMValueRef ret_val);    // 按 plan 生成 sret / 分块返回
+    // 调用点
+    LLVMValueRef gen_ir_sret_slot_by_abi(const ABIFunctionPlan& plan);
+    Array<LLVMValueRef> gen_ir_call_args_by_abi(const ABIFunctionPlan& plan, const ABIParamPlan& pp, LLVMValueRef arg_val);
+    LLVMValueRef gen_ir_call_result_by_abi(const ABIFunctionPlan& plan, LLVMValueRef call_result, LLVMValueRef sret_slot);
+    // 聚合体在内存与 IR 值之间的搬运
+    LLVMValueRef gen_ir_aggregate_address(LLVMValueRef val);
+    LLVMValueRef gen_ir_aggregate_value(LLVMValueRef val, LLVMTypeRef agg_type);
+    LLVMValueRef gen_ir_chunk_address(LLVMValueRef base, int k);
+    Array<LLVMValueRef> gen_ir_load_chunks(LLVMValueRef base, LLVMTypeRef const* types, int n);
+    void gen_ir_store_chunks(LLVMValueRef base, LLVMValueRef const* vals, int n);
+
     void gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm_func);   // 体遍历核心（不含上下文切换/COMDAT）
 
+    void gen_ir_inst_call(const CIRCallInfo& info, const CIRInstructionRef call_inst);
+    void gen_ir_inst_break(const CIRBreakInfo& info);
     void gen_ir_inst(CIRInstructionRef ref);
     void gen_ir_block_in_func_block(CIRInstructionRef blk_ref_inst, bool connect_to_parent = false);
     void gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef first_bb, LLVMBasicBlockMapper& blk_mapper, CIRBlockRef parent_blk_ref);   // 循环收尾接线（回边 + break 目标 → 父 merge）
@@ -95,6 +116,9 @@ public:
     IRSymbolTable syms;
 
     CIRFunctionDeclInfo curr_func_info;
+
+    // 当前正在生成的函数若是 extern_C 定义：入口参数与出口返回按这份 plan 拼装
+    std::optional<ABIFunctionPlan> curr_c_abi_def;
 
     xpHashMap<Ref<CIRInstResult>, LLVMValueRef> inst_vals;
 

@@ -1,0 +1,13 @@
+// @pass
+// @shared-lib
+// @link-c consumer.c
+
+// extern_C 定义打成共享库，C 侧链接 libabi_shared_lib.so 运行
+
+add :: (a: i32, b: i32) -> i32 extern_C {
+    return a + b;
+}
+
+mul :: (a: i32, b: i32) -> i32 extern_C {
+    return a * b;
+}

@@ -1,0 +1,11 @@
+// @fail
+// @error "签名与另一处不一致"
+
+// 同名但签名不同：链接器只认符号名，必须编译期拦下
+import "foo"
+
+dup :: (x: f64) -> f64 extern_C
+
+main :: () -> i32 {
+    return 0;
+}

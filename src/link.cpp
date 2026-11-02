@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <initializer_list>
 
 #include "context.hpp"
 #include "target.hpp"
@@ -29,6 +30,25 @@ bool target_uses_msvc() {
 
 std::string target_exe_suffix() {
     return target_is_windows() ? ".exe" : "";
+}
+
+std::string target_static_lib_name(const std::string& stem) {
+    return target_uses_msvc() ? stem + ".lib" : "lib" + stem + ".a";
+}
+
+std::string target_shared_lib_name(const std::string& stem) {
+    switch(context()->target.os) {
+        case TargetOS::Darwin:  return "lib" + stem + ".dylib";
+        case TargetOS::Windows: return stem + ".dll";
+        default:                return "lib" + stem + ".so";
+    }
+}
+
+std::string target_import_lib_name(const std::string& stem) {
+    if(!target_is_windows()) {
+        return "";
+    }
+    return target_uses_msvc() ? stem + ".lib" : "lib" + stem + ".dll.a";
 }
 
 bool parse_crt_arg(const char* s, LinkCrt& out) {
@@ -234,6 +254,41 @@ static std::string find_lld_link(const std::string& vs) {
     return "lld-link";   // 兜底：交给 PATH
 }
 
+static std::string find_vs_llvm_lib(const std::string& vs) {
+    namespace fs = std::filesystem;
+    if(vs.empty()) {
+        return "";
+    }
+    const fs::path p = fs::path(vs) / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "llvm-lib.exe";
+    std::error_code ec;
+    return fs::is_regular_file(p, ec) ? p.string() : "";
+}
+
+// 静态库归档器优先级：bin/ → VS 自带 → PATH
+static std::string find_llvm_lib(const std::string& vs) {
+    namespace fs = std::filesystem;
+
+    {
+        const fs::path bin = context()->compiler_path / "bin";
+        for(const char* n : {"llvm-lib.exe", "llvm-lib"}) {
+            const fs::path p = bin / n;
+            std::error_code ec;
+            if(fs::is_regular_file(p, ec)) {
+                return p.string();
+            }
+        }
+    }
+
+    {
+        std::string vs_lib = find_vs_llvm_lib(vs);
+        if(!vs_lib.empty()) {
+            return vs_lib;
+        }
+    }
+
+    return "llvm-lib";   // 兜底：交给 PATH
+}
+
 static std::string target_arch() {
     switch(context()->target.arch) {
         case TargetArch::X86_64:  return "x64";
@@ -294,13 +349,12 @@ static std::string subsystem_name(LinkSubsystem sub) {
 
 #endif  // _WIN32
 
-static std::string find_cc_driver() {
+// 在 PATH 里找一个可用工具，找不到返回空串
+static std::string find_tool(std::initializer_list<const char*> names) {
 #ifdef _WIN32
     const char* probe = "where %s >nul 2>&1";
-    const char* names[] = {"g++", "gcc", "clang"};
 #else
     const char* probe = "command -v %s >/dev/null 2>&1";
-    const char* names[] = {"cc", "gcc", "clang"};
 #endif
 
     for(const char* n : names) {
@@ -310,57 +364,32 @@ static std::string find_cc_driver() {
             return n;
         }
     }
-    return "cc";
+    return "";
 }
 
-bool link_objects(const LinkRequest& req) {
-    if(req.obj_paths.count <= 0) {
-        return true;
-    }
-
-    std::string cmd;
-
-    if(target_uses_msvc()) {
+static std::string find_cc_driver() {
 #ifdef _WIN32
-        const std::string vs = find_vs_install();
-        std::string lld = find_lld_link(vs);
-        const std::string lld_arg = lld.contains(' ') ? ("\"" + lld + "\"") : lld;
-
-        cmd = lld_arg + " /nologo /out:\"" + req.output_binary_path + "\"";
-        for(const auto& obj : req.obj_paths) {
-            cmd += " \"" + std::string(obj.c_str) + "\"";
-        }
-        cmd += " /defaultlib:" + crt_lib_name(context()->link_crt)
-             + " /subsystem:" + subsystem_name(context()->link_subsystem);
-        for(const auto& d : msvc_lib_dirs(vs)) {
-            cmd += " /libpath:\"" + d + "\"";
-        }
-        println_out("[link] linker = {}", lld);
+    std::string cc = find_tool({"g++", "gcc", "clang"});
 #else
-        err("linking an MSVC target requires Windows (no lld-link driver here)");
-        return false;
+    std::string cc = find_tool({"cc", "gcc", "clang"});
 #endif
-    } else {
-        std::string cc = find_cc_driver();
-        const std::string cc_arg = cc.contains(' ') ? ("\"" + cc + "\"") : cc;
+    return cc.empty() ? "cc" : cc;
+}
 
-        cmd = cc_arg;
-        for(const auto& obj : req.obj_paths) {
-            cmd += " \"" + std::string(obj.c_str) + "\"";
-        }
-        cmd += " -o \"" + req.output_binary_path + "\"";
-        if(target_is_windows() && context()->link_subsystem == LinkSubsystem::Windows) {
-            cmd += " -mwindows";
-        }
-        println_out("[link] linker = {}", cc);
+static std::string quote_if_needed(const std::string& s) {
+    return s.contains(' ') ? ("\"" + s + "\"") : s;
+}
+
+static void append_objects(std::string& cmd, const Array<xpString>& obj_paths) {
+    for(const auto& obj : obj_paths) {
+        cmd += " \"";
+        cmd += std::string(obj.c_str);
+        cmd += "\"";
     }
+}
 
-    for(const auto& arg : context()->linker_args) {
-        cmd += " ";
-        cmd += arg.contains(' ') ? ("\"" + arg + "\"") : arg;
-    }
-
-    println_out("[link] {}", cmd);
+static bool run_command(const char* what, const std::string& cmd) {
+    println_out("[{}] {}", what, cmd);
 
     // 外层再套一对引号：cmd /c 会剥掉首尾引号并在第一个空格处截断
     std::string sys_cmd = cmd;
@@ -372,8 +401,140 @@ bool link_objects(const LinkRequest& req) {
 
     int rc = std::system(sys_cmd.c_str());
     if(rc != 0) {
-        err("linking failed: linker exited with code {}", rc);
+        err("{} failed: command exited with code {}", what, rc);
         return false;
     }
     return true;
+}
+
+#ifdef _WIN32
+
+// MSVC 目标：可执行文件与 DLL 都交给 lld-link
+static std::string msvc_link_command(const LinkRequest& req, const std::string& lld, const std::string& vs) {
+    std::string cmd = quote_if_needed(lld);
+
+    if(req.kind == LinkOutputKind::SharedLibrary) {
+        cmd += " /dll";
+    }
+
+    cmd += " /nologo /out:\"" + req.output_binary_path + "\"";
+
+    if(req.kind == LinkOutputKind::SharedLibrary && !req.import_lib_path.empty()) {
+        cmd += " /implib:\"" + req.import_lib_path + "\"";
+    }
+
+    append_objects(cmd, req.obj_paths);
+
+    cmd += " /defaultlib:" + crt_lib_name(context()->link_crt);
+
+    // DLL 没有子系统概念，只对可执行文件生效
+    if(req.kind == LinkOutputKind::Executable) {
+        cmd += " /subsystem:" + subsystem_name(context()->link_subsystem);
+    }
+
+    for(const auto& d : msvc_lib_dirs(vs)) {
+        cmd += " /libpath:\"" + d + "\"";
+    }
+
+    return cmd;
+}
+
+#endif  // _WIN32
+
+// GNU / ELF / Mach-O 目标：可执行文件与共享库都交给 cc 驱动
+static std::string cc_link_command(const LinkRequest& req, const std::string& cc) {
+    std::string cmd = quote_if_needed(cc);
+
+    append_objects(cmd, req.obj_paths);
+
+    if(req.kind == LinkOutputKind::SharedLibrary) {
+        if(context()->target.os == TargetOS::Darwin) {
+            cmd += " -dynamiclib";
+        } else {
+            cmd += " -shared";
+        }
+
+        if(!req.import_lib_path.empty()) {
+            // MinGW：同时产出 .dll.a 导入库，C 侧才能链这个 DLL
+            cmd += " -Wl,--out-implib,\"" + req.import_lib_path + "\"";
+        }
+    } else if(target_is_windows() && context()->link_subsystem == LinkSubsystem::Windows) {
+        cmd += " -mwindows";
+    }
+
+    cmd += " -o \"" + req.output_binary_path + "\"";
+
+    return cmd;
+}
+
+// 静态库：ar / llvm-lib 只做归档，不参与链接
+static bool archive_objects(const LinkRequest& req) {
+    std::string cmd;
+
+    if(target_uses_msvc()) {
+#ifdef _WIN32
+        const std::string vs = find_vs_install();
+        const std::string ar = find_llvm_lib(vs);
+
+        cmd = quote_if_needed(ar) + " /nologo /out:\"" + req.output_binary_path + "\"";
+        append_objects(cmd, req.obj_paths);
+
+        println_out("[archive] archiver = {}", ar);
+#else
+        err("archiving an MSVC target requires Windows (no llvm-lib here)");
+        return false;
+#endif
+    } else {
+        std::string ar = find_tool({"ar", "llvm-ar"});
+        if(ar.empty()) {
+            ar = "ar";
+        }
+
+        cmd = quote_if_needed(ar) + " rcs \"" + req.output_binary_path + "\"";
+        append_objects(cmd, req.obj_paths);
+
+        println_out("[archive] archiver = {}", ar);
+    }
+
+    return run_command("archive", cmd);
+}
+
+bool link_objects(const LinkRequest& req) {
+    if(req.obj_paths.count <= 0) {
+        return true;
+    }
+
+    if(req.kind == LinkOutputKind::StaticLibrary) {
+        return archive_objects(req);
+    }
+
+    std::string cmd;
+
+    if(target_uses_msvc()) {
+#ifdef _WIN32
+        const std::string vs = find_vs_install();
+        const std::string lld = find_lld_link(vs);
+
+        cmd = msvc_link_command(req, lld, vs);
+
+        println_out("[link] linker = {}", lld);
+#else
+        err("linking an MSVC target requires Windows (no lld-link driver here)");
+        return false;
+#endif
+    } else {
+        const std::string cc = find_cc_driver();
+
+        cmd = cc_link_command(req, cc);
+
+        println_out("[link] linker = {}", cc);
+    }
+
+    // -linker 透传参数：只对链接生效，静态库归档不走这里
+    for(const auto& arg : context()->linker_args) {
+        cmd += " ";
+        cmd += arg.contains(' ') ? ("\"" + arg + "\"") : arg;
+    }
+
+    return run_command("link", cmd);
 }

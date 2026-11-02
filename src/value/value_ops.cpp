@@ -205,7 +205,11 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
 
         case TokenType::ShiftLeft: {     // <<
             if(is_int_or_untyped) {
-                result.integer_val( v1.integer_val() << v2.integer_val());
+                const auto count = v2.integer_val();
+                if(count < 0 || count >= 128) {
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+                result.integer_val( v1.integer_val() << count);
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);
             }
@@ -213,7 +217,11 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
 
         case TokenType::ShiftRight: {    // >>
             if(is_int_or_untyped) {
-                result.integer_val( v1.integer_val() >> v2.integer_val());
+                const auto count = v2.integer_val();
+                if(count < 0 || count >= 128) {
+                    return ValueResult::err(ValueErrorKind::Overflow);
+                }
+                result.integer_val( v1.integer_val() >> count);
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);
             }
@@ -241,6 +249,8 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
         if(is_int_or_untyped) {
             if(is_certain_type(v1.type)) {
                 overflowed = check_integer_overflow(result.integer_val(), v1.type);
+            } else {
+                overflowed = result.integer_val() < INT64_MIN || result.integer_val() > static_cast<i128>(UINT64_MAX);
             }
         } else if(is_float_or_untyped) {
             if(is_certain_type(v1.type)) {
