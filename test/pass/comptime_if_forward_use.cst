@@ -1,5 +1,5 @@
-// @fail
-// @error "undefined symbol"
+// @pass
+// @run
 
 x :: get_one()
 

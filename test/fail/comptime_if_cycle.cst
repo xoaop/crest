@@ -1,0 +1,19 @@
+// @fail
+// @error "undefined symbol"
+
+// 两个 #if 互相引用对方分支里的符号：任何一轮都没有进展，走 no-progress 兜底报错
+#if y == 1 {
+    x :: 1
+} else {
+    x :: 0
+}
+
+#if x == 1 {
+    y :: 1
+} else {
+    y :: 0
+}
+
+main :: () -> i32 {
+    return x + y;
+}

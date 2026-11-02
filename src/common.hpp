@@ -58,6 +58,19 @@ const char *to_string(const T value) {
 
 
 
+// 反射遍历所有非静态数据成员，对每个成员调用 fn(member)
+template<typename T, typename F>
+void for_each_field(T &obj, F &&fn) {
+    using Plain = std::remove_cv_t<T>;
+
+    template for(constexpr auto m : std::define_static_array(
+            std::meta::nonstatic_data_members_of(^^Plain, std::meta::access_context::current()))) {
+        fn(obj.[:m:]);
+    }
+}
+
+
+
 template<typename T>
 consteval auto annotations_of_type(std::meta::info entity) {
     std::vector<T> out;

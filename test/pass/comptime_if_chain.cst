@@ -1,0 +1,27 @@
+// @pass
+// @run
+
+// 三个 #if 逆序依赖：每轮只前进一级，得跑满三轮
+#if C == 3 {
+    value :: 1
+} else {
+    value :: 0
+}
+
+#if B == 2 {
+    C :: 3
+} else {
+    C :: 0
+}
+
+#if A == 1 {
+    B :: 2
+} else {
+    B :: 0
+}
+
+A :: 1
+
+main :: () -> i32 {
+    return value - 1;
+}

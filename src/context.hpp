@@ -8,6 +8,7 @@
 #include "error_msg.hpp"
 #include "target.hpp"
 #include "link.hpp"
+#include "coroutine.hpp"
 
 #include "cir_builder.hpp"
 #include "scope.hpp"
@@ -63,6 +64,7 @@ struct Context {
     GlobalStringArray global_strings;
     KnownGlobalStrings known_global_strings;
 
+    CoroutineManager coroutine_manager;
     ThreadPool *thread_pool;
 };
 

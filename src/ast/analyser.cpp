@@ -16,6 +16,8 @@
 
 #include "context.hpp"
 
+#include "ast_visit.hpp"
+
 #include "type_check.hpp"
 
 #include "error_msg.hpp"
@@ -154,6 +156,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
 //
 
 void resolve_ast_file(AstFile *ast_file, Analyser analyser);
+void resolve_top_level_comptime_if(Ref<Package> pkg);
 void resolve_top_stmt(Ast *ast, Analyser analyser);
 void resolve_fn_param_list(Array<Ast *>, Analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
@@ -171,6 +174,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
 void resolve_ident(Ast *ident_ast, Analyser analyser);
 void resolve_field_access(Ast *field_access_ast, Analyser analyser);
 bool may_fall_through(Ast *ast);
+
+CoroutineTask<void> resolve_comptime_if(CoroutineManager& manager,Ast *ast, Analyser analyser, Array<CoroutineTask<void>> *tasks, bool *report_errors);
 
 
 
@@ -257,6 +262,7 @@ void resolve_package(Ref<Package> pkg) {
     }
 
     collect_top_level_symbols_in_package(pkg);
+    resolve_top_level_comptime_if(pkg);
     resolve_ast_package(pkg);
 }
 
@@ -284,8 +290,207 @@ Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast, std::op
     
     
     return new_state;
-}    
+}
 
+static bool comptime_if_condition_ready(Ast *expr, Analyser analyser, bool report_error) {
+    bool ready = true;
+
+    // 函数字面量的参数与函数体不参与就绪判断
+    auto check_node = [&](Ast *node) -> AstVisit {
+        if(node->type == AstType_FunctionDeclValue) {
+            return AstVisit::SkipChildren;
+        }
+
+        if(node->type != AstType_Ident) {
+            return AstVisit::Continue;
+        }
+
+        const auto name = node->Ident.name;
+        const auto symbol = find_symbol_ref_until_global(analyser.current_scope, name);
+        if(symbol == Ref<SymbolInfo>::INVALID_REF) {
+            if(report_error) {
+                context()->reporter.report_error(
+                    node->src_loc,
+                    "undefined symbol '{}'",
+                    get_global_string(name)
+                );
+            }
+            ready = false;
+            return AstVisit::Stop;
+        }
+
+        SymbolInfo& info = symbol.unwrap();
+        if(info.ast != nullptr
+            && info.ast->type == AstType_ConstDecl
+            && !info.ast->ConstDecl.resolved) {
+            resolve_top_stmt(
+                info.ast,
+                make_analyser(info.file, info.package)
+            );
+        }
+        return AstVisit::Continue;
+    };
+
+    visit_ast(expr, check_node);
+    return ready;
+}
+
+CoroutineTask<void> resolve_comptime_if(
+    CoroutineManager& manager,
+    Ast *ast,
+    Analyser analyser,
+    Array<CoroutineTask<void>> *tasks,
+    bool *report_errors
+) {
+    while(!comptime_if_condition_ready(
+        ast->ComptimeIf.condition,
+        analyser,
+        *report_errors
+    )) {
+        if(*report_errors) {
+            co_return;
+        }
+        co_await std::suspend_always{};
+    }
+
+    auto &ci = ast->ComptimeIf;
+    resolve_expr(ci.condition, analyser);
+
+    auto &cir = get_cir_package(analyser.pkg);
+
+    CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg.unwrap().stage_allocator);
+    defer(CIRBuildContext::free(ctx));
+
+    ctx.pkg_ref = analyser.pkg;
+    ctx.pkg = &cir;
+    ctx.scope = analyser.current_scope;
+
+    CIRBlockRef blk = CIRBuilder::build_block_inst_for_expr(ctx, ci.condition, true, true);
+
+    EvalStack eval_stack = {};
+    Interpreter interp(ctx.allocator, analyser.pkg, &eval_stack,
+                       EvalInstance::make(ctx.pkg, 0, ctx.allocator));
+
+    CIRInstructionRef blk_ref(blk);
+    interp.analyze_block(blk, blk_ref);
+
+    if(!interp.has_result_val(blk_ref)) {
+        co_return;
+    }
+
+    Value cond = interp.ResultValue(blk_ref);
+
+    if(cond.type != easy_type(Type_bool)) {
+        context()->reporter.report_error(ci.condition->src_loc, "#if 的条件必须是 bool");
+        co_return;
+    }
+
+    ci.cond_value = cond.bool_val();
+
+    Ast *live = ci.cond_value ? ci.true_branch : ci.false_branch;
+
+    if(live != nullptr) {
+        for(Ast *s : live->Block.statements) {
+            if(s->type == AstType_ConstDecl) {
+                collect_const_decl_symbol(s, analyser, analyser.under_file_scope);
+            }
+        }
+
+        for(Ast *s : live->Block.statements) {
+            if(s->type == AstType_ComptimeIf) {
+                tasks->push_back(resolve_comptime_if(
+                    manager,
+                    s,
+                    analyser,
+                    tasks,
+                    report_errors
+                ));
+            } else {
+                resolve_top_stmt(s, analyser);
+            }
+        }
+    }
+
+    co_return;
+}
+
+
+
+void resolve_top_level_comptime_if(Ref<Package> pkg) {
+    auto& manager = context()->coroutine_manager;
+    ASSERT(manager.get_queued_task_count() == 0);
+
+    auto tasks = make_array<CoroutineTask<void>>(pkg->stage_allocator);
+    defer(array_free(&tasks));
+    bool report_errors = false;
+
+    for(auto& ast_file : pkg->ast_files) {
+        Analyser analyser = make_analyser(&ast_file, pkg);
+
+        for(auto *ast : ast_file.top_levels) {
+            if(ast->type == AstType_UnderIsFileScope) {
+                analyser.under_file_scope = true;
+                continue;
+            }
+
+            if(ast->type == AstType_ComptimeIf) {
+                tasks.push_back(resolve_comptime_if(
+                    manager,
+                    ast,
+                    analyser,
+                    &tasks,
+                    &report_errors
+                ));
+            }
+        }
+    }
+
+    auto completed_comptime_if_count = [](const Array<CoroutineTask<void>>& tasks) {
+        isize count = 0;
+        for(const auto& task : tasks) {
+            if(task.done()) {
+                count += 1;
+            }
+        }
+        return count;
+    };
+
+    for(;;) {
+        const isize completed_before = completed_comptime_if_count(tasks);
+        if(completed_before == tasks.count) {
+            break;
+        }
+
+        const isize round_task_count = tasks.count;
+        FOR_0_TO(round_task_count) {
+            if(tasks[it].done()) {
+                continue;
+            }
+
+            ASSERT(tasks[it].state() == CoroutineState::Created || tasks[it].state() == CoroutineState::Suspended);
+            ASSERT(manager.schedule(tasks[it]));
+            ASSERT(manager.run_one());
+        }
+
+        // 如果一轮遍历都没有完成任何一个任务，说明到头了, 得报错
+        const isize completed_after = completed_comptime_if_count(tasks);
+        if(completed_after == completed_before) {
+            report_errors = true;
+            for(auto& it : tasks) {
+                if(it.done()) {
+                    continue;
+                }
+
+                ASSERT(manager.schedule(it));
+                ASSERT(manager.run_one());
+                ASSERT(it.done());
+            }
+            break;
+        }
+    }
+
+    ASSERT(manager.get_queued_task_count() == 0);
+}
 
 
 
@@ -300,6 +505,8 @@ void resolve_ast_file(AstFile *ast_file, Analyser analyser) {
 
         if(top_level->type == AstType_UnderIsFileScope) {
             analyser.under_file_scope = true;
+            continue;
+        } else if(top_level->type == AstType_ComptimeIf) {
             continue;
         }
 
@@ -316,6 +523,10 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
     switch (ast->type) {
 
         case AstType_ConstDecl: {
+            if(ast->ConstDecl.resolved) {
+                break;
+            }
+
             // 符号在 collect 阶段建好，ref 已经记在 ast_symbol 上，不按名字重找（同名遮蔽会找错那条）。
             // 没建上说明 collect 已经报过错（重复定义 / 不可遮蔽），这里不再解析
             if(ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
@@ -339,60 +550,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
             resolve_const_decl_local(ast, analyser);
             ast->ConstDecl.resolved = true;
         } break;
-
-        case AstType_ComptimeIf: {
-            auto &ci = ast->ComptimeIf;
-
-            resolve_expr(ci.condition, analyser);
-
-            auto &cir = get_cir_package(analyser.pkg);
-
-            CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg.unwrap().stage_allocator);
-            defer(CIRBuildContext::free(ctx));
-
-            ctx.pkg_ref = analyser.pkg;
-            ctx.pkg = &cir;
-            ctx.scope = analyser.current_scope;
-            
-
-            CIRBlockRef blk = CIRBuilder::build_block_inst_for_expr(ctx, ci.condition, true, true);
-
-            EvalStack eval_stack = {};
-            Interpreter interp(ctx.allocator, analyser.pkg, &eval_stack,
-                               EvalInstance::make(ctx.pkg, 0, ctx.allocator));
-
-            CIRInstructionRef blk_ref(blk);
-            interp.analyze_block(blk, blk_ref);
-
-            if(!interp.has_result_val(blk_ref)) {
-                break;
-            }
-
-            Value cond = interp.ResultValue(blk_ref);
-
-            if(cond.type != easy_type(Type_bool)) {
-                context()->reporter.report_error(ci.condition->src_loc, "#if 的条件必须是 bool");
-                break;
-            }
-
-            ci.cond_value = cond.bool_val();
-
-            Ast *live = ci.cond_value ? ci.true_branch : ci.false_branch;
-
-            if(live != nullptr) {
-                for(Ast *s : live->Block.statements) {
-                    if(s->type == AstType_ConstDecl) {
-                        collect_const_decl_symbol(s, analyser, analyser.under_file_scope);
-                    }
-                }
-
-                for(Ast *s : live->Block.statements) {
-                    resolve_top_stmt(s, analyser);
-                }
-            }
-
-        } break;
-
+        
         case AstType_UnderIsFileScope: {
             // 指令标记，无内容
         } break;
