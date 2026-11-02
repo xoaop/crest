@@ -36,6 +36,62 @@ ActualValueType Value::actual_type() const {
     return actual_value_type;
 }
 
+bool Value::equal(const Value& other) const {
+    const auto kind = actual_type();
+    if(kind != other.actual_type()) {
+        return false;
+    }
+    switch(kind) {
+    case ActualValueType::Nothing:
+    case ActualValueType::ValueRef:
+        return true;
+    case ActualValueType::Integer:
+        return integer_val() == other.integer_val();
+    case ActualValueType::Float:
+        return float_val() == other.float_val();
+    case ActualValueType::Bool:
+        return bool_val() == other.bool_val();
+    case ActualValueType::Type:
+        return type_val() == other.type_val();
+    case ActualValueType::Pointer:
+        return pointer_val().slot == other.pointer_val().slot;
+    case ActualValueType::Function: {
+        const auto self_func = is_unresolved_func_val() ? unresolved_func_val() : func_val();
+        const auto other_func = other.is_unresolved_func_val() ? other.unresolved_func_val() : other.func_val();
+        return self_func.func_key == other_func.func_key;
+    }
+    case ActualValueType::Package:
+        return package_val() == other.package_val();
+    case ActualValueType::Struct: {
+        const auto self_fields = struct_fields_val();
+        const auto other_fields = other.struct_fields_val();
+        if(self_fields.count != other_fields.count) {
+            return false;
+        }
+        FOR_0_TO(self_fields.count) {
+            if(!self_fields[it].equal(other_fields[it])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    case ActualValueType::Array: {
+        const auto self_elems = array_element_values();
+        const auto other_elems = other.array_element_values();
+        if(self_elems.count != other_elems.count) {
+            return false;
+        }
+        FOR_0_TO(self_elems.count) {
+            if(!self_elems[it].equal(other_elems[it])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    }
+    return false;
+}
+
 
 void Value::integer_val(i128 int_val) {
     actual_value_type = ActualValueType::Integer;

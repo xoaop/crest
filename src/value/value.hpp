@@ -137,6 +137,8 @@ public:
 
     ActualValueType actual_type() const;
 
+    bool equal(const Value& other) const;
+
     void integer_val(i128 int_val);
     void float_val(double float_val);
     void bool_val(bool bool_val);
@@ -207,6 +209,59 @@ public:
     // 提供任意类型的 "零值"
     static Value zero(TypeRef type);
     static Value zero(TypeRef type, xpAllocator allocator);
+};
+
+
+template<>
+struct std::hash<Value> {
+    usize operator()(const Value& v) const {
+        const auto kind = v.actual_type();
+        u64 h = static_cast<u64>(kind);
+        switch(kind) {
+        case ActualValueType::Nothing:
+        case ActualValueType::ValueRef:
+            break;
+        case ActualValueType::Integer: {
+            const auto n = v.integer_val();
+            h = xp_hash_combine_u64(h, static_cast<u64>(n));
+            h = xp_hash_combine_u64(h, static_cast<u64>(n >> 64));
+        } break;
+        case ActualValueType::Float:
+            h = xp_hash_combine_u64(h, std::hash<float>{}(v.float_val()));
+            break;
+        case ActualValueType::Bool:
+            h = xp_hash_combine_u64(h, std::hash<bool>{}(v.bool_val()));
+            break;
+        case ActualValueType::Type:
+            h = xp_hash_combine_u64(h, std::hash<TypeRef>{}(v.type_val()));
+            break;
+        case ActualValueType::Pointer:
+            h = xp_hash_combine_u64(h, std::hash<ValueRef>{}(v.pointer_val().slot));
+            break;
+        case ActualValueType::Function: {
+            const auto fv = v.is_unresolved_func_val() ? v.unresolved_func_val() : v.func_val();
+            h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(fv.func_key));
+        } break;
+        case ActualValueType::Package:
+            h = xp_hash_combine_u64(h, std::hash<Ref<Package>>{}(v.package_val()));
+            break;
+        case ActualValueType::Struct: {
+            const auto fields = v.struct_fields_val();
+            h = xp_hash_combine_u64(h, static_cast<u64>(fields.count));
+            FOR(fields) {
+                h = xp_hash_combine_u64(h, std::hash<Value>{}(it));
+            }
+        } break;
+        case ActualValueType::Array: {
+            const auto elems = v.array_element_values();
+            h = xp_hash_combine_u64(h, static_cast<u64>(elems.count));
+            FOR(elems) {
+                h = xp_hash_combine_u64(h, std::hash<Value>{}(it));
+            }
+        } break;
+        }
+        return static_cast<usize>(h);
+    }
 };
 
 

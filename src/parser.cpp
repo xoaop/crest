@@ -76,8 +76,8 @@ Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition);
 
 Ast *parse_comptime_if(Parser *p, bool is_after_else = false);
 
-Ast *parse_expr_factor(Parser *p);
-Ast *parse_expr(Parser *p, isize min_prec = 0);
+Ast *parse_expr_factor(Parser *p, bool allow_struct_init = true);
+Ast *parse_expr(Parser *p, isize min_prec = 0, bool allow_struct_init = true);
 
 
 Ast *parse_constant(Parser *p);
@@ -1123,7 +1123,7 @@ Ast *parse_string_literal(Parser *p) {
     return nullptr;
 }
 
-Ast *parse_expr_factor(Parser *p) {
+Ast *parse_expr_factor(Parser *p, bool allow_struct_init) {
     RecursionGuard depth_guard;
     if(depth_guard.exceeded) {
         Ast *bad = ast_alloc(AstType_BadExpr, curr_token(p));
@@ -1259,7 +1259,7 @@ Ast *parse_expr_factor(Parser *p) {
         // 指针类型 / 数组类型 / 切片类型
         case TokenType::Star: {
             a = ast_alloc(AstType_PointerType, expect(p, TokenType::Star));
-            Ast *pointed = parse_expr(p, 0);
+            Ast *pointed = parse_expr(p, 0, allow_struct_init);
             a->PointerType.pointed_type_ast = pointed;
             a->src_loc = merge(a->token.src_loc, pointed->src_loc);
         } break;
@@ -1270,7 +1270,7 @@ Ast *parse_expr_factor(Parser *p) {
                 a = ast_alloc(AstType_SliceType, curr_token(p));
                 expect(p, TokenType::LeftSquareBracket);
                 expect(p, TokenType::RightSquareBracket);
-                Ast *elem = parse_expr(p, 0);
+                Ast *elem = parse_expr(p, 0, false);
                 a->SliceType.element_type_ast = elem;
                 a->src_loc = merge(a->token.src_loc, elem->src_loc);
             } else {
@@ -1279,7 +1279,7 @@ Ast *parse_expr_factor(Parser *p) {
                 Ast *count = parse_expr(p, 0);
                 a->ArrayType.count_expr = count;
                 expect(p, TokenType::RightSquareBracket);
-                Ast *elem = parse_expr(p, 0);
+                Ast *elem = parse_expr(p, 0, false);
                 a->ArrayType.element_type_ast = elem;
                 a->src_loc = merge(a->token.src_loc, elem->src_loc);
             }
@@ -1405,7 +1405,7 @@ isize precedence(TokenType op, bool is_unary_op = false) {
     return 13 - prec;
 }
 
-Ast *parse_expr(Parser *p, isize min_prec) {
+Ast *parse_expr(Parser *p, isize min_prec, bool allow_struct_init) {
     RecursionGuard depth_guard;
     if(depth_guard.exceeded) {
         Ast *bad = ast_alloc(AstType_BadExpr, curr_token(p));
@@ -1413,7 +1413,7 @@ Ast *parse_expr(Parser *p, isize min_prec) {
         return bad;
     }
 
-    Ast *left = parse_expr_factor(p);
+    Ast *left = parse_expr_factor(p, allow_struct_init);
 
     Token curr;
     
@@ -1466,6 +1466,11 @@ Ast *parse_expr(Parser *p, isize min_prec) {
             Token next = next_token(p);
 
             if(next.type == TokenType::LeftCurlyBracket) {
+                // 类型位置遇到 .{...}：属于外层（如 []T.{...}），不归元素类型
+                if(!allow_struct_init) {
+                    break;
+                }
+
                 // 结构体初始化表达式, 形如 Point.{1, 2}
 
                 Ast *a = ast_alloc(AstType_StructInitExpr, curr);

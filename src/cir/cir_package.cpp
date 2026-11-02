@@ -145,12 +145,7 @@ u64 FuncCallKey::hash() const {
     FOR(comptime_arg_refs) {
         auto* res = it.get_result();
         if(res && res->state >= CIRResultState::WholeValue) {
-            Value v = res->actual_val();
-            if(is_type_type(v.type)) {
-                h = xp_hash_combine_u64(h, reinterpret_cast<u64>(v.type_val()));
-            } else {
-                h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(it));
-            }
+            h = xp_hash_combine_u64(h, std::hash<Value>{}(res->actual_val()));
         }
     }
     return h;
@@ -174,9 +169,17 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
         FOR(comptime_arg_refs) {
             auto* ra = it.get_result();
             auto* rb = other.comptime_arg_refs[it_index].get_result();
-            if(!ra || !rb) return false;
-            if(ra->state < CIRResultState::OnlyType || rb->state < CIRResultState::OnlyType) return false;
-            if(ra->actual_type() != rb->actual_type()) return false;
+            if(!ra || !rb) {
+                return false;
+            }
+
+            if(ra->state < CIRResultState::OnlyType || rb->state < CIRResultState::OnlyType) {
+                return false;
+            }
+
+            if(ra->actual_type() != rb->actual_type()) {
+                return false;
+            }
         }
         return true;
     }
@@ -184,14 +187,16 @@ bool FuncCallKey::operator==(const FuncCallKey& other) const {
     FOR(comptime_arg_refs) {
         auto* ra = it.get_result();
         auto* rb = other.comptime_arg_refs[it_index].get_result();
-        if(!ra || !rb) return false;
-        if(ra->state < CIRResultState::WholeValue || rb->state < CIRResultState::WholeValue) return false;
-        Value va = ra->actual_val();
-        Value vb = rb->actual_val();
-        if(is_type_type(va.type) && is_type_type(vb.type)) {
-            if(va.type_val() != vb.type_val()) return false;
-        } else {
-            if(!(it == other.comptime_arg_refs[it_index])) return false;
+        if(!ra || !rb) {
+            return false;
+        }
+
+        if(ra->state < CIRResultState::WholeValue || rb->state < CIRResultState::WholeValue) {
+            return false;
+        }
+
+        if(!ra->actual_val().equal(rb->actual_val())) {
+            return false;
         }
     }
     return true;
