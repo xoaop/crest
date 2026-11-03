@@ -895,6 +895,7 @@ Ast *parse_for(Parser *p) {
     }
 
     if(is_for_in) {
+        a->ForStmt.iter_by_ptr = is_ptr_iter;
 
         if(is_ptr_iter) {
             expect(p, TokenType::Star);

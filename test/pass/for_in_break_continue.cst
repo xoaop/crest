@@ -1,0 +1,22 @@
+// @pass
+// @run
+
+main :: () -> i32 {
+    arr: [6]i32 = {1i32, 2, 3, 4, 5, 6};
+
+    sum_before_five: i32 = 0;
+    for v in arr {
+        if v == 5 { break; }
+        sum_before_five = sum_before_five + v;
+    }
+    if sum_before_five != 10 { return 1; }
+
+    odd_sum: i32 = 0;
+    for v in arr {
+        if v % 2 == 0 { continue; }
+        odd_sum = odd_sum + v;
+    }
+    if odd_sum != 9 { return 2; }
+
+    return 0;
+}

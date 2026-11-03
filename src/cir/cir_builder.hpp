@@ -36,6 +36,7 @@ struct CIRBuildContext {
     CIRInstructionRef func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
     Ref<Scope> scope;
     bool building_return_type_decl = false;   // 正在构建 return <type-decl>，声明块内发 PublishReturnValue
+    isize internal_var_serial = 0;            // 编译器内部变量名编号（名不可词法化，用户不可声明）
 
     Array<CIRBlockRef> block_stack;
     Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪

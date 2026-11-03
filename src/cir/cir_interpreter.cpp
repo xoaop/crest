@@ -1604,6 +1604,12 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
         }
         return make_result(pc_ref, ResultDesc::make_type_only(enum_type));
 
+    } else if(is_array_type(parent_type) && info.field_name == context()->known_global_strings.count) {
+        // 定长数组没有运行时字段；count 由数组类型直接给出
+        Value v = make_value(easy_type(Type_isize));
+        v.integer_val(parent_type->array_info.count);
+        return make_result(pc_ref, ResultDesc::make_value(easy_type(Type_isize), v));
+
     } else {
         return make_result(pc_ref, inst_error(pc_ref, "字段访问不支持的类型的值，实际类型 '{}'", parent_type->name()));
     }
@@ -1704,13 +1710,10 @@ AnalyzeResult Interpreter::analyze_FieldPtr(const CIRFieldPtrInfo& info, CIRInst
 AnalyzeResult Interpreter::analyze_IndexPtr(const CIRIndexPtrInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     CIRInstructionRef array_inst = info.array_inst;
 
-    if(!is_lvalue(array_inst)) {
-        return make_result(pc_ref, inst_error(pc_ref, "不能对非左值表达式取索引指针"));
-    }
-
     TypeRef array_type_ref = ResultType(array_inst);
     TypeRef elem_type = nullptr;
-    if(is_array_type(array_type_ref)) {
+    const bool container_is_array = is_array_type(array_type_ref);
+    if(container_is_array) {
         elem_type = array_type_ref->array_info.element_type;
     } else if(is_slice_struct_type(array_type_ref)) {
         elem_type = array_type_ref->struct_info.struct_fields[0].type->pointed_type;
@@ -1718,21 +1721,29 @@ AnalyzeResult Interpreter::analyze_IndexPtr(const CIRIndexPtrInfo& info, CIRInst
         return make_result(pc_ref, inst_error(pc_ref, "索引指针不支持的类型的值，实际类型 '{}'", array_type_ref->name()));
     }
 
+    // 数组按值临时物化后取到的指针会悬空；切片的值共享 data，允许对右值取元素指针
+    if(!is_lvalue(array_inst) && container_is_array) {
+        return make_result(pc_ref, inst_error(pc_ref, "不能对非左值数组表达式取索引指针"));
+    }
+
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
-        Pointer base = ResultValue(array_inst).pointer_val();
         i128 idx = ResultValue(info.index_inst).integer_val();
 
         Pointer ptr;
-        if(is_array_type(array_type_ref)) {
+        if(container_is_array) {
             // 定长数组：base 是数组变量自己的槽，元素槽在它的 fields 缓冲里
+            Pointer base = ResultValue(array_inst).pointer_val();
             ASSERT_MSG(base.slot != nullptr, "不能对空指针取索引指针");
             ptr = Pointer::make_slot(base.slot->array_element_ref(idx));
         } else {
             // 切片：data 指向一段连续元素，槽实际握着元素缓冲，元素槽在它的缓冲里
-            base = base.load(array_type_ref).struct_field_val(0).pointer_val();
-            ASSERT_MSG(!base.is_null() && base.slot->actual_type() == ActualValueType::Array,
+            Value slice_value = is_lvalue(array_inst)
+                ? ResultValue(array_inst).pointer_val().load(array_type_ref)
+                : ResultValue(array_inst);
+            Pointer data = slice_data_val(slice_value);
+            ASSERT_MSG(!data.is_null() && data.slot->actual_type() == ActualValueType::Array,
                        "切片 data 指向的槽必须握着连续元素");
-            ptr = Pointer::make_slot(base.slot->array_element_ref(idx));
+            ptr = Pointer::make_slot(data.slot->array_element_ref(idx));
         }
 
         Value addr = make_value(pointer_type(elem_type));

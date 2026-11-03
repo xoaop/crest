@@ -64,6 +64,7 @@ struct Ast;
         Ast *iterable_end;    /* non-null = range iter: start..end */                \
         Ast *condition;                                                              \
         Ast *body;                                                                   \
+        bool iter_by_ptr;     /* for *x in e: iter_var 接收元素地址 */               \
     })                                                                               \
     AST_INFO(Break, "break statement", struct {})                                    \
     AST_INFO(Continue, "continue statement", struct {})                              \

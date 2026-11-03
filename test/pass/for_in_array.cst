@@ -1,0 +1,30 @@
+// @pass
+// @run
+
+sum :: (arr: []i32) -> i32 {
+    total: i32 = 0;
+    for v in arr {
+        total = total + v;
+    }
+    return total;
+}
+
+main :: () -> i32 {
+    arr: [4]i32 = {1i32, 2, 3, 4};
+
+    total: i32 = 0;
+    for v in arr {
+        total = total + v;
+    }
+    if total != 10 { return 1; }
+
+    idx_sum: isize = 0;
+    for v, i in arr {
+        idx_sum = idx_sum + i;
+    }
+    if idx_sum != 6 { return 2; }
+
+    if sum(arr) != 10 { return 3; }
+
+    return 0;
+}

@@ -1,0 +1,20 @@
+// @pass
+// @run
+
+main :: () -> i32 {
+    arr: [3]i32 = {10i32, 20, 30};
+
+    total: i32 = 0;
+    for *p in arr {
+        total = total + ^p;
+    }
+    if total != 60 { return 1; }
+
+    for *p in arr {
+        ^p = ^p + 1;
+    }
+    if arr[0] != 11 { return 2; }
+    if arr[2] != 31 { return 3; }
+
+    return 0;
+}

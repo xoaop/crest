@@ -173,6 +173,10 @@ Value Value::struct_field_val(xpString field_name) const {
     return Value();
 }
 
+Pointer slice_data_val(const Value& slice_value) {
+    return slice_value.struct_field_val(0).pointer_val();
+}
+
 Array<Value> Value::array_element_values() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
     return struct_or_array_fields;

@@ -1,0 +1,18 @@
+// @fail
+// @error "compile-time loop evaluation is not yet implemented"
+
+// 编译期循环本就未实现：for-in 不得在 comptime 上下文中被悄悄支持
+sum_all :: $(n: i32) -> i32 {
+    arr: [3]i32 = {1i32, 2, 3};
+    total: i32 = 0;
+    for v in arr {
+        total = total + v;
+    }
+    return total + n;
+}
+
+VAL :: sum_all(0)
+
+main :: () -> i32 {
+    return VAL - 6;
+}

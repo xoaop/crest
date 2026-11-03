@@ -464,22 +464,74 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(CIRBuildContext& ctx, Ast *stm
     return INVALID_INST;
 }
 
+// 编译器内部变量：名字含 '$'，不在标识符字符集内，用户源码无法拼出；
+// 后缀编号保证内部变量之间不撞名。
+static CIRInstructionRef alloc_internal_var(CIRBuildContext& ctx, const char *role, Ast *init_expr, Ast *src_ast) {
+    xpString name_str = xp_make_string(permanent_allocator(), "$");
+    xp_string_append(&name_str, xp_make_string(permanent_allocator(), role));
+    xp_string_append(&name_str, xp_make_string(permanent_allocator(), "."));
+    xp_string_append(&name_str, xp_isize_to_string(ctx.internal_var_serial, permanent_allocator()));
+    ctx.internal_var_serial += 1;
+
+    GlobalStringIndex name = get_or_insert_global_string(name_str);
+
+    Ast *decl = ast_alloc(AstType_VariableDecl);
+    decl->src_loc = src_ast != nullptr ? src_ast->src_loc : SourceLocation{};
+    decl->VariableDecl.var_name = name;
+    decl->VariableDecl.expr = init_expr;
+    decl->VariableDecl.type_ast = nullptr;
+    decl->VariableDecl.no_zero_init = false;
+
+    // 符号必须挂在 VariableDecl AST 上：解释器靠 ast->type 判断是否可寻址
+    SymbolInfo symbol = make_symbol(name, ctx.pkg_ref, nullptr, decl);
+    add_symbol_to_scope(&ctx.scope.unwrap(), name, symbol);
+    decl->ast_symbol = Ref<SymbolInfo>{ .scope = ctx.scope, .name = name };
+
+    return CIRBuilder::build_inst_for_var_decl(ctx, decl);
+}
+
 void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
     auto _scope_guard = ScopeGuard(ctx, stmt);
     auto& fs = stmt->ForStmt;
 
-    CIRInstructionRef incr_var_inst = INVALID_INST;
+    CIRInstructionRef counter_inst = INVALID_INST;
     CIRInstructionRef end_inst = INVALID_INST;
+    CIRInstructionRef iterable_expr = INVALID_INST;
+    CIRInstructionRef iter_var_inst = INVALID_INST;
+    CIRInstructionRef index_var_inst = INVALID_INST;
 
     // Pre-loop: build invariant values
     if(fs.iter_var != nullptr) {
         if(fs.iterable_end != nullptr) {
+            // 范围迭代：用户变量自己充当计数器
             fs.iter_var->VariableDecl.expr = fs.iterable;
-            incr_var_inst = build_inst_for_var_decl(ctx, fs.iter_var);
+            counter_inst = build_inst_for_var_decl(ctx, fs.iter_var);
             end_inst = build_inst_for_expr(ctx, fs.iterable_end);
         } else {
-            context()->reporter.report_error(stmt->src_loc, "for-in over array/slice is not yet implemented");
-            return;
+            // 集合迭代：iterable 只求值一次，直接取其左值/值引用
+            iterable_expr = build_ptr_inst_for_expr(ctx, fs.iterable);
+
+            // 内部下标从 0 开始
+            Ast *zero_ast = ast_alloc(AstType_Constant);
+            zero_ast->src_loc = stmt->src_loc;
+            Value zero_val = make_value(easy_type(Type_isize));
+            zero_val.integer_val(0);
+            zero_ast->Constant.value = zero_val;
+            counter_inst = alloc_internal_var(ctx, "inner_var", zero_ast, stmt);
+
+            // 用户元素/下标变量先分配槽，值在每轮迭代写入
+            fs.iter_var->VariableDecl.expr = nullptr;
+            iter_var_inst = build_inst_for_var_decl(ctx, fs.iter_var);
+            if(fs.index_var != nullptr) {
+                fs.index_var->VariableDecl.expr = nullptr;
+                index_var_inst = build_inst_for_var_decl(ctx, fs.index_var);
+            }
+
+            // 上界 = iterable.count：数组是编译期常量，切片是结构体字段
+            end_inst = Make_Instruction<CIROperator::FieldAccess>(ctx, stmt, {
+                .parent_inst = iterable_expr,
+                .field_name = context()->known_global_strings.count,
+            });
         }
     }
 
@@ -489,7 +541,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
     // Build condition inside loop (re-evaluated each iteration)
     CIRInstructionRef cond_inst;
     if(fs.iter_var != nullptr) {
-        auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = incr_var_inst });
+        auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
 
         cond_inst = Make_Instruction<CIROperator::Binary>(ctx, stmt, { .op = TokenType::LessThan, .left_inst = load_var, .right_inst = end_inst });
     } else if(fs.condition != nullptr) {
@@ -513,13 +565,43 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
                 ctx.loop_body_block_stack.pop_back();
             });
 
+            if(iter_var_inst != INVALID_INST) {
+                auto load_idx = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
+
+                CIRInstructionRef elem_inst = INVALID_INST;
+                if(fs.iter_by_ptr) {
+                    auto elem_ptr = Make_Instruction<CIROperator::IndexPtr>(ctx, stmt, {
+                        .array_inst = iterable_expr,
+                        .index_inst = load_idx,
+                    });
+                    elem_inst = Make_Instruction<CIROperator::AddrOf>(ctx, stmt, { .lval_inst = elem_ptr });
+                } else {
+                    elem_inst = Make_Instruction<CIROperator::Index>(ctx, stmt, {
+                        .array_inst = iterable_expr,
+                        .index_inst = load_idx,
+                    });
+                }
+
+                Make_Instruction<CIROperator::Store>(ctx, stmt, {
+                    .var_inst = iter_var_inst,
+                    .value_inst = elem_inst,
+                });
+
+                if(index_var_inst != INVALID_INST) {
+                    Make_Instruction<CIROperator::Store>(ctx, stmt, {
+                        .var_inst = index_var_inst,
+                        .value_inst = load_idx,
+                    });
+                }
+            }
+
             build_inst_for_ast_block(ctx, fs.body, false);
             End_Block(ctx);
             New_BlockRef(ctx, stmt, user_blk);   // 父块（loop body）线性扫描下降标记
         }
 
-        if(incr_var_inst != INVALID_INST) {
-            auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = incr_var_inst });
+        if(counter_inst != INVALID_INST) {
+            auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
 
             auto v = make_value(easy_type(Type_untyped_int));
             v.integer_val(1);
@@ -527,7 +609,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
 
             auto add_inst = Make_Instruction<CIROperator::Binary>(ctx, stmt, { .op = TokenType::Add, .left_inst = load_var, .right_inst = one_val });
 
-            auto store_inc = Make_Instruction<CIROperator::Store>(ctx, stmt, { .var_inst = incr_var_inst, .value_inst = add_inst });
+            auto store_inc = Make_Instruction<CIROperator::Store>(ctx, stmt, { .var_inst = counter_inst, .value_inst = add_inst });
         }
     }
 

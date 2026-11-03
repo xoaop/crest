@@ -1,0 +1,48 @@
+// @pass
+// @run
+
+make_slice :: (arr: []i32) -> []i32 {
+    return arr;
+}
+
+sum_slice :: (s: []i32) -> i32 {
+    total: i32 = 0;
+    for v in s {
+        total = total + v;
+    }
+    return total;
+}
+
+bump_slice :: (s: []i32) -> void {
+    for *p in s {
+        ^p = ^p + 1;
+    }
+    return;
+}
+
+main :: () -> i32 {
+    arr: [3]i32 = {1i32, 2, 3};
+
+    s: []i32 = arr;
+    if sum_slice(s) != 6 { return 1; }
+
+    idx_sum: isize = 0;
+    for v, i in s {
+        idx_sum = idx_sum + i;
+    }
+    if idx_sum != 3 { return 2; }
+
+    bump_slice(s);
+    if arr[0] != 2 { return 3; }
+    if arr[2] != 4 { return 4; }
+
+    if sum_slice(make_slice(s)) != 9 { return 5; }
+
+    for *p in make_slice(s) {
+        ^p = ^p + 1;
+    }
+    if arr[0] != 3 { return 6; }
+    if arr[2] != 5 { return 7; }
+
+    return 0;
+}

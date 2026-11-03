@@ -278,6 +278,9 @@ Value make_value(TypeRef type);
 // 深拷一个值：Struct/Array 连同数据一起拷；Pointer 只抄地址（指针语义）
 Value clone_value(const Value& v, xpAllocator allocator);
 
+// 切片结构体 {data, count} 的 data 字段（值层布局：字段 0）
+Pointer slice_data_val(const Value& slice_value);
+
 
 
 
