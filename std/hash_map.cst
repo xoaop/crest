@@ -37,21 +37,28 @@ HashMap :: $(K: type, V: type) -> type {
     };
 }
 
+
+fnv_1a_hash :: (bytes: []u8) -> u64 {
+    MAGIC_64_1a :: 1099511628211;
+    MAGIC_64_1b :: 14695981039346656037;
+
+    h: u64 = MAGIC_64_1b;
+    i: isize = 0;
+    for i : isize in 0..bytes.count {
+        h = (h ^ cast(u64)bytes[i]) * MAGIC_64_1a;
+    }
+    return h;
+}
+
 // ── 哈希 ──
 // 逐字节 FNV-1a。整数 / 指针 / POD struct 都适用。
-hash_of :: $(K: type) -> ? {
-    return (key: K) -> u64 {
-        bytes: []u8;
-        bytes.data = cast(*u8)(&key);
-        bytes.count = cast(isize)sizeof(K);
-        h: u64 = 1469598103934665603;
-        i: isize = 0;
-        for i < bytes.count {
-            h = (h ^ cast(u64)bytes[i]) * 1099511628211;
-            i = i + 1;
-        }
-        return h;
+hash_of :: (key: $K) -> u64 {
+    bytes := []u8.{
+        cast(*u8) &key,
+        cast(isize) sizeof(K)
     };
+
+    return fnv_1a_hash(bytes);
 }
 
 // ── 建表 ──
@@ -94,7 +101,7 @@ hash_map_extend :: $(K: type, V: type) -> ? {
             for j < map.capacity {
                 old := map.entries[j];
                 if old.state == HashMapSlotState.Used {
-                    idx := cast(isize)(hash_of(K)(old.key) & mask);
+                    idx := cast(isize)(hash_of(old.key) & mask);
                     for new_entries[idx].state == HashMapSlotState.Used {
                         idx = cast(isize)((cast(u64)idx + 1) & mask);
                     }
@@ -119,7 +126,7 @@ hash_map_find :: $(K: type, V: type) -> ? {
         if map.capacity == 0 || map.entries.data == null { return -1; }
 
         mask: u64 = cast(u64)(map.capacity - 1);
-        idx := cast(isize)(hash_of(K)(key) & mask);
+        idx := cast(isize)(hash_of(key) & mask);
         start := idx;
         for {
             st := map.entries[idx].state;
@@ -149,7 +156,7 @@ hash_map_insert :: $(K: type, V: type) -> ? {
         }
 
         mask: u64 = cast(u64)(map.capacity - 1);
-        idx := cast(isize)(hash_of(K)(key) & mask);
+        idx := cast(isize)(hash_of(key) & mask);
         start := idx;
         first_tombstone: isize = -1;
 

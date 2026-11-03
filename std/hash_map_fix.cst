@@ -1,0 +1,130 @@
+
+HashMapFix :: $(K: type, V: type, Capacity: isize) -> ? {
+    return struct {
+        data: [Capacity]HashMapEntry(K, V);
+        count: isize;
+    }
+}
+
+
+init_hash_map_fix :: $(K: type, V: type, Capacity: isize) -> ? {
+    return () -> HashMapFix(K, V, Capacity) {
+        m: HashMapFix(K, V, Capacity);
+
+        for i: isize in 0..Capacity {
+            m.data[i].state = HashMapSlotState.Empty;
+        }
+
+        m.count = 0;
+
+        return m;
+    };
+}
+
+hash_map_fix_insert :: $(K: type, V: type, Capacity: isize) -> ? {
+    return (map: *HashMapFix(K, V, Capacity), key: K, value: V) -> bool {
+
+        if map.count >= Capacity {
+            return false;
+        }
+
+
+        mask: u64 = cast(u64)(Capacity - 1);
+        idx := cast(isize)(hash_of(key) & mask);
+        start := idx;
+        first_tombstone: isize = -1;
+        for {
+            st := map.data[idx].state;
+
+            if st == HashMapSlotState.Used && map.data[idx].key == key {
+                map.data[idx].value = value;
+                return true;
+            }
+
+            if st == HashMapSlotState.Tombstone && first_tombstone == -1 {
+                first_tombstone = idx;
+            }
+
+            if st == HashMapSlotState.Empty {
+                break;
+            }
+
+            idx = cast(isize)((cast(u64)idx + 1) & mask);
+            if idx == start {
+                if first_tombstone == -1 {
+                    return false;
+                }
+                break;
+            } // 绕回起点：表满且无此键
+        }
+
+        slot := idx;
+        if first_tombstone != -1 {
+            slot = first_tombstone;
+        }
+
+        map.data[slot].key = key;
+        map.data[slot].value = value;
+        map.data[slot].state = HashMapSlotState.Used;
+        map.count = map.count + 1;
+
+        return true;
+    };
+}
+
+hash_map_fix_find :: $(K: type, V: type, Capacity: isize) -> ? {
+    return (map: *HashMapFix(K, V, Capacity), key: K) -> isize {
+
+        mask: u64 = cast(u64)(Capacity - 1);
+        idx := cast(isize)(hash_of(key) & mask);
+        start := idx;
+        for {
+            st := map.data[idx].state;
+            
+            if st == HashMapSlotState.Empty {
+                return -1;                        // 探测链终点
+            }
+
+            if st == HashMapSlotState.Used && map.data[idx].key == key {
+                return idx;
+            }
+
+            idx = cast(isize)((cast(u64)idx + 1) & mask);
+            if idx == start {
+                return -1;
+            }        // 绕回起点：表满且无此键
+        }
+
+        return -1;
+    };
+}
+
+hash_map_fix_get :: $(K: type, V: type, Capacity: isize) -> ? {
+    return (map: *HashMapFix(K, V, Capacity), key: K) -> *V {
+        idx := hash_map_fix_find(K, V, Capacity)(map, key);
+
+        return if idx == -1 then cast(*V) null else &map.data[idx].value;
+    };
+}
+
+hash_map_fix_remove :: $(K: type, V: type, Capacity: isize) -> ? {
+    return (map: *HashMapFix(K, V, Capacity), key: K) -> bool {
+        idx := hash_map_fix_find(K, V, Capacity)(map, key);
+
+        if idx == -1 {
+            return false;
+        }
+
+        map.data[idx].state = HashMapSlotState.Tombstone;
+        map.count = map.count - 1;
+
+        return true;
+    };
+}
+
+
+
+#under_is_file_scope
+
+
+import "std/c"
