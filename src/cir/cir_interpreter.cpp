@@ -1877,8 +1877,14 @@ AnalyzeResult Interpreter::analyze_Binary(const CIRBinaryInfo& info, CIRInstruct
         if(!is_add_sub_operator(op)) {
             return make_result(pc_ref, inst_error(pc_ref, "指针算术只允许 + 和 - 运算符"));
         }
+        if(op == TokenType::Minus && !is_pointer_type(left_type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "指针减法要求指针在左侧（不支持整数减指针）"));
+        }
         if(get_innermost_type_of_pointer(ptr) == easy_type(Type_void)) {
             return make_result(pc_ref, inst_error(pc_ref, "不允许对 void 指针进行指针算术"));
+        }
+        if(is_function_type(ptr->pointed_type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "不允许对函数指针进行指针算术"));
         }
         if(!is_integer_or_untyped_type(other)) {
             return make_result(pc_ref, inst_error(pc_ref, "指针算术只允许在指针和整数类型之间进行（实际 '{}' 与 '{}'）", left_type->name(), right_type->name()));

@@ -7,7 +7,9 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
     if(!((is_integer_or_untyped_type(v1.type) && is_integer_or_untyped_type(v2.type)) ||
         (is_float_or_untyped_type(v1.type) && is_float_or_untyped_type(v2.type)) ||
         (v1.type == easy_type(Type_bool) && v2.type == easy_type(Type_bool)) ||
-        (is_enum_type(v1.type) && is_enum_type(v2.type)))) {
+        (is_enum_type(v1.type) && is_enum_type(v2.type)) ||
+        (is_type_type(v1.type) && is_type_type(v2.type)) ||
+        (is_pointer_type(v1.type) && is_pointer_type(v2.type)))) {
 
         return ValueResult::err(ValueErrorKind::TypeError);
     }
@@ -22,6 +24,10 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
     bool is_float_or_untyped = is_float_or_untyped_type(v1.type) && is_float_or_untyped_type(v2.type);
     bool is_bool = v1.type == easy_type(Type_bool) && v2.type == easy_type(Type_bool);
     bool is_enum = is_enum_type(v1.type) && is_enum_type(v2.type);
+    bool is_type = is_type_type(v1.type) && is_type_type(v2.type)
+        && v1.actual_type() == ActualValueType::Type
+        && v2.actual_type() == ActualValueType::Type;
+    bool is_pointer = is_pointer_type(v1.type) && is_pointer_type(v2.type);
 
     bool is_int_overflow = false;
     switch(op_type) {
@@ -143,6 +149,14 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
                 result.bool_val( v1.bool_val() == v2.bool_val());
             } else if(is_enum) {
                 result.bool_val( v1.integer_val() == v2.integer_val());
+            } else if(is_type) {
+                result.bool_val( v1.type_val() == v2.type_val());
+            } else if(is_pointer) {
+                if(v1.is_null || v2.is_null) {
+                    result.bool_val( v1.is_null == v2.is_null);
+                } else {
+                    result.bool_val( v1.pointer_val().slot == v2.pointer_val().slot);
+                }
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);;
             }
@@ -157,6 +171,14 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
                 result.bool_val( v1.bool_val() != v2.bool_val());
             } else if(is_enum) {
                 result.bool_val( v1.integer_val() != v2.integer_val());
+            } else if(is_type) {
+                result.bool_val( v1.type_val() != v2.type_val());
+            } else if(is_pointer) {
+                if(v1.is_null || v2.is_null) {
+                    result.bool_val( v1.is_null != v2.is_null);
+                } else {
+                    result.bool_val( v1.pointer_val().slot != v2.pointer_val().slot);
+                }
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);;
             }
@@ -389,6 +411,10 @@ ValueResult exec_cast(Value &val, TypeRef target_type) {
 
     Value result = val;
     result.set_type(target_type);
+
+    if(is_pointer_type(target_type) && (val.is_null || val.actual_type() == ActualValueType::Pointer)) {
+        return ValueResult::ok(result);
+    }
 
     bool target_needs_integer = is_integer_type(target_type) || is_enum_type(target_type);
     bool target_needs_float   = is_float_type(target_type);
