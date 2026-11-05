@@ -55,6 +55,8 @@ private:
 
 public:
 
+    bool has_error() const;
+
     template <typename... Args>
     void report(ErrorLevel level, SourceLocation src_loc, std::format_string<Args...> fmt, Args&&... args) {
         report(level, src_loc.span, src_loc.src_code, fmt, std::forward<Args>(args)...);

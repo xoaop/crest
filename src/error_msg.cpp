@@ -3,6 +3,10 @@
 #include "error_msg.hpp"
 
 
+bool ErrorReporter::has_error() const {
+    return error_msgs.count > 0;
+}
+
 void ErrorReporter::add_error_msg(ErrorLevel level, bool has_location, Span highlight_span, SourceCode src_code, xpString formatted_msg) {
     // 计数照旧，但超过上限就不再记录 —— 单个大输入能刷出上万条错误
     if(level == ErrorLevel::Error) {
