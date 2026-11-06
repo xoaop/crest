@@ -311,11 +311,6 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             return func_type;
         } break;
 
-        // // *NOTE: 这两种类型只会在常量出现, 且一定会被转为其它类型
-        // case Type_untyped_int:
-        //     return LLVMInt128TypeInContext(g_llvm_session.ctx);
-        // case Type_untyped_float:
-        //     return LLVMDoubleTypeInContext(g_llvm_session.ctx);
 
         default:
             DEBUG_TRACE("get_llvm_type_from_type UNREACHABLE: type kind={}", (int)type->kind);
@@ -451,9 +446,8 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
     }
     
     if(LLVMVerifyModule(unit.module, LLVMReturnStatusAction, &error)) {
-        err("Module verification failed: {}", error);
+        context()->reporter.report_error("LLVM module verification failed: {}", error);
         LLVMDisposeMessage(error);
-        // XP_ASSERT_DEFAULT(0);
     }
 
     // 优化
@@ -660,25 +654,6 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
     return nullptr;
 }
 
-// LLVMValueRef LLVMGenerator::gen_ir_string_struct_value(xpString str) {
-//     LLVMValueRef str_const = LLVMBuildGlobalString(
-//         builder, 
-
-//         // 这里是为了让字符串能由token里的带有""而无\0结尾的字符串转换而来, 使得llvm能正确识别, 
-//         // 不把""当成字符串内容
-//         xp_string_to_c_style(str, stage_allocator()).c_str,
-//         "stringliteraltmp"
-//     );
-
-//     LLVMValueRef str_struct = LLVMGetUndef(get_llvm_type_from_type(string_type_as_struct()));
-    
-//     // TODO: 现在是硬编码
-//     str_struct = LLVMBuildInsertValue(builder, str_struct, str_const, 0, "insertstrptrtmp");
-
-//     str_struct = LLVMBuildInsertValue(builder, str_struct, LLVMConstInt(LLVMInt64TypeInContext(g_llvm_session.ctx), str.length, 0), 1, "insertstrlenntmp");
-
-//     return str_struct;
-// }
 
 LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optional<TypeRef> expected_type) {
      // TODO 其他类型的常量
@@ -702,16 +677,9 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optio
             break;
         case Type_f32:
         case Type_f64:
-            llvm_val = LLVMConstReal(get_llvm_type_from_type(value.type), cast(double)value.float_val());
+            llvm_val = LLVMConstReal(get_llvm_type_from_type(value.type), value.float_val());
             break;
 
-        // case Type_untyped_int:
-        //     llvm_val = LLVMConstInt(LLVMInt128TypeInContext(g_llvm_session.ctx), cast(unsigned long long)value.integer_val(), false);
-        //     break;
-
-        // case Type_untyped_float:
-        //     llvm_val = LLVMConstReal(LLVMDoubleTypeInContext(g_llvm_session.ctx), cast(double)value.float_val());
-        //     break;
 
         case Type_array: {
             Array<LLVMValueRef> element_values = make_array<LLVMValueRef>(stage_allocator());
@@ -1296,9 +1264,6 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::IndexPtr: {
-            // 老代码:
-            //     LLVMValueRef elem_ptr = ...GEP...;
-            //     return elem_ptr;  // is_lvalue_expr 分支
 
             auto &info = inst.info<CIROperator::IndexPtr>();
             LLVMValueRef array_val = get_llvm_val_from_inst_ref(info.array_inst);
@@ -1613,9 +1578,6 @@ LLVMValueRef LLVMGenerator::gen_array_value_to_slice_cast(LLVMValueRef array_val
     return slice_struct_value;
 }
 
-// LLVMValueRef gen_ir_cast_expr(LLVMGenerator *gen, Ast *cast_expr, LLVMState state) {
-//     return gen_ir_cast(gen, cast_expr->CastExpr.expr->v_type, cast_expr->CastExpr.target_type, gen_ir_expr(gen, cast_expr->CastExpr.expr, state));
-// }
 
 void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
 
@@ -1662,8 +1624,14 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
                 LLVMValueRef left_int  = LLVMBuildPtrToInt(unit.builder, left,  int_type, "ptrtointtmp");
                 LLVMValueRef right_int = LLVMBuildPtrToInt(unit.builder, right, int_type, "ptrtointtmp");
                 LLVMValueRef byte_diff = LLVMBuildSub(unit.builder, left_int, right_int, "ptrdiffbytetmp");
-                LLVMValueRef elem_size = LLVMConstInt(int_type, size_of_type(pointed_type), false);
-                result = LLVMBuildSDiv(unit.builder, byte_diff, elem_size, "ptrdiffdivtmp");
+                const int elem_size_bytes = size_of_type(pointed_type);
+                if(elem_size_bytes == 0) {
+                    // 空聚合体没有元素大小，差值无意义，给 0 避免除零
+                    result = LLVMConstInt(int_type, 0, false);
+                } else {
+                    result = LLVMBuildSDiv(unit.builder, byte_diff,
+                        LLVMConstInt(int_type, elem_size_bytes, false), "ptrdiffdivtmp");
+                }
             } else if(is_pointer_type(left_type)) {
                 LLVMValueRef neg_index = LLVMBuildNeg(unit.builder, right, "negtmp");
                 LLVMValueRef indices[] = { neg_index };
@@ -1828,17 +1796,23 @@ void LLVMGenerator::gen_ir_unary(CIRInstructionRef inst) {
 
 // 处理 == 和 != 操作符的比较逻辑
 LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef right, TypeRef type, bool is_not_equal) {
-    if(is_struct_type(type)) {
-        // Type type_detail = get_type_detail_if_have(symbol_table(), type);
-        
-        
+    // 聚合类型（结构体/数组）逐成员比较；对 array 直接 icmp 是非法 IR
+    if(is_struct_type(type) || is_array_type(type)) {
+        const isize member_count = is_struct_type(type)
+            ? type->struct_info.struct_fields.count
+            : (isize)type->array_info.count;
+
         LLVMValueRef result = nullptr;
-        FOR(type->struct_info.struct_fields) {
-            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, it_index, "leftextracttmp");
-            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, it_index, "rightextracttmp");
-            
-            LLVMValueRef field_cmp = compare_two_values(left_field, right_field, it.type, false);
-            
+        for(isize i = 0; i < member_count; i++) {
+            TypeRef member_type = is_struct_type(type)
+                ? type->struct_info.struct_fields[i].type
+                : type->array_info.element_type;
+
+            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, (unsigned)i, "leftextracttmp");
+            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, (unsigned)i, "rightextracttmp");
+
+            LLVMValueRef field_cmp = compare_two_values(left_field, right_field, member_type, false);
+
             if(result == nullptr) {
                 result = field_cmp;
             } else {
@@ -1846,7 +1820,7 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
             }
         }
 
-        // if the struct has no fields, set result to true manually, or LLVMBuildNot() will crash because result is nullptr
+        // 空聚合体视为相等
         if(result == nullptr) {
             result = LLVMConstInt(LLVMInt1Type(), 1, false);
         }

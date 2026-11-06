@@ -376,15 +376,39 @@ static std::string find_cc_driver() {
     return cc.empty() ? "cc" : cc;
 }
 
-static std::string quote_if_needed(const std::string& s) {
-    return s.contains(' ') ? ("\"" + s + "\"") : s;
+// 命令参数转义：路径可能含空格、引号、$、; 等 shell 元字符
+static std::string shell_quote(const std::string& s) {
+#ifdef _WIN32
+    // cmd.exe 只认双引号
+    std::string out = "\"";
+    for(char c : s) {
+        if(c == '"') {
+            out += "\\\"";
+        } else {
+            out += c;
+        }
+    }
+    out += "\"";
+    return out;
+#else
+    // POSIX sh：单引号内除 ' 外全部原样，' 用 '\'' 闭合再开
+    std::string out = "'";
+    for(char c : s) {
+        if(c == '\'') {
+            out += "'\\''";
+        } else {
+            out += c;
+        }
+    }
+    out += "'";
+    return out;
+#endif
 }
 
 static void append_objects(std::string& cmd, const Array<xpString>& obj_paths) {
     for(const auto& obj : obj_paths) {
-        cmd += " \"";
-        cmd += std::string(obj.c_str);
-        cmd += "\"";
+        cmd += " ";
+        cmd += shell_quote(std::string(obj.c_str));
     }
 }
 
@@ -411,16 +435,16 @@ static bool run_command(const char* what, const std::string& cmd) {
 
 // MSVC 目标：可执行文件与 DLL 都交给 lld-link
 static std::string msvc_link_command(const LinkRequest& req, const std::string& lld, const std::string& vs) {
-    std::string cmd = quote_if_needed(lld);
+    std::string cmd = shell_quote(lld);
 
     if(req.kind == LinkOutputKind::SharedLibrary) {
         cmd += " /dll";
     }
 
-    cmd += " /nologo /out:\"" + req.output_binary_path + "\"";
+    cmd += " /nologo /out:" + shell_quote(req.output_binary_path);
 
     if(req.kind == LinkOutputKind::SharedLibrary && !req.import_lib_path.empty()) {
-        cmd += " /implib:\"" + req.import_lib_path + "\"";
+        cmd += " /implib:" + shell_quote(req.import_lib_path);
     }
 
     append_objects(cmd, req.obj_paths);
@@ -433,7 +457,7 @@ static std::string msvc_link_command(const LinkRequest& req, const std::string& 
     }
 
     for(const auto& d : msvc_lib_dirs(vs)) {
-        cmd += " /libpath:\"" + d + "\"";
+        cmd += " /libpath:" + shell_quote(d);
     }
 
     return cmd;
@@ -443,7 +467,7 @@ static std::string msvc_link_command(const LinkRequest& req, const std::string& 
 
 // GNU / ELF / Mach-O 目标：可执行文件与共享库都交给 cc 驱动
 static std::string cc_link_command(const LinkRequest& req, const std::string& cc) {
-    std::string cmd = quote_if_needed(cc);
+    std::string cmd = shell_quote(cc);
 
     append_objects(cmd, req.obj_paths);
 
@@ -456,13 +480,13 @@ static std::string cc_link_command(const LinkRequest& req, const std::string& cc
 
         if(!req.import_lib_path.empty()) {
             // MinGW：同时产出 .dll.a 导入库，C 侧才能链这个 DLL
-            cmd += " -Wl,--out-implib,\"" + req.import_lib_path + "\"";
+            cmd += " -Wl,--out-implib," + shell_quote(req.import_lib_path);
         }
     } else if(target_is_windows() && context()->link_subsystem == LinkSubsystem::Windows) {
         cmd += " -mwindows";
     }
 
-    cmd += " -o \"" + req.output_binary_path + "\"";
+    cmd += " -o " + shell_quote(req.output_binary_path);
 
     return cmd;
 }
@@ -476,7 +500,7 @@ static bool archive_objects(const LinkRequest& req) {
         const std::string vs = find_vs_install();
         const std::string ar = find_llvm_lib(vs);
 
-        cmd = quote_if_needed(ar) + " /nologo /out:\"" + req.output_binary_path + "\"";
+        cmd = shell_quote(ar) + " /nologo /out:" + shell_quote(req.output_binary_path);
         append_objects(cmd, req.obj_paths);
 
         println_out("[archive] archiver = {}", ar);
@@ -490,7 +514,7 @@ static bool archive_objects(const LinkRequest& req) {
             ar = "ar";
         }
 
-        cmd = quote_if_needed(ar) + " rcs \"" + req.output_binary_path + "\"";
+        cmd = shell_quote(ar) + " rcs " + shell_quote(req.output_binary_path);
         append_objects(cmd, req.obj_paths);
 
         println_out("[archive] archiver = {}", ar);
@@ -533,7 +557,7 @@ bool link_objects(const LinkRequest& req) {
     // -linker 透传参数：只对链接生效，静态库归档不走这里
     for(const auto& arg : context()->linker_args) {
         cmd += " ";
-        cmd += arg.contains(' ') ? ("\"" + arg + "\"") : arg;
+        cmd += shell_quote(arg);
     }
 
     return run_command("link", cmd);

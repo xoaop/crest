@@ -418,8 +418,6 @@ struct CIRDerefInfo {
 };
 
 struct CIRStringLiteralInfo {
-    // 闲置：ValueMemory 体系的字节指针
-    // MemPointer data;
     isize count;
     GlobalStringIndex str;
     CIRInstructionRef string_type_inst;
@@ -562,13 +560,6 @@ struct CIRFormat {
     }
 };
 
-// 闲置：布局不在这层拼了
-//
-// template <typename T>
-// void write_field(std::string& out, std::string_view name, const T& v) {
-//     std::format_to(std::back_inserter(out), " {}=", name);
-//     CIRFormat<T>::write(out, v);
-// }
 
 
 // ── 值类型 ──────────────────────────────────────────────
@@ -641,12 +632,6 @@ template<> struct CIRFormat<Ast *> {
     }
 };
 
-// 闲置：ValueMemory 体系的字节指针
-// template<> struct CIRFormat<MemPointer> {
-//     static std::string as_string(const MemPointer& v) {
-//         return std::format("{}:{}", ::to_string(v.kind), v.offset);
-//     }
-// };
 
 template<> struct CIRFormat<TokenType> {
     static std::string as_string(TokenType v) {

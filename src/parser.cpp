@@ -76,13 +76,17 @@ Ast *parse_if_tail(Parser *p, Token if_token, Ast *condition);
 
 Ast *parse_comptime_if(Parser *p, bool is_after_else = false);
 
+// 一元/后缀表达式内部操作数的优先级：比所有二元运算符都高
+#define UNARY_OP_PRECEDENCE 114514
+
+Ast *parse_unary_expr_or_neg_num(Parser *p, Token op_token);
 Ast *parse_expr_factor(Parser *p, bool allow_struct_init = true);
 Ast *parse_expr(Parser *p, isize min_prec = 0, bool allow_struct_init = true);
 
 
-Ast *parse_constant(Parser *p);
-void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p);
-void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p);
+Ast *parse_constant(Parser *p, bool negative = false);
+void parse_integer(const char *str, TypeKind type_kind, Ast *a);
+void parse_float(const char *str, TypeKind type_kind, Ast *a);
 
 Ast *parse_array_init_expr(Parser *p);
 
@@ -1117,8 +1121,6 @@ Ast *parse_string_literal(Parser *p) {
     } else {
         // 代表解析失败, 已经报告了错误, 这里返回一个BadExpr占位符就行了
         UNREACHABLE();
-        // Ast *a = ast_alloc(AstType_BadExpr, str_token, str_token.span);
-        // return a;
     }
 
     return nullptr;
@@ -1140,18 +1142,7 @@ Ast *parse_expr_factor(Parser *p, bool allow_struct_init) {
 
     if(is_unary_op(curr.type)) {
         advance_token(p);
-
-        a = ast_alloc(AstType_UnaryExpr, curr);
-        a->UnaryExpr.op = curr.type;
-
-        
-        
-        // NOTE: 比 所有二元运算符 优先级都高 就行
-        #define UNARY_OP_PRECEDENCE 114514
-        a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE);
-
-        a->src_loc = merge(curr.src_loc, a->UnaryExpr.operand->src_loc);
-
+        a = parse_unary_expr_or_neg_num(p, curr);
     } else {
         switch (curr.type)
         {
@@ -1357,6 +1348,22 @@ Ast *parse_expr_factor(Parser *p, bool allow_struct_init) {
     return a;
 }
 
+// 一元表达式：负号紧邻数字字面量时合并为常量，保留带后缀类型的溢出检查（-128i8 合法）
+Ast *parse_unary_expr_or_neg_num(Parser *p, Token op_token) {
+    if(op_token.type == TokenType::Minus
+       && (curr_token(p).type == TokenType::Integer || curr_token(p).type == TokenType::Float)) {
+        return parse_constant(p, true);
+    }
+
+    Ast *a = ast_alloc(AstType_UnaryExpr, op_token);
+    a->UnaryExpr.op = op_token.type;
+
+    a->UnaryExpr.operand = parse_expr(p, UNARY_OP_PRECEDENCE);
+
+    a->src_loc = merge(op_token.src_loc, a->UnaryExpr.operand->src_loc);
+    return a;
+}
+
 isize precedence(TokenType op, bool is_unary_op = false) {
     isize prec = 13;
 
@@ -1547,7 +1554,7 @@ Ast *parse_expr(Parser *p, isize min_prec, bool allow_struct_init) {
 }
 
 
-Ast *parse_constant(Parser *p) {
+Ast *parse_constant(Parser *p, bool negative) {
     Ast *a = ast_alloc(AstType_Constant);
     a->token = curr_token(p);
 
@@ -1555,12 +1562,20 @@ Ast *parse_constant(Parser *p) {
     
     
     if(curr.type == TokenType::Integer) {
-        parse_integer(get_global_string(curr.number_info.number_str).data(), curr.number_info.type_kind_of_number, a, p);
+        std::string num = get_global_string(curr.number_info.number_str).data();
+        if(negative) {
+            num.insert(0, "-");
+        }
+        parse_integer(num.c_str(), curr.number_info.type_kind_of_number, a);
         expect(p, TokenType::Integer);
     }
 
     if(curr.type == TokenType::Float) {
-        parse_float(get_global_string(curr.number_info.number_str).data(), curr.number_info.type_kind_of_number, a, p);
+        std::string num = get_global_string(curr.number_info.number_str).data();
+        if(negative) {
+            num.insert(0, "-");
+        }
+        parse_float(num.c_str(), curr.number_info.type_kind_of_number, a);
         expect(p, TokenType::Float);
     }
 
@@ -1584,13 +1599,13 @@ Ast *parse_constant(Parser *p) {
 #include <errno.h>
 #include <inttypes.h>
 
-void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
+void parse_integer(const char *str, TypeKind type_kind, Ast *a) {
     XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
 
     bool has_minus = false;
     if(str[0] == '-') {
         has_minus = true;
-        str++; // 跳过负号, 因为strtoumax不处理负号, 需要我们自己处理
+        str++;
     }
 
     // 解析
@@ -1619,18 +1634,9 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
         );
     }
 
-    // 检查负数字面量
+
     if(has_minus) {
         val = -val;
-        if(!(val >= INTPTR_MIN && val <= INTPTR_MAX)) {
-            context()->reporter.report(
-                ErrorLevel::Error,
-                a->token.src_loc,
-                "integer literal '-{}' is too small",
-                str
-            );
-        }
-
     }
 
     // TODO: 统一
@@ -1642,7 +1648,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 a->token.src_loc,
                 "integer literal '{}' can't fit in type '{}'",
                 str,
-                get_type_kind_str(type_kind)
+                get_global_string(get_type_kind_str(type_kind))
             );
         }
     }
@@ -1659,7 +1665,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
     a->Constant.value = value;
 }
 
-void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
+void parse_float(const char *str, TypeKind type_kind, Ast *a) {
     XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
 
     // 解析
@@ -1713,7 +1719,7 @@ void parse_float(const char *str, TypeKind type_kind, Ast *a, Parser *p) {
                 a->token.src_loc,
                 "float literal '{}' can't fit in type '{}'",
                 str,
-                get_type_kind_str(type_kind)
+                get_global_string(get_type_kind_str(type_kind))
             );
         }
     }
@@ -1917,7 +1923,6 @@ void advance_to_next_top_level(Parser *p) {
                 // 如果接着是 "(" 或者 "struct" 就说明是函数声明或者结构体声明, 否则就继续往下找
                 // if(next_2.type == TokenType::LeftBracket || next_2.type == TokenType::KW_struct) {
                 break;
-                // }
             }
         }
 

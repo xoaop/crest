@@ -196,7 +196,6 @@ TypeRef get_innermost_type_of_pointer(TypeRef pointer_type);
 
 
 
-// bool is_equal_type(Type a, Type b);
 bool is_integer_type(TypeRef type);
 bool is_integer_or_untyped_type(TypeRef type);
 bool is_integer_or_bool_type(TypeRef type);
@@ -217,7 +216,6 @@ bool is_array_type(TypeRef type);
 bool is_type_type(TypeRef type);
 bool is_package_type(TypeRef type);
 bool is_slice_struct_type(TypeRef type);
-// bool is_string_struct_type(TypeRef type);
 bool is_value_type(TypeRef type);
 bool is_var_arg_function(TypeRef type);
 bool is_named_type(TypeRef type);

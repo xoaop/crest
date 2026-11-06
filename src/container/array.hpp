@@ -399,18 +399,6 @@ void array_memcpy_dst_loop(Array<T> *dst, isize dst_start, Array<T> *src, isize 
 
 
 
-// 把src当作环形数组, dst不是
-// template<typename T>
-// void array_memcpy_src_loop(Array<T> *dst, isize dst_start, T *src, isize src_start, isize src_count) {
-//     XP_ASSERT_DEFAULT(dst_start + src_count <= dst->capacity);
-    
-//     for(isize i = 0; i < src_count; i++) {
-//         isize dst_index = dst_start + i; 
-//         isize src_index = (src_start + i) % src->capacity;
-        
-//         dst->data[dst_index] = src->data[src_index];
-//     }
-// }
 
 
 
@@ -433,10 +421,6 @@ struct Slice {
     xpSlice _slice;
 };
 
-template<typename T>
-Slice<T> slice_make_from_array(Array<T> array) {
-
-}
 
 #ifdef CREST_DEBUG
 static void test_array_perf() {

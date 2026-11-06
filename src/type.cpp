@@ -193,13 +193,6 @@ TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
 
 
 
-// Type make_struct_type(xpString name, Array<StructField> fields) {
-//     Type struct_type = {};
-//     struct_type.kind = Type_struct;
-//     struct_type.type_name = name;
-//     struct_type.struct_fields = fields;
-//     return struct_type;
-// }
 
 
 
@@ -472,20 +465,6 @@ bool is_slice_struct_type(TypeRef type) {
     return true;
 }
 
-// @deprecated
-// bool is_string_struct_type(TypeRef type) {
-//     if(!is_struct_type(type)) return false;
-//
-//     auto& fields = type->struct_info.struct_fields;
-//     if(fields.count != 2) return false;
-//
-//     TypeRef field0_type = fields[0].type;
-//     if(!is_pointer_type(field0_type)) return false;
-//
-//     if(field0_type->pointed_type->kind != Type_u8) return false;
-//
-//     return true;
-// }
 
 
 bool is_value_type(TypeRef type) {

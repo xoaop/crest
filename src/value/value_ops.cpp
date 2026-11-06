@@ -2,6 +2,8 @@
 
 #include "ast.hpp"
 
+#include <cmath>
+
 // 内联运算
 ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
     if(!((is_integer_or_untyped_type(v1.type) && is_integer_or_untyped_type(v2.type)) ||
@@ -9,6 +11,8 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
         (v1.type == easy_type(Type_bool) && v2.type == easy_type(Type_bool)) ||
         (is_enum_type(v1.type) && is_enum_type(v2.type)) ||
         (is_type_type(v1.type) && is_type_type(v2.type)) ||
+        (is_struct_type(v1.type) && is_struct_type(v2.type)) ||
+        (is_array_type(v1.type) && is_array_type(v2.type)) ||
         (is_pointer_type(v1.type) && is_pointer_type(v2.type)))) {
 
         return ValueResult::err(ValueErrorKind::TypeError);
@@ -28,6 +32,8 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
         && v1.actual_type() == ActualValueType::Type
         && v2.actual_type() == ActualValueType::Type;
     bool is_pointer = is_pointer_type(v1.type) && is_pointer_type(v2.type);
+    bool is_aggregate = (is_struct_type(v1.type) && is_struct_type(v2.type))
+                     || (is_array_type(v1.type) && is_array_type(v2.type));
 
     bool is_int_overflow = false;
     switch(op_type) {
@@ -157,6 +163,8 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
                 } else {
                     result.bool_val( v1.pointer_val().slot == v2.pointer_val().slot);
                 }
+            } else if(is_aggregate) {
+                result.bool_val(v1.equal(v2));
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);;
             }
@@ -179,6 +187,8 @@ ValueResult exec_binary(Value &v1, Value &v2, TokenType op_type) {
                 } else {
                     result.bool_val( v1.pointer_val().slot != v2.pointer_val().slot);
                 }
+            } else if(is_aggregate) {
+                result.bool_val(!v1.equal(v2));
             } else {
                 return ValueResult::err(ValueErrorKind::TypeError);;
             }
@@ -420,11 +430,14 @@ ValueResult exec_cast(Value &val, TypeRef target_type) {
     bool target_needs_float   = is_float_type(target_type);
     bool target_needs_bool    = (target_type->kind == Type_bool);
 
+    // enum 的范围检查用它自己的底层整数类型；直接拿 enum 传给 check_integer_overflow 会断言
+    TypeRef int_width_type = is_enum_type(target_type) ? target_type->enum_info.element_type : target_type;
+
     if((target_needs_integer && val.actual_type() == ActualValueType::Integer) ||
        (target_needs_float   && val.actual_type() == ActualValueType::Float)   ||
        (target_needs_bool    && val.actual_type() == ActualValueType::Bool)) {
         if(target_needs_integer && val.actual_type() == ActualValueType::Integer) {
-            if(check_integer_overflow(result.integer_val(), target_type)) {
+            if(check_integer_overflow(result.integer_val(), int_width_type)) {
                 return ValueResult::err(ValueErrorKind::Overflow);
             }
         } else if(target_needs_float && val.actual_type() == ActualValueType::Float) {
@@ -441,7 +454,17 @@ ValueResult exec_cast(Value &val, TypeRef target_type) {
     }
 
     if(val.actual_type() == ActualValueType::Float && target_needs_integer) {
-        result.integer_val(static_cast<i128>(val.float_val()));
+        double f = val.float_val();
+        // NaN/inf 和超出 i128 的有限值直接转是 UB，先挡住
+        constexpr double I128_LIMIT = static_cast<double>(I128_MAX);
+        if(!std::isfinite(f) || f < -I128_LIMIT || f >= I128_LIMIT) {
+            return ValueResult::err(ValueErrorKind::Overflow);
+        }
+        i128 converted = static_cast<i128>(f);
+        if(check_integer_overflow(converted, int_width_type)) {
+            return ValueResult::err(ValueErrorKind::Overflow);
+        }
+        result.integer_val(converted);
         return ValueResult::ok(result);
     }
 

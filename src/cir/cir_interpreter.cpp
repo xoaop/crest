@@ -65,25 +65,6 @@ TypeRef get_compliable_const_type(Value& val) {
 //
 
 
-// 闲置：改成定长数组后不需要分配/释放了
-//
-// // 池子一次开够：帧地址永不搬家（interp 从生到死握着它的帧指针）
-// static constexpr isize EVAL_STACK_CAPACITY = 64;
-//
-// EvalStack EvalStack::init(xpAllocator allocator) {
-//     EvalStack s;
-//     s.frames = make_array_capacity<EvalInstance>(allocator, EVAL_STACK_CAPACITY);
-//
-//     return s;
-// }
-//
-// void eval_stack_free(EvalStack *eval_stack) {
-//     if(eval_stack->frames.data == nullptr) {
-//         return;   // 没 init 过
-//     }
-//
-//     array_free(&eval_stack->frames);
-// }
 
 isize EvalStack::depth() const {
     return count;
@@ -109,8 +90,6 @@ Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, EvalStack 
     inst_stack = make_array<CIRInstructionRef>(allocator);
     eval_mode_stack = make_array<EvalMode>(allocator);
 
-    // 闲置：ValueMemory 体系的字节级栈内存
-    // stack_mem.init(MemoryKind::Stack, allocator);
 
     inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg->package_ref.index});
     scope = pkg->package_scope;
@@ -122,7 +101,6 @@ Interpreter::~Interpreter() {
 
     eval_stack->pop();
 
-    // stack_mem.free();
 }
 
 CIRInstructionRef& Interpreter::curr_inst_ref() {
@@ -365,26 +343,6 @@ bool Interpreter::propagate_error(Array<CIRInstructionRef>& refs) {
 }
 
 
-// void Interpreter::push_eval_instance(EvalInstance inst) {
-//     inst.caller_pc = curr_inst_ref();
-//     inst.caller_scope = scope;
-//
-//     eval_stack->push(std::move(inst));
-// }
-//
-// // 开一帧编译期调用帧（inst 要先装好：一压帧当前帧的内容就换了）
-// void Interpreter::push_comptime_frame(EvalInstance inst, FuncCallKey cache_key) {
-//     inst.ctx.enter_call(cache_key);
-//
-//     push_eval_instance(std::move(inst));
-// }
-//
-// void Interpreter::pop_eval_instance() {
-//     scope = curr_frame->caller_scope;
-//     curr_inst_ref() = curr_frame->caller_pc;
-//
-//     eval_stack->pop();
-// }
 
 bool Interpreter::has_instance() const {
     return curr_frame->ctx.in_call();
@@ -911,6 +869,9 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
 
         if(has_instance() && should_eval_for_lazy_eval({ptr_inst})) {
             Pointer ptr = ResultValue(ptr_inst).pointer_val();
+            if(ptr.is_null()) {
+                return make_result(pc_ref, inst_error(pc_ref, "解引用空指针"));
+            }
             // 深拷一份：结果自己持有数据，不跟槽里的数组共享
             Value val = clone_value(ptr.load(loaded_type), permanent_allocator());
             return make_result(pc_ref, ResultDesc::make_value(loaded_type, val));
@@ -925,6 +886,9 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
 
     if(has_instance() && (curr_eval_mode() == EvalMode::FullEval || has_result_val(ptr_inst))) {
         Pointer ptr = ResultValue(ptr_inst).pointer_val();
+        if(ptr.is_null()) {
+            return make_result(pc_ref, inst_error(pc_ref, "解引用空指针"));
+        }
         Value val = clone_value(ptr.load(ptr_type->pointed_type), permanent_allocator());
         return make_result(pc_ref, ResultDesc::make_value(ptr_type->pointed_type, val));
     }
@@ -951,6 +915,9 @@ AnalyzeResult Interpreter::analyze_Deref(const CIRDerefInfo& info, CIRInstructio
 
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
         Pointer ptr = ResultValue(ptr_inst).pointer_val();
+        if(ptr.is_null()) {
+            return make_result(pc_ref, inst_error(pc_ref, "解引用空指针"));
+        }
         Value val = clone_value(ptr.load(pointed), permanent_allocator());
         res.set_val(val);
     }
@@ -991,7 +958,7 @@ AnalyzeResult Interpreter::analyze_Unary(const CIRUnaryInfo& info, CIRInstructio
     // 类型检查
     //
     if(op == TokenType::Minus) {
-        if(!is_number_type(operand_type)) {
+        if(!(is_integer_or_untyped_type(operand_type) || is_float_or_untyped_type(operand_type))) {
             return make_result(pc_ref, inst_error(pc_ref, "一元负号要求数值类型操作数，实际类型 '{}'", operand_type->name()));
         }
     } else if(op == TokenType::Exclamation) {
@@ -1088,6 +1055,9 @@ AnalyzeResult Interpreter::analyze_ArrayType(const CIRArrayTypeInfo& info, CIRIn
         }
 
         Value count_val = ResultValue(info.count_inst);
+        if(!is_integer_or_untyped_type(count_val.type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "数组长度必须是整数类型，实际 '{}'", count_val.type->name()));
+        }
         i128 count = count_val.integer_val();
 
         TypeRef arr_type = array_type(elem_type, count);
@@ -1253,6 +1223,9 @@ AnalyzeResult Interpreter::analyze_FieldTypeOfStruct(const CIRFieldTypeOfStructI
         return make_result(pc_ref, inst_error(pc_ref, "不能从非结构体类型获取字段类型，实际类型 '{}'", st->name()));
     }
 
+    if(info.field_index < 0 || info.field_index >= st->struct_info.struct_fields.count) {
+        return make_result(pc_ref, inst_error(pc_ref, "结构体字段索引越界（索引 {}，字段数 {}）", info.field_index, st->struct_info.struct_fields.count));
+    }
     TypeRef field_type = st->struct_info.struct_fields[info.field_index].type;
     TypeRef meta = type_type();
 
@@ -1381,28 +1354,26 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
 
     // 有具体类型则将其他 untyped 元素传染为该类型（副作用进 writes；溢出检查用传染后的类型）
     AnalyzeResult r;   // 累积 writes：传染 + 自身结果
-    if(!is_untyped_type(elem_type)) {
-        FOR(info.element_insts) {
-            auto ei = it;
-            TypeRef t = ResultType(ei);
+    FOR(info.element_insts) {
+        auto ei = it;
+        TypeRef t = ResultType(ei);
 
-            if(is_untyped_type(t)) {
-                Value v = ResultValue(ei);
-                v.set_type(elem_type);   // 模拟传染后的类型做溢出检查
-                if(is_val_overflow(v)) {
-                    return make_result(pc_ref, inst_error(pc_ref, 
-                        "数组初始化元素值溢出（元素 {}）", 
-                        it_index
-                    ));
-                }
-
-                r.writes.push_back({ei, ResultDesc::make_type_only(elem_type)});   // 传染
-            } else if(t != elem_type) {
+        if(is_untyped_type(t)) {
+            Value v = ResultValue(ei);
+            v.set_type(elem_type);   // 模拟传染后的类型做溢出检查
+            if(is_val_overflow(v)) {
                 return make_result(pc_ref, inst_error(pc_ref, 
-                    "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", 
-                    it_index, t->name(), elem_type->name()
+                    "数组初始化元素值溢出（元素 {}）", 
+                    it_index
                 ));
             }
+
+            r.writes.push_back({ei, ResultDesc::make_type_only(elem_type)});   // 传染
+        } else if(t != elem_type) {
+            return make_result(pc_ref, inst_error(pc_ref, 
+                "数组初始化元素类型不一致（元素 {}：'{}'，期望 '{}'）", 
+                it_index, t->name(), elem_type->name()
+            ));
         }
     }
 
@@ -1456,7 +1427,11 @@ AnalyzeResult Interpreter::analyze_Index(const CIRIndexInfo& info, CIRInstructio
     }
 
     if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({info.array_inst, info.index_inst})) {
-        i128 idx = ResultValue(info.index_inst).integer_val();
+        Value index_val = ResultValue(info.index_inst);
+        if(!is_integer_or_untyped_type(index_val.type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "数组下标必须是整数类型，实际 '{}'", index_val.type->name()));
+        }
+        i128 idx = index_val.integer_val();
 
         if(is_array_type(array_type_ref)) {
             if(idx < 0 || idx >= array_type_ref->array_info.count) {
@@ -1727,10 +1702,17 @@ AnalyzeResult Interpreter::analyze_IndexPtr(const CIRIndexPtrInfo& info, CIRInst
     }
 
     if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
-        i128 idx = ResultValue(info.index_inst).integer_val();
+        Value index_val = ResultValue(info.index_inst);
+        if(!is_integer_or_untyped_type(index_val.type)) {
+            return make_result(pc_ref, inst_error(pc_ref, "数组下标必须是整数类型，实际 '{}'", index_val.type->name()));
+        }
+        i128 idx = index_val.integer_val();
 
         Pointer ptr;
         if(container_is_array) {
+            if(idx < 0 || idx >= (i128)array_type_ref->array_info.count) {
+                return make_result(pc_ref, inst_error(pc_ref, "数组索引越界（索引 {}，长度 {}）", idx, array_type_ref->array_info.count));
+            }
             // 定长数组：base 是数组变量自己的槽，元素槽在它的 fields 缓冲里
             Pointer base = ResultValue(array_inst).pointer_val();
             ASSERT_MSG(base.slot != nullptr, "不能对空指针取索引指针");
@@ -1740,6 +1722,10 @@ AnalyzeResult Interpreter::analyze_IndexPtr(const CIRIndexPtrInfo& info, CIRInst
             Value slice_value = is_lvalue(array_inst)
                 ? ResultValue(array_inst).pointer_val().load(array_type_ref)
                 : ResultValue(array_inst);
+            i128 slice_count = slice_value.struct_field_val(1).integer_val();
+            if(idx < 0 || idx >= slice_count) {
+                return make_result(pc_ref, inst_error(pc_ref, "切片索引越界（索引 {}，长度 {}）", idx, slice_count));
+            }
             Pointer data = slice_data_val(slice_value);
             ASSERT_MSG(!data.is_null() && data.slot->actual_type() == ActualValueType::Array,
                        "切片 data 指向的槽必须握着连续元素");
@@ -2958,12 +2944,6 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
             generic_func.arg_type_insts.count, info.arg_insts.count));
     }
 
-    // // TODO: REPEAT
-    // // 实例化是 C++ 递归，阈值与编译期调用一致
-    // constexpr auto MAX_CALL_DEPTH = 15;
-    // if(instance_stack.count > MAX_CALL_DEPTH) {
-    //     return make_result(called_inst, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH));
-    // }
 
     AnalyzeResult r;
     auto type_args = make_array<TypeRef>(permanent_allocator());

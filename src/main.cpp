@@ -378,8 +378,6 @@ int main(int argc_raw, char** argv_raw) {
     context()->all_cir_packages = SlotMap<CIRPackage>::init(permanent_allocator());
 
     context()->all_scopes = make_array<Scope>(permanent_allocator());
-    // 闲置：static_mem
-    // context()->static_mem.init(MemoryKind::String, permanent_allocator());
     context()->static_values = ValueArray::init(permanent_allocator());
     context()->lcir_modules = xp_hash_map_make<Ref<Package>, lcir::Module>(permanent_allocator());
 
@@ -423,7 +421,7 @@ int main(int argc_raw, char** argv_raw) {
     
     
 
-    if(context()->reporter.error_count > 0) {
+    if(context()->reporter.has_error()) {
         context()->reporter.print_msg();
         return 1;
     }

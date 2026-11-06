@@ -169,15 +169,6 @@ struct EvalStack {
     void pop();                              // 出链
 };
 
-// 闲置：改成定长数组后不需要分配/释放了
-//
-// struct EvalStack {
-//     Array<EvalInstance> frames = {};
-//
-//     static EvalStack init(xpAllocator allocator);
-//     ...
-// };
-// void eval_stack_free(EvalStack *eval_stack);
 
 
 

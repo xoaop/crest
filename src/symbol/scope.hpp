@@ -2,6 +2,8 @@
 
 #include "xoaop.h"
 
+#include <optional>
+
 #include "symbol.hpp"
 // 前向声明AST，不需要引入完整头文件
 struct Ast;
@@ -111,7 +113,7 @@ Ref<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType ty
 
 void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast = nullptr);
 
-Scope *get_upper_scope_with_type(Scope *scope, ScopeType type);
+Scope *get_upper_scope_with_type(Scope *scope, ScopeType type, std::optional<ScopeType> stop_at = std::nullopt);
 
 void add_symbol_to_scope(Scope *scope, GlobalStringIndex symbol_ident, SymbolInfo info);
 void add_symbol_to_scope(Scope *scope, SymbolInfo info);

@@ -373,11 +373,6 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(CIRBuildContext& ctx, Ast *stm
             auto ptr_inst   = build_ptr_inst_for_expr(ctx, stmt->Assignment.left_var_expr);
             auto value_inst = build_inst_for_expr(ctx, stmt->Assignment.right_expr);
 
-            // auto determine_type_for_value_inst = New_Instrcution(CIROperator::DetermineType, stmt);
-            // Instruction(ctx, determine_type_for_value_inst).info<CIROperator::DetermineType>() = {
-            //     .determining_inst = value_inst,
-            //     .type_inst = INVALID_INST,
-            // };
 
             auto typeof_inst = Make_Instruction<CIROperator::TypeOfInstResult>(ctx, stmt, {
                 .target_inst = ptr_inst
@@ -449,10 +444,6 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(CIRBuildContext& ctx, Ast *stm
 
         case AstType_IfExpr: {
             auto value_inst = build_inst_for_expr(ctx, stmt);
-            // Make_Instruction<CIROperator::DetermineType>(ctx, stmt, {
-            //     .determining_inst = value_inst,
-            //     .type_inst = INVALID_INST,
-            // });
         } break;
 
         default: {
@@ -1140,10 +1131,6 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             auto count_str = static_cast<isize>(get_global_string(str).count());
 
             // 字面量字节本身就在 permanent 内存里（parser 造的），无需再抄一份
-            // 闲置：static_mem 分配
-            // auto ptr = context()->static_mem.alloc_bytes(count_str + 1, 1); // +1 for null terminator
-            // ptr.store_bytes(str.c_str, count_str);
-            // ptr.mem->write_bytes(ptr.offset + count_str, "\0", 1);
 
 
             auto string_ident = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = context()->known_global_strings.string });
@@ -1511,9 +1498,6 @@ ScopeGuard::~ScopeGuard() {
 
 
 
-bool is_cir_binary_op(TokenType type) {
-    return is_binary_op(type);
-}
 
 bool is_type_decl_ast(Ast *expr) {
     return expr->type == AstType_StructDeclValue
@@ -1521,7 +1505,3 @@ bool is_type_decl_ast(Ast *expr) {
         || expr->type == AstType_EnumDecl;
 }
 
-bool is_cir_unary_op(TokenType type) {
-    // NOTE: 排除解引用和取地址, 因为有专门指令
-    return is_unary_op(type) && type != TokenType::Caret && type != TokenType::And;
-}

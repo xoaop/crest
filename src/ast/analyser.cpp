@@ -92,9 +92,6 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
             collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg), under_file_scope);
         } break;
         
-        // case AstType_VariableDecl: {
-        //     collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg));
-        // } break;
 
         default:
             continue;
@@ -993,7 +990,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
     
     case AstType_Break: {
-        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock) == NULL) {
+        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
                 "break statement not within loop"
@@ -1001,7 +998,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
         }
     } break;
     case AstType_Continue: {
-        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock) == NULL) {
+        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
                 "continue statement not within loop"
@@ -1363,7 +1360,7 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
 
 
 bool may_fall_through(Ast *ast) {
-    
+
     switch(ast->type)
     {
     case AstType_ReturnStmt:
@@ -1397,8 +1394,8 @@ bool may_fall_through(Ast *ast) {
     } break;
 
     case AstType_ForStmt:
-        return may_fall_through(ast->ForStmt.body);    
-        break;
+        // 所有循环都可能零次执行或经 break 提前退出
+        return true;
     default:
         break;
     }

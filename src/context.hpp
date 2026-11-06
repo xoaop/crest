@@ -55,8 +55,6 @@ struct Context {
     SlotMap<CIRPackage> all_cir_packages;
     xpHashMap<Ref<Package>, lcir::Module> lcir_modules;
 
-    // 闲置：ValueMemory 体系的静态内存区
-    // ValueMemory static_mem;
 
     // 编译期产出的 Value 槽（字面量字节、变量槽）：permanent，不回收
     ValueArray static_values;

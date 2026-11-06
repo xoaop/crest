@@ -18,38 +18,6 @@ struct ValueArray;
 using ValueRef = Value *;
 
 
-// 闲置：ValueMemory 体系（暂无使用者，见 value.cpp 的同名一节）
-//
-// struct ValueMemory;
-//
-// enum class MemoryKind: u8 {
-//     Heap,
-//     Stack,
-//     String,  // 在可执行文件中有对应地址的数据（如字符串字面量）
-// };
-//
-// struct MemPointer {
-//     static constexpr isize BYTE_SIZE = 17; // u8 kind + isize offset + isize mem_ptr
-//
-//     MemoryKind kind = MemoryKind::Heap;
-//     ValueMemory *mem = nullptr;
-//     isize offset = 0;
-//
-//     static MemPointer make(ValueMemory *mem, isize offset);
-//     static MemPointer make_null();
-//     static MemPointer add(MemPointer p, isize offset, isize elem_size);
-//
-//     bool is_null() const;
-//
-//     Value load(TypeRef type, xpAllocator allocator) const;
-//     Value load(TypeRef type, isize offset, xpAllocator allocator) const;
-//     void load_bytes(isize offset, void* dst, isize size) const;
-//     void store(Value v) const;
-//     void store_bytes(const void* src, isize size) const;
-//
-//     void to_bytes(Array<u8>& bytes, isize offset) const;
-//     static MemPointer from_bytes(const Array<u8>& bytes, isize offset);
-// };
 
 
 // comptime 指针：指向某个容器持有的 Value 槽
@@ -69,22 +37,6 @@ struct Pointer {
 };
 
 
-// 闲置：ValueMemory 体系的字节内存区
-//
-// struct ValueMemory {
-//     MemoryKind kind;
-//     Array<u8> bytes;
-//
-//     void init(MemoryKind kind, xpAllocator allocator);
-//     void free();
-//
-//     // 分配 size 字节，按 align 对齐，返回起始偏移
-//     MemPointer alloc_bytes(isize size, isize align);
-//
-//     // 底层字节读写
-//     void write_bytes(isize offset, const void* src, isize size);
-//     void read_bytes(isize offset, void* dst, isize size) const;
-// };
 
 
 
@@ -114,7 +66,6 @@ enum class ActualValueType {
     Pointer,   // comptime 指针：Pointer{Value* slot}，type 字段指向 *T
     Type,      // 类型值：TypeRef 存储在 union 中
     Package,   // 包值：Package* 存储在 union 中
-    ValueRef,  // 预留：指向 Value 槽（现由 Pointer 承担）
 };
 
 
@@ -146,15 +97,13 @@ public:
     void array_element_values(Array<Value> elem_values);
     void func_val(Ref<CIRInstResult> func_key);
     void func_val_key(Ref<CIRInstResult> key);
-    // 闲置：ValueMemory 体系的字节指针
-    // void mem_pointer_val(MemPointer ptr);
     void pointer_val(Pointer ptr);          // comptime 指针
     void type_val(TypeRef type_ref);
     void package_val(Ref<Package> pkg);
 
 
     i128 integer_val() const;
-    float float_val() const;
+    double float_val() const;
     bool bool_val() const;
     Array<Value> struct_fields_val() const;
     Value struct_field_val(isize index) const;
@@ -167,8 +116,6 @@ public:
     // 元素槽的地址：值没握元素缓冲或索引越界给 nullptr（按元素扫描时当终止信号用）
     ValueRef element_ref(isize index);
     Pointer pointer_val() const;           // comptime 指针
-    // 闲置：ValueMemory 体系的字节指针
-    // MemPointer mem_pointer_val() const;
     TypeRef type_val() const;
     Ref<Package> package_val() const;
     FuncValue func_val() const;
@@ -195,7 +142,6 @@ private:
 
         FuncValue func_value;
 
-        // MemPointer mem_pointer_value;  // 闲置：ValueMemory 体系的字节指针
         Pointer pointer_value;         // comptime 指针
 
         TypeRef type_value;        // 类型值
@@ -219,7 +165,6 @@ struct std::hash<Value> {
         u64 h = static_cast<u64>(kind);
         switch(kind) {
         case ActualValueType::Nothing:
-        case ActualValueType::ValueRef:
             break;
         case ActualValueType::Integer: {
             const auto n = v.integer_val();
@@ -227,7 +172,7 @@ struct std::hash<Value> {
             h = xp_hash_combine_u64(h, static_cast<u64>(n >> 64));
         } break;
         case ActualValueType::Float:
-            h = xp_hash_combine_u64(h, std::hash<float>{}(v.float_val()));
+            h = xp_hash_combine_u64(h, std::hash<double>{}(v.float_val()));
             break;
         case ActualValueType::Bool:
             h = xp_hash_combine_u64(h, std::hash<bool>{}(v.bool_val()));
@@ -284,18 +229,6 @@ Pointer slice_data_val(const Value& slice_value);
 
 
 
-// 闲置：Value ↔ 字节序列化（comptime 字节级内存模型）
-//
-// void write_value_to_bytes(Array<u8>& bytes, isize offset, const Value& v);
-// Value read_value_from_bytes(const Array<u8>& bytes, isize offset, TypeRef type, xpAllocator allocator);
-//
-// 类型序列化布局函数
-//
-// isize type_serialize_size(TypeRef type);
-// isize type_serialize_align(TypeRef type);
-// isize type_serialize_stride(TypeRef type);
-// isize field_serialize_offset(TypeRef struct_type, isize index);
-// isize serialize_align_up(isize value, isize alignment);
 
 
 enum class ProgressType {

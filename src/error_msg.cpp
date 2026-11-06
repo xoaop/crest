@@ -4,7 +4,7 @@
 
 
 bool ErrorReporter::has_error() const {
-    return error_msgs.count > 0;
+    return error_count > 0;
 }
 
 void ErrorReporter::add_error_msg(ErrorLevel level, bool has_location, Span highlight_span, SourceCode src_code, xpString formatted_msg) {

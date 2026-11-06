@@ -52,11 +52,14 @@ void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast) {
 }
 
 
-Scope *get_upper_scope_with_type(Scope *scope, ScopeType type) {
+Scope *get_upper_scope_with_type(Scope *scope, ScopeType type, std::optional<ScopeType> stop_at) {
     Scope *upper = scope;
     while (upper != NULL) {
         if(upper->scope_type == type) {
             return upper;
+        }
+        if(stop_at.has_value() && upper->scope_type == stop_at.value()) {
+            break;
         }
 
         Ref<Scope> parent = upper->parent;

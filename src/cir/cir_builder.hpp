@@ -99,6 +99,4 @@ struct CIRBuilder {
 };
 
 
-bool is_cir_binary_op(TokenType type);
-bool is_cir_unary_op(TokenType type);
 bool is_type_decl_ast(Ast *expr);

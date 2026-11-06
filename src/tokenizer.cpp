@@ -43,7 +43,6 @@ isize advance_characters(Tokenizer *t, isize count);
 char tokenizer_next_character(Tokenizer *t);
 isize tokenizer_skip_space(Tokenizer *t);
 void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index);
-void tokenizer_scan_integer(Tokenizer *t);
 void tokenizer_scan_pure_integer_seq(Tokenizer *t);
 void tokenizer_scan_hex_digit_seq(Tokenizer *t);
 void tokenizer_scan_bin_digit_seq(Tokenizer *t);
@@ -206,12 +205,6 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         case '-':
             token.type = TokenType::Minus;
             advance_one_character(t);
-
-            if(is_number(tokenizer_curr_character(t))) {
-                tokenizer_scan_number(t, &token, old_index);
-                break;
-            }
-
 
             if(tokenizer_curr_character(t) == '>') {
                 token.type = TokenType::Arrow;
@@ -414,7 +407,13 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             advance_one_character(t); //跳过开头的引号
 
             while (!tokenizer_end(t) && tokenizer_curr_character(t) != '"') {
-                advance_one_character(t);
+                if(tokenizer_curr_character(t) == '\\') {
+                    advance_one_character(t);   // 跳过反斜杠
+                    if(tokenizer_end(t)) {
+                        break;
+                    }
+                }
+                advance_one_character(t);       // 跳过被转义字符
             }
 
             if(tokenizer_end(t)) {
@@ -436,8 +435,6 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': 
             tokenizer_scan_number(t, &token, old_index);
-            // token.type = TokenType::Integer;
-            // tokenizer_scan_integer(t);
             break;
 
         case '#':
@@ -503,19 +500,6 @@ char tokenizer_next_character(Tokenizer *t) {
     return t->source_code->code_string.c_str[t->curr_character_index + 1];
 }
 
-isize tokenizer_move_until_next_space(Tokenizer *t) {
-    isize count = 0;
-    while (!tokenizer_end(t)) {
-
-        if(xp_is_space(t->source_code->code_string.c_str[t->curr_character_index])) {
-            break;
-        }
-        count += advance_one_character(t);
-    }
-    
-    return count;
-}
-
 isize tokenizer_skip_space(Tokenizer *t) {
     isize count = 0;
     while (!tokenizer_end(t)) {
@@ -527,19 +511,6 @@ isize tokenizer_skip_space(Tokenizer *t) {
     return count;
 }
 
-
-void tokenizer_scan_integer(Tokenizer *t) {
-    char c = tokenizer_curr_character(t);
-    while (!tokenizer_end(t)) {
-        if(!(xp_is_digit_base_all(c) || c == 'x')) {
-            break;
-        }
-        advance_one_character(t);
-        c = tokenizer_curr_character(t);
-    }
-
-    return;
-}
 
 isize tokenizer_try_to_fix(Tokenizer *t, const char *str) {
     isize curr_index = t->curr_character_index;
@@ -673,13 +644,25 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     // 浮点数不能用整型的后缀
     if(token_type == TokenType::Float) {
         if(len > 0 && !is_float_suffix) {
-            XP_ASSERT_DEFAULT(0);
+            context()->reporter.report(
+                ErrorLevel::Error,
+                SourceLocation(*t->source_code, make_span(old_index, t->curr_character_index)),
+                "字面量类型与后缀 '{}' 不匹配",
+                postfix[i]
+            );
+            suffix_kind = Type_Undefined;
         }
     }
     // 整型不能用浮点数的后缀
     if(token_type == TokenType::Integer) {
         if(len > 0 && is_float_suffix) {
-            XP_ASSERT_DEFAULT(0);
+            context()->reporter.report(
+                ErrorLevel::Error,
+                SourceLocation(*t->source_code, make_span(old_index, t->curr_character_index)),
+                "字面量类型与后缀 '{}' 不匹配",
+                postfix[i]
+            );
+            suffix_kind = Type_Undefined;
         }
     }
 
