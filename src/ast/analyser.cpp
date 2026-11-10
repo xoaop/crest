@@ -465,8 +465,11 @@ void resolve_top_level_comptime_if(Ref<Package> pkg) {
             }
 
             ASSERT(tasks[it].state() == CoroutineState::Created || tasks[it].state() == CoroutineState::Suspended);
-            ASSERT(manager.schedule(tasks[it]));
-            ASSERT(manager.run_one());
+
+            const bool scheduled = manager.schedule(tasks[it]);
+            ASSERT(scheduled);
+            const bool advanced = manager.run_one();
+            ASSERT(advanced);
         }
 
         // 如果一轮遍历都没有完成任何一个任务，说明到头了, 得报错
@@ -478,8 +481,10 @@ void resolve_top_level_comptime_if(Ref<Package> pkg) {
                     continue;
                 }
 
-                ASSERT(manager.schedule(it));
-                ASSERT(manager.run_one());
+                const bool scheduled = manager.schedule(it);
+                ASSERT(scheduled);
+                const bool advanced = manager.run_one();
+                ASSERT(advanced);
                 ASSERT(it.done());
             }
             break;
@@ -1402,4 +1407,3 @@ bool may_fall_through(Ast *ast) {
 
     return true;
 }
-
