@@ -358,6 +358,10 @@ void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
         case AstType_StructInitExpr: {
             print_line(depth + 1, true, "field_inits:");
             print_ast(a->StructInitExpr.field_inits, depth + 2, true);
+            FOR(a->StructInitExpr.field_names) {
+                auto name = it;
+                print_line(depth + 2, false, "name: {}", name == GLOBAL_STRING_NONE ? StringRef::init("-") : get_global_string(name));
+            }
             break;
         }
 

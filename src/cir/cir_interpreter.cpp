@@ -1287,44 +1287,162 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
         return {};
     }
 
+    const bool has_type = info.struct_type_inst != INVALID_INST;
+    TypeRef st = nullptr;
 
+    if(has_type) {
+        if(!has_result_val(info.struct_type_inst)) {
+            return {};
+        }
 
-    if(!has_result_val(info.struct_type_inst)) {
-        return {};
+        st = ResultValue(info.struct_type_inst).type_val();
+        // XP_ASSERT_DEFAULT(is_struct_type(st));
+        if(!is_struct_type(st)) {
+            return make_result(pc_ref, inst_error(pc_ref, "你不能把非结构体类型 '{}' 当作结构体来初始化", st->name()));
+        }
     }
 
-    TypeRef st = ResultValue(info.struct_type_inst).type_val();
-    // XP_ASSERT_DEFAULT(is_struct_type(st));
-    if(!is_struct_type(st)) {
-        return make_result(pc_ref, inst_error(pc_ref, "你不能把非结构体类型 '{}' 当作结构体来初始化", st->name()));
+    const bool named = info.field_names.count > 0 && info.field_names[0] != GLOBAL_STRING_NONE;
+    FOR(info.field_names) {
+        if((it != GLOBAL_STRING_NONE) != named) {
+            return make_result(pc_ref, inst_error(pc_ref, "结构体初始化不能混用具名和位置值"));
+        }
     }
 
-    if(info.field_init_insts.count != st->struct_info.struct_fields.count) {
+    if(!has_type && !named) {
+        return make_result(pc_ref, inst_error(pc_ref, "匿名结构体字面量必须写字段名"));
+    }
+
+    FOR(info.field_init_insts) {
+        if(!has_result_type(it)) {
+            return {};
+        }
+    }
+
+    // 匿名字段类型由值推导
+    if(!has_type) {
+        Array<StructField> fields = make_array<StructField>(type_allocator());
+        FOR(info.field_init_insts) {
+            TypeRef field_type = ResultType(it);
+            if(is_untyped_type(field_type)) {
+                if(has_result_val(it)) {
+                    Value field_val = ResultValue(it);
+                    field_type = get_compliable_const_type(field_val);
+                } else {
+                    field_type = default_certain_type_for_untyped_type(field_type);
+                }
+            }
+            fields.push_back(StructField{ info.field_names[it_index], field_type });
+        }
+
+        // 建类型前查重
+        FOR(fields) {
+            for(isize j = 0; j < it_index; j++) {
+                if(fields[j].name == it.name) {
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 重复初始化", get_global_string(it.name)));
+                }
+            }
+        }
+
+        Type t = {};
+        t.kind = Type_struct;
+        t.struct_info.struct_fields = fields;
+        t.struct_info.hash_key.fields = t.struct_info.struct_fields.data;
+        t.struct_info.hash_key.field_count = t.struct_info.struct_fields.count;
+
+        st = get_or_add_type(t);
+    }
+
+    if(!named && info.field_init_insts.count != st->struct_info.struct_fields.count) {
         return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段数量与结构体定义不匹配（{} vs {}）", info.field_init_insts.count, st->struct_info.struct_fields.count));
     }
+
+    // 每个初始化项落到哪个字段
+    Array<isize> field_indices = make_array<isize>(temp_allocator());
+    if(named) {
+        Array<bool> assigned = make_array<bool>(temp_allocator());
+        FOR(st->struct_info.struct_fields) {
+            assigned.push_back(false);
+        }
+
+        FOR(info.field_names) {
+            const GlobalStringIndex field_name = it;
+            const isize field_index = struct_field_index(st, field_name);
+            if(field_index < 0) {
+                return make_result(pc_ref, inst_error(pc_ref, "结构体没有字段 '{}'", get_global_string(field_name)));
+            }
+            if(assigned[field_index]) {
+                return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 重复初始化", get_global_string(field_name)));
+            }
+            assigned[field_index] = true;
+            field_indices.push_back(field_index);
+        }
+    } else {
+        FOR(info.field_init_insts) {
+            field_indices.push_back(it_index);
+        }
+    }
+
+    AnalyzeResult r;
 
     // 字段类型检查
     FOR(info.field_init_insts) {
         TypeRef field_type = ResultType(it);
-        TypeRef expected = st->struct_info.struct_fields[it_index].type;
+        const isize field_index = field_indices[it_index];
+        TypeRef expected = st->struct_info.struct_fields[field_index].type;
         std::optional<TypeRef> implicit_type = result_context().result_of(it).implicit_type;
-        if(field_type != expected && ((!implicit_type.has_value()) || implicit_type != expected)) {
-            return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段类型与定义不匹配（字段 {}：实际 '{}'，期望 '{}'）", it_index, field_type->name(), expected->name()));
+
+        bool ok = field_type == expected || (implicit_type.has_value() && implicit_type.value() == expected);
+        if(!ok && is_untyped_type(field_type) && is_certain_type(expected)) {
+            ok = (field_type == easy_type(Type_untyped_int) && is_integer_type(expected))
+              || (field_type == easy_type(Type_untyped_float) && is_float_type(expected));
+        }
+
+        if(!ok) {
+            return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段类型与定义不匹配（字段 '{}'：实际 '{}'，期望 '{}'）", get_global_string(st->struct_info.struct_fields[field_index].name), field_type->name(), expected->name()));
+        }
+
+        // 未定字面量按目标类型落定并写回
+        if(is_untyped_type(field_type)) {
+            if(has_result_val(it)) {
+                Value check_val = ResultValue(it);
+                check_val.set_type(expected);
+                if(is_val_overflow(check_val)) {
+                    return make_result(pc_ref, inst_error(pc_ref, "结构体初始化字段值溢出（字段 '{}'，目标类型 '{}'）", get_global_string(st->struct_info.struct_fields[field_index].name), expected->name()));
+                }
+            }
+            r.writes.push_back({it, ResultDesc::make_type_only(expected)});
         }
     }
 
-    if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval(info.field_init_insts)) {
+    if(should_eval_for_lazy_eval(info.field_init_insts)) {
+        Array<Value> field_values = make_array<Value>(permanent_allocator());
+        FOR(st->struct_info.struct_fields) {
+            field_values.push_back(Value::zero(it.type, permanent_allocator()));
+        }
+
+        FOR(info.field_init_insts) {
+            const isize field_index = field_indices[it_index];
+            TypeRef expected = st->struct_info.struct_fields[field_index].type;
+
+            Value field_val = ResultValue(it);
+            if(is_untyped_type(field_val.type)) {
+                field_val.set_type(expected);
+            }
+
+            field_values[field_index] = field_val;
+        }
+
         Value v = make_value(st);
         v.set_type(st);
-        Array<Value> field_values = make_array<Value>(permanent_allocator());
-        FOR(info.field_init_insts) {
-            field_values.push_back(ResultValue(it));
-        }
         v.struct_fields_val(field_values);
-        return make_result(pc_ref, ResultDesc::make_value(v));
+
+        r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
+        return r;
     }
 
-    return make_result(pc_ref, ResultDesc::make_type_only(st));
+    r.writes.push_back({pc_ref, ResultDesc::make_type_only(st)});
+    return r;
 }
 
 // handler: ArrayInit（含 untyped 元素传染，副作用进 writes）
@@ -2036,7 +2154,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(const CIRTypeAscribeInfo& info, C
         }
     }
 
-    if(curr_eval_mode() == EvalMode::FullEval && has_instance()) {
+    if(curr_eval_mode() == EvalMode::FullEval && has_instance() && vd.slot >= 0) {
         auto ptr = curr_instance()->var_ptrs[vd.slot];
         if(ptr.is_null()) {   // 参数已由 caller 分配
             // 副作用：FullEval 分配变量槽 + 写入 instance 变量槽
@@ -2757,6 +2875,10 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         return r;
     }
 
+    if(func.sig_blk != INVALID_BLOCK) {
+        analyze_block(func.sig_blk, std::nullopt);
+    }
+
     // 解析参数类型
     Array<TypeRef> param_types = make_array<TypeRef>(permanent_allocator());
 
@@ -2908,8 +3030,6 @@ std::optional<Value> Interpreter::instantiate_generic_func(
             .set_val(clone_value(tv, permanent_allocator()));
     }
 
-    // 两步分开：FunctionDecl 要读签名块算出的 arg_type_insts 结果
-    analyze_instruction_at(func.all_param_type_and_return_type_inst_blk_ref);
     analyze_instruction_at(func_decl_pc);
 
     if(!has_result_val(func_decl_pc)) {

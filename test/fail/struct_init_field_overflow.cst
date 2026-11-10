@@ -1,0 +1,13 @@
+// @fail
+// @error "结构体初始化字段值溢出"
+
+Point :: struct { x: i32; }
+
+run :: (a: i32) -> i32 {
+    p := Point.{ x = 3000000000 };
+    return p.x - a;
+}
+
+main :: () -> i32 {
+    return run(1);
+}

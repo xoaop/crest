@@ -175,7 +175,7 @@ struct CIRFunctionDeclInfo {
     bool has_generic_param_type;
     Array<CIRInstructionRef> generic_param_type_var_insts;   // 各类型变量的 VariableDecl
     Array<isize> generic_param_type_var_param_indices;       // 各类型变量从第几个实参推导
-    CIRInstructionRef all_param_type_and_return_type_inst_blk_ref;   // 签名块(形参+返回类型), 实例化只重跑它
+    CIRBlockRef sig_blk;   // 签名块(形参+返回类型)
 
     CIR_REFS(&CIRFunctionDeclInfo::body_inst, &CIRFunctionDeclInfo::return_type_inst,
              &CIRFunctionDeclInfo::arg_type_insts, &CIRFunctionDeclInfo::arg_decl_insts)
@@ -297,6 +297,7 @@ struct CIRIndexInfo {
 struct CIRStructInitInfo {
     CIRInstructionRef struct_type_inst;
     Array<CIRInstructionRef> field_init_insts;
+    Array<GlobalStringIndex> field_names;   // 与 field_init_insts 平行，GLOBAL_STRING_NONE = 位置值
 
     CIR_REFS(&CIRStructInitInfo::struct_type_inst, &CIRStructInitInfo::field_init_insts)
 };

@@ -21,7 +21,7 @@ struct Ast;
     AST_INFO(BadExpr, "bad expr", struct {})                                         \
     AST_INFO(BadType, "bad type", struct {})                                         \
     AST_INFO(Import, "import", struct {                                              \
-        GlobalStringIndex path;                                                               \
+        GlobalStringIndex path;                                                      \
     })                                                                               \
     AST_INFO(EasyType, "easy type", struct {                                         \
         TypeKind kind;                                                               \
@@ -42,10 +42,10 @@ struct Ast;
         bool is_extern_c;                                                            \
     })                                                                               \
     AST_INFO(Ident, "ident", struct {                                                \
-        GlobalStringIndex name;                                                               \
+        GlobalStringIndex name;                                                      \
     })                                                                               \
     AST_INFO(StructField, "struct field", struct {                                   \
-        GlobalStringIndex name;                                                               \
+        GlobalStringIndex name;                                                      \
         Ast *type_ast;                                                               \
     })                                                                               \
     AST_INFO(Block, "block", struct {                                                \
@@ -64,7 +64,7 @@ struct Ast;
         Ast *iterable_end;    /* non-null = range iter: start..end */                \
         Ast *condition;                                                              \
         Ast *body;                                                                   \
-        bool iter_by_ptr;     /* for *x in e: iter_var 接收元素地址 */               \
+        bool iter_by_ptr;     /* for *x in e: iter_var 接收元素地址 */                 \
     })                                                                               \
     AST_INFO(Break, "break statement", struct {})                                    \
     AST_INFO(Continue, "continue statement", struct {})                              \
@@ -72,13 +72,13 @@ struct Ast;
         Ast *expr;                                                                   \
     })                                                                               \
     AST_INFO(VariableDecl, "variable decl", struct {                                 \
-        GlobalStringIndex var_name;                                                           \
+        GlobalStringIndex var_name;                                                  \
         Ast *expr;                                                                   \
         Ast *type_ast;                                                               \
         bool no_zero_init;                                                           \
     })                                                                               \
     AST_INFO(TypeVariableDeclInParam, "type variable decl in param", struct {        \
-        GlobalStringIndex name;                                                               \
+        GlobalStringIndex name;                                                      \
     })                                                                               \
     AST_INFO(Assignment, "assignment", struct {                                      \
         Ast *left_var_expr;                                                          \
@@ -86,10 +86,10 @@ struct Ast;
     })                                                                               \
     AST_INFO(FieldAccess, "field access", struct {                                   \
         Ast *parent;                                                                 \
-        GlobalStringIndex field_name;                                                         \
+        GlobalStringIndex field_name;                                                \
     })                                                                               \
     AST_INFO(ParamDecl, "function parameter", struct {                               \
-        GlobalStringIndex name;                                                               \
+        GlobalStringIndex name;                                                      \
         Ast *type_ast;                                                               \
         bool is_var_arg;                                                             \
     })                                                                               \
@@ -129,6 +129,7 @@ struct Ast;
     AST_INFO(StructInitExpr, "struct init expr", struct {                            \
         Ast *struct_type_ident;                                                      \
         Array<Ast *> field_inits;                                                    \
+        Array<GlobalStringIndex> field_names;                                        \
     })                                                                               \
     AST_INFO(ArrayInitExpr, "array init expr", struct {                              \
         Array<Ast *> elements;                                                       \
@@ -138,7 +139,7 @@ struct Ast;
         Ast *index_expr;                                                             \
     })                                                                               \
     AST_INFO(StringLiteralExpr, "string literal expr", struct {                      \
-        GlobalStringIndex str;                                                                \
+        GlobalStringIndex str;                                                       \
     })                                                                               \
     AST_INFO(FunctionDeclValue, "function decl value", struct {                      \
         Array<Ast *> params;                                                         \
@@ -164,7 +165,7 @@ struct Ast;
         Array<Ast *> fields;                                                         \
     })                                                                               \
     AST_INFO(ConstDecl, "const decl", struct {                                       \
-        GlobalStringIndex name;                                                               \
+        GlobalStringIndex name;                                                      \
         Ast *type_ast;                                                               \
         Ast *value_ast;                                                              \
         bool is_builtin;                                                             \

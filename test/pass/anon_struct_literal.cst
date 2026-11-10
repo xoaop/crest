@@ -1,0 +1,60 @@
+// @pass
+// @run
+
+Point :: struct { x: i32; y: i32; z: i32; }
+
+id :: (v: $T) -> T {
+    return v;
+}
+
+make_point :: () -> Point {
+    return .{ x = 11, y = 12 };
+}
+
+main :: () -> i32 {
+    v := .{ a = 1, b = 2 };
+    if v.a != 1 { return 1; }
+    if v.b != 2 { return 2; }
+
+    // 同形字面量是同一个类型
+    w := .{ a = 3, b = 4 };
+    v = w;
+    if v.a != 3 { return 3; }
+
+    g := id(.{ a = 5, b = 6 });
+    if g.b != 6 { return 4; }
+
+    nested := .{ p = .{ x = 7 }, n = 8 };
+    if nested.p.x != 7 { return 5; }
+    if nested.n != 8 { return 6; }
+
+    // 普通结构体具名初始化，缺的字段零初始化
+    named := Point.{ y = 2, x = 1 };
+    if named.x != 1 { return 7; }
+    if named.y != 2 { return 8; }
+    if named.z != 0 { return 9; }
+
+    // 有目标类型时不是匿名
+    typed: Point = .{ x = 8, y = 9, z = 10 };
+    if typed.x != 8 { return 10; }
+    if typed.z != 10 { return 11; }
+
+    r := make_point();
+    if r.x != 11 { return 12; }
+    if r.y != 12 { return 13; }
+
+    c := cast(Point)(.{ y = 14, x = 13 });
+    if c.x != 13 { return 14; }
+    if c.y != 14 { return 15; }
+
+    // 不同布局的匿名结构体共存
+    d := .{ a = 1i64, b = 2i64 };
+    if d.a != 1 { return 16; }
+    if d.b != 2 { return 17; }
+
+    // 字段类型按值推断，跟变量一样（大整数落 i64，不误报溢出）
+    big := .{ a = 3000000000 };
+    if big.a != 3000000000 { return 18; }
+
+    return 0;
+}

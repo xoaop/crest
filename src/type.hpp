@@ -95,6 +95,8 @@ struct TypeHashKey {
     Ast *decl_ast; // 结构体/枚举/联合体的声明AST节点
     std::optional<GlobalStringIndex> name;
     u64 unique_id = 0; // 用于让 add_type 总能插入成功，0 表示由 get_or_add_type 去重
+    StructField *fields = nullptr; // 匿名结构体：字段表即身份；其他类型为 null
+    isize field_count = 0;
 };
 
 template<>
@@ -355,6 +357,7 @@ bool type_contains_by_value(TypeRef outer, TypeRef inner);   // 判断 outer 是
 isize type_size_of(TypeRef type);
 isize type_align_of(TypeRef type);
 isize field_offset_in_struct(TypeRef struct_type, isize index);
+isize struct_field_index(TypeRef struct_type, GlobalStringIndex field_name);
 TypeRef slice_type_as_struct(TypeRef elem_type);
 
 TypeRef get_or_add_type(Type type);

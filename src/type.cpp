@@ -33,35 +33,6 @@ static const char *type_strings[] = {
 };
 
 
-u64 TypeHashKey::hash() const {
-
-    auto hash = reinterpret_cast<u64>(decl_ast);
-
-    if(name.has_value()) {
-        hash = xp_hash_combine_u64(hash, static_cast<u64>(name.value()));
-    }
-
-    hash = xp_hash_combine_u64(hash, unique_id);
-
-    return hash;
-}
-
-
-bool TypeHashKey::operator==(const TypeHashKey& other) const {
-    if(unique_id != other.unique_id) {
-        return false;
-    }
-    bool same_decl = decl_ast == other.decl_ast;
-    bool same_name_or_no_name = true;
-
-    if(name.has_value() && other.name.has_value()) {
-        same_name_or_no_name = name.value() == other.name.value();
-    }
-
-    return same_decl && same_name_or_no_name;
-}
-
-
 TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
     return *this;
 }
@@ -116,6 +87,10 @@ Type copy_type(Type *src) {
     case Type_struct: {
         t.struct_info.struct_fields = src->struct_info.struct_fields.copy(type_allocator());
         t.struct_info.hash_key = src->struct_info.hash_key.clone(type_allocator());
+        if(t.struct_info.hash_key.fields != nullptr) {
+            t.struct_info.hash_key.fields = t.struct_info.struct_fields.data;
+            t.struct_info.hash_key.field_count = t.struct_info.struct_fields.count;
+        }
     } break;
 
     case Type_enum: {
@@ -228,8 +203,12 @@ bool is_equal_type(Type a, Type b) {
 
         return is_equal_type(*a.pointed_type, *b.pointed_type);
     
-    case Type_struct: 
+    case Type_struct:
         return a.struct_info.hash_key == b.struct_info.hash_key;
+
+    case Type_array:
+        return a.array_info.count == b.array_info.count
+            && is_equal_type(*a.array_info.element_type, *b.array_info.element_type);
 
     // 1. type_name
     // 2. decl_ast
@@ -1235,6 +1214,62 @@ struct std::hash<Type> {
 
 
 
+u64 TypeHashKey::hash() const {
+
+    if(fields != nullptr) {
+        u64 hash = xp_hash_combine_u64(Type_struct, cast(u64)field_count);
+        FOR_0_TO(field_count) {
+            hash = xp_hash_combine_u64(hash, cast(u64)fields[it].name);
+            hash = xp_hash_combine_u64(hash, cast(u64)(std::hash<Type>{}(*fields[it].type)));
+        }
+        return hash;
+    }
+
+    auto hash = reinterpret_cast<u64>(decl_ast);
+
+    if(name.has_value()) {
+        hash = xp_hash_combine_u64(hash, static_cast<u64>(name.value()));
+    }
+
+    hash = xp_hash_combine_u64(hash, unique_id);
+
+    return hash;
+}
+
+
+bool TypeHashKey::operator==(const TypeHashKey& other) const {
+    if(fields != nullptr || other.fields != nullptr) {
+        if(fields == nullptr || other.fields == nullptr) {
+            return false;
+        }
+        if(field_count != other.field_count) {
+            return false;
+        }
+        FOR_0_TO(field_count) {
+            if(fields[it].name != other.fields[it].name) {
+                return false;
+            }
+            if(!is_equal_type(*fields[it].type, *other.fields[it].type)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if(unique_id != other.unique_id) {
+        return false;
+    }
+    bool same_decl = decl_ast == other.decl_ast;
+    bool same_name_or_no_name = true;
+
+    if(name.has_value() && other.name.has_value()) {
+        same_name_or_no_name = name.value() == other.name.value();
+    }
+
+    return same_decl && same_name_or_no_name;
+}
+
+
 xpAllocator type_allocator() {
     return permanent_allocator();
 }
@@ -1325,6 +1360,18 @@ isize type_align_of(TypeRef type) {
         default:
             return basic_type_align(type->kind);
     }
+}
+
+isize struct_field_index(TypeRef struct_type, GlobalStringIndex field_name) {
+    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+
+    FOR(struct_type->struct_info.struct_fields) {
+        if(it.name == field_name) {
+            return it_index;
+        }
+    }
+
+    return -1;
 }
 
 isize field_offset_in_struct(TypeRef struct_type, isize index) {

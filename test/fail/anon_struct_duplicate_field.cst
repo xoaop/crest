@@ -1,0 +1,7 @@
+// @fail
+// @error "重复初始化"
+
+main :: () -> i32 {
+    v := .{ a = 1, a = 2 };
+    return v.a;
+}

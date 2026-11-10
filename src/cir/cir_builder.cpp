@@ -269,7 +269,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
     }
 
     End_Block(ctx);   // 签名块
-    func.all_param_type_and_return_type_inst_blk_ref = New_BlockRef(ctx, fd, sig_blk);
+    func.sig_blk = sig_blk;
 
     func.body_inst = INVALID_INST;
     auto func_inst = New_Instruction(ctx, CIROperator::FunctionDecl, fd);
@@ -643,7 +643,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast 
 
     // 3. 有初始值则发射 DetermineType + Store
     if(vd_ast.expr != nullptr) {
-        auto value_inst = build_inst_for_expr(ctx, vd_ast.expr);
+        auto value_inst = build_inst_for_expr(ctx, vd_ast.expr, type_block_inst);
 
         CIRInstructionRef type_inst = (type_block_inst != INVALID_INST) ? type_block_inst : INVALID_INST;
         auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, vd_ast.expr, {
@@ -678,7 +678,9 @@ void CIRBuilder::build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_st
         bool saved = ctx.building_return_type_decl;
         defer(ctx.building_return_type_decl = saved);
         ctx.building_return_type_decl = is_type_decl_ast(return_stmt_ast->ReturnStmt.expr);
-        value_inst = build_inst_for_expr(ctx, return_stmt_ast->ReturnStmt.expr);
+
+        CIRInstructionRef expected_type_inst = (ctx.func != nullptr) ? ctx.func->return_type_inst : INVALID_INST;
+        value_inst = build_inst_for_expr(ctx, return_stmt_ast->ReturnStmt.expr, expected_type_inst);
     }
 
     if(value_inst != INVALID_INST) {
@@ -783,7 +785,7 @@ CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast 
 
 
 
-CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *expr) {
+CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *expr, CIRInstructionRef expected_type_inst) {
     RecursionGuard depth_guard;
     if(depth_guard.exceeded) {
         // 返回 error 类型占位，让下游走正常类型检查报错
@@ -1040,8 +1042,8 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         } break;
 
         case AstType_CastExpr: {
-            auto value_inst = build_inst_for_expr(ctx, expr->CastExpr.expr);
             auto target_inst = build_inst_for_expr(ctx, expr->CastExpr.target_type_ast);
+            auto value_inst = build_inst_for_expr(ctx, expr->CastExpr.expr, target_inst);
             auto cast = Make_Instruction<CIROperator::Cast>(ctx, expr, {
                 .expr_inst = value_inst,
                 .target_type_inst = target_inst,
@@ -1055,7 +1057,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         } break;
 
         case AstType_StructInitExpr: {
-            auto struct_type_inst = build_block_ref_inst_for_expr(ctx, expr->StructInitExpr.struct_type_ident, true, true);
+            CIRInstructionRef struct_type_inst = INVALID_INST;
+            if(expr->StructInitExpr.struct_type_ident != nullptr) {
+                struct_type_inst = build_block_ref_inst_for_expr(ctx, expr->StructInitExpr.struct_type_ident, true, true);
+            } else {
+                struct_type_inst = expected_type_inst;
+            }
+
+            const bool is_named_init = expr->StructInitExpr.field_names.count > 0
+                && expr->StructInitExpr.field_names[0] != GLOBAL_STRING_NONE;
 
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
             FOR(expr->StructInitExpr.field_inits) {
@@ -1063,17 +1073,18 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
                 auto field_value_inst = build_inst_for_expr(ctx, field_init);
 
+                if(struct_type_inst != INVALID_INST && !is_named_init) {
+                    // 确定化各个field的类型
+                    auto field_type_of_struct = Make_Instruction<CIROperator::FieldTypeOfStruct>(ctx, field_init, {
+                        .struct_type_inst = struct_type_inst,
+                        .field_index = it_index,
+                    });
 
-                // 确定化各个field的类型
-                auto field_type_of_struct = Make_Instruction<CIROperator::FieldTypeOfStruct>(ctx, field_init, {
-                    .struct_type_inst = struct_type_inst,
-                    .field_index = it_index,
-                });
-
-                auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, field_init, {
-                    .determining_inst = field_value_inst,
-                    .type_inst = field_type_of_struct
-                });
+                    auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, field_init, {
+                        .determining_inst = field_value_inst,
+                        .type_inst = field_type_of_struct
+                    });
+                }
 
                 field_insts.push_back(field_value_inst);
             }
@@ -1081,6 +1092,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             auto init = Make_Instruction<CIROperator::StructInit>(ctx, expr, {
                 .struct_type_inst = struct_type_inst,
                 .field_init_insts = field_insts.copy(permanent_allocator()),
+                .field_names = expr->StructInitExpr.field_names.copy(permanent_allocator()),
             });
             result = init;
         } break;

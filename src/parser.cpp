@@ -1421,7 +1421,51 @@ Ast *parse_expr(Parser *p, isize min_prec, bool allow_struct_init) {
         return bad;
     }
 
-    Ast *left = parse_expr_factor(p, allow_struct_init);
+    // 解析 .{...}
+    auto parse_struct_init = [&](Ast *type_ident) -> Ast * {
+        Token dot_token = curr_token(p);
+
+        Ast *a = ast_alloc(AstType_StructInitExpr, dot_token);
+        a->StructInitExpr.struct_type_ident = type_ident;
+        a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
+        a->StructInitExpr.field_names = make_array<GlobalStringIndex>(ast_allocator());
+
+        expect(p, TokenType::Dot);
+        expect(p, TokenType::LeftCurlyBracket);
+
+        for(;;) {
+            if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
+                break;
+            }
+
+            GlobalStringIndex field_name = GLOBAL_STRING_NONE;
+            if(curr_token(p).type == TokenType::Ident && peek_token(p, 1).type == TokenType::Equal) {
+                field_name = curr_token(p).token_str;
+                expect(p, TokenType::Ident);
+                expect(p, TokenType::Equal);
+            }
+
+            Ast *field_init_expr = parse_expr(p, 0);
+            a->StructInitExpr.field_inits.push_back(field_init_expr);
+            a->StructInitExpr.field_names.push_back(field_name);
+
+            if(curr_token(p).type != TokenType::RightCurlyBracket) {
+                expect(p, TokenType::Comma);
+            }
+        }
+
+        Token rcb = expect(p, TokenType::RightCurlyBracket);
+        a->src_loc = merge(type_ident != nullptr ? type_ident->src_loc : dot_token.src_loc, rcb.src_loc);
+
+        return a;
+    };
+
+    Ast *left = nullptr;
+    if(curr_token(p).type == TokenType::Dot && next_token(p).type == TokenType::LeftCurlyBracket) {
+        left = parse_struct_init(nullptr);
+    } else {
+        left = parse_expr_factor(p, allow_struct_init);
+    }
 
     Token curr;
     
@@ -1479,36 +1523,8 @@ Ast *parse_expr(Parser *p, isize min_prec, bool allow_struct_init) {
                     break;
                 }
 
-                // 结构体初始化表达式, 形如 Point.{1, 2}
-
-                Ast *a = ast_alloc(AstType_StructInitExpr, curr);
-                a->StructInitExpr.field_inits = make_array<Ast *>(ast_allocator());
-                a->StructInitExpr.struct_type_ident = left;
-                
-
-                expect(p, TokenType::Dot);
-                expect(p, TokenType::LeftCurlyBracket);
-                
-                // TODO 目前只支持全部字段按顺序初始化(不能缺失)
-                for(;;) {
-                    if(reach_end(p) || curr_token(p).type == TokenType::RightCurlyBracket) {
-                        break;
-                    }
-
-                    Ast *field_init_expr = parse_expr(p, 0);
-                    
-                    a->StructInitExpr.field_inits.push_back(field_init_expr);
-
-                    if(curr_token(p).type != TokenType::RightCurlyBracket) {
-                        expect(p, TokenType::Comma);
-                    }
-                }
-
-                Token rcb = expect(p, TokenType::RightCurlyBracket);
-
-                a->src_loc = merge(left->src_loc, rcb.src_loc);
-
-                left = a;
+                // 结构体初始化表达式, 形如 Point.{1, 2} / Point.{x = 1}
+                left = parse_struct_init(left);
             } else {
                 // 成员访问表达式, 形如 a.b
 

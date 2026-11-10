@@ -2,6 +2,7 @@
 
 sizeof :: #builtin
 typeof :: #builtin
+field_count :: #builtin
 
 // 目标平台标志（暂硬编码 Windows，后续由编译器从 -target 填充）
 TARGET_IS_WINDOWS :: true

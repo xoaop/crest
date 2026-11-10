@@ -1,0 +1,9 @@
+// @fail
+// @error "重复初始化"
+
+Point :: struct { x: i32; }
+
+main :: () -> i32 {
+    p := Point.{ x = 1, x = 2 };
+    return p.x;
+}

@@ -1,0 +1,9 @@
+// @fail
+// @error "结构体没有字段 'nope'"
+
+Point :: struct { x: i32; }
+
+main :: () -> i32 {
+    p := Point.{ nope = 1 };
+    return p.x;
+}

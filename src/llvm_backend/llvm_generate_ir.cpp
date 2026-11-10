@@ -896,7 +896,15 @@ void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef fir
 
 void LLVMGenerator::gen_ir_inst_call(const CIRCallInfo& info, const CIRInstructionRef ref) {
 
-    TypeRef called_type = result_ctx.result_of(info.called_thing).actual_type();
+    // 纯编译期函数没有运行时符号，调用已在分析期求值，不生成
+    auto& called_res = result_ctx.result_of(info.called_thing);
+    if(called_res.state == CIRResultState::WholeValue && is_function_type(called_res.actual_val().type)) {
+        if(called_res.actual_val().func_val().func_key.inst().info<CIROperator::FunctionDecl>().is_comptime) {
+            return;
+        }
+    }
+
+    TypeRef called_type = called_res.actual_type();
     TypeRef func_type = is_pointer_type(called_type) ? called_type->pointed_type : called_type;
     XP_ASSERT_DEFAULT(is_function_type(func_type));
 
@@ -1087,13 +1095,28 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         // 这些是运行时指令, 可能需要生成IR
         case CIROperator::StructInit: {
             auto &info = inst.info<CIROperator::StructInit>();
-            TypeRef struct_type = result_ctx.result_of(info.struct_type_inst).actual_val().type_val();
+            TypeRef struct_type = info.struct_type_inst != INVALID_INST
+                ? result_ctx.result_of(info.struct_type_inst).actual_val().type_val()
+                : result_ctx.result_of(ref).actual_type();
             LLVMTypeRef llvm_struct_type = get_llvm_type_from_type(struct_type);
-            LLVMValueRef struct_val = LLVMGetUndef(llvm_struct_type);
+
+            // 没写的字段保持 0
+            LLVMValueRef struct_val = LLVMConstNull(llvm_struct_type);
 
             FOR(info.field_init_insts) {
-                LLVMValueRef field_val = get_llvm_val_from_inst_ref(it);
-                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, (unsigned)it_index, "insertfieldtmp");
+                auto field_inst = it;
+                const isize written_index = it_index;
+
+                LLVMValueRef field_val = get_llvm_val_from_inst_ref(field_inst);
+
+                unsigned field_index = (unsigned)written_index;
+                if(info.field_names.count > 0 && info.field_names[written_index] != GLOBAL_STRING_NONE) {
+                    const isize index = struct_field_index(struct_type, info.field_names[written_index]);
+                    XP_ASSERT_DEFAULT(index >= 0);
+                    field_index = (unsigned)index;
+                }
+
+                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, field_index, "insertfieldtmp");
             }
             save_llvm_val_of_inst(ref, struct_val);
         } break;

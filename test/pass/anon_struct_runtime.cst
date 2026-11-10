@@ -1,0 +1,29 @@
+// @pass
+// @run
+
+Point :: struct { x: i32; y: i32; }
+
+run :: (a: i32) -> i32 {
+    // 具名初始化：顺序与定义不同，字段是运行期值
+    p := Point.{ y = a, x = 1 };
+    if p.x != 1 { return 1; }
+    if p.y != a { return 2; }
+
+    // 具名初始化：没写的字段零初始化
+    q := Point.{ x = a };
+    if q.x != a { return 3; }
+    if q.y != 0 { return 4; }
+
+    // 匿名字面量：运行期值 + 未定字面量
+    r := .{ x = a, y = 2 };
+    if r.x != a { return 5; }
+    if r.y != 2 { return 6; }
+
+    return 0;
+}
+
+main :: () -> i32 {
+    if run(7) != 0 { return 1; }
+    if run(-3) != 0 { return 2; }
+    return 0;
+}
