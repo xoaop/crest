@@ -102,58 +102,6 @@ struct std::hash<FuncCallKey> {
 };
 
 
-template<>
-struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
-    Ref<CIRPackage> cir_package;
-    isize index = -1;
-
-    CIRResultInstance *resolve() const;
-
-    bool operator==(const Ref& other) const {
-        return cir_package == other.cir_package && index == other.index;
-    }
-};
-
-template<>
-struct std::hash<Ref<CIRResultInstance>> {
-    usize operator()(const Ref<CIRResultInstance>& r) const {
-        u64 h = (u64)r.cir_package.index;
-        h = xp_hash_combine_u64(h, (u64)r.index);
-        return h;
-    }
-};
-
-
-// 引用 CIRPackage 中某个指令的结果值
-// 值总在某张 CIRResultInstance 里：result_instance 为空 → 包级那张；否则 → 实例自己那张
-template<>
-struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
-    CIRPackage*                            cir_package = nullptr;
-    CIRInstructionRef                      inst_ref;
-    Ref<CIRResultInstance>                 result_instance;
-
-    static Ref init(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
-
-    CIRInstResult *resolve() const;
-
-    CIRInstResult* get_result() const;
-
-    const CIRInstruction& inst() const;
-
-    bool operator==(const Ref& other) const {
-        return cir_package == other.cir_package
-            && inst_ref == other.inst_ref
-            && result_instance == other.result_instance;
-    }
-};
-
-template<>
-struct std::hash<Ref<CIRInstResult>> {
-    usize operator()(const Ref<CIRInstResult>& key) const {
-        u64 h = (u64)(usize)key.cir_package;
-        h = xp_hash_combine_u64(h, (u64)key.inst_ref.block_ref);
-        h = xp_hash_combine_u64(h, (u64)key.inst_ref.inst_index);
-        h = xp_hash_combine_u64(h, std::hash<Ref<CIRResultInstance>>{}(key.result_instance));
-        return h;
-    }
-};
+// Ref 特化依赖 CIRInstructionRef，放在文件末尾避免循环
+#include "cir_result_instance_ref.hpp"
+#include "cir_inst_result_ref.hpp"

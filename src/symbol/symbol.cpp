@@ -143,10 +143,3 @@ SymbolInfo *find_symbol(SymbolTable *table, GlobalStringIndex name) {
     return xp_hash_map_get(table->symbols, name);
 }
 
-SymbolInfo *Ref<SymbolInfo>::resolve() const {
-    if(this->scope == Ref<Scope>::INVALID_REF) {
-        return nullptr;
-    }
-    return find_symbol(&this->scope.unwrap().symbols, this->name);
-}
-

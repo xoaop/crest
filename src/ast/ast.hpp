@@ -7,6 +7,7 @@
 #include "type.hpp"
 
 #include "symbol.hpp"
+#include "symbol_info_ref.hpp"
 
 #include "value.hpp"
 

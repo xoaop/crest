@@ -69,60 +69,14 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
 
 
 CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
-    auto *inst = instance.try_get();
-    if(inst != nullptr) {
-        return inst->result_of_or(ref, [&]{ return results.result_of(ref); });
+    if(instance.is_valid()) {
+        return instance->result_of_or(ref, [&]{ return results.result_of(ref); });
     }
 
 
     return results.result_of(ref);
 }
 
-
-template<>
-CIRPackage* Ref<CIRPackage>::resolve() const {
-    if(this->index < 0 || this->index >= context()->all_packages.count) {
-        return nullptr;
-    }
-
-    const SlotIndex key = context()->all_packages[this->index].cir_package_key;
-    return context()->all_cir_packages.try_get(key);
-}
-
-
-
-
-CIRResultInstance* Ref<CIRResultInstance>::resolve() const {
-    if(cir_package == Ref<CIRPackage>::INVALID_REF || index < 0) {
-        return nullptr;
-    }
-
-    return &cir_package->result_instances[index];
-}
-
-Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRPackage* pkg, CIRInstructionRef ref,
-                                            Ref<CIRResultInstance> ri) {
-    return Ref<CIRInstResult>{.cir_package = pkg, .inst_ref = ref, .result_instance = ri};
-}
-
-CIRInstResult* Ref<CIRInstResult>::resolve() const {
-    if(cir_package == nullptr) {
-        return nullptr;
-    }
-    return get_result();
-}
-
-CIRInstResult* Ref<CIRInstResult>::get_result() const {
-    CIRResultInstance* inst = result_instance.try_get();
-    if(inst != nullptr) {
-        return inst->result_ptr_of(inst_ref);
-    }
-    return &cir_package->result_of(inst_ref);
-}
-
-const CIRInstruction& Ref<CIRInstResult>::inst() const {
-    return cir_package->inst(inst_ref);
-}
 
 u64 FuncCallKey::hash() const {
 

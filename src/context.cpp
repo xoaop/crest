@@ -29,17 +29,6 @@ Ref<Package> add_package(Context *ctx, Package pkg) {
     return Ref<Package>{ctx->all_packages.count - 1};
 }
 
-template<>
-Package *Ref<Package>::resolve() const {
-    if (this->index < 0) return nullptr;
-    return &context()->all_packages[this->index];
-}
-
-template<>
-Scope *Ref<Scope>::resolve() const {
-    if (this->index < 0 || this->index >= context()->all_scopes.count) return nullptr;
-    return &context()->all_scopes[this->index];
-}
 
 
 const CIRInstruction& inst(CIRInstructionRef ref) {

@@ -10,6 +10,10 @@
 #include "link.hpp"
 #include "coroutine.hpp"
 
+#include "cir_result_instance_ref.hpp"
+#include "cir_inst_result_ref.hpp"
+#include "symbol_info_ref.hpp"
+
 #include "cir_builder.hpp"
 #include "scope.hpp"
 #include "slot_map.hpp"

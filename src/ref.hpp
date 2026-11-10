@@ -14,19 +14,15 @@ template<typename T>
 struct RefBase {
     static const inline Ref<T> INVALID_REF{};
 
-    T *try_get() const {
-        return derived().resolve();
-    }
-
+    // 非 INVALID_REF 的 Ref 一定有效, resolve() 必定成功
     bool is_valid() const {
-        return this->try_get() != nullptr;
+        return derived().is_valid();
     }
 
     // 保证非空解包：拿不到就断言崩溃
     T &unwrap() const {
-        T *p = this->try_get();
-        ASSERT(p != nullptr);
-        return *p;
+        ASSERT(is_valid());
+        return derived().resolve();
     }
 
     // ref-> / *ref 为保证非空解包的语法糖（同样断言）
@@ -60,7 +56,9 @@ struct Ref : RefBase<T> {
 
     bool operator==(const Ref& other) const { return index == other.index; }
 
-    T *resolve() const;
+    bool is_valid() const { return index >= 0; }
+
+    T &resolve() const;
 };
 
 template<typename T>

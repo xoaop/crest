@@ -16,6 +16,7 @@
 #include "print.hpp"
 
 #include "cir_instruction_ref.hpp"
+#include "symbol_info_ref.hpp"
 
 enum TokenType : u8;
 struct Ast;

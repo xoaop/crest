@@ -5,4 +5,4 @@
 struct CIRPackage;
 
 template<>
-CIRPackage* Ref<CIRPackage>::resolve() const;
+CIRPackage& Ref<CIRPackage>::resolve() const;

@@ -1881,9 +1881,8 @@ AnalyzeResult Interpreter::analyze_AddrOf(const CIRAddrOfInfo& info, CIRInstruct
             got_fv = true;
         } else {
             const auto& lval = pkg->inst(lval_inst);
-            SymbolInfo* sym = lval.symbol.try_get();
-            if(sym && sym->is_const_decl_and_func()) {
-                auto r = sym->result(curr_cache_key());
+            if(lval.symbol.is_valid() && lval.symbol->is_const_decl_and_func()) {
+                auto r = lval.symbol->result(curr_cache_key());
                 if(r.state == CIRResultState::WholeValue) {
                     fv = r.actual_val().func_val();
                     got_fv = true;
@@ -2465,9 +2464,8 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
     }
 
     std::optional<GlobalStringIndex> enum_name = std::nullopt;
-    SymbolInfo *enum_sym = info.symbol.try_get();
-    if(enum_sym != nullptr) {
-        enum_name = enum_sym->name;
+    if(info.symbol.is_valid()) {
+        enum_name = info.symbol->name;
     }
 
     TypeRef enum_type = enum_type_impl(info.decl_ast, enum_name, elem_type, info.scope);
@@ -2478,10 +2476,9 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
 
     {
         // 副作用：枚举符号绑定 type 值 + Solved
-        SymbolInfo *enum_sym2 = info.symbol.try_get();
-        if(enum_sym2 != nullptr) {
-            enum_sym2->val(v);
-            enum_sym2->state = SymbolState::Solved;
+        if(info.symbol.is_valid()) {
+            info.symbol->val(v);
+            info.symbol->state = SymbolState::Solved;
         }
     }
 
@@ -2573,9 +2570,8 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
 // handler: GetOrInitUnion（写自身 type/value；未完成 union 类型 + 早绑符号）
 AnalyzeResult Interpreter::analyze_GetOrInitUnion(const CIRGetOrInitUnionInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     std::optional<GlobalStringIndex> union_name = std::nullopt;
-    SymbolInfo *union_sym = info.symbol.try_get();
-    if(union_sym != nullptr) {
-        union_name = union_sym->name;
+    if(info.symbol.is_valid()) {
+        union_name = info.symbol->name;
     }
 
     // 未完成 union 类型（带 resolve 建的共享 scope，字段符号值稍后由 FinishUnion 填充）
@@ -2585,9 +2581,9 @@ AnalyzeResult Interpreter::analyze_GetOrInitUnion(const CIRGetOrInitUnionInfo& i
     st->union_info.creation_instance = result_context().call_instance();
 
     // 副作用：未完成类型创建后立即绑定符号（自引用字段 *U 不再误判循环依赖，镜像函数签名确定即绑定）
-    if(union_sym != nullptr && union_sym->state != SymbolState::Solved) {
-        union_sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, result_context().call_instance()));
-        union_sym->state = SymbolState::Solved;
+    if(info.symbol.is_valid() && info.symbol->state != SymbolState::Solved) {
+        info.symbol->val(Ref<CIRInstResult>::init(pkg, pc_ref, result_context().call_instance()));
+        info.symbol->state = SymbolState::Solved;
     }
 
     TypeRef tt = type_type();
@@ -2655,10 +2651,9 @@ AnalyzeResult Interpreter::analyze_GetOrInitStruct(const CIRGetOrInitStructInfo&
     auto res = eval_GetOrInitStruct(pc_ref);
 
     // 副作用：未完成类型创建后立即绑定符号（自引用字段 *S 不再误判循环依赖，镜像函数签名确定即绑定）
-    SymbolInfo *sym = info.symbol.try_get();
-    if(sym != nullptr && sym->state != SymbolState::Solved) {
-        sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, result_context().call_instance()));
-        sym->state = SymbolState::Solved;
+    if(info.symbol.is_valid() && info.symbol->state != SymbolState::Solved) {
+        info.symbol->val(Ref<CIRInstResult>::init(pkg, pc_ref, result_context().call_instance()));
+        info.symbol->state = SymbolState::Solved;
     }
 
     if(!has_result_type(pc_ref)) {
@@ -2867,9 +2862,9 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
 
         // 符号照常绑定并 Solved: 否则 IdentVal(add) 命中 Solving 会误报循环依赖
-        if(SymbolInfo* sym = inst(pc_ref).symbol.try_get()) {
-            sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, {}));
-            sym->state = SymbolState::Solved;
+        if(inst(pc_ref).symbol.is_valid()) {
+            inst(pc_ref).symbol->val(Ref<CIRInstResult>::init(pkg, pc_ref, {}));
+            inst(pc_ref).symbol->state = SymbolState::Solved;
         }
 
         return r;
@@ -2918,7 +2913,6 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
 
     AnalyzeResult r;   // 自身函数类型值 + 可选 body 跳转
 
-    SymbolInfo* sym = inst(pc_ref).symbol.try_get();
     {
         TypeRef func_type_type = function_type(param_types, return_type, func.is_extern_c);
         Value v = make_value(func_type_type);
@@ -2941,10 +2935,10 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         } else {
             pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
         }
-        if(sym != nullptr) {
+        if(inst(pc_ref).symbol.is_valid()) {
             // 副作用：函数符号签名确定即绑定 FunctionDecl 并置 Solved（递归引用不误判循环依赖）
-            sym->val(Ref<CIRInstResult>::init(pkg, pc_ref, {}));
-            sym->state = SymbolState::Solved;
+            inst(pc_ref).symbol->val(Ref<CIRInstResult>::init(pkg, pc_ref, {}));
+            inst(pc_ref).symbol->state = SymbolState::Solved;
         }
     }
 
