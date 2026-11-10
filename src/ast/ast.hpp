@@ -243,6 +243,9 @@ Ast ast_make(AstType type);
 
 const char *ast_string(AstType type);
 
+void print_ast(Ast *a);
+void print_ast(Array<Ast *> a_arr);
+
 
 bool is_binary_op(TokenType type);
 bool is_unary_op(TokenType type);

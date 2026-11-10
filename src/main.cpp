@@ -49,6 +49,7 @@ static void crest_helper() {
     println_out("  -trace         Enable debug trace output");
     println_out("  -cir_dump      Dump CIR instructions");
     println_out("  -scope_dump    Dump scope tree");
+    println_out("  -ast_dump      Dump AST after parsing");
     println_out("  -target <a>-<os>-<env>  Target platform, e.g. x86_64-windows-gnu (default: host, see 'crest targets')");
     println_out("  -cpu <name>    Override target CPU (default: generic)");
     println_out("  -features <f>  Override target features, e.g. \"+avx2,-sse4.2\" (default: from cpu)");
@@ -158,6 +159,8 @@ int main(int argc_raw, char** argv_raw) {
             context()->cir_dump = true;
         } else if(strcmp(argv[i], "-scope_dump") == 0) {
             context()->scope_dump = true;
+        } else if(strcmp(argv[i], "-ast_dump") == 0) {
+            context()->ast_dump = true;
         } else if(strcmp(argv[i], "-c") == 0) {
             compile_only = true;
         } else if(strcmp(argv[i], "-static-lib") == 0) {

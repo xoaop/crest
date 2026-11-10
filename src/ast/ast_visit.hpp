@@ -54,11 +54,6 @@ AstVisit visit_ast(Ast *ast, F &fn) {
         return AstVisit::Continue;
     }
 
-    RecursionGuard depth_guard;
-    if(depth_guard.exceeded) {
-        return AstVisit::Continue;
-    }
-
     const AstVisit result = fn(ast);
     if(result != AstVisit::Continue) {
         return result;

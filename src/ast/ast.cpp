@@ -1,6 +1,8 @@
 #include <stdarg.h>
 #include <cstring>
+#include <string>
 
+#include "common.hpp"
 #include "print.hpp"
 
 #include "ast.hpp"
@@ -163,345 +165,168 @@ const char *ast_string(AstType type) {
     return ast_strs[static_cast<i32>(type)];
 }
 
-#if defined(CREST_DEBUG)
-
-xp_internal void print_indent(i32 depth) {
-    for (i32 i = 0; i < depth; i++) {
-        print_err("│   ");
-    }
-}
-
-xp_internal void print_branch(i32 depth, bool is_last) {
-    if (depth == 0) return;
-    print_indent(depth - 1);
-    if (is_last) {
-        print_err("└── ");
-    } else {
-        print_err("├── ");
-    }
-}
 
 // 新增：打印带分支前缀的一行
+xp_internal void print_connector(const std::string &prefix, bool is_last) {
+    print_err("{}{}", prefix, is_last ? "└── " : "├── ");
+}
+
+// 顶层列表的第一项
+xp_internal void print_connector_first(const std::string &prefix) {
+    print_err("{}┌── ", prefix);
+}
+
 template <typename... Args>
-xp_internal void print_line(i32 depth, bool is_last, std::format_string<Args...> fmt, Args&&... args) {
-    print_branch(depth, is_last);
+xp_internal void print_line(const std::string &prefix, bool is_last, std::format_string<Args...> fmt, Args&&... args) {
+    print_connector(prefix, is_last);
     println_err(fmt, std::forward<Args>(args)...);
 }
 
+// 子节点用的前缀: 父节点是最后一个就留空, 否则续 │
+xp_internal std::string child_prefix(const std::string &prefix, bool is_last, bool is_first = false) {
+    return prefix + ((is_last && !is_first) ? "    " : "│   ");
+}
 
-void print_ast(Array<Ast *> a_arr, i32 depth, bool is_last);
 
-// 主函数：打印单个 Ast 节点
-void print_ast(Ast *a, i32 depth = 0, bool is_last = true) {
-    if (a == nullptr) {
-        print_line(depth, is_last, "(null)");
+void print_ast(Array<Ast *> a_arr);
+
+
+xp_internal void print_field_value(GlobalStringIndex v) {
+    print_err("{}", get_global_string(v));
+}
+
+template<typename T> requires std::is_enum_v<T>
+xp_internal void print_field_value(const T &v) {
+    print_err("{}", to_string(v));
+}
+
+template<typename T>
+xp_internal void print_field_value(const T &v) {
+    print_err("{}", v);
+}
+
+
+// 这个成员会不会被当字段打出来
+template<typename Member>
+consteval bool is_printable_field() {
+    if constexpr(std::is_same_v<Member, Ast *> || std::is_same_v<Member, Array<Ast *>>) {
+        return false;
+    } else if constexpr(std::is_same_v<Member, GlobalStringIndex> || std::is_enum_v<Member>) {
+        return true;
+    } else {
+        return requires(Member &v) { println_err("{}", v); };
+    }
+}
+
+
+xp_internal void print_ast_node(Ast *node, const std::string &prefix, bool is_last, bool is_first = false);
+
+
+// 按成员声明顺序打印, 子节点就地递归
+template<typename Payload>
+xp_internal void print_ast_members(Payload &payload, const std::string &prefix) {
+    using Plain = std::remove_cv_t<Payload>;
+
+    static constexpr auto members = std::define_static_array(
+            std::meta::nonstatic_data_members_of(^^Plain, std::meta::access_context::current()));
+
+    isize render_count = 0;
+
+    template for(constexpr auto m : members) {
+        const auto &field = payload.[:m:];
+        using Member = std::remove_cvref_t<decltype(field)>;
+
+        if constexpr(std::is_same_v<Member, Ast *>) {
+            render_count += 1;
+        } else if constexpr(std::is_same_v<Member, Array<Ast *>>) {
+            if(field.count > 0) {
+                render_count += 1;
+            }
+        } else if constexpr(is_printable_field<Member>()) {
+            render_count += 1;
+        }
+    }
+
+    isize rendered = 0;
+
+    template for(constexpr auto m : members) {
+        const auto &field = payload.[:m:];
+        using Member = std::remove_cvref_t<decltype(field)>;
+
+        if constexpr(std::is_same_v<Member, Ast *>) {
+            rendered += 1;
+            const bool is_last = rendered == render_count;
+
+            print_line(prefix, is_last, "{}:", std::meta::identifier_of(m));
+            print_ast_node(field, child_prefix(prefix, is_last), true);
+        } else if constexpr(std::is_same_v<Member, Array<Ast *>>) {
+            if(field.count > 0) {
+                rendered += 1;
+                const bool is_last = rendered == render_count;
+                const std::string child_indent = child_prefix(prefix, is_last);
+
+                print_line(prefix, is_last, "{}:", std::meta::identifier_of(m));
+
+                isize index = 0;
+                for(Ast *element : field) {
+                    index += 1;
+                    print_ast_node(element, child_indent, index == field.count);
+                }
+            }
+        } else if constexpr(is_printable_field<Member>()) {
+            rendered += 1;
+
+            print_connector(prefix, rendered == render_count);
+            print_err("{}: ", std::meta::identifier_of(m));
+            print_field_value(field);
+            println_err("");
+        }
+    }
+}
+
+
+xp_internal void print_ast_node(Ast *node, const std::string &prefix, bool is_last, bool is_first) {
+    if(node == nullptr) {
+        print_line(prefix, is_last, "(null)");
         return;
     }
 
-    // 打印当前节点类型
-    print_line(depth, is_last, "{}", ast_strs[static_cast<i32>(a->type)]);
+    if(is_first) {
+        print_connector_first(prefix);
+        println_err("{}", ast_string(node->type));
+    } else {
+        print_line(prefix, is_last, "{}", ast_string(node->type));
+    }
 
-    // 根据类型打印子内容（全部在 depth+1 层级）
-    switch (a->type) {
-        case AstType_Undefined:
-            break;
+    const std::string members_prefix = child_prefix(prefix, is_last, is_first);
 
-        case AstType_VariableDecl: {
-            print_line(depth + 1, false, "name: {}", get_global_string(a->VariableDecl.var_name));
-            print_ast(a->VariableDecl.expr, depth + 1, true);
-            print_ast(a->VariableDecl.type_ast, depth + 1, true);
-            print_line(depth + 1, true, "no_zero_init: {}", a->VariableDecl.no_zero_init ? "true" : "false");
-            break;
-        }
+    switch(node->type) {
+        #define AST_INFO(type_name, ...) \
+            case AstType_##type_name: \
+                print_ast_members(node->type_name, members_prefix); \
+                break;
 
-        case AstType_Constant: {
-            // TODO: 更正确地打印常量值, 目前只处理了整数和浮点数, 其他类型的常量还没有处理
-
-            print_branch(depth + 1, false);
-            print_err("value: ");
-            TypeRef t = a->Constant.value.type;
-            if(is_integer_or_untyped_type(t)) {
-                print_i128(a->Constant.value.integer_val());
-            } else if(is_float_or_untyped_type(t)) {
-                print_err("{}", a->Constant.value.float_val());
-            } else if(t->kind == Type_bool) {
-                print_err("{}", a->Constant.value.bool_val() ? "true" : "false");
-            }
-            println_err("");
-            break;
-        }
-
-        case AstType_Block: {
-            print_ast(a->Block.statements, depth + 1, true);
-            break;
-        }
-
-        case AstType_BinaryExpr: {
-            print_line(depth + 1, false, "op: {}", token_strings[a->BinaryExpr.op]);
-            print_line(depth + 1, false, "left:");
-            print_ast(a->BinaryExpr.left, depth + 2, false);
-            print_line(depth + 1, true, "right:");
-            print_ast(a->BinaryExpr.right, depth + 2, true);
-            break;
-        }
-
-        case AstType_UnaryExpr: {
-            print_line(depth + 1, false, "op: {}", token_strings[a->UnaryExpr.op]);
-            print_line(depth + 1, true, "operand:");
-            print_ast(a->UnaryExpr.operand, depth + 2, true);
-            break;
-        }
-
-        case AstType_IfExpr: {
-            print_line(depth + 1, false, "condition:");
-            print_ast(a->IfExpr.condition, depth + 2, false);
-            print_line(depth + 1, false, "then:");
-            print_ast(a->IfExpr.then_expr, depth + 2, false);
-            print_line(depth + 1, true, "else:");
-            print_ast(a->IfExpr.else_expr, depth + 2, true);
-            break;
-        }
-
-        case AstType_Assignment: {
-            print_line(depth + 1, false, "left:");
-            print_ast(a->Assignment.left_var_expr, depth + 2, false);
-            print_line(depth + 1, true, "right:");
-            print_ast(a->Assignment.right_expr, depth + 2, true);
-            break;
-        }
-
-        case AstType_IfStmt: {
-            print_line(depth + 1, false, "condition:");
-            print_ast(a->IfStmt.condition, depth + 2, false);
-            print_line(depth + 1, false, "then:");
-            print_ast(a->IfStmt.then_block, depth + 2, a->IfStmt.else_block == nullptr);
-            if (a->IfStmt.else_block) {
-                print_line(depth + 1, true, "else:");
-                print_ast(a->IfStmt.else_block, depth + 2, true);
-            }
-            break;
-        }
-
-        case AstType_ForStmt: {
-            i32 child_count = 0;
-            if (a->ForStmt.iter_var) child_count++;
-            if (a->ForStmt.index_var) child_count++;
-            if (a->ForStmt.iterable) child_count++;
-            if (a->ForStmt.iterable_end) child_count++;
-            if (a->ForStmt.condition) child_count++;
-            child_count++; // body always exists
-
-            i32 idx = 0;
-            if (a->ForStmt.iter_var) {
-                print_line(depth + 1, (++idx == child_count), "iter_var:");
-                print_ast(a->ForStmt.iter_var, depth + 2, true);
-            }
-            if (a->ForStmt.index_var) {
-                print_line(depth + 1, (++idx == child_count), "index_var:");
-                print_ast(a->ForStmt.index_var, depth + 2, true);
-            }
-            if (a->ForStmt.iterable) {
-                print_line(depth + 1, (++idx == child_count), "iterable:");
-                print_ast(a->ForStmt.iterable, depth + 2, true);
-            }
-            if (a->ForStmt.iterable_end) {
-                print_line(depth + 1, (++idx == child_count), "iterable_end:");
-                print_ast(a->ForStmt.iterable_end, depth + 2, true);
-            }
-            if (a->ForStmt.condition) {
-                print_line(depth + 1, (++idx == child_count), "condition:");
-                print_ast(a->ForStmt.condition, depth + 2, true);
-            }
-            print_line(depth + 1, true, "body:");
-            print_ast(a->ForStmt.body, depth + 2, true);
-            break;
-        }
-
-        case AstType_ReturnStmt: {
-            if (a->ReturnStmt.expr) {
-                print_line(depth + 1, true, "expr:");
-                print_ast(a->ReturnStmt.expr, depth + 2, true);
-            } else {
-                print_line(depth + 1, true, "(no expr)");
-            }
-            break;
-        }
-
-        case AstType_CastExpr: {
-            print_line(depth + 1, false, "target_type:");
-            print_indent(depth + 2);
-            print_line(depth + 1, true, "expr:");
-            print_ast(a->CastExpr.expr, depth + 2, true);
-            break;
-        }
-
-        case AstType_FunctionCallExpr: {
-            print_line(depth + 1, true, "args:");
-            print_ast(a->FunctionCallExpr.args, depth + 2, true);
-            break;
-        }
-
-        case AstType_FieldAccess: {
-            print_line(depth + 1, false, "parent:");
-            print_ast(a->FieldAccess.parent, depth + 2, false);
-            print_line(depth + 1, true, "field: {}", get_global_string(a->FieldAccess.field_name));
-            break;
-        }
-
-        case AstType_StructField: {
-            print_line(depth + 1, false, "name: {}", get_global_string(a->StructField.name));
-            print_line(depth + 1, true, "type:");
-            print_ast(a->StructField.type_ast, depth + 2, true);
-            break;
-        }
-
-        case AstType_StructInitExpr: {
-            print_line(depth + 1, true, "field_inits:");
-            print_ast(a->StructInitExpr.field_inits, depth + 2, true);
-            FOR(a->StructInitExpr.field_names) {
-                auto name = it;
-                print_line(depth + 2, false, "name: {}", name == GLOBAL_STRING_NONE ? StringRef::init("-") : get_global_string(name));
-            }
-            break;
-        }
-
-        case AstType_ArrayInitExpr: {
-            print_line(depth + 1, true, "elements:");
-            print_ast(a->ArrayInitExpr.elements, depth + 2, true);
-            break;
-        }
-
-        case AstType_IndexExpr: {
-            print_line(depth + 1, false, "array:");
-            print_ast(a->IndexExpr.array_var_expr, depth + 2, false);
-            print_line(depth + 1, true, "index:");
-            print_ast(a->IndexExpr.index_expr, depth + 2, true);
-            break;
-        }
-
-        case AstType_EasyType: {
-            print_line(depth + 1, true, "type: {}", get_global_string(get_type_kind_str(a->EasyType.kind)));
-
-            break;
-        }
-        case AstType_SliceType: {
-            print_line(depth + 1, false, "element_type:");
-            print_ast(a->SliceType.element_type_ast, depth + 2, true);
-            break;
-        }
-        case AstType_PointerType: {
-            print_line(depth + 1, true, "pointed_type:");
-            print_ast(a->PointerType.pointed_type_ast, depth + 2, true);
-            break;
-        }
-        case AstType_ArrayType: {
-            print_line(depth + 1, false, "element_type:");
-            print_ast(a->ArrayType.element_type_ast, depth + 2, false);
-            print_line(depth + 1, true, "count:");
-            print_ast(a->ArrayType.count_expr, depth + 2, true);
-            break;
-        }
-
-        case AstType_FunctionType: {
-            print_line(depth + 1, false, "param_types:");
-            print_ast(a->FunctionType.param_types, depth + 2, false);
-            print_line(depth + 1, true, "return_type:");
-            print_ast(a->FunctionType.return_type_ast, depth + 2, true);
-            break;
-        }
-
-        case AstType_Ident: {
-            print_line(depth + 1, true, "name: {}", get_global_string(a->Ident.name));
-            break;
-        }
-
-        case AstType_ConstDecl: {
-            print_line(depth + 1, false, "name: {}", get_global_string(a->ConstDecl.name));
-            print_line(depth + 1, true, "value:");
-            print_ast(a->ConstDecl.value_ast, depth + 2, true);
-            break;
-        }
-
-        case AstType_ParamDecl: {
-            print_line(depth + 1, false, "name: {}", get_global_string(a->ParamDecl.name));
-            print_line(depth + 1, false, "is_var_arg: {}", a->ParamDecl.is_var_arg ? "true" : "false");
-            print_line(depth + 1, true, "type:");
-            print_ast(a->ParamDecl.type_ast, depth + 2, true);
-            break;
-        }
-
-        case AstType_FunctionDeclValue: {
-            print_line(depth + 1, false, "params:");
-            print_ast(a->FunctionDeclValue.params, depth + 2, true);
-            print_line(depth + 1, true, "body:");
-            print_ast(a->FunctionDeclValue.block, depth + 2, true);
-            break;
-        }
-
-        case AstType_StructDeclValue: {
-            print_line(depth + 1, true, "fields:");
-            print_ast(a->StructDeclValue.fields, depth + 2, true);
-            break;
-        }
-
-        case AstType_EnumDecl: {
-            print_line(depth + 1, false, "type:");
-            print_ast(a->EnumDecl.type_ast, depth + 2, false);
-            print_line(depth + 1, true, "fields:");
-            print_ast(a->EnumDecl.fields, depth + 2, true);
-            break;
-        }
-
-        case AstType_UnionDecl: {
-            print_line(depth + 1, true, "fields:");
-            print_ast(a->UnionDecl.fields, depth + 2, true);
-            break;
-        }
-
-        case AstType_Import: {
-            print_line(depth + 1, true, "path: {}", get_global_string(a->Import.path));
-            break;
-        }
-
-        case AstType_StringLiteralExpr: {
-            print_line(depth + 1, true, "value: {}", get_global_string(a->StringLiteralExpr.str));
-            break;
-        }
-
-
-        case AstType_Break:
-        case AstType_Continue:
-            break;
-
-        
-
-        case AstType_BadDecl: 
-        case AstType_BadStmt:
-        case AstType_BadExpr:
-        case AstType_BadType:
-            print_line(depth + 1, true, "(bad node)");
-            break;
+        AST_INFOS
+        #undef AST_INFO
 
         default:
-            // 未实现就报错
-            UNREACHABLE();
             break;
     }
+}
+
+// 主函数：打印单个 Ast 节点
+void print_ast(Ast *a) {
+    print_ast_node(a, "", true, true);
 }
 
 // 重载：打印 Ast 数组
-void print_ast(Array<Ast *> a_arr, i32 depth, bool is_last) {
-    if (a_arr.count == 0) {
-        print_line(depth, is_last, "(empty list)");
-        return;
-    }
-
-    FOR(a_arr) {
-        bool last = (it_index == a_arr.count - 1);
-        print_ast(it, depth, last);
+void print_ast(Array<Ast *> a_arr) {
+    isize index = 0;
+    for(Ast *child : a_arr) {
+        index += 1;
+        print_ast_node(child, "", index == a_arr.count, index == 1);
     }
 }
-#endif // CREST_DEBUG
 
 
 

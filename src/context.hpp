@@ -30,6 +30,7 @@ struct Context {
     std::filesystem::path output_path;
     bool cir_dump = false;
     bool scope_dump = false;
+    bool ast_dump = false;
     std::string target_triple;   // 选项解析阶段定好：-target 生成，未指定则用宿主 triple
     TargetInfo target;
     const char *target_cpu = nullptr;      // -cpu 显式指定；null → generic

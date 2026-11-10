@@ -143,9 +143,9 @@ Array<Ast *> parse(Array<Token> tokens, SourceCode *src_code) {
         p.top_levels.push_back(top_level);
     }
 
-    #ifdef CREST_DEBUG
-    // print_ast(p.top_levels);
-    #endif
+    if(context()->ast_dump) {
+        print_ast(p.top_levels);
+    }
 
     return p.top_levels;
 }
