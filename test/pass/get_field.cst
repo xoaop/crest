@@ -1,0 +1,26 @@
+// @pass
+// @run
+
+Point :: struct { x: i32; y: i64; }
+
+// 编译期取字段
+First :: $(p: Point) -> i32 {
+    return get_field(p, 0);
+}
+
+X :: First(Point.{ x = 5, y = cast(i64)6 })
+
+main :: () -> i32 {
+    p : Point
+    p.x = 7
+    p.y = cast(i64)9
+
+    // 运行期取字段
+    if get_field(p, 0) != 7 { return 1; }
+    if get_field(p, 1) != cast(i64)9 { return 2; }
+
+    // 编译期取字段
+    if X != 5 { return 3; }
+
+    return 0;
+}

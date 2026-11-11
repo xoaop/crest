@@ -1,0 +1,15 @@
+// @fail
+// @error "必须是编译期常量"
+
+Point :: struct { x: i32; y: i32; }
+
+Pick :: (p: Point, i: i32) -> i32 {
+    return get_field(p, i);
+}
+
+main :: () -> i32 {
+    p : Point
+    p.x = 1
+    p.y = 2
+    return Pick(p, 0);
+}

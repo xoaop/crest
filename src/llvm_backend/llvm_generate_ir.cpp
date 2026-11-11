@@ -1188,17 +1188,21 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             } else {
                 struct_type = logical_type;
             }
-            ASSERT(struct_type != nullptr);
-            XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+            ASSERT(struct_type != nullptr && is_struct_type(struct_type));
 
             isize field_idx = -1;
-            FOR(struct_type->struct_info.struct_fields) {
-                if(it.name == info.field_name) {
-                    field_idx = it_index;
-                    break;
+            if(info.field_name == GLOBAL_STRING_NONE) {
+                // get_field：下标在分析期已定为编译期常量
+                field_idx = static_cast<isize>(result_ctx.result_of(info.field_index_inst).actual_val().integer_val());
+            } else {
+                FOR(struct_type->struct_info.struct_fields) {
+                    if(it.name == info.field_name) {
+                        field_idx = it_index;
+                        break;
+                    }
                 }
             }
-            XP_ASSERT_DEFAULT(field_idx != -1);
+            ASSERT(field_idx != -1);
 
             LLVMValueRef field_val = LLVMBuildExtractValue(unit.builder, parent_val, (unsigned)field_idx, "fieldtmp");
             save_llvm_val_of_inst(ref, field_val);

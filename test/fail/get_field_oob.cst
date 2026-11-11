@@ -1,0 +1,10 @@
+// @fail
+// @error "结构体字段下标越界"
+
+Point :: struct { x: i32; }
+
+main :: () -> i32 {
+    p : Point
+    p.x = 1
+    return get_field(p, 1);
+}

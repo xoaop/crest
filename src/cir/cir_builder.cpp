@@ -822,14 +822,31 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             {
                 const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
                 if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
-                    auto hook_args = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
-                    for(auto&& it : expr->FunctionCallExpr.args) {
-                        hook_args.push_back(build_inst_for_expr(ctx, it));
+                    // get_field(v, i)：按编译期常量下标取字段，直接降成 FieldAccess
+                    if(csym->name == context()->known_global_strings.get_field_builtin) {
+                        if(expr->FunctionCallExpr.args.count != 2) {
+                            context()->reporter.report_error(expr->src_loc, "get_field 需要恰好 2 个参数");
+                            auto err_val = make_value(error_type());
+                            result = Make_Instruction<CIROperator::ConstantValue>(ctx, expr, { .value = err_val });
+                        } else {
+                            auto parent_inst = build_inst_for_expr(ctx, expr->FunctionCallExpr.args[0]);
+                            auto index_inst = build_inst_for_expr(ctx, expr->FunctionCallExpr.args[1]);
+                            result = Make_Instruction<CIROperator::FieldAccess>(ctx, expr, {
+                                .parent_inst = parent_inst,
+                                .field_name = GLOBAL_STRING_NONE,
+                                .field_index_inst = index_inst,
+                            });
+                        }
+                    } else {
+                        auto hook_args = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
+                        for(auto&& it : expr->FunctionCallExpr.args) {
+                            hook_args.push_back(build_inst_for_expr(ctx, it));
+                        }
+                        result = Make_Instruction<CIROperator::Hook>(ctx, expr, {
+                            .name = csym->name,
+                            .arg_insts = hook_args.copy(permanent_allocator()),
+                        });
                     }
-                    result = Make_Instruction<CIROperator::Hook>(ctx, expr, {
-                        .name = csym->name,
-                        .arg_insts = hook_args.copy(permanent_allocator()),
-                    });
                     break;
                 }
             }

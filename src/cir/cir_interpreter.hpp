@@ -203,6 +203,7 @@ struct Interpreter {
     // 各内建 hook 的独立处理
     AnalyzeResult hook_typeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
     AnalyzeResult hook_sizeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
+    AnalyzeResult hook_field_count(const CIRHookInfo& info, CIRInstructionRef pc_ref);
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 

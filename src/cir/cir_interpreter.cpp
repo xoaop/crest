@@ -1171,6 +1171,8 @@ AnalyzeResult Interpreter::analyze_Hook(const CIRHookInfo& info, CIRInstructionR
         return hook_typeof(info, pc_ref);
     } else if(info.name == context()->known_global_strings.sizeof_builtin) {
         return hook_sizeof(info, pc_ref);
+    } else if(info.name == context()->known_global_strings.field_count_builtin) {
+        return hook_field_count(info, pc_ref);
     } else {
         return make_result(pc_ref, inst_error(pc_ref, "未知内建 '{}'", get_global_string(info.name)));
     }
@@ -1203,6 +1205,30 @@ AnalyzeResult Interpreter::hook_sizeof(const CIRHookInfo& info, CIRInstructionRe
     }
     auto v = make_value(easy_type(Type_usize));
     v.integer_val(type_size_of(av.type_val()));
+    return make_result(pc_ref, ResultDesc::make_value(v));
+}
+
+AnalyzeResult Interpreter::hook_field_count(const CIRHookInfo& info, CIRInstructionRef pc_ref) {
+    if(info.arg_insts.count != 1) {
+        return make_result(pc_ref, inst_error(pc_ref, "field_count 需要恰好 1 个参数"));
+    }
+
+    if(!has_result_val(info.arg_insts[0])) {
+        return {};
+    }
+
+    const auto av = ResultValue(info.arg_insts[0]);
+    if(!is_type_type(av.type)) {
+        return make_result(pc_ref, inst_error(pc_ref, "field_count 需要类型参数"));
+    }
+
+    TypeRef t = av.type_val();
+    if(!is_struct_type(t)) {
+        return make_result(pc_ref, inst_error(pc_ref, "field_count 只支持结构体类型，实际 '{}'", t->name()));
+    }
+
+    auto v = make_value(easy_type(Type_isize));
+    v.integer_val(t->struct_info.struct_fields.count);
     return make_result(pc_ref, ResultDesc::make_value(v));
 }
 
@@ -1641,24 +1667,42 @@ AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, C
 
     } else if(TypeRef struct_type = get_struct_type(parent_type)) {
 
-        FOR(struct_type->struct_info.struct_fields) {
-            if(it.name == info.field_name) {
-                TypeRef field_type = it.type;
+        // get_field：字段下标由编译期常量给出；否则按名字查
+        isize field_index = -1;
+        if(info.field_name == GLOBAL_STRING_NONE) {
+            if(!has_result_val(info.field_index_inst)) {
+                return make_result(pc_ref, inst_error(pc_ref, "get_field 的字段下标必须是编译期常量"));
+            }
 
-                if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
-                    if(is_pointer_type(parent_type)) {
-                        return make_result(pc_ref, inst_error(pc_ref, "通过指针读字段的编译期求值尚未实现"));
-                    }
+            Value index_val = ResultValue(info.field_index_inst);
+            if(!is_integer_or_untyped_type(index_val.type)) {
+                return make_result(pc_ref, inst_error(pc_ref, "get_field 的字段下标必须是整数类型，实际 '{}'", index_val.type->name()));
+            }
 
-                    Value field_val = ResultValue(parent_inst).struct_field_val(it_index);
-                    return make_result(pc_ref, ResultDesc::make_value(field_type, field_val));
-                }
+            i128 idx = index_val.integer_val();
+            if(idx < 0 || idx >= static_cast<i128>(struct_type->struct_info.struct_fields.count)) {
+                return make_result(pc_ref, inst_error(pc_ref, "结构体字段下标越界（下标 {}，字段数 {}）", idx, struct_type->struct_info.struct_fields.count));
+            }
 
-                return make_result(pc_ref, ResultDesc::make_type_only(field_type));
+            field_index = static_cast<isize>(idx);
+        } else {
+            field_index = struct_field_index(struct_type, info.field_name);
+            if(field_index < 0) {
+                return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 不存在", get_global_string(info.field_name)));
             }
         }
 
-        return make_result(pc_ref, inst_error(pc_ref, "结构体字段 '{}' 不存在", get_global_string(info.field_name)));
+        TypeRef field_type = struct_type->struct_info.struct_fields[field_index].type;
+        if(curr_eval_mode() == EvalMode::FullEval || should_eval_for_lazy_eval({parent_inst})) {
+            if(is_pointer_type(parent_type)) {
+                return make_result(pc_ref, inst_error(pc_ref, "通过指针读字段的编译期求值尚未实现"));
+            }
+
+            Value field_val = ResultValue(parent_inst).struct_field_val(field_index);
+            return make_result(pc_ref, ResultDesc::make_value(field_type, field_val));
+        }
+
+        return make_result(pc_ref, ResultDesc::make_type_only(field_type));
 
     } else if(TypeRef union_type = get_union_type(parent_type)) {
 

@@ -1,0 +1,11 @@
+// @pass
+// @run
+
+Point :: struct { x: i32; y: i32; }
+Empty :: struct { }
+
+main :: () -> i32 {
+    if field_count(Point) != 2 { return 1; }
+    if field_count(Empty) != 0 { return 2; }
+    return 0;
+}

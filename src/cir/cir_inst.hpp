@@ -284,8 +284,9 @@ struct CIRCastInfo {
 struct CIRFieldAccessInfo {
     CIRInstructionRef parent_inst;
     GlobalStringIndex field_name;
+    CIRInstructionRef field_index_inst = INVALID_INST;   // 非 INVALID 时按编译期常量下标取字段（get_field）
 
-    CIR_REFS(&CIRFieldAccessInfo::parent_inst)
+    CIR_REFS(&CIRFieldAccessInfo::parent_inst, &CIRFieldAccessInfo::field_index_inst)
 };
 
 struct CIRIndexInfo {

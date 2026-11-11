@@ -1,0 +1,6 @@
+// @fail
+// @error "只支持结构体类型"
+
+main :: () -> i32 {
+    return field_count(i32);
+}

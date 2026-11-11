@@ -1,0 +1,41 @@
+// @pass
+// @run
+
+import "std"
+
+Point :: struct { x: i32; y: f32; }
+
+Line :: struct { a: Point; b: Point; }
+
+Obj :: struct {
+    id: i64;
+    name: string;
+    pos: Point;
+    line: Line;
+    tag: u8;
+    scale: f64;
+    ok: bool;
+}
+
+main :: () -> i32 {
+    p := Point.{ x = 7, y = 1.5 }
+    l := Line.{ a = p, b = Point.{ x = 9, y = 1.5 } }
+    o := Obj.{
+        id = cast(i64)123,
+        name = "obj",
+        pos = p,
+        line = l,
+        tag = cast(u8)5,
+        scale = 2.5,
+        ok = true,
+    }
+
+    std.print(42)
+    std.print(" ")
+    std.println(p)
+    std.println("ok")
+    std.println(true)
+    std.println(o)
+
+    return 0;
+}

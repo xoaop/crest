@@ -1,0 +1,117 @@
+import "std/c"
+
+print :: (v: $T) -> void {
+    print_value(v);
+    return;
+}
+
+println :: (v: $T) -> void {
+    print_value(v);
+    c.printf("\n".data);
+    return;
+}
+
+#under_is_file_scope
+
+print_value :: (v: $T) -> void {
+    printer(T)(v);
+    return;
+}
+
+
+print_fields :: $(i: isize, n: isize, T: type) -> ? {
+    if i >= n {
+        return (v: T) -> void {
+            return;
+        };
+    }
+
+    return (v: T) -> void {
+        print_value(get_field(v, i));
+        print_fields(i + 1, n, T)(v);
+        return;
+    };
+}
+
+printer :: $(T: type) -> ? {
+    if T == i8 {
+        return (v: T) -> void {
+            c.printf("%d".data, v);
+            return;
+        };
+    } else if T == i16 {
+        return (v: T) -> void {
+            c.printf("%d".data, v);
+            return;
+        };
+    } else if T == i32 {
+        return (v: T) -> void {
+            c.printf("%d".data, v);
+            return;
+        };
+    } else if T == i64 {
+        return (v: T) -> void {
+            c.printf("%lld".data, v);
+            return;
+        };
+    } else if T == isize {
+        return (v: T) -> void {
+            c.printf("%lld".data, cast(i64)v);
+            return;
+        };
+    } else if T == u8 {
+        return (v: T) -> void {
+            c.printf("%u".data, v);
+            return;
+        };
+    } else if T == u16 {
+        return (v: T) -> void {
+            c.printf("%u".data, v);
+            return;
+        };
+    } else if T == u32 {
+        return (v: T) -> void {
+            c.printf("%u".data, v);
+            return;
+        };
+    } else if T == u64 {
+        return (v: T) -> void {
+            c.printf("%llu".data, v);
+            return;
+        };
+    } else if T == usize {
+        return (v: T) -> void {
+            c.printf("%llu".data, cast(u64)v);
+            return;
+        };
+    } else if T == f32 {
+        return (v: T) -> void {
+            c.printf("%f".data, v);
+            return;
+        };
+    } else if T == f64 {
+        return (v: T) -> void {
+            c.printf("%f".data, v);
+            return;
+        };
+    } else if T == bool {
+        return (v: T) -> void {
+            if v {
+                c.printf("true".data);
+            } else {
+                c.printf("false".data);
+            }
+            return;
+        };
+    } else if T == string {
+        return (v: T) -> void {
+            c.printf("%.*s".data, cast(i32)v.count, v.data);
+            return;
+        };
+    } else {
+        return (v: T) -> void {
+            print_fields(0, field_count(T), T)(v);
+            return;
+        };
+    };
+}
