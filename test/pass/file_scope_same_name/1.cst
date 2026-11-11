@@ -1,0 +1,9 @@
+// @pass
+// @run
+
+// 同一个包里两个文件各自在 #under_is_file_scope 下定义同名普通函数
+import "foo"
+
+main :: () -> i32 {
+    return foo.pub_a() + foo.pub_b() - 3;
+}

@@ -28,21 +28,18 @@ xpString mangle_name(Ref<CIRInstResult> key, std::optional<xpString> base_name_o
             return name;
         }());
 
-        // TODO: 不急
-        // $T 实例：名字里带上形参类型。否则各实例同名，只靠 LLVMAddFunction 自动加的
-        // .1/.2 后缀区分 —— 那个编号跨模块不保证一致，COMDAT 会把不同签名误当同名去重
-        // if(key.result_instance != Ref<CIRResultInstance>::INVALID_REF
-        //    && inst.info<CIROperator::FunctionDecl>().has_generic_param_type
-        //    && func_type != nullptr && is_function_type(func_type)) {
-        //     base_name = xp_string_copy(permanent_allocator(), base_name);
-        //     for(isize i = 0; i < func_type->function_info.param_types.count; i++) {
-        //         xp_string_append(&base_name, xp_string_c("$"));
-        //         xp_string_append(&base_name, func_type->function_info.param_types[i]->t_name());
-        //     }
-        // }
-
         if(StringRef::init(base_name) == get_global_string(context()->known_global_strings.main) || is_extern_c) {
             return base_name;
+        }
+
+        // TODO: EXAM
+        // 泛型实例：名字里带实例下标。否则各实例同名，只靠 LLVMAddFunction 自动加的
+        // .1/.2 后缀区分 —— 那个编号跨模块按插入顺序生成，不保证一致
+        if(key.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
+            xpString uniq = xp_string_copy(permanent_allocator(), base_name);
+            xp_string_append(&uniq, xp_string_c("$"));
+            xp_string_append(&uniq, xp_isize_to_string(key.result_instance.index, permanent_allocator()));
+            base_name = uniq;
         }
 
         return xp_string_concat_mid(

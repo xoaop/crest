@@ -12,16 +12,3 @@ TARGET_IS_MACOS   :: false
 TARGET_IS_IOS     :: false
 TARGET_IS_ANDROID :: false
 TARGET_IS_GDK     :: false
-
-// type_of :: $(T: type) -> ? {
-//     return $(val: T) -> type {
-//         return T;
-//     };
-// }
-
-// type_of :: $(val: $T) -> type {
-//     return T;
-// }
-
-
-// t :: (val1: $T, val2: T) -> void {...}

@@ -1,0 +1,18 @@
+import "std"
+
+count_of :: (v: $T) -> isize {
+    return field_count(T);
+}
+
+first_of :: (v: $T) -> i32 {
+    return get_field(v, 0);
+}
+
+second_of :: (v: $T) -> i32 {
+    return get_field(v, 1);
+}
+
+show :: (v: $T) -> void {
+    std.println(v)
+    return;
+}

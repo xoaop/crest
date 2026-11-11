@@ -1,0 +1,7 @@
+twice :: (v: $T) -> T {
+    return v + v;
+}
+
+quad :: (v: $T) -> T {
+    return twice(twice(v));
+}

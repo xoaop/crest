@@ -1,0 +1,22 @@
+// @pass
+// @run
+
+import "foo"
+
+// 结构体类型定义在主包，反射在 foo 包里的泛型实例中做
+Point :: struct { x: i32; y: i32; }
+
+main :: () -> i32 {
+    p : Point
+    p.x = 3
+    p.y = 4
+
+    if foo.count_of(p) != 2 { return 1; }
+    if foo.first_of(p) != 3 { return 2; }
+    if foo.second_of(p) != 4 { return 3; }
+
+    // 跨包结构体直接交给 std.print
+    foo.show(p)
+
+    return 0;
+}

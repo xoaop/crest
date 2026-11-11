@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+import "foo"
+
+main :: () -> i32 {
+    // quad 的体会在 foo 包内实例化 twice(i32)：foo 模块多出一个 main 没引用的 twice 实例
+    a := foo.quad(2i32);
+    if a != 8 { return 1; }
+
+    // main 直接实例化 twice(f64)，与包内的 twice(i32) 不同实例
+    b := foo.twice(3.0f64);
+    if b != 6.0f64 { return 2; }
+
+    return 0;
+}
