@@ -655,7 +655,7 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
     }
     const auto& fdecl = finst.info<CIROperator::FunctionDecl>();
 
-    auto ctx = CIRResultContext::create(fk.cir_package);
+    auto ctx = CIRResultContext::create(&fk.cir_package.resolve());
     if(fk.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
         ctx.enter_call_instance(fk.result_instance);
     }
@@ -2989,11 +2989,11 @@ std::optional<Value> Interpreter::instantiate_generic_func(
         Array<Ref<CIRInstResult>> key_refs,
         Array<TypeRef> type_args) {
 
-    CIRPackage *callee_pkg = fv.func_key.cir_package;
-    ASSERT_MSG(callee_pkg == pkg, "具化只能跑在本 interp 绑定的包上");
+    CIRPackage &callee_pkg = fv.func_key.cir_package.resolve();
+    ASSERT_MSG(&callee_pkg == pkg, "具化只能跑在本 interp 绑定的包上");
 
     CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
-    const CIRFunctionDeclInfo& func = callee_pkg->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
+    const CIRFunctionDeclInfo& func = callee_pkg.inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
     ASSERT(type_args.count == func.generic_param_type_var_insts.count);
 
@@ -3002,7 +3002,7 @@ std::optional<Value> Interpreter::instantiate_generic_func(
         .comptime_arg_refs = key_refs,
         .is_generic_instance = true,
     };
-    Ref<CIRResultInstance> callee_result_instance = callee_pkg->get_result_instance(cache_key);
+    Ref<CIRResultInstance> callee_result_instance = callee_pkg.get_result_instance(cache_key);
 
     // 已实例化 / 自递归重入 → 复用。真签名在 body 分析之前已登记（analyze_FunctionDecl
     // 的泛型支），所以递归重入时必然命中。result_ptr_of 不 insert，新实例这里是干净的 miss
@@ -3082,7 +3082,7 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
 
     // 另起一个只看得见 callee 包的 interp 来具化：帧归它自己，构造即入链
     Interpreter callee_interp(xp_heap_allocator(), fv.func_key.cir_package->package_ref, eval_stack,
-                              EvalInstance::make(fv.func_key.cir_package, generic_func.slot_count, permanent_allocator()));
+                              EvalInstance::make(&fv.func_key.cir_package.resolve(), generic_func.slot_count, permanent_allocator()));
     callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
     const auto instantiated = callee_interp.instantiate_generic_func(fv, key_refs, type_args);
@@ -3207,7 +3207,7 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         auto fv = called_val.func_val();
         auto func_info = fv.func_key.inst().info<CIROperator::FunctionDecl>();
 
-        auto ctx = CIRResultContext::create(fv.func_key.cir_package);
+        auto ctx = CIRResultContext::create(&fv.func_key.cir_package.resolve());
         if(fv.func_key.result_instance != Ref<CIRResultInstance>::INVALID_REF) {
             ctx.enter_call_instance(fv.func_key.result_instance);
         }
@@ -3247,10 +3247,10 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
 
         const auto called_val = ResultValue(called_inst);
         const auto fv = called_val.func_val();
-        const auto callee_pkg = fv.func_key.cir_package;
+        CIRPackage &callee_pkg = fv.func_key.cir_package.resolve();
 
         const auto func_decl_pc = fv.func_key.inst_ref;
-        const auto& func = callee_pkg->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
+        const auto& func = callee_pkg.inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
         if(!has_result_val(call_info.arg_insts)) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用实参不是常量的函数")});
@@ -3269,15 +3269,13 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         }
  
         // 查询编译期函数调用结果缓存
-        const auto callee_result_instance = callee_pkg->get_result_instance(cache_key);
-        {
-            const auto cached_body = callee_result_instance->result_ptr_of(func.body_inst);
-            // InProgress: 递归重入, 命中提前登记的返回值以中断递归
-            if(cached_body && (cached_body->state == CIRResultState::WholeValue
-                            || cached_body->state == CIRResultState::InProgress)) {
-                r.writes.push_back({pc_ref, ResultDesc::make_value(cached_body->actual_val())});
-                return r;
-            }
+        const auto callee_result_instance = callee_pkg.get_result_instance(cache_key);
+
+        // 递归重入: 命中提前登记的结果直接复用（InProgress 用于中断递归）
+        const CIRInstResult *cached = callee_result_instance->result_ptr_of(func.body_inst);
+        if(cached && (cached->state == CIRResultState::WholeValue || cached->state == CIRResultState::InProgress)) {
+            r.writes.push_back({pc_ref, ResultDesc::make_value(cached->actual_val())});
+            return r;
         }
 
         if(func.is_extern_c) {
@@ -3286,10 +3284,10 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         }
 
         // 另起一个 interp 跑 callee 的 body：帧归它自己，构造即入链
-        auto eval_inst = EvalInstance::make(callee_pkg, func.slot_count, permanent_allocator());
+        auto eval_inst = EvalInstance::make(&callee_pkg, func.slot_count, permanent_allocator());
         eval_inst.ctx.enter_call(cache_key);
 
-        Interpreter callee_interp(xp_heap_allocator(), callee_pkg->package_ref, eval_stack, std::move(eval_inst));
+        Interpreter callee_interp(xp_heap_allocator(), callee_pkg.package_ref, eval_stack, std::move(eval_inst));
         callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
         const auto body_res = run_comptime_body(callee_interp, pc_ref,
@@ -3474,9 +3472,9 @@ bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
         }
 
         // 跨包：另起一个只看得见该符号所属包的 interpreter，结果落它自己的全局上下文
-        if(sym->inst_key.cir_package != pkg) {
+        if(sym->inst_key.cir_package.index != pkg->package_ref.index) {
             Interpreter sub(xp_heap_allocator(), sym->inst_key.cir_package->package_ref, eval_stack,
-                            EvalInstance::make(sym->inst_key.cir_package, 0, permanent_allocator()));
+                            EvalInstance::make(&sym->inst_key.cir_package.resolve(), 0, permanent_allocator()));
             sub.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
             return sub.analyze_symbol_of_package(sym);

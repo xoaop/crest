@@ -12,6 +12,7 @@
 
 #include "cir_result_instance_ref.hpp"
 #include "cir_inst_result_ref.hpp"
+#include "cir_package_ref.hpp"
 #include "symbol_info_ref.hpp"
 
 #include "cir_builder.hpp"

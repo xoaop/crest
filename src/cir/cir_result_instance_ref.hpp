@@ -26,7 +26,7 @@ struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
 template<>
 struct std::hash<Ref<CIRResultInstance>> {
     usize operator()(const Ref<CIRResultInstance>& r) const {
-        u64 h = (u64)r.cir_package.index;
+        u64 h = (u64)std::hash<Ref<CIRPackage>>{}(r.cir_package);
         h = xp_hash_combine_u64(h, (u64)r.index);
         return h;
     }
