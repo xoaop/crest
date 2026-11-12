@@ -210,9 +210,6 @@ struct Interpreter {
     CIRResultState result_state(CIRInstructionRef ref);
     void set_result_state(CIRInstructionRef ref, CIRResultState state);
     
-    TypeRef ResultType(CIRInstructionRef ref);
-    Value ResultValue(CIRInstructionRef ref);
-
     std::optional<TypeRef> ResultTypeOpt(CIRInstructionRef ref);
     std::optional<Value> ResultValueOpt(CIRInstructionRef ref);
 

@@ -24,7 +24,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%BUILD_DIR%" -j 4
+cmake --build "%BUILD_DIR%" -j 1
 if errorlevel 1 (
     echo.
     echo Build failed.

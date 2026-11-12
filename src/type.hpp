@@ -74,6 +74,7 @@ struct std::formatter <TypeKind> : std::formatter<std::string_view> {
 struct Type;
 typedef Type *TypeRef;
 
+constexpr TypeRef INVALID_TYPE = nullptr;
 
 struct StructField;
 

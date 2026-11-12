@@ -155,6 +155,8 @@ public:
     // 提供任意类型的 "零值"
     static Value zero(TypeRef type);
     static Value zero(TypeRef type, xpAllocator allocator);
+
+    explicit operator bool() const;
 };
 
 

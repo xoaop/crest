@@ -338,6 +338,11 @@ Value Value::zero(TypeRef type, xpAllocator allocator) {
 }
 
 
+Value::operator bool() const {
+    return type != nullptr && type != undefined_type() && actual_value_type != ActualValueType::Nothing;
+}
+
+
 
 Value TypeProgress::Undefined() {
     Value v = make_value();

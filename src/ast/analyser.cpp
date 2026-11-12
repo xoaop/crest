@@ -375,7 +375,7 @@ CoroutineTask<void> resolve_comptime_if(
         co_return;
     }
 
-    Value cond = interp.ResultValue(blk_ref);
+    Value cond = interp.ResultValueOpt(blk_ref).value();
 
     if(cond.type != easy_type(Type_bool)) {
         context()->reporter.report_error(ci.condition->src_loc, "#if 的条件必须是 bool");
