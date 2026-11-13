@@ -14,8 +14,8 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     cir_package.blocks = make_array<CIRBlock>(allocator);
 
     cir_package.string_literals = make_array<GlobalStringIndex>(allocator);
-    cir_package.results = CIRResultInstance::make(allocator);
     cir_package.result_instances = make_array<CIRResultInstance>(allocator);
+    cir_package.result_instances.push_back(CIRResultInstance::init_root(allocator));
     cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, Ref<CIRResultInstance>>(allocator);
     return cir_package;
 }
@@ -53,12 +53,20 @@ CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool
     return ref;
 }
 
-Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
+Ref<CIRResultInstance> CIRPackage::root_instance() const {
+    Ref<CIRResultInstance> r;
+    r.cir_package = self_ref;
+    r.index = 0;
+    return r;
+}
+
+
+Ref<CIRResultInstance> CIRPackage::get_or_init_result_instance(FuncCallKey key, Ref<CIRResultInstance> parent) {
     Ref<CIRResultInstance> *existing = xp_hash_map_get(result_instance_map, key);
     if(existing != nullptr) {
         return *existing;
     }
-    result_instances.push_back(CIRResultInstance::make(permanent_allocator()));
+    result_instances.push_back(CIRResultInstance::init(permanent_allocator(), parent));
 
     Ref<CIRResultInstance> r;
     r.cir_package = self_ref;
@@ -70,11 +78,19 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
 
 CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
     if(instance != Ref<CIRResultInstance>::INVALID_REF) {
-        return instance->result_of_or(ref, [&]{ return results.result_of(ref); });
+        return instance->result_of_or(ref, [&]{ return root_instance()->result_of(ref); });
     }
 
 
-    return results.result_of(ref);
+    return root_instance()->result_of(ref);
+}
+
+
+const CIRInstResult* CIRPackage::find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const {
+    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
+        return instance->find_along_chain(ref);
+    }
+    return root_instance()->find_along_chain(ref);
 }
 
 
@@ -161,74 +177,6 @@ isize CIRBlock::push_back_inst(CIRInstruction inst) {
     return insts.push(inst);
 }
 
-TypeRef CIRInstResult::type() const {
-    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
-
-    return outstanding_type;
-}
-
-TypeRef CIRInstResult::actual_type() const {
-    ASSERT(state == CIRResultState::OnlyType || state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
-
-    return val.type;
-}
-
-
-Value CIRInstResult::actual_val() const {
-    ASSERT(state == CIRResultState::WholeValue || state == CIRResultState::InProgress);
-
-    return val;
-}
-
-
-void CIRInstResult::set_type(TypeRef new_type) {
-    outstanding_type = new_type;
-    val.type = new_type;
-
-    if(state == CIRResultState::NothingYet) {
-        state = CIRResultState::OnlyType;
-    }
-}
-
-void CIRInstResult::set_actual_type(TypeRef new_type) {
-    val.type = new_type;
-}
-
-void CIRInstResult::set_val(Value new_val) {
-    val = new_val;
-
-    if(state == CIRResultState::NothingYet || state == CIRResultState::OnlyType || state == CIRResultState::InProgress) {
-        state = CIRResultState::WholeValue;
-    }
-}
-
-void CIRInstResult::set_val_in_progress(Value new_val) {
-
-    // 类型值指向未完成的类型壳子, 函数值指向 FunctionDecl 的结果槽 — 都是引用语义, 补完后登记者可见
-    if(!is_type_type(new_val.type) && !is_function_type(new_val.type)) {
-        DEBUG_PANIC("set_val_in_progress: 可以提前登记的值的类型必须自带引用语义, 不然无意义");
-    }
-
-    outstanding_type = new_val.type;
-    val = new_val;
-    state = CIRResultState::InProgress;
-}
-
-
-CIRResultInstance CIRResultInstance::make(xpAllocator allocator) {
-    CIRResultInstance inst;
-    inst.results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(allocator);
-    return inst;
-}
-
-CIRInstResult* CIRResultInstance::result_ptr_of(CIRInstructionRef ref) {
-    return xp_hash_map_get(results, ref);
-}
-
-CIRInstResult& CIRResultInstance::result_of(CIRInstructionRef ref) {
-    return results.get(ref);
-}
-
 
 CIRResultContext CIRResultContext::create(Ref<CIRPackage> pkg) {
     CIRResultContext ctx;
@@ -236,9 +184,9 @@ CIRResultContext CIRResultContext::create(Ref<CIRPackage> pkg) {
     return ctx;
 }
 
-void CIRResultContext::enter_call(FuncCallKey key) {
+void CIRResultContext::enter_call(FuncCallKey key, Ref<CIRResultInstance> parent) {
     _call_key = key;
-    _call_instance = _pkg->get_result_instance(key);
+    _call_instance = _pkg->get_or_init_result_instance(key, parent);
 }
 
 void CIRResultContext::enter_call_instance(Ref<CIRResultInstance> instance) {
@@ -261,6 +209,10 @@ CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
         return _pkg->result_of(ref, _call_instance);
     }
     return _pkg->result_of(ref);
+}
+
+const CIRInstResult *CIRResultContext::result_ptr_of(CIRInstructionRef ref) const {
+    return _pkg->find_result(ref, _call_instance);
 }
 
 
@@ -358,7 +310,7 @@ static void dump_cir_block(CIRPackage *pkg, CIRBlockRef block, isize depth) {
             }
         }
 
-        const auto *res_ptr = pkg->results.result_ptr_of(ref);
+        const auto *res_ptr = pkg->root_instance()->result_ptr_of(ref);
         if(res_ptr) {
             const auto& res = *res_ptr;
 

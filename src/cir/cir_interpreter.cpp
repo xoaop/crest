@@ -390,7 +390,8 @@ bool Interpreter::has_result_type(CIRInstructionRef ref) {
 }
 
 bool Interpreter::has_error(CIRInstructionRef ref) {
-    return result_context().result_of(ref).state == CIRResultState::Error;
+    const CIRInstResult *res = result_context().result_ptr_of(ref);
+    return res != nullptr && res->state == CIRResultState::Error;
 }
 
 bool Interpreter::has_error(std::initializer_list<CIRInstructionRef> refs) {
@@ -427,7 +428,10 @@ void Interpreter::Set_ResultError(CIRInstructionRef ref) {
 
 
 CIRResultState Interpreter::result_state(CIRInstructionRef ref) {
-    return result_context().result_of(ref).state;
+    if(const CIRInstResult *res = result_context().result_ptr_of(ref)) {
+        return res->state;
+    }
+    return CIRResultState::NothingYet;
 }
 
 void Interpreter::set_result_state(CIRInstructionRef ref, CIRResultState state) {
@@ -435,23 +439,22 @@ void Interpreter::set_result_state(CIRInstructionRef ref, CIRResultState state) 
 }
 
 std::optional<TypeRef> Interpreter::ResultTypeOpt(CIRInstructionRef ref) {
-    auto& res = result_context().result_of(ref);
-    if(res.state == CIRResultState::OnlyType || res.state == CIRResultState::WholeValue || res.state == CIRResultState::InProgress) {
-        return res.type();
-    } else {
-        return std::nullopt;
+    const CIRInstResult *res = result_context().result_ptr_of(ref);
+    if(res != nullptr && (res->state == CIRResultState::OnlyType || res->state == CIRResultState::WholeValue || res->state == CIRResultState::InProgress)) {
+        return res->type();
     }
+    return std::nullopt;
 }
 
 std::optional<Value> Interpreter::ResultValueOpt(CIRInstructionRef ref) {
-    auto& res = result_context().result_of(ref);
+    const CIRInstResult *res = result_context().result_ptr_of(ref);
 
-    if(res.state != CIRResultState::WholeValue) {
-        DEBUG_TRACE("ResultValueOpt: ref: {}, state: {}, curr_pc: {}", ref, (int)res.state, curr_inst_ref());
+    if(res == nullptr || res->state != CIRResultState::WholeValue) {
+        DEBUG_TRACE("ResultValueOpt: ref: {}, state: {}, curr_pc: {}", ref, res ? (int)res->state : (int)CIRResultState::NothingYet, curr_inst_ref());
         return std::nullopt;
     }
 
-    return res.actual_val();
+    return res->actual_val();
 }
 
 void Interpreter::Set_ResultType(CIRInstructionRef ref, TypeRef type) {
@@ -3127,18 +3130,22 @@ std::optional<Value> Interpreter::instantiate_generic_func(
         .comptime_arg_refs = key_refs,
         .is_generic_instance = true,
     };
-    Ref<CIRResultInstance> callee_result_instance = callee_pkg.get_result_instance(cache_key);
+    Ref<CIRResultInstance> lexical_parent = fv.func_key.result_instance;
+    if(lexical_parent == Ref<CIRResultInstance>::INVALID_REF) {
+        lexical_parent = callee_pkg.root_instance();
+    }
+    Ref<CIRResultInstance> callee_result_instance = callee_pkg.get_or_init_result_instance(cache_key, lexical_parent);
 
     // 已实例化 / 自递归重入 → 复用。真签名在 body 分析之前已登记（analyze_FunctionDecl
     // 的泛型支），所以递归重入时必然命中。result_ptr_of 不 insert，新实例这里是干净的 miss
-    if(CIRInstResult *cached = callee_result_instance->result_ptr_of(func_decl_pc)) {
+    if(const CIRInstResult *cached = callee_result_instance->result_ptr_of(func_decl_pc)) {
         if(cached->state == CIRResultState::WholeValue) {
             return cached->actual_val();
         }
     }
 
     // 帧是本 interp 自己的（构造时已入链）；把它的 ctx 绑到本次实例
-    curr_frame->ctx.enter_call(cache_key);
+    curr_frame->ctx.enter_call(cache_key, lexical_parent);
 
     // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
     // 查 result_instance_map 命中本实例的这个槽
@@ -3275,8 +3282,11 @@ AnalyzeResult Interpreter::run_comptime_body(
 
     if(has_return) {
         res.writes.push_back({pc_ref, ResultDesc::make_value(return_val)});
+    } else if(!body_has_error && func.return_type_inst == INVALID_INST) {
+        // 返回类型写成 '?'（infer）时按 body 推导：没有返回值即 void
+        res.writes.push_back({pc_ref, ResultDesc::make_type_only(easy_type(Type_void))});
     } else if(!body_has_error && return_type != easy_type(Type_void)) {
-        // 编译期调用没产出返回值（返回类型非 void）——调用方拿不到值，必须报错
+        // 编译期调用没产出返回值（函数声明了非 void 返回类型）——调用方拿不到值，必须报错
         res.writes.push_back({pc_ref, inst_error(pc_ref,
             "编译期调用未产出返回值（返回类型 '{}'）", return_type->name())});
     }
@@ -3368,7 +3378,7 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
     // 编译期执行
     if(curr_eval_mode() == EvalMode::FullEval) {
         
-        constexpr auto MAX_CALL_DEPTH = 15;
+        constexpr auto MAX_CALL_DEPTH = 50;
         if(eval_stack->depth() > MAX_CALL_DEPTH) {
             r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH)});
             return r;
@@ -3401,7 +3411,11 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
         }
  
         // 查询编译期函数调用结果缓存
-        const auto callee_result_instance = callee_pkg.get_result_instance(cache_key);
+        Ref<CIRResultInstance> lexical_parent = fv.func_key.result_instance;
+        if(lexical_parent == Ref<CIRResultInstance>::INVALID_REF) {
+            lexical_parent = callee_pkg.root_instance();
+        }
+        const auto callee_result_instance = callee_pkg.get_or_init_result_instance(cache_key, lexical_parent);
 
         // 递归重入: 命中提前登记的结果直接复用（InProgress 用于中断递归）
         const CIRInstResult *cached = callee_result_instance->result_ptr_of(func.body_inst);
@@ -3417,7 +3431,7 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
 
         // 另起一个 interp 跑 callee 的 body：帧归它自己，构造即入链
         auto eval_inst = EvalInstance::make(callee_pkg_ref, func.slot_count, permanent_allocator());
-        eval_inst.ctx.enter_call(cache_key);
+        eval_inst.ctx.enter_call(cache_key, lexical_parent);
 
         Interpreter callee_interp(xp_heap_allocator(), callee_pkg.package_ref, eval_stack, std::move(eval_inst));
         callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式

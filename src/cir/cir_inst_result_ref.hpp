@@ -22,8 +22,8 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     // 结果槽: get-or-create, 拿不到值看 state
     CIRInstResult &resolve() const;
 
-    // 只查不算: instance 表里没建就返回 null
-    CIRInstResult* get_result() const;
+    // 只查不算: 沿实例链查，找不到返回 null
+    const CIRInstResult* get_result() const;
 
     const CIRInstruction& inst() const;
 

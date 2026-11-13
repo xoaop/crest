@@ -15,11 +15,8 @@ CIRInstResult& Ref<CIRInstResult>::resolve() const {
     return inst_ref.pkg->result_of(inst_ref, result_instance);
 }
 
-CIRInstResult* Ref<CIRInstResult>::get_result() const {
-    if(result_instance != Ref<CIRResultInstance>::INVALID_REF) {
-        return result_instance->result_ptr_of(inst_ref);
-    }
-    return &inst_ref.pkg->result_of(inst_ref);
+const CIRInstResult* Ref<CIRInstResult>::get_result() const {
+    return inst_ref.pkg->find_result(inst_ref, result_instance);
 }
 
 const CIRInstruction& Ref<CIRInstResult>::inst() const {

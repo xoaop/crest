@@ -38,18 +38,16 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     }
     if(value_store_type == ValueStoreType::InCIRInstruction) {
 
+        Ref<CIRResultInstance> instance = Ref<CIRResultInstance>::INVALID_REF;
         if(key.has_value()) {
-            auto *entry = xp_hash_map_get(inst_key.inst_ref.pkg->result_instance_map, key.value());
-            if(entry != nullptr) {
-                auto *instance = &inst_key.inst_ref.pkg->result_instances[entry->index];
-                auto *res = instance->result_ptr_of(inst_key.inst_ref);
-                if(res) {
-                    return *res;
-                }
+            if(auto *entry = xp_hash_map_get(inst_key.inst_ref.pkg->result_instance_map, key.value())) {
+                instance = *entry;
             }
         }
-        auto *res = inst_key.inst_ref.pkg->results.result_ptr_of(inst_key.inst_ref);
-        if(res) return *res;
+
+        if(const CIRInstResult *res = inst_key.inst_ref.pkg->find_result(inst_key.inst_ref, instance)) {
+            return *res;
+        }
     }
 
     return CIRInstResult{};

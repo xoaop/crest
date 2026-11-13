@@ -14,6 +14,7 @@
 #include "cir_instruction_ref.hpp"
 #include "cir_inst.hpp"
 #include "cir_package_ref.hpp"
+#include "cir_result_instance.hpp"
 
 struct Package;
 
@@ -47,57 +48,6 @@ struct CIRBlock {
 };
 
 
-enum class CIRResultState: u32 {
-    NothingYet,  // 还没有计算结果
-    OnlyType,   // 仅仅只有类型推导
-    InProgress,  // 值已提前登记, 求值未完成（递归调用命中此态中断）
-    WholeValue,  // 计算出实际值了
-    Error        // 本指令分析出错，结果不可用，下游应跳过
-};
-
-enum class CIRValueKind : u8 {
-    RValue,  // 实际值（参与运算、传参）
-    LValue,  // 位置句柄（可被 Load/Store/FieldPtr/IndexPtr 操作）
-};
-
-struct CIRInstResult {
-    CIRResultState state = CIRResultState::NothingYet;
-    CIRValueKind value_kind = CIRValueKind::RValue;
-
-
-    std::optional<TypeRef> implicit_type = std::nullopt;
-
-    TypeRef type() const;
-    TypeRef actual_type() const;
-    Value actual_val() const;
-
-    void set_type(TypeRef new_type);
-    void set_actual_type(TypeRef new_type);
-    void set_val(Value new_val);
-    void set_val_in_progress(Value new_val);
-
-private:
-    Value val;
-    TypeRef outstanding_type = nullptr;
-};
-
-
-struct CIRResultInstance {
-
-    static CIRResultInstance make(xpAllocator allocator);
-
-    CIRInstResult* result_ptr_of(CIRInstructionRef ref);
-    CIRInstResult& result_of(CIRInstructionRef ref);
-
-    template<typename F>
-    CIRInstResult& result_of_or(CIRInstructionRef ref, F&& factory) {
-        return results.get_or_insert(ref, static_cast<F&&>(factory));
-    }
-
-private:
-    xpHashMap<CIRInstructionRef, CIRInstResult> results;
-};
-
 
 
 
@@ -117,10 +67,8 @@ struct CIRPackage {
     Array<GlobalStringIndex> string_literals;
 
 
-    CIRResultInstance results;
+    Array<CIRResultInstance> result_instances;   // [0] = 包级根实例
     xpHashMap<FuncCallKey, Ref<CIRResultInstance>> result_instance_map;
-
-    Array<CIRResultInstance> result_instances;
 
 
     CIRInstruction& inst_mut(CIRInstructionRef ref);
@@ -128,9 +76,11 @@ struct CIRPackage {
     CIRBlock& block_mut(CIRBlockRef ref);
     const CIRBlock& block(CIRBlockRef ref) const;
 
-    Ref<CIRResultInstance> get_result_instance(FuncCallKey key);
+    Ref<CIRResultInstance> root_instance() const;
+    Ref<CIRResultInstance> get_or_init_result_instance(FuncCallKey key, Ref<CIRResultInstance> parent);
 
     CIRInstResult& result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance = {});
+    const CIRInstResult* find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
 
     CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false);
 };
@@ -155,7 +105,7 @@ struct CIRResultContext {
     Ref<CIRPackage> pkg() const { return _pkg; }
     void set_pkg(Ref<CIRPackage> new_pkg) { _pkg = new_pkg; }
 
-    void enter_call(FuncCallKey key);
+    void enter_call(FuncCallKey key, Ref<CIRResultInstance> parent);
     void enter_call_instance(Ref<CIRResultInstance> instance);
 
     void exit_call();
@@ -170,6 +120,7 @@ struct CIRResultContext {
     const FuncCallKey &call_key() const;
 
     CIRInstResult &result_of(CIRInstructionRef ref) const;
+    const CIRInstResult *result_ptr_of(CIRInstructionRef ref) const;
 
 private:
     Ref<CIRPackage> _pkg = Ref<CIRPackage>::INVALID_REF;
