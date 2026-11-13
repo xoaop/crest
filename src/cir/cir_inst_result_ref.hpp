@@ -20,8 +20,6 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
 
     static Ref init(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
 
-    bool is_valid() const { return cir_package.is_valid(); }
-
     // 结果槽: get-or-create, 拿不到值看 state
     CIRInstResult &resolve() const;
 

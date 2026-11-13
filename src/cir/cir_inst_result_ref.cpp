@@ -13,12 +13,12 @@ Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRPackage* pkg, CIRInstructionRef r
 }
 
 CIRInstResult& Ref<CIRInstResult>::resolve() const {
-    ASSERT(cir_package.is_valid());
+    ASSERT(cir_package != Ref<CIRPackage>::INVALID_REF);
     return cir_package->result_of(inst_ref, result_instance);
 }
 
 CIRInstResult* Ref<CIRInstResult>::get_result() const {
-    if(result_instance.is_valid()) {
+    if(result_instance != Ref<CIRResultInstance>::INVALID_REF) {
         return result_instance->result_ptr_of(inst_ref);
     }
     return &cir_package->result_of(inst_ref);

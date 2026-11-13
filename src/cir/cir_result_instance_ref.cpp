@@ -3,7 +3,7 @@
 
 
 CIRResultInstance& Ref<CIRResultInstance>::resolve() const {
-    ASSERT(cir_package.is_valid() && index >= 0);
+    ASSERT(cir_package != Ref<CIRPackage>::INVALID_REF && index >= 0);
     ASSERT(index < cir_package->result_instances.count);
 
     return cir_package->result_instances[index];

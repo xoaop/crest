@@ -14,14 +14,9 @@ template<typename T>
 struct RefBase {
     static const inline Ref<T> INVALID_REF{};
 
-    // 非 INVALID_REF 的 Ref 一定有效, resolve() 必定成功
-    bool is_valid() const {
-        return derived().is_valid();
-    }
-
     // 保证非空解包：拿不到就断言崩溃
     T &unwrap() const {
-        ASSERT(is_valid());
+        ASSERT(derived() != INVALID_REF);
         return derived().resolve();
     }
 
@@ -55,8 +50,6 @@ struct Ref : RefBase<T> {
     explicit constexpr Ref(isize idx) : index(idx) {}
 
     bool operator==(const Ref& other) const { return index == other.index; }
-
-    bool is_valid() const { return index >= 0; }
 
     T &resolve() const;
 };

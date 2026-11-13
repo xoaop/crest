@@ -11,8 +11,6 @@ struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
     Ref<Scope> scope = Ref<Scope>::INVALID_REF;
     GlobalStringIndex name;
 
-    bool is_valid() const { return scope.is_valid(); }
-
     SymbolInfo &resolve() const;
 
     bool operator==(const Ref<SymbolInfo> &other) const {

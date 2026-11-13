@@ -796,7 +796,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
     CIRInstructionRef result = INVALID_INST;
     switch(expr->type) {
         case AstType_Ident: {
-            if(expr->ast_symbol.is_valid() && expr->ast_symbol->is_var_decl()) {
+            if(expr->ast_symbol != Ref<SymbolInfo>::INVALID_REF && expr->ast_symbol->is_var_decl()) {
                 auto ref = Make_Instruction<CIROperator::IdentRef>(ctx, expr, { .ident = expr->Ident.name });
                 Instruction(ctx, ref).symbol = expr->ast_symbol;
                 auto load = Make_Instruction<CIROperator::Load>(ctx, expr, { .ptr_inst = ref });

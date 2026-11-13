@@ -69,7 +69,7 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
 
 
 CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
-    if(instance.is_valid()) {
+    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
         return instance->result_of_or(ref, [&]{ return results.result_of(ref); });
     }
 

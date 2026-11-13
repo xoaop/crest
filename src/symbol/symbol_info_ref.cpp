@@ -3,7 +3,7 @@
 
 
 SymbolInfo& Ref<SymbolInfo>::resolve() const {
-    ASSERT(scope.is_valid());
+    ASSERT(scope != Ref<Scope>::INVALID_REF);
 
     SymbolInfo *info = find_symbol(&scope.unwrap().symbols, name);
     ASSERT(info != nullptr);

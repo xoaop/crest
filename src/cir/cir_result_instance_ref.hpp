@@ -13,8 +13,6 @@ struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
     Ref<CIRPackage> cir_package;
     isize index = -1;
 
-    bool is_valid() const { return cir_package.is_valid() && index >= 0; }
-
     CIRResultInstance &resolve() const;
 
     bool operator==(const Ref& other) const {
