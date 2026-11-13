@@ -73,7 +73,7 @@ struct Context {
 };
 
 
-CIRPackage &get_cir_package(Ref<Package> pkg);
+Ref<CIRPackage> get_cir_package(Ref<Package> pkg);
 
 Ref<Package> add_package(Context *ctx, Package pkg);
 

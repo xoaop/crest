@@ -13,6 +13,7 @@
 #include "stable_ordered_array.hpp"
 #include "cir_instruction_ref.hpp"
 #include "cir_inst.hpp"
+#include "cir_package_ref.hpp"
 
 struct Package;
 
@@ -21,7 +22,7 @@ struct Package;
 struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
     CIRBlockRef self = -1;          // 本块号（create_block 填）
-    Ref<Package> package_ref;   // 所属包
+    Ref<CIRPackage> cir_package;   // 所属包
     
     bool is_comptime;
     bool immediate_eval;
@@ -41,8 +42,8 @@ struct CIRBlock {
         bool operator==(const InstRefIter& o) const { return ref == o.ref; }
     };
 
-    InstRefIter begin() const { return {CIRInstructionRef{self, 0, package_ref.index}}; }
-    InstRefIter end()   const { return {CIRInstructionRef{self, (isize)insts.count(), package_ref.index}}; }
+    InstRefIter begin() const { return {CIRInstructionRef{self, 0, cir_package}}; }
+    InstRefIter end()   const { return {CIRInstructionRef{self, (isize)insts.count(), cir_package}}; }
 };
 
 
@@ -104,6 +105,7 @@ private:
 
 
 struct CIRPackage {
+    Ref<CIRPackage> self_ref;   // 自身句柄
     Ref<Package> package_ref;   // 本包在 context()->all_packages 中的编号
 
 
@@ -148,10 +150,10 @@ void dump_cir_package(CIRPackage *file);
 
 
 struct CIRResultContext {
-    static CIRResultContext create(CIRPackage *pkg);
+    static CIRResultContext create(Ref<CIRPackage> pkg);
 
-    CIRPackage *pkg() const { return _pkg; }
-    void set_pkg(CIRPackage *new_pkg) { _pkg = new_pkg; }
+    Ref<CIRPackage> pkg() const { return _pkg; }
+    void set_pkg(Ref<CIRPackage> new_pkg) { _pkg = new_pkg; }
 
     void enter_call(FuncCallKey key);
     void enter_call_instance(Ref<CIRResultInstance> instance);
@@ -170,7 +172,7 @@ struct CIRResultContext {
     CIRInstResult &result_of(CIRInstructionRef ref) const;
 
 private:
-    CIRPackage *_pkg = nullptr;
+    Ref<CIRPackage> _pkg = Ref<CIRPackage>::INVALID_REF;
     Ref<CIRResultInstance> _call_instance;
     std::optional<FuncCallKey> _call_key;
 };

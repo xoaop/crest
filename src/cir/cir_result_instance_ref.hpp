@@ -3,6 +3,7 @@
 #include <functional>
 
 #include "ref.hpp"
+#include "cir_package_ref.hpp"
 
 struct CIRPackage;
 struct CIRResultInstance;

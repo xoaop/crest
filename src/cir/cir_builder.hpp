@@ -30,7 +30,7 @@ struct CIRBuildContext {
 
     xpAllocator allocator;
 
-    CIRPackage *pkg;
+    Ref<CIRPackage> pkg;
     Ref<Package> pkg_ref;
     CIRFunctionDeclInfo *func;
     CIRInstructionRef func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block

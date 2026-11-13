@@ -48,7 +48,7 @@ CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool
     blk.yields_value = yields_value;
     CIRBlockRef ref = blocks.count;
     blk.self = ref;
-    blk.package_ref = package_ref;
+    blk.cir_package = self_ref;
     blocks.push_back(blk);
     return ref;
 }
@@ -61,7 +61,7 @@ Ref<CIRResultInstance> CIRPackage::get_result_instance(FuncCallKey key) {
     result_instances.push_back(CIRResultInstance::make(permanent_allocator()));
 
     Ref<CIRResultInstance> r;
-    r.cir_package = Ref<CIRPackage>(package_ref.index);
+    r.cir_package = self_ref;
     r.index = (isize)result_instances.count - 1;
     result_instance_map.insert(key, r);
     return r;
@@ -81,7 +81,7 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstanc
 u64 FuncCallKey::hash() const {
 
     // TODO: AI SLOP
-    u64 h = xp_hash_combine_u64((u64)func_decl_pc.pkg_index, (u64)func_decl_pc.block_ref);
+    u64 h = xp_hash_combine_u64((u64)std::hash<Ref<CIRPackage>>{}(func_decl_pc.pkg), (u64)func_decl_pc.block_ref);
     h = xp_hash_combine_u64(h, (u64)func_decl_pc.inst_index);
     h = xp_hash_combine_u64(h, (u64)is_generic_instance);
 
@@ -230,7 +230,7 @@ CIRInstResult& CIRResultInstance::result_of(CIRInstructionRef ref) {
 }
 
 
-CIRResultContext CIRResultContext::create(CIRPackage *pkg) {
+CIRResultContext CIRResultContext::create(Ref<CIRPackage> pkg) {
     CIRResultContext ctx;
     ctx._pkg = pkg;
     return ctx;

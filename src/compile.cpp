@@ -143,7 +143,7 @@ bool compile_package(Ref<Package> pkg_ref) {
     xp_arena_allocator_clear(pkg.stage_allocator);
 
     if(context()->cir_dump) {
-        dump_cir_package(&get_cir_package(pkg_ref));
+        dump_cir_package(&get_cir_package(pkg_ref).resolve());
     }
 
     analyze_package(pkg_ref, pkg.stage_allocator);

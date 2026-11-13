@@ -142,7 +142,7 @@ struct AnalyzeParams {
 // 求值实例 — 每次编译期函数调用创建一个
 struct EvalInstance {
 
-    static EvalInstance make(CIRPackage *callee_pkg, isize var_count, xpAllocator allocator);
+    static EvalInstance make(Ref<CIRPackage> callee_pkg, isize var_count, xpAllocator allocator);
 
     static void free(EvalInstance *inst);
 
@@ -292,7 +292,7 @@ public:
 
     // 本 interp 只看得见这一个包：跨包一律另起一个 interp
     const Ref<Package> pkg_ref;
-    CIRPackage *const pkg;
+    const Ref<CIRPackage> pkg;
 
     // 调用链在外部（EvalStack）；本 interp 只绑链上的一帧，从生到死不换
     EvalStack *const eval_stack;

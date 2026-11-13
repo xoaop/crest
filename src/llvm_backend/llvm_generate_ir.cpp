@@ -47,7 +47,7 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     LLVMDisposeMessage(mod_datalayout);
 
     this->pkg = pkg_ref;
-    result_ctx = CIRResultContext::create(&get_cir_package(pkg_ref));
+    result_ctx = CIRResultContext::create(get_cir_package(pkg_ref));
     this->curr_state = {nullptr, nullptr};
     curr_blk = INVALID_BLOCK;
     syms = IRSymbolTable{
@@ -356,8 +356,8 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
             continue;
         }
 
-        const auto& fdecl = fk.cir_package->inst(fk.inst_ref).info<CIROperator::FunctionDecl>();
-        TypeRef sig = fk.cir_package->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
+        const auto& fdecl = fk.inst_ref.pkg->inst(fk.inst_ref).info<CIROperator::FunctionDecl>();
+        TypeRef sig = fk.inst_ref.pkg->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
 
         ABIFunctionPlan abi_plan;
         LLVMTypeRef fn_type = nullptr;
@@ -502,7 +502,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 }
 
 LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
-    DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)result_ctx.pkg(), result_ctx.call_instance().index, debug_curr_gen_ref);
+    DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)&result_ctx.pkg().unwrap(), result_ctx.call_instance().index, debug_curr_gen_ref);
 
     auto result = result_ctx.result_of(ref);
 
@@ -514,7 +514,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     }
 
     // 其余按引用点的 key 寻址（每条指令的 LLVM 值各存各的）
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, result_ctx.call_instance());
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(ref, result_ctx.call_instance());
     if(LLVMValueRef* val = xp_hash_map_get(inst_vals, key)) {
         return *val;
     }
@@ -529,7 +529,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 
     // 引用点 key 未命中 → 尝试 null call_instance
     if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, {});
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(ref);
         if(LLVMValueRef* null_cached = xp_hash_map_get(inst_vals, null_key)) {
             return *null_cached;
         }
@@ -541,12 +541,12 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, result_ctx.call_instance());
-    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)result_ctx.pkg(), result_ctx.call_instance().index);
+    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(ref, result_ctx.call_instance());
+    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)&result_ctx.pkg().unwrap(), result_ctx.call_instance().index);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
     // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
     if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(result_ctx.pkg(), ref, {});
+        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(ref);
         xp_hash_map_insert(&inst_vals, null_key, llvm_val);
     }
 }
@@ -769,7 +769,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optio
 }
 
 void LLVMGenerator::gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm_func) {
-    const auto& func_inst = key.cir_package->inst(key.inst_ref);
+    const auto& func_inst = key.inst_ref.pkg->inst(key.inst_ref);
     auto& fd = func_inst.info<CIROperator::FunctionDecl>();
 
     add_local_val(&syms, func_inst.symbol, llvm_func);
@@ -788,7 +788,7 @@ void LLVMGenerator::gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm
     // extern_C 定义：签名在 IR 里是 C ABI 形状，入口参数与出口返回需要同一份 plan
     curr_c_abi_def.reset();
     if(fd.is_extern_c) {
-        TypeRef sig = key.cir_package->result_of(key.inst_ref, key.result_instance).actual_val().type;
+        TypeRef sig = key.inst_ref.pkg->result_of(key.inst_ref, key.result_instance).actual_val().type;
 
         curr_c_abi_def = make_c_abi_plan(sig, current_abi(context()->target.os));
     }
@@ -1357,7 +1357,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
                 ASSERT(live_blk != INVALID_BLOCK);
 
-                gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
+                gen_ir_block_in_func_block(CIRInstructionRef{live_blk, result_ctx.pkg()}, false);
                 auto* live_mapper = mapper(live_blk);
                 LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
 
@@ -1373,8 +1373,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
             // then/else 是独立 Block（各占一个 slot），自身接线由 connect_to_parent=false 处理
             // 用单参构造（inst_index = INVALID_INST_INDEX 的"块级引用"），gen_ir_block_in_func_block 据此跳过 inst 解引用
-            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block}, false);
-            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block, result_ctx.pkg()}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block, result_ctx.pkg()}, false);
 
             auto* true_mapper = mapper(info.true_block);
             auto* false_mapper = mapper(info.false_block);
@@ -1406,7 +1406,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 CIRBlockRef live_blk = cond ? info.true_block : info.false_block;
                 ASSERT(live_blk != INVALID_BLOCK);
 
-                gen_ir_block_in_func_block(CIRInstructionRef{live_blk}, false);
+                gen_ir_block_in_func_block(CIRInstructionRef{live_blk, result_ctx.pkg()}, false);
                 auto* live_mapper = mapper(live_blk);
                 LLVMBuildBr(unit.builder, live_mapper->first_frag_blk());
 
@@ -1416,9 +1416,9 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
                 Set_Curr_Inst_Pos_At_End_Of_Basic_Block(merge_bb);
 
-                // 活臂块的值 = 它的带值 break（存在 CIRInstructionRef{live_blk} 句柄）；void if 表达式不透传
+                // 活臂块的值 = 它的带值 break（存在块句柄）；void if 表达式不透传
                 if(result_ctx.result_of(ref).actual_type()->kind != Type_void) {
-                    save_llvm_val_of_inst(ref, get_llvm_val_from_inst_ref(CIRInstructionRef{live_blk}));
+                    save_llvm_val_of_inst(ref, get_llvm_val_from_inst_ref(CIRInstructionRef{live_blk, result_ctx.pkg()}));
                 }
                 break;
             }
@@ -1426,8 +1426,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             LLVMValueRef cond_val = get_llvm_val_from_inst_ref(info.condition_inst);
 
             // 两臂是独立 Block，自身接线由 connect_to_parent=false 处理
-            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block}, false);
-            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.true_block, result_ctx.pkg()}, false);
+            gen_ir_block_in_func_block(CIRInstructionRef{info.false_block, result_ctx.pkg()}, false);
 
             auto* true_mapper = mapper(info.true_block);
             auto* false_mapper = mapper(info.false_block);
@@ -1447,8 +1447,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             // 两臂在各自 exit_blk 汇合到 merge：φ 选出 if 表达式的值。
             // 臂值存在臂块句柄上（gen_ir_block_in_func_block 收尾时 save）。void if 表达式不建 φ。
             if(result_ctx.result_of(ref).actual_type()->kind != Type_void) {
-                LLVMValueRef true_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.true_block});
-                LLVMValueRef false_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.false_block});
+                LLVMValueRef true_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.true_block, result_ctx.pkg()});
+                LLVMValueRef false_val = get_llvm_val_from_inst_ref(CIRInstructionRef{info.false_block, result_ctx.pkg()});
                 LLVMValueRef phi = LLVMBuildPhi(unit.builder, LLVMTypeOf(true_val), "ifexpr_phi");
                 LLVMValueRef vals[2] = {true_val, false_val};
                 LLVMBasicBlockRef srcs[2] = {true_exit, false_exit};

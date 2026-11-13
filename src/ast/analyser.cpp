@@ -353,13 +353,11 @@ CoroutineTask<void> resolve_comptime_if(
     auto &ci = ast->ComptimeIf;
     resolve_expr(ci.condition, analyser);
 
-    auto &cir = get_cir_package(analyser.pkg);
-
     CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg.unwrap().stage_allocator);
     defer(CIRBuildContext::free(ctx));
 
     ctx.pkg_ref = analyser.pkg;
-    ctx.pkg = &cir;
+    ctx.pkg = get_cir_package(analyser.pkg);
     ctx.scope = analyser.current_scope;
 
     CIRBlockRef blk = CIRBuilder::build_block_inst_for_expr(ctx, ci.condition, true, true);
@@ -368,7 +366,7 @@ CoroutineTask<void> resolve_comptime_if(
     Interpreter interp(ctx.allocator, analyser.pkg, &eval_stack,
                        EvalInstance::make(ctx.pkg, 0, ctx.allocator));
 
-    CIRInstructionRef blk_ref(blk);
+    CIRInstructionRef blk_ref(blk, ctx.pkg);
     interp.analyze_block(blk, blk_ref);
 
     if(!interp.has_result_val(blk_ref)) {

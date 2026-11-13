@@ -4,6 +4,7 @@
 #include "array.hpp"
 #include "print.hpp"
 #include "ref.hpp"
+#include "cir_package_ref.hpp"
 #include <format>
 #include <functional>
 #include <optional>
@@ -22,15 +23,15 @@ constexpr isize INVALID_INST_INDEX = -1;
 
 
 struct CIRInstructionRef {
-    isize       pkg_index = -1;
+    Ref<CIRPackage> pkg;
     CIRBlockRef block_ref = INVALID_BLOCK;
     isize       inst_index = INVALID_INST_INDEX;
 
     constexpr CIRInstructionRef() : block_ref(INVALID_BLOCK), inst_index(INVALID_INST_INDEX) {}
-    explicit CIRInstructionRef(CIRBlockRef blk, isize idx, isize pkg_index = -1) : block_ref(blk), inst_index(idx), pkg_index(pkg_index) {
+    explicit CIRInstructionRef(CIRBlockRef blk, isize idx, Ref<CIRPackage> pkg) : pkg(pkg), block_ref(blk), inst_index(idx) {
         ASSERT(blk != INVALID_BLOCK && idx != INVALID_INST_INDEX);
     }
-    explicit CIRInstructionRef(CIRBlockRef blk) : block_ref(blk), inst_index(INVALID_INST_INDEX) {
+    explicit CIRInstructionRef(CIRBlockRef blk, Ref<CIRPackage> pkg) : pkg(pkg), block_ref(blk), inst_index(INVALID_INST_INDEX) {
         ASSERT(blk != INVALID_BLOCK);
     }
 
@@ -48,13 +49,13 @@ struct CIRInstructionRef {
     }
 
     CIRInstructionRef next(isize n = 1) const {
-        return CIRInstructionRef{block_ref, inst_index + n, pkg_index};
+        return CIRInstructionRef{block_ref, inst_index + n, pkg};
     }
     CIRInstructionRef prev(isize n = 1) const {
-        return CIRInstructionRef{block_ref, inst_index - n, pkg_index};
+        return CIRInstructionRef{block_ref, inst_index - n, pkg};
     }
 
-    auto operator<=>(const CIRInstructionRef&) const = default;
+    bool operator==(const CIRInstructionRef&) const = default;
 };
 
 const CIRInstructionRef INVALID_INST = CIRInstructionRef{};
@@ -65,7 +66,7 @@ template<>
 struct std::hash<CIRInstructionRef> {
     usize operator()(const CIRInstructionRef& r) const {
         u64 h = xp_hash_combine_u64((u64)r.block_ref, (u64)r.inst_index);
-        h = xp_hash_combine_u64(h, (u64)r.pkg_index);
+        h = xp_hash_combine_u64(h, (u64)std::hash<Ref<CIRPackage>>{}(r.pkg));
         return h;
     }
 };

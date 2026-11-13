@@ -14,11 +14,10 @@ struct CIRInstResult;
 // 值总在某张 CIRResultInstance 里：result_instance 为空 → 包级那张；否则 → 实例自己那张
 template<>
 struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
-    Ref<CIRPackage>                        cir_package;
     CIRInstructionRef                      inst_ref;
     Ref<CIRResultInstance>                 result_instance;
 
-    static Ref init(CIRPackage* pkg, CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
+    static Ref init(CIRInstructionRef ref, Ref<CIRResultInstance> ri = {});
 
     // 结果槽: get-or-create, 拿不到值看 state
     CIRInstResult &resolve() const;
@@ -29,8 +28,7 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
     const CIRInstruction& inst() const;
 
     bool operator==(const Ref& other) const {
-        return cir_package == other.cir_package
-            && inst_ref == other.inst_ref
+        return inst_ref == other.inst_ref
             && result_instance == other.result_instance;
     }
 };
@@ -39,9 +37,7 @@ struct Ref<CIRInstResult> : RefBase<CIRInstResult> {
 template<>
 struct std::hash<Ref<CIRInstResult>> {
     usize operator()(const Ref<CIRInstResult>& key) const {
-        u64 h = static_cast<u64>(std::hash<Ref<CIRPackage>>{}(key.cir_package));
-        h = xp_hash_combine_u64(h, static_cast<u64>(key.inst_ref.block_ref));
-        h = xp_hash_combine_u64(h, static_cast<u64>(key.inst_ref.inst_index));
+        u64 h = static_cast<u64>(std::hash<CIRInstructionRef>{}(key.inst_ref));
         h = xp_hash_combine_u64(h, static_cast<u64>(std::hash<Ref<CIRResultInstance>>{}(key.result_instance)));
         return h;
     }

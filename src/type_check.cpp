@@ -6,7 +6,7 @@
 
 
 
-bool check_explicit_type_cast(CIRPackage *pkg, CIRInstructionRef casted_inst_ref, TypeRef casted_expr_type, TypeRef target_type) {
+bool check_explicit_type_cast(Ref<CIRPackage> pkg, CIRInstructionRef casted_inst_ref, TypeRef casted_expr_type, TypeRef target_type) {
 
     if((is_integer_or_untyped_type(casted_expr_type) || is_float_or_untyped_type(casted_expr_type)) && (is_integer_or_untyped_type(target_type) || is_float_or_untyped_type(target_type))) {
         // 任意数字类型之间都可以转化

@@ -307,7 +307,7 @@ static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
                                       Ref<CIRInstResult> fk,
                                       const lcir::FunctionDecl& fd,
                                       ABIKind abi) {
-    auto& inst = fk.cir_package->inst(fk.inst_ref);
+    auto& inst = fk.inst_ref.pkg->inst(fk.inst_ref);
     if(!inst.info<CIROperator::FunctionDecl>().is_extern_c) {
         return;
     }
@@ -317,7 +317,7 @@ static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
         return;
     }
 
-    TypeRef sig = fk.cir_package->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
+    TypeRef sig = fk.inst_ref.pkg->result_of(fk.inst_ref, fk.result_instance).actual_val().type;
     const bool is_definition = fd.linkage != lcir::FunctionDecl::Linkage::PureDeclaration;
 
     ExternCSymbol* prev = xp_hash_map_get(seen, fd.raw_name);
@@ -355,7 +355,7 @@ void check_extern_c_symbols(const xpHashMap<Ref<Package>, lcir::Module>& modules
 
         for(const auto& fn_entry : mod_entry.value.functions) {
             // 调用方侧为跨包引用补的声明：fk 属于被调包，签名必然与 owner 一致
-            if(fn_entry.key.cir_package->package_ref != pkg) {
+            if(fn_entry.key.inst_ref.pkg->package_ref != pkg) {
                 continue;
             }
 
