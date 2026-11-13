@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+// 嵌套函数读外层 $() 的局部变量和局部常量
+
+Adder :: $(k: i32) -> ? {
+    m : i32 = k + 1;
+    n :: k + 2;
+    return (v: i32) -> i32 {
+        return m + n + v;
+    };
+}
+
+main :: () -> i32 {
+    return Adder(10)(5) - 28;
+}

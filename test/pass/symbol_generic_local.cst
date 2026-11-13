@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+// $T 泛型函数按类型各实例化一份，局部变量/常量各是各的
+
+Inc :: (v: $T) -> T {
+    one : T = cast(T)1;
+    return v + one;
+}
+
+main :: () -> i32 {
+    a := Inc(1i32);
+    b := Inc(1i64);
+
+    return cast(i32)a + cast(i32)b - 4;
+}

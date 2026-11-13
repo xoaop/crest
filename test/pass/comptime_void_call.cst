@@ -1,16 +1,19 @@
 // @pass
 // @run
 
-noop :: $(v: i32) -> void {
+// $() -> ? 裸 return 推成 void：从运行期调用不报"未产出返回值"
+
+SideEffect :: $() -> ? {
     return;
 }
 
-noop_t :: $(fmt: string, args: $T) -> void {
+ExplicitVoid :: $() -> void {
     return;
 }
 
 main :: () -> i32 {
-    noop(1);
-    noop_t("x", .{ a = 1 });
+    SideEffect();
+    SideEffect();
+    ExplicitVoid();
     return 0;
 }

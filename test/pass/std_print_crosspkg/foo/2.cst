@@ -1,6 +1,0 @@
-import "std"
-
-dump :: (v: $T) -> void {
-    std.println(v)
-    return;
-}

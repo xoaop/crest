@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+// 两层嵌套闭包读祖父层的形参：实例链深度 2
+
+Outer :: $(a: i32) -> ? {
+    return (b: i32) -> ? {
+        return (c: i32) -> i32 {
+            return a + b + c;
+        };
+    };
+}
+
+main :: () -> i32 {
+    return Outer(1)(2)(3) - 6;
+}

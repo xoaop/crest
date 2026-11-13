@@ -1,0 +1,17 @@
+// @pass
+// @run
+
+// comptime 函数体里的局部常量遮蔽包级同名符号；包级符号不受影响
+
+X :: 100;
+
+Pick :: $(n: i32) -> ? {
+    X :: n;
+    return () -> i32 {
+        return X;
+    };
+}
+
+main :: () -> i32 {
+    return Pick(7)() + X - 107;
+}

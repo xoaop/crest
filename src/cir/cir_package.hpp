@@ -81,6 +81,7 @@ struct CIRPackage {
 
     CIRInstResult& result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance = {});
     const CIRInstResult* find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
+    const CIRInstResult* find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
 
     CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false);
 };
@@ -121,6 +122,7 @@ struct CIRResultContext {
 
     CIRInstResult &result_of(CIRInstructionRef ref) const;
     const CIRInstResult *result_ptr_of(CIRInstructionRef ref) const;
+    const CIRInstResult *result_ptr_in_curr_instance_and_pkg(CIRInstructionRef ref) const;
 
 private:
     Ref<CIRPackage> _pkg = Ref<CIRPackage>::INVALID_REF;

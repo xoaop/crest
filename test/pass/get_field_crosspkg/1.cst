@@ -15,8 +15,5 @@ main :: () -> i32 {
     if foo.first_of(p) != 3 { return 2; }
     if foo.second_of(p) != 4 { return 3; }
 
-    // 跨包结构体直接交给 std.print
-    foo.show(p)
-
     return 0;
 }

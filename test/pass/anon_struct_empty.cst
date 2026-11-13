@@ -1,0 +1,10 @@
+// @pass
+// @run
+
+// 空匿名结构体：零字段，可用作“没有参数”的元组
+
+main :: () -> i32 {
+    v := .{ };
+
+    return cast(i32)field_count(typeof(v));
+}

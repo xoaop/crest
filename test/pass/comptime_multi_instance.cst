@@ -1,0 +1,25 @@
+// @pass
+// @run
+
+// 同一个 comptime 函数两次调用（实参不同）+ 闭包按实参类型各实例化一份：
+// 每个调用实例各算各的局部 const，闭包实例沿父链找到自己那份
+
+Tag :: $(n: i32) -> ? {
+    X :: n * 3;
+    return (v: $T) -> i32 {
+        return X;
+    };
+}
+
+Pair :: struct { a: i32; b: i32; }
+Triple :: struct { a: i32; b: i32; c: i32; }
+
+main :: () -> i32 {
+    p := Pair.{ a = 1, b = 2 }
+    t := Triple.{ a = 3, b = 4, c = 5 }
+
+    a := Tag(1)(p);
+    b := Tag(2)(t);
+
+    return a + b - 9;
+}

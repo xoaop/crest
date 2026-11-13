@@ -1,0 +1,13 @@
+// @fail
+// @error "常量不能是 'void' 类型"
+
+// ? 推成 void 的编译期调用没有值，常量初始化应和显式 -> void 一样报错
+
+VoidFn :: $() -> ? {
+    return;
+}
+
+main :: () -> i32 {
+    x :: VoidFn();
+    return 0;
+}

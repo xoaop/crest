@@ -1,0 +1,16 @@
+// @pass
+// @run
+
+// 编译期递归：每层调用一个实例，局部的 rest 常量各算各的
+
+Sum :: $(n: i32) -> i32 {
+    if n <= 0 {
+        return 0;
+    }
+    rest :: Sum(n - 1);
+    return n + rest;
+}
+
+main :: () -> i32 {
+    return Sum(5) - 15;
+}

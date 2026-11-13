@@ -94,6 +94,14 @@ const CIRInstResult* CIRPackage::find_result(CIRInstructionRef ref, Ref<CIRResul
 }
 
 
+const CIRInstResult* CIRPackage::find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const {
+    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
+        return instance->result_ptr_of(ref);
+    }
+    return root_instance()->result_ptr_of(ref);
+}
+
+
 u64 FuncCallKey::hash() const {
 
     // TODO: AI SLOP
@@ -213,6 +221,10 @@ CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
 
 const CIRInstResult *CIRResultContext::result_ptr_of(CIRInstructionRef ref) const {
     return _pkg->find_result(ref, _call_instance);
+}
+
+const CIRInstResult *CIRResultContext::result_ptr_in_curr_instance_and_pkg(CIRInstructionRef ref) const {
+    return _pkg->find_result_in_curr_instance_and_pkg(ref, _call_instance);
 }
 
 

@@ -218,6 +218,7 @@ struct Interpreter {
     void Set_ResultTypeAndValue(CIRInstructionRef ref, Value val);
     
     bool has_result_val(CIRInstructionRef ref);
+    bool has_result_val_in_curr_instance_and_pkg(CIRInstructionRef ref);   // 只问本实例算过没有（不穿实例链）
     bool has_result_val(std::initializer_list<CIRInstructionRef> refs);
     bool has_result_val(const Array<CIRInstructionRef>& refs);
     bool has_result_type(CIRInstructionRef ref);

@@ -17,6 +17,7 @@
 #include "cir_builder.hpp"
 #include "path.hpp"
 
+#include <string>
 #include <filesystem>
 
 #include "print.hpp"
@@ -365,6 +366,11 @@ EvalInstance* Interpreter::curr_instance() {
 
 bool Interpreter::has_result_val(CIRInstructionRef ref) {
     return ResultValueOpt(ref).has_value();
+}
+
+bool Interpreter::has_result_val_in_curr_instance_and_pkg(CIRInstructionRef ref) {
+    const CIRInstResult *res = result_context().result_ptr_in_curr_instance_and_pkg(ref);
+    return res != nullptr && res->state == CIRResultState::WholeValue;
 }
 
 bool Interpreter::has_result_val(std::initializer_list<CIRInstructionRef> refs) {
@@ -923,7 +929,7 @@ AnalyzeResult Interpreter::analyze_Deref(const CIRDerefInfo& info, CIRInstructio
 
 // handler: Unary
 AnalyzeResult Interpreter::analyze_Unary(const CIRUnaryInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -988,7 +994,7 @@ AnalyzeResult Interpreter::analyze_Unary(const CIRUnaryInfo& info, CIRInstructio
 
 // handler: Cast
 AnalyzeResult Interpreter::analyze_Cast(const CIRCastInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1037,7 +1043,7 @@ AnalyzeResult Interpreter::analyze_Cast(const CIRCastInfo& info, CIRInstructionR
 
 // handler: ArrayType
 AnalyzeResult Interpreter::analyze_ArrayType(const CIRArrayTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1078,7 +1084,7 @@ AnalyzeResult Interpreter::analyze_ArrayType(const CIRArrayTypeInfo& info, CIRIn
 
 // handler: SliceType
 AnalyzeResult Interpreter::analyze_SliceType(const CIRSliceTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1104,7 +1110,7 @@ AnalyzeResult Interpreter::analyze_SliceType(const CIRSliceTypeInfo& info, CIRIn
 
 // handler: FuncType
 AnalyzeResult Interpreter::analyze_FuncType(const CIRFuncTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1142,7 +1148,7 @@ AnalyzeResult Interpreter::analyze_FuncType(const CIRFuncTypeInfo& info, CIRInst
 
 // handler: TypeOfInstResult
 AnalyzeResult Interpreter::analyze_TypeOfInstResult(const CIRTypeOfInstResultInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1171,7 +1177,7 @@ AnalyzeResult Interpreter::analyze_TypeOfInstResult(const CIRTypeOfInstResultInf
 
 // handler: Hook（内建口子，按 name 硬编码分派；不走泛型/常量实参那套）
 AnalyzeResult Interpreter::analyze_Hook(const CIRHookInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1242,7 +1248,7 @@ AnalyzeResult Interpreter::hook_field_count(const CIRHookInfo& info, CIRInstruct
 
 // handler: FieldTypeOfStruct
 AnalyzeResult Interpreter::analyze_FieldTypeOfStruct(const CIRFieldTypeOfStructInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1270,7 +1276,7 @@ AnalyzeResult Interpreter::analyze_FieldTypeOfStruct(const CIRFieldTypeOfStructI
 
 // handler: FuncParamType
 AnalyzeResult Interpreter::analyze_FuncParamType(const CIRFuncParamTypeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1315,9 +1321,15 @@ AnalyzeResult Interpreter::analyze_FuncParamType(const CIRFuncParamTypeInfo& inf
     return make_result(pc_ref, ResultDesc::make_value(result));
 }
 
+// 位置式匿名结构体的字段名：纯数字不可能是标识符，不会和用户字段撞名
+static GlobalStringIndex positional_anon_field_name(isize index) {
+    std::string name = std::to_string(index);
+    return get_or_insert_global_string(name.c_str());
+}
+
 // handler: StructInit
 AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1343,10 +1355,6 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
         }
     }
 
-    if(!has_type && !named) {
-        return make_result(pc_ref, inst_error(pc_ref, "匿名结构体字面量必须写字段名"));
-    }
-
     FOR(info.field_init_insts) {
         if(!has_result_type(it)) {
             return {};
@@ -1366,7 +1374,8 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
                     field_type = default_certain_type_for_untyped_type(field_type);
                 }
             }
-            fields.push_back(StructField{ info.field_names[it_index], field_type });
+            const GlobalStringIndex field_name = named ? info.field_names[it_index] : positional_anon_field_name(it_index);
+            fields.push_back(StructField{ field_name, field_type });
         }
 
         // 建类型前查重
@@ -1481,7 +1490,7 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
 
 // handler: ArrayInit（含 untyped 元素传染，副作用进 writes）
 AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1570,7 +1579,7 @@ AnalyzeResult Interpreter::analyze_ArrayInit(const CIRArrayInitInfo& info, CIRIn
 
 // handler: Index
 AnalyzeResult Interpreter::analyze_Index(const CIRIndexInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1633,7 +1642,7 @@ AnalyzeResult Interpreter::analyze_StructField(const CIRStructFieldInfo& info, C
 
 // handler: FieldAccess
 AnalyzeResult Interpreter::analyze_FieldAccess(const CIRFieldAccessInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -1987,7 +1996,7 @@ AnalyzeResult Interpreter::analyze_AddrOf(const CIRAddrOfInfo& info, CIRInstruct
 
 // handler: Binary（含 untyped 类型传染，副作用进 writes）
 AnalyzeResult Interpreter::analyze_Binary(const CIRBinaryInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -2489,18 +2498,13 @@ AnalyzeResult Interpreter::analyze_DetermineType(const CIRDetermineTypeInfo& inf
 
 // handler: ConstDecl（写自身结果；符号缓存副作用保留）
 AnalyzeResult Interpreter::analyze_ConstDecl(const CIRConstDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
     SymbolInfo &sym = info.symbol.unwrap();
 
     CIRInstructionRef value_inst = info.value_inst;
-
-    if(sym.state == SymbolState::Solved) {
-        // 已求解过：值已缓存
-        return {};
-    }
 
     sym.state = SymbolState::Solving;   // 副作用：符号状态 → Solving（求解防重入）
 
@@ -2868,7 +2872,7 @@ AnalyzeResult Interpreter::analyze_CondBr(const CIRCondBrInfo& info, CIRInstruct
 // handler: IfExpr（if 表达式；两臂是两个 Block，结果由臂的 Break 递送到本指令所在的块）
 AnalyzeResult Interpreter::analyze_IfExpr(const CIRIfExprInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
     // 已算出值则不重复分析（块迭代可能二次进入）
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -3506,13 +3510,9 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
 
             // slot < 0 = 不占槽的编译期变量（$T 的类型变量），只能经 IdentVal 读值
             ASSERT_MSG(vd.slot >= 0, "IdentRef 作用于不占 var_ptrs 槽位的变量");
-            auto ptr = curr_instance()->var_ptrs[vd.slot];
-            ASSERT(!ptr.is_null());
 
-            Value addr = make_value(pointer_type(r.type()));
-            addr.pointer_val(ptr);
-            // type = 变量逻辑类型，actual = 地址（*r.type()）
-            return make_result(pc_ref, ResultDesc::make_value(r.type(), addr, CIRValueKind::LValue));
+            // VariableDecl 的结果里就是变量槽地址；跨实例由实例链解析，不依赖当前帧的 var_ptrs
+            return make_result(pc_ref, ResultDesc::make_value(r.type(), r.actual_val(), CIRValueKind::LValue));
         } else {
             if(r.state == CIRResultState::WholeValue) {
                 return make_result(pc_ref, ResultDesc::make_value(r.actual_val().type, r.actual_val(), CIRValueKind::LValue));
@@ -3531,7 +3531,7 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
 
 // handler: IdentVal（写自身 type/value）
 AnalyzeResult Interpreter::analyze_IdentVal(const CIRIdentValInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 
@@ -3567,7 +3567,7 @@ AnalyzeResult Interpreter::analyze_IdentVal(const CIRIdentValInfo& info, CIRInst
 
 
 AnalyzeResult Interpreter::analyze_ImportPackage(const CIRImportPackageInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    if(has_result_val(pc_ref)) {
+    if(has_result_val_in_curr_instance_and_pkg(pc_ref)) {
         return {};
     }
 

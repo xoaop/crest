@@ -1,0 +1,13 @@
+// @pass
+// @run
+
+// 编译期函数返回类型变量 T：调用实例沿父链能查到被调实例里的 T
+
+ret_t :: $(val: $T) -> type {
+    return T;
+}
+
+main :: () -> i32 {
+    x : ret_t(1i32) = 7;
+    return x - 7;
+}

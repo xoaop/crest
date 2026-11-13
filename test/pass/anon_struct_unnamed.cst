@@ -1,0 +1,9 @@
+// @pass
+// @run
+
+// 位置式匿名结构体：不写字段名，按顺序落字段
+
+main :: () -> i32 {
+    v := .{ 1, 2 };
+    return get_field(v, 0) + get_field(v, 1) - 3;
+}
