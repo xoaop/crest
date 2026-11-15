@@ -156,8 +156,7 @@ struct EnumFieldInit {
 };
 
 struct CIRFunctionDeclInfo {
-    // GlobalStringIndex name;                      // 函数名（symbol_find / call 目标）
-    // Ref<SymbolInfo> symbol;
+    Ref<SymbolInfo> symbol;                        // 绑定的符号（跨包引用/导出发符号名用）
 
     [[ =CIRFieldTag::ChildBlock ]]
     CIRInstructionRef body_inst;
@@ -442,9 +441,11 @@ struct CIRBlockRefInfo {
 
 struct CIRIdentRefInfo {
     GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
+    Ref<SymbolInfo> symbol;
 };
 struct CIRIdentValInfo {
     GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
+    Ref<SymbolInfo> symbol;
 };
 
 
@@ -537,7 +538,6 @@ struct CIRInstruction {
 
     
     CIROperator       op;
-    Ref<SymbolInfo>     symbol;
 
     SourceLocation src_loc;
 
@@ -663,22 +663,4 @@ struct CIRFields {
 };
 
 
-// ident 的 symbol 在指令上，不在 payload 里
-template<> struct CIRFields<CIRIdentRefInfo> {
-    static std::vector<std::tuple<std::string, std::string>> field_strings(const CIRInstruction& inst, const CIRIdentRefInfo& p) {
-        return {
-            { "ident", CIRFormat<decltype(p.ident)>::as_string(p.ident) },
-            { "symbol", CIRFormat<Ref<SymbolInfo>>::as_string(inst.symbol) },
-        };
-    }
-};
-
-
-template<> struct CIRFields<CIRIdentValInfo> {
-    static std::vector<std::tuple<std::string, std::string>> field_strings(const CIRInstruction& inst, const CIRIdentValInfo& p) {
-        return {
-            { "ident", CIRFormat<decltype(p.ident)>::as_string(p.ident) },
-            { "symbol", CIRFormat<Ref<SymbolInfo>>::as_string(inst.symbol) },
-        };
-    }
-};
+// ident 的 symbol 在 payload 里

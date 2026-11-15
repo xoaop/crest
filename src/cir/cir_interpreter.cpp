@@ -645,10 +645,10 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
         return;
     }
 
-    const bool has_symbol = finst.symbol != Ref<SymbolInfo>::INVALID_REF;
+    const bool has_symbol = fdecl.symbol != Ref<SymbolInfo>::INVALID_REF;
     const xpString nm = lcir::mangle_name(
         fk,
-        has_symbol ? std::optional<xpString>(to_xp_str(get_global_string(finst.symbol->name), permanent_allocator())) : std::nullopt,
+        has_symbol ? std::optional<xpString>(to_xp_str(get_global_string(fdecl.symbol->name), permanent_allocator())) : std::nullopt,
         fdecl.is_extern_c,
         fk.inst_ref.pkg->package_ref
     );
@@ -668,8 +668,8 @@ void Interpreter::capture_lcir_function(Ref<CIRInstResult> fk) {
             // 符号按内部链接发，两个包各写一个同名函数不会在链接期冲突。
             const bool is_internal = fdecl.is_extern_c
                 && has_symbol
-                && finst.symbol.scope != Ref<Scope>::INVALID_REF
-                && finst.symbol.scope->scope_type == ScopeType::File;
+                && fdecl.symbol.scope != Ref<Scope>::INVALID_REF
+                && fdecl.symbol.scope->scope_type == ScopeType::File;
 
             // 纯声明（extern_C/builtin 无体、跨包引用）不生成代码；
             // 带体就是定义，extern_C 的定义同样要发出去给 C 链接。
@@ -1963,24 +1963,11 @@ AnalyzeResult Interpreter::analyze_AddrOf(const CIRAddrOfInfo& info, CIRInstruct
         return make_result(pc_ref, inst_error(pc_ref, "不能对非左值表达式取地址"));
     }
 
-    if(is_function_type(lval_type)) {
-        FuncValue fv;
-        bool got_fv = false;
-        if(has_result_val(lval_inst)) {
-            fv = ResultValueOpt(lval_inst).value().func_val();
-            got_fv = true;
-        } else {
-            const auto& lval = pkg->inst(lval_inst);
-            if(lval.symbol != Ref<SymbolInfo>::INVALID_REF && lval.symbol->is_const_decl_and_func()) {
-                auto r = lval.symbol->result(curr_cache_key());
-                if(r.state == CIRResultState::WholeValue) {
-                    fv = r.actual_val().func_val();
-                    got_fv = true;
-                }
-            }
-        }
-        if(got_fv && is_pure_comptime_func(fv.func_key.inst_ref.pkg->inst(fv.func_key.inst_ref).info<CIROperator::FunctionDecl>(), result_context())) {
-            return make_result(pc_ref, inst_error(pc_ref, "不能取泛型函数的地址"));
+    if(is_function_type(lval_type) && has_result_val(lval_inst)) {
+        FuncValue fv = ResultValueOpt(lval_inst).value().func_val();
+        const auto& fdecl = fv.func_key.inst_ref.pkg->inst(fv.func_key.inst_ref).info<CIROperator::FunctionDecl>();
+        if(is_pure_comptime_func(fdecl, result_context())) {
+            return make_result(pc_ref, inst_error(pc_ref, "不能取纯编译期函数的地址"));
         }
     }
 
@@ -2985,9 +2972,9 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
 
         // 符号照常绑定并 Solved: 否则 IdentVal(add) 命中 Solving 会误报循环依赖
-        if(inst(pc_ref).symbol != Ref<SymbolInfo>::INVALID_REF) {
-            inst(pc_ref).symbol->val(Ref<CIRInstResult>::init(pc_ref));
-            inst(pc_ref).symbol->state = SymbolState::Solved;
+        if(info.symbol != Ref<SymbolInfo>::INVALID_REF) {
+            info.symbol->val(Ref<CIRInstResult>::init(pc_ref));
+            info.symbol->state = SymbolState::Solved;
         }
 
         return r;
@@ -3066,10 +3053,10 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
         } else {
             pkg->result_of(pc_ref).set_val(clone_value(v, permanent_allocator()));
         }
-        if(inst(pc_ref).symbol != Ref<SymbolInfo>::INVALID_REF) {
+        if(info.symbol != Ref<SymbolInfo>::INVALID_REF) {
             // 副作用：函数符号签名确定即绑定 FunctionDecl 并置 Solved（递归引用不误判循环依赖）
-            inst(pc_ref).symbol->val(Ref<CIRInstResult>::init(pc_ref));
-            inst(pc_ref).symbol->state = SymbolState::Solved;
+            info.symbol->val(Ref<CIRInstResult>::init(pc_ref));
+            info.symbol->state = SymbolState::Solved;
         }
     }
 
@@ -3465,7 +3452,7 @@ AnalyzeResult Interpreter::analyze_ExitScope(const CIRExitScopeInfo& info, CIRIn
 
 // handler: IdentRef（写自身 LValue 类型/地址；符号按需分析副作用保留）
 AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    auto sym = inst(pc_ref).symbol;
+    auto sym = info.symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", get_global_string(inst(pc_ref).info<CIROperator::IdentRef>().ident)));
@@ -3535,7 +3522,7 @@ AnalyzeResult Interpreter::analyze_IdentVal(const CIRIdentValInfo& info, CIRInst
         return {};
     }
 
-    auto sym = inst(pc_ref).symbol;
+    auto sym = info.symbol;
 
     if(sym == Ref<SymbolInfo>::INVALID_REF) {
         return make_result(pc_ref, inst_error(pc_ref, "未定义标识符 '{}'", get_global_string(inst(pc_ref).info<CIROperator::IdentVal>().ident)));

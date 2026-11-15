@@ -772,7 +772,7 @@ void LLVMGenerator::gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm
     const auto& func_inst = key.inst_ref.pkg->inst(key.inst_ref);
     auto& fd = func_inst.info<CIROperator::FunctionDecl>();
 
-    add_local_val(&syms, func_inst.symbol, llvm_func);
+    add_local_val(&syms, fd.symbol, llvm_func);
 
     curr_state.curr_function = llvm_func;
     save_llvm_val_of_inst(key.inst_ref, llvm_func);
@@ -1515,18 +1515,21 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         } break;
 
         case CIROperator::IdentRef: {
-            LLVMValueRef alloca = look_up_local_vals(&syms, inst.symbol);
+            auto sym = inst.info<CIROperator::IdentRef>().symbol;
+
+            LLVMValueRef alloca = look_up_local_vals(&syms, sym);
             XP_ASSERT_DEFAULT(alloca != nullptr);
 
             save_llvm_val_of_inst(ref, alloca);
         } break;
 
         case CIROperator::IdentVal: {
-            SymbolInfo &sym = inst.symbol.unwrap();
+            auto sym_ref = inst.info<CIROperator::IdentVal>().symbol;
+            SymbolInfo &sym = sym_ref.unwrap();
 
             auto r = sym.result();
             if(r.state >= CIRResultState::OnlyType && is_function_type(r.type())) {
-                LLVMValueRef func_val = look_up_local_vals(&syms, inst.symbol);
+                LLVMValueRef func_val = look_up_local_vals(&syms, sym_ref);
                 XP_ASSERT_DEFAULT(func_val != nullptr);
                 save_llvm_val_of_inst(ref, func_val);
             }

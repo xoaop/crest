@@ -211,9 +211,9 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
             
             GlobalStringIndex type_str = context()->known_global_strings.type;
             auto ident_val_for_type_type = Make_Instruction<CIROperator::IdentVal>(ctx, type_var_ast, {
-                .ident = type_str
+                .ident = type_str,
+                .symbol = find_symbol_ref_curr(get_cir_package(context()->global_blank_package)->package_scope, context()->known_global_strings.type),
             });
-            Instruction(ctx, ident_val_for_type_type).symbol = find_symbol_ref_curr(get_cir_package(context()->global_blank_package)->package_scope, context()->known_global_strings.type);
 
             auto type_ascribe_inst = Make_Instruction<CIROperator::TypeAscribe>(ctx, type_var_ast, {
                 .var_inst  = type_var_inst,
@@ -272,10 +272,8 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
     func.sig_blk = sig_blk;
 
     func.body_inst = INVALID_INST;
+    func.symbol = func_sym.value_or(Ref<SymbolInfo>::INVALID_REF);
     auto func_inst = New_Instruction(ctx, CIROperator::FunctionDecl, fd);
-    
-    Instruction(ctx, func_inst).symbol = func_sym.value_or(Ref<SymbolInfo>::INVALID_REF);
-    Instruction(ctx, func_inst).info<CIROperator::FunctionDecl>().return_type_inst = func.return_type_inst;
 
     Instruction(ctx, func_inst).info<CIROperator::FunctionDecl>() = func;
 
@@ -736,8 +734,10 @@ CIRBlockRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 CIRInstructionRef CIRBuilder::build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast *expr) {
     switch(expr->type) {
         case AstType_Ident: {
-            auto inst = Make_Instruction<CIROperator::IdentRef>(ctx, expr, { .ident = expr->Ident.name });
-            Instruction(ctx, inst).symbol = expr->ast_symbol;
+            auto inst = Make_Instruction<CIROperator::IdentRef>(ctx, expr, {
+                .ident = expr->Ident.name,
+                .symbol = expr->ast_symbol,
+            });
             return inst;
         } break;
 
@@ -797,15 +797,19 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
     switch(expr->type) {
         case AstType_Ident: {
             if(expr->ast_symbol != Ref<SymbolInfo>::INVALID_REF && expr->ast_symbol->is_var_decl()) {
-                auto ref = Make_Instruction<CIROperator::IdentRef>(ctx, expr, { .ident = expr->Ident.name });
-                Instruction(ctx, ref).symbol = expr->ast_symbol;
+                auto ref = Make_Instruction<CIROperator::IdentRef>(ctx, expr, {
+                    .ident = expr->Ident.name,
+                    .symbol = expr->ast_symbol,
+                });
                 auto load = Make_Instruction<CIROperator::Load>(ctx, expr, { .ptr_inst = ref });
 
                 result = load;
                 break;
             }
-            auto inst = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = expr->Ident.name });
-            Instruction(ctx, inst).symbol = expr->ast_symbol;
+            auto inst = Make_Instruction<CIROperator::IdentVal>(ctx, expr, {
+                .ident = expr->Ident.name,
+                .symbol = expr->ast_symbol,
+            });
 
             result = inst;
         } break;
@@ -1161,8 +1165,10 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             // 字面量字节本身就在 permanent 内存里（parser 造的），无需再抄一份
 
 
-            auto string_ident = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = context()->known_global_strings.string });
-            Instruction(ctx, string_ident).symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, context()->known_global_strings.string);
+            auto string_ident = Make_Instruction<CIROperator::IdentVal>(ctx, expr, {
+                .ident = context()->known_global_strings.string,
+                .symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, context()->known_global_strings.string),
+            });
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(ctx, expr, {
                 .count = count_str,
@@ -1377,8 +1383,10 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
         } break;
 
         case AstType_TypeVariableDeclInParam: {
-            auto as_ident_val_inst = Make_Instruction<CIROperator::IdentVal>(ctx, expr, { .ident = expr->TypeVariableDeclInParam.name });
-            Instruction(ctx, as_ident_val_inst).symbol = expr->ast_symbol;
+            auto as_ident_val_inst = Make_Instruction<CIROperator::IdentVal>(ctx, expr, {
+                .ident = expr->TypeVariableDeclInParam.name,
+                .symbol = expr->ast_symbol,
+            });
             result = as_ident_val_inst;
         } break;
 
