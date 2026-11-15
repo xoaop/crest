@@ -1,0 +1,8 @@
+// @fail
+// @error "全局变量必须有初始化表达式"
+#under_is_file_scope
+x : i32 = ---;
+
+main :: () -> i32 {
+    return 0;
+}

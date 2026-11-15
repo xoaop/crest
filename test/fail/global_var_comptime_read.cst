@@ -1,0 +1,9 @@
+// @fail
+// @error "编译期不能读取全局变量"
+#under_is_file_scope
+a : i32 = 1;
+b : i32 = a;
+
+main :: () -> i32 {
+    return 0;
+}

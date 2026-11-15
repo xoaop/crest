@@ -51,6 +51,8 @@ Analyser make_analyser(AstFile *curr_ast_file, Ref<Package> pkg) {
 
 void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg);
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool under_file_scope);
+void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_file_scope);
+static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringIndex name);
 
 
 
@@ -91,7 +93,11 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg)
         case AstType_ConstDecl: {
             collect_const_decl_symbol(top_level, make_analyser(ast_file, curr_pkg), under_file_scope);
         } break;
-        
+
+        case AstType_VariableDecl: {
+            collect_var_decl_symbol(top_level, make_analyser(ast_file, curr_pkg), under_file_scope);
+        } break;
+
 
         default:
             continue;
@@ -124,13 +130,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
 
     const auto target_scope = to_file_scope ? analyser.current_scope : analyser.pkg.unwrap().package_scope;
 
-    const auto *shadowed = find_symbol_until_global(&target_scope.unwrap(), const_decl_ast->ConstDecl.name);
-    if(shadowed != nullptr && shadowed->no_shadow) {
-        context()->reporter.report_error(
-            const_decl_ast->src_loc,
-            "symbol '{}' cannot be shadowed",
-            get_global_string(const_decl_ast->ConstDecl.name)
-        );
+    if(shadow_blocked(target_scope, const_decl_ast, const_decl_ast->ConstDecl.name)) {
         return;
     }
 
@@ -143,8 +143,60 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
         .scope = target_scope,
         .name = const_decl_ast->ConstDecl.name
     };
+}
 
-    return;
+
+void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_file_scope) {
+    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
+
+    // 顶层变量只允许文件作用域（包外不可见，跨包访问须显式提供函数）
+    if(!under_file_scope) {
+        context()->reporter.report_error(
+            var_decl_ast->src_loc,
+            "全局变量必须声明在文件作用域内"
+        );
+        return;
+    }
+
+    GlobalStringIndex name = var_decl_ast->VariableDecl.var_name;
+
+    Ref<SymbolInfo> info = find_symbol_ref_curr(analyser.current_scope, name);
+    if(info != Ref<SymbolInfo>::INVALID_REF) {
+        context()->reporter.report_error(
+            var_decl_ast->src_loc,
+            "symbol '{}' repeated definition",
+            get_global_string(name)
+        );
+        return;
+    }
+
+    if(shadow_blocked(analyser.current_scope, var_decl_ast, name)) {
+        return;
+    }
+
+    auto new_symbol = make_symbol(name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
+    add_symbol_to_scope(&analyser.current_scope.unwrap(), name, new_symbol);
+
+    var_decl_ast->ast_symbol = Ref<SymbolInfo>{
+        .scope = analyser.current_scope,
+        .name = name
+    };
+}
+
+
+// 目标作用域里有不可遮蔽的符号则报错，返回 true
+static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringIndex name) {
+    const auto *shadowed = find_symbol_until_global(&target_scope.unwrap(), name);
+    if(shadowed != nullptr && shadowed->no_shadow) {
+        context()->reporter.report_error(
+            decl_ast->src_loc,
+            "symbol '{}' cannot be shadowed",
+            get_global_string(name)
+        );
+        return true;
+    }
+
+    return false;
 }
 
 
@@ -388,6 +440,8 @@ CoroutineTask<void> resolve_comptime_if(
         for(Ast *s : live->Block.statements) {
             if(s->type == AstType_ConstDecl) {
                 collect_const_decl_symbol(s, analyser, analyser.under_file_scope);
+            } else if(s->type == AstType_VariableDecl) {
+                collect_var_decl_symbol(s, analyser, analyser.under_file_scope);
             }
         }
 
@@ -553,6 +607,22 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
         
         case AstType_UnderIsFileScope: {
             // 指令标记，无内容
+        } break;
+
+        case AstType_VariableDecl: {
+            // 符号在 collect 阶段建好；没建上说明 collect 已经报过错
+            if(ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+                break;
+            }
+
+            // 全局变量必须有初始化表达式，且初值只能是编译期常量
+            if(ast->VariableDecl.expr == nullptr || ast->VariableDecl.no_zero_init) {
+                context()->reporter.report_error(ast->src_loc, "全局变量必须有初始化表达式");
+                break;
+            }
+
+            resolve_expr(ast->VariableDecl.type_ast, analyser);
+            resolve_expr(ast->VariableDecl.expr, analyser);
         } break;
 
 

@@ -1,0 +1,32 @@
+// @pass
+// @run
+#under_is_file_scope
+counter := 5;
+flag := true;
+base : i32 = 2 * 3;
+
+bump :: () -> void {
+    counter = counter + 1;
+    return;
+}
+
+get_counter :: () -> *i32 {
+    return &counter;
+}
+
+main :: () -> i32 {
+    bump();
+    bump();
+
+    if counter != 7 { return 1; }
+    if !flag { return 2; }
+    if base != 6 { return 3; }
+
+    counter = 10;
+    if counter != 10 { return 4; }
+
+    p := get_counter();
+    if ^p != 10 { return 5; }
+
+    return 0;
+}

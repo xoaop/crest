@@ -95,6 +95,10 @@ void CIRBuilder::build_top_stmt(CIRBuildContext& ctx, Ast *ast) {
         case AstType_UnderIsFileScope: {
         } break;
 
+        case AstType_VariableDecl: {
+            build_inst_for_global_var_decl(ctx, ast);
+        } break;
+
         case AstType_ComptimeIf: {
             auto &ci = ast->ComptimeIf;
 
@@ -669,6 +673,37 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast 
     return vd;
 }
 
+CIRInstructionRef CIRBuilder::build_inst_for_global_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast) {
+    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
+
+    auto& vd_ast = var_decl_ast->VariableDecl;
+
+    // 1. 类型归属 — 仅当有显式类型标注时才发射
+    CIRInstructionRef type_inst = INVALID_INST;
+    if(vd_ast.type_ast != nullptr) {
+        type_inst = build_block_ref_inst_for_expr(ctx, vd_ast.type_ast, true, true);
+    }
+
+    // 2. 初值包成 immediate 块，按编译期常量求值
+    auto value_inst = build_block_ref_inst_for_expr(ctx, vd_ast.expr, true, true, type_inst);
+
+    // 3. 初值落型：显式标注类型，或默认确定类型
+    auto determine_type = Make_Instruction<CIROperator::DetermineType>(ctx, vd_ast.expr, {
+        .determining_inst = value_inst,
+        .type_inst = type_inst,
+    });
+
+    // 4. 全局变量声明
+    auto gvd = Make_Instruction<CIROperator::GlobalVariableDecl>(ctx, var_decl_ast, {
+        .name = vd_ast.var_name,
+        .symbol = var_decl_ast->ast_symbol,
+        .value_inst = value_inst,
+    });
+    Instruction(ctx, gvd).src_loc = var_decl_ast->src_loc;
+
+    return gvd;
+}
+
 void CIRBuilder::build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_stmt_ast) {
     XP_ASSERT_DEFAULT(return_stmt_ast->type == AstType_ReturnStmt);
     CIRInstructionRef value_inst = INVALID_INST;
@@ -713,16 +748,16 @@ void CIRBuilder::build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_st
 
 
 
-CIRInstructionRef CIRBuilder::build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval) {
-    const auto blk = build_block_inst_for_expr(ctx, expr, is_comptime_block, immediate_eval);    
+CIRInstructionRef CIRBuilder::build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval, CIRInstructionRef expected_type_inst) {
+    const auto blk = build_block_inst_for_expr(ctx, expr, is_comptime_block, immediate_eval, expected_type_inst);
 
     return New_BlockRef(ctx, expr, blk);   // 父块补发下降标记，消费方读它经回填拿块值
 }
 
-CIRBlockRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval) {
+CIRBlockRef CIRBuilder::build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval, CIRInstructionRef expected_type_inst) {
     CIRBlockRef blk = Begin_Block(ctx, is_comptime_block, immediate_eval, true);
 
-    auto value_inst = build_inst_for_expr(ctx, expr);
+    auto value_inst = build_inst_for_expr(ctx, expr, expected_type_inst);
     New_Break(ctx, CIRInstructionRef(blk, ctx.pkg), value_inst, expr);   // break 到块自己（裸句柄）
 
     End_Block(ctx);

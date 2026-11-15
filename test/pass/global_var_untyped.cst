@@ -1,0 +1,17 @@
+// @pass
+// @run
+#under_is_file_scope
+counter := 5;
+ratio := 1.5;
+flag := true;
+
+main :: () -> i32 {
+    counter = counter + 1;
+    if counter != 6 { return 1; }
+
+    if sizeof(typeof(counter)) != 4 { return 2; }
+    if sizeof(typeof(ratio)) != 4 { return 3; }
+    if sizeof(typeof(flag)) != 1 { return 4; }
+
+    return 0;
+}

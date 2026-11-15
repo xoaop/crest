@@ -68,6 +68,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(GetOrInitUnion)           \
     X(FinishUnion)              \
     X(VariableDecl)             \
+    X(GlobalVariableDecl)       \
     X(Binary)                   \
     X(Unary)                    \
     X(FieldAccess)              \
@@ -146,6 +147,14 @@ struct CIRVariableDeclInfo {
     bool is_param;                // 是否函数形参（含类型形参：其类型可以是 type）
 
     bool no_zero_init;
+};
+
+struct CIRGlobalVariableDeclInfo {
+    GlobalStringIndex name;
+    Ref<SymbolInfo> symbol;
+    CIRInstructionRef value_inst;   // 初值（immediate 块，编译期常量）
+
+    CIR_REFS(&CIRGlobalVariableDeclInfo::value_inst)
 };
 
 struct EnumFieldInit {

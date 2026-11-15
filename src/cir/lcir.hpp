@@ -22,17 +22,26 @@ struct FunctionDecl {
 };
 
 
+struct GlobalVariableDecl {
+    xpString raw_name;
+    Ref<CIRInstResult> init_result;   // 初值指令的结果（编译期常量）
+    Ref<CIRInstResult> decl_result;
+};
+
+
 struct Module {
 
     static Module init(xpAllocator allocator) {
         auto m = Module {
             .functions = xp_hash_map_make<Ref<CIRInstResult>, FunctionDecl>(allocator),
+            .globals = xp_hash_map_make<Ref<CIRInstResult>, GlobalVariableDecl>(allocator),
         };
 
         return m;
     }
 
     xpHashMap<Ref<CIRInstResult>, FunctionDecl> functions;   // func_key → 条目，插入即去重
+    xpHashMap<Ref<CIRInstResult>, GlobalVariableDecl> globals;   // 顶层变量 → 条目（文件作用域，包内 internal）
 };
 
 

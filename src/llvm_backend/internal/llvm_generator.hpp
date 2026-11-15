@@ -91,6 +91,7 @@ struct LLVMGenerator {
 
     LLVMValueRef get_ptr_of_llvm_value(LLVMValueRef value, bool allow_alloc_value_to_get_ptr = false);
     LLVMValueRef gen_llvm_val_by_value(const Value& value, std::optional<TypeRef> expected_type = std::nullopt);
+    LLVMValueRef gen_llvm_string_global(const char *chars, isize len);
 
     LLVMValueRef get_llvm_val_from_inst_ref(CIRInstructionRef ref);
     void save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val);

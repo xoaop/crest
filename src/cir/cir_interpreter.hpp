@@ -190,6 +190,7 @@ struct Interpreter {
     void set_scope(Ref<Scope> scope);
 
     void analyze_cir_package();
+    void collect_lcir_globals();
 
     bool analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
     bool analyze_instruction_at(CIRInstructionRef at_ref);

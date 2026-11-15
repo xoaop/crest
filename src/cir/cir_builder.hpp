@@ -60,11 +60,12 @@ struct CIRBuilder {
     static CIRInstructionRef build_inst_for_ast_block(CIRBuildContext& ctx, Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
     static CIRInstructionRef build_inst_for_stmt(CIRBuildContext& ctx, Ast *stmt);
     static CIRInstructionRef build_inst_for_expr(CIRBuildContext& ctx, Ast *expr, CIRInstructionRef expected_type_inst = INVALID_INST);
-    static CIRInstructionRef build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
-    static CIRBlockRef build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval);
+    static CIRInstructionRef build_block_ref_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval, CIRInstructionRef expected_type_inst = INVALID_INST);
+    static CIRBlockRef build_block_inst_for_expr(CIRBuildContext& ctx, Ast *expr, bool is_comptime_block, bool immediate_eval, CIRInstructionRef expected_type_inst = INVALID_INST);
     static CIRInstructionRef build_ptr_inst_for_expr(CIRBuildContext& ctx, Ast *expr);
     
     static CIRInstructionRef build_inst_for_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast);
+    static CIRInstructionRef build_inst_for_global_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast);
     static void build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_stmt_ast);
     static void build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt);
     

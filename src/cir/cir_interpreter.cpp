@@ -126,6 +126,44 @@ void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
 
     Interpreter interpreter(allocator, pkg, &eval_stack, root);
     interpreter.analyze_cir_package();
+    interpreter.collect_lcir_globals();
+}
+
+//
+// 顶层变量登记进 lcir 工作表
+//
+void Interpreter::collect_lcir_globals() {
+    auto& mod = context()->lcir_modules.get_or_insert(pkg->package_ref, [&]() {
+        return lcir::Module::init(permanent_allocator());
+    });
+
+    for(auto ref : pkg->block(pkg->top_blk)) {
+        if(pkg->inst(ref).op != CIROperator::GlobalVariableDecl) {
+            continue;
+        }
+
+        auto& gvd = pkg->inst(ref).info<CIROperator::GlobalVariableDecl>();
+
+        if(!has_result_val(gvd.value_inst)) {
+            continue;   // 初值出错时不登记
+        }
+
+        auto key = Ref<CIRInstResult>::init(ref);
+        auto init_key = Ref<CIRInstResult>::init(gvd.value_inst);
+
+        mod.globals.get_or_insert(key, [&]() {
+            return lcir::GlobalVariableDecl{
+                .raw_name = lcir::mangle_name(
+                    key,
+                    std::optional<xpString>(to_xp_str(get_global_string(gvd.name), permanent_allocator())),
+                    false,
+                    pkg->package_ref
+                ),
+                .init_result = init_key,
+                .decl_result = key,
+            };
+        });
+    }
 }
 
 //
@@ -2220,7 +2258,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(const CIRTypeAscribeInfo& info, C
     // 类型位置必须是真类型、且有存储布局。函数形参例外（类型形参 $T 的类型就是 'type'）
     const Value& type_val = ResultValueOpt(info.type_inst).value();
     if(auto e = check_var_type(temp_allocator(), type_val, vd.is_param)) {
-        return make_result(pc_ref, inst_error(pc_ref, "变量{}", e.value()));
+        return make_result(pc_ref, inst_error(pc_ref, "{}", e.value()));
     }
 
     TypeRef declared_type = type_val.type_val();
@@ -2545,6 +2583,36 @@ AnalyzeResult Interpreter::analyze_VariableDecl(const CIRVariableDeclInfo& info,
 
     // FullEval 时不分配内存，TypeAscribe 会在类型已知后分配
     return make_result(pc_ref, ResultDesc::make_type_only(undefined_type(), CIRValueKind::LValue));
+}
+
+// handler: GlobalVariableDecl（顶层变量：文件作用域，初值编译期求值）
+AnalyzeResult Interpreter::analyze_GlobalVariableDecl(const CIRGlobalVariableDeclInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    SymbolInfo& sym = info.symbol.unwrap();
+
+    // 副作用：符号绑定到本指令结果 + Solved
+    sym.val(Ref<CIRInstResult>::init(pc_ref));
+    sym.state = SymbolState::Solved;
+
+    // 初值必须是编译期常量
+    if(!has_result_val(info.value_inst)) {
+        return make_result(pc_ref, inst_error(pc_ref, "全局变量初值必须是编译期常量"));
+    }
+
+    // 变量类型由 DetermineType 确定（标注类型或默认确定类型）
+    TypeRef var_type = ResultTypeOpt(info.value_inst).value_or(INVALID_TYPE);
+    if(!var_type) {
+        return {};
+    }
+
+    Value var_type_val = make_value(type_type());
+    var_type_val.type_val(var_type);
+    if(auto e = check_var_type(temp_allocator(), var_type_val, false)) {
+        return make_result(pc_ref, inst_error(pc_ref, "{}", e.value()));
+    }
+
+    ResultDesc res = ResultDesc::make_type_only(var_type, CIRValueKind::LValue);
+    res.set_actual_type(pointer_type(var_type));
+    return make_result(pc_ref, res);
 }
 
 // handler: EnumDeclInit（写自身 type/value；枚举字段注册副作用保留）
@@ -3477,6 +3545,14 @@ AnalyzeResult Interpreter::analyze_IdentRef(const CIRIdentRefInfo& info, CIRInst
 
     if(!analyze_symbol_of_package(sym)) {
         return make_result(pc_ref, inst_error(pc_ref, "求值 '{}' 时检测到循环依赖", get_global_string(sym->name)));
+    }
+
+    // 全局变量只在运行期代码里可寻址
+    if(sym->is_var_decl() && curr_eval_mode() == EvalMode::FullEval) {
+        Ref<CIRInstResult> var_key = sym->val_as_inst_key();
+        if(var_key.inst_ref.pkg->inst(var_key.inst_ref).op == CIROperator::GlobalVariableDecl) {
+            return make_result(pc_ref, inst_error(pc_ref, "编译期不能读取全局变量 '{}'", get_global_string(sym->name)));
+        }
     }
 
     // 注：val 绑定指令不是本 op 的 refs（符号经 symbol 字段），dispatch 短路不覆盖，这里显式传播

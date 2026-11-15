@@ -279,7 +279,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
             LLVMTypeRef body[2] = {
                 get_llvm_type_from_type(align_member),
-                LLVMArrayType(LLVMInt8TypeInContext(g_llvm_session.ctx), (unsigned)pad),
+                LLVMArrayType2(LLVMInt8TypeInContext(g_llvm_session.ctx), pad),
             };
             LLVMStructSetBody(*union_type, body, 2, 0);
 
@@ -296,7 +296,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
         case Type_array: {
             LLVMTypeRef element_type = get_llvm_type_from_type(type->array_info.element_type);
-            return LLVMArrayType(element_type, (unsigned)type->array_info.count);
+            return LLVMArrayType2(element_type, type->array_info.count);
         }
 
         case Type_function: {
@@ -346,6 +346,25 @@ Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modul
 xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateConfig config) {
     // 两趟消费传入的 lcir::Module 工作表（interp 已填）：
     // phase1 声明所有函数（含 in-pkg 互调的前向声明），phase2 生成体。
+
+    // phase 0：顶层变量（文件作用域，internal linkage）
+    for(const auto& entry : mod.globals) {
+        const auto& gd = entry.value;
+
+        TypeRef var_type = gd.decl_result.resolve().type();
+        LLVMValueRef g = LLVMAddGlobal(
+            unit.module,
+            get_llvm_type_from_type(var_type),
+            xp_string_to_c_style(gd.raw_name, stage_allocator()).c_str
+        );
+        LLVMSetLinkage(g, LLVMInternalLinkage);
+
+        Value init_val = gd.init_result.resolve().actual_val();
+        init_val.set_type(var_type);
+        LLVMSetInitializer(g, gen_llvm_val_by_value(init_val, var_type));
+
+        xp_hash_map_insert(&inst_vals, gd.decl_result, g);
+    }
 
     // phase 1：声明
     for(const auto& entry : mod.functions) {
@@ -410,7 +429,8 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         });
 
         if(fd.linkage == lcir::FunctionDecl::Linkage::MergableDefinition) {
-            LLVMComdatRef comdat = LLVMGetOrInsertComdat(unit.module, LLVMGetValueName(f));
+            size_t comdat_name_len = 0;
+            LLVMComdatRef comdat = LLVMGetOrInsertComdat(unit.module, LLVMGetValueName2(f, &comdat_name_len));
             LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
             LLVMSetComdat(f, comdat);
         }
@@ -655,6 +675,25 @@ LLVMValueRef LLVMGenerator::gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVM
 }
 
 
+// 字符串字面量放独立的私有常量全局，返回首元素指针（全局 initializer 必须是常量表达式）
+LLVMValueRef LLVMGenerator::gen_llvm_string_global(const char *chars, isize len) {
+    LLVMContextRef ctx = g_llvm_session.ctx;
+    LLVMTypeRef arr_type = LLVMArrayType2(LLVMInt8TypeInContext(ctx), len + 1);
+
+    LLVMValueRef arr = LLVMAddGlobal(unit.module, arr_type, "strptr");
+    LLVMSetLinkage(arr, LLVMPrivateLinkage);
+    LLVMSetGlobalConstant(arr, 1);
+    LLVMSetUnnamedAddress(arr, LLVMGlobalUnnamedAddr);
+    LLVMSetInitializer(arr, LLVMConstStringInContext2(ctx, chars, cast(size_t)len, false));
+
+    LLVMValueRef indices[2] = {
+        LLVMConstInt(LLVMInt64TypeInContext(ctx), 0, false),
+        LLVMConstInt(LLVMInt64TypeInContext(ctx), 0, false),
+    };
+
+    return LLVMConstInBoundsGEP2(arr_type, arr, indices, 2);
+}
+
 LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optional<TypeRef> expected_type) {
      // TODO 其他类型的常量
 
@@ -735,9 +774,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optio
                         }
                         chars.push_back(cast(char)elem->integer_val());
                     }
-                    chars.push_back('\0');
-
-                    auto str_val = LLVMBuildGlobalString(unit.builder, chars.data, "strptr");
+                    auto str_val = gen_llvm_string_global(chars.data, chars.count);
                     xp_hash_map_insert(&string_globals, ptr.slot, str_val);
                     llvm_val = str_val;
                     break;
@@ -1518,6 +1555,13 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto sym = inst.info<CIROperator::IdentRef>().symbol;
 
             LLVMValueRef alloca = look_up_local_vals(&syms, sym);
+            if(alloca == nullptr && sym != Ref<SymbolInfo>::INVALID_REF) {
+                // 全局变量：声明指令的 LLVM 值就是全局指针
+                LLVMValueRef *global_val = xp_hash_map_get(inst_vals, sym->val_as_inst_key());
+                if(global_val != nullptr) {
+                    alloca = *global_val;
+                }
+            }
             XP_ASSERT_DEFAULT(alloca != nullptr);
 
             save_llvm_val_of_inst(ref, alloca);

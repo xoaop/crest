@@ -19,6 +19,8 @@ mutate_tok 删/换/复制 token
 mutate_byte 翻位、插 NUL、高位字节、非法 UTF-8、裸 CR
 numbers    数字与类型名边界值
 graph      import 链/环、自引用 struct、深泛型递归
+comptime   编译期函数 / 嵌套闭包捕获 / -> ? 推导；含失调用的畸形变体
+anon       匿名结构体字面量：具名/位置/空/嵌套/畸形
 degenerate 空、纯空白、纯注释、BOM
 
 Reproducibility
@@ -187,7 +189,9 @@ def g_mutate_tok(rng, src_path):
         else:
             toks[i] = rng.choice([
                 "(", ")", "{", "}", "[", "]", ";", ",", ":", "::", ":=",
-                "->", "$", "*", "&", "|", "~", "<<", ">>", "0", "1e999",
+                "->", "$", "$(", "?", "*", "&", "|", "~", "<<", ">>",
+                ".{", "@", "#if", "#under_is_file_scope",
+                "0", "1e999",
                 "struct", "enum", "union", "for", "if", "else", "return",
                 "\x00", "🐟",
             ])
@@ -256,6 +260,140 @@ def g_numbers(rng, size):
     )
 
 
+def g_comptime(rng, size):
+    """编译期函数 / 嵌套闭包 / 实例链形态，size = 嵌套深度。
+
+    生成 `$()` 函数返回若干层闭包，自由变量分别取 包级 const / 局部 const /
+    局部变量 / 形参；再叠加少量畸形调用（参数个数、非结构体实参），
+    覆盖实例链查找与错误路径。
+    """
+    depth = rng.choice([1, 1, 1, 2, 3])
+    cap = rng.choice(["const", "local", "var", "param"])
+    expr = rng.choice(["X", "n", "X + n"]) if rng.random() < 0.3 else "X"
+
+    src = "Wrap :: $(n: i32) -> ? {\n"
+    if cap == "const":
+        src += "    X :: n * 2;\n"
+    elif cap == "local":
+        src += "    X : i32 = n * 2;\n"
+    elif cap == "var":
+        src += "    X : i32 = ---;\n    X = n * 2;\n"
+    else:
+        expr = "n"
+
+    ind = "    "
+    for d in range(depth):
+        rt = "i32" if d == depth - 1 else "?"
+        src += f"{ind}return (v: i32) -> {rt} {{\n"
+        ind += "    "
+    src += f"{ind}return {expr} + v;\n"
+    for _ in range(depth):
+        ind = ind[:-4]
+        src += f"{ind}}};\n"
+    src += "}\n\n"
+
+    args = "".join(f"({i + 2})" for i in range(depth))
+    call = f"Wrap(1){args}"
+    stmt = f"    {call};\n"
+    if rng.random() < 0.25:
+        # 畸形调用：数量不对、缺实参、拿结构体当实参
+        stmt = "    " + rng.choice([
+            "Wrap()",
+            "Wrap(1)",
+            "Wrap(1)(2)(3)(4)",
+            "Wrap(1)(.{ 2 })",
+        ]) + ";\n"
+
+    return (
+        provenance("comptime", 0, depth) +
+        src +
+        f"main :: () -> i32 {{\n{stmt}    return 0;\n}}\n"
+    )
+
+
+def g_anon(rng, size):
+    """匿名结构体字面量：具名 / 位置 / 空 / 嵌套 / 畸形。"""
+    forms = [
+        ".{ 1, 2 }",
+        ".{ }",
+        ".{ a = 1, b = 2 }",
+        ".{ .{ 1, 2 }, 3 }",
+        ".{ 1, b = 2 }",                 # 混用具名与位置
+        ".{ a = 1, a = 2 }",             # 字段名重复
+        ".{ 1, \"x\", true }",
+        ".{ 99999999999999999999999 }",  # 溢出
+    ]
+    pick = rng.choice(forms)
+    uses = [
+        f"v := {pick};\n    return cast(i32)field_count(typeof(v));",
+        f"v := {pick};\n    return get_field(v, 0);",
+        f"v := {pick};\n    return get_field(v, 99);",     # 越界
+        f"v := {pick};\n    return 0;",
+    ]
+    use = rng.choice(uses)
+
+    if rng.random() < 0.4:
+        use = rng.choice([
+            "p : Point\n    p = Point.{ 1, 2 }\n    return p.x;",
+            "p := Point.{ z = 1 }\n    return 0;",        # 未知字段
+            "p := Point.{ 1, 2, 3 }\n    return 0;",      # 数量不匹配
+        ])
+
+    return (
+        provenance("anon", 0, size) +
+        "Point :: struct { x: i32; y: i32; }\n\n"
+        f"main :: () -> i32 {{\n    {use}\n}}\n"
+    )
+
+
+def g_global(rng, size):
+    """全局变量：文件作用域、编译期常量初值、字符串/聚合/指针/畸形变体。"""
+    prelude = (
+        "Color :: enum { RED; GREEN; }\n"
+        "S :: struct { name: string; n: i32; }\n"
+        "make :: () -> i32 { return 1; }\n\n"
+    )
+
+    decls = [
+        ("i32v : i32 = 5", ["i32v = i32v + 1;", "if i32v != 5 { return 1; }"]),
+        ("u8v : u8 = 200", ["if u8v != 200 { return 1; }"]),
+        ("i64v : i64 = 1i64", ["i64v = i64v - 1;"]),
+        ("f := 2.5", ["if f < 2.4 { return 1; }"]),
+        ("b := true", ["if !b { return 1; }"]),
+        ("arr : [3]i32 = { 1, 2, 3 }", ["if arr[0] != 1 { return 1; }"]),
+        ("s := \"hi\"", ["if s.count != 2 { return 1; }", "if s[0] != 104 { return 2; }"]),
+        ("e : Color = Color.RED", ["if e != Color.RED { return 1; }"]),
+        ("p : *i32 = null", ["if p != null { return 1; }"]),
+        ("nested : S = .{ \"x\", 1 }",
+         ["if nested.n != 1 { return 1; }", "if nested.name.count != 1 { return 2; }"]),
+        ("anon := .{ a = 1, b = \"z\" }", ["if anon.a != 1 { return 1; }"]),
+    ]
+
+    picked = rng.sample(decls, k=rng.randint(1, 4))
+    body = "\n".join(d for d, _ in picked)
+    uses = "\n    ".join(rng.choice(u) for _, u in picked)
+
+    # 畸形变体：缺初值 / --- / 类型不匹配 / 运行期初值
+    if rng.random() < 0.25:
+        body = rng.choice([
+            "noinit : i32;",
+            "zeroed : i32 = ---;",
+            "mismatch : i32 = \"str\";",
+            "runtime : i32 = make();",
+        ])
+        uses = ""
+
+    # 偶发省略 directive，覆盖「必须文件作用域」的错误路径
+    scope = "" if rng.random() < 0.1 else "#under_is_file_scope\n"
+
+    return (
+        provenance("global", 0, size) +
+        prelude + scope +
+        body + "\n\n" +
+        f"main :: () -> i32 {{\n    {uses}\n    return 0;\n}}\n"
+    )
+
+
 def g_graph(rng, size):
     """Package graph / self-reference pathology.  size = chain length.
 
@@ -318,6 +456,75 @@ def g_graph(rng, size):
         return provenance("graph", 0, n) + s, {}
 
 
+def g_decl(rng, size):
+    """声明形式的嵌套：局部结构体链、嵌套函数、#if 嵌套、编译期类型构造、常量链、混合聚合。"""
+    depth = max(1, size)
+
+    def local_structs(d):
+        decls = "\n".join(
+            f"    S{i+1} :: struct {{ v: {'i32' if i == 0 else f'S{i}'}; }};"
+            for i in range(d))
+        return ("main :: () -> i32 {\n" + decls +
+                "\n    a := S1.{ 1 };\n    return 0;\n}\n")
+
+    def nested_fn(d):
+        lines, ind = [], "    "
+        for i in range(d):
+            lines.append(f"{ind}F{i} :: () -> i32 {{")
+            ind += "    "
+        lines.append(f"{ind}return 0;")
+        for _ in range(d):
+            ind = ind[:-4]
+            lines.append(f"{ind}}}")
+        return ("main :: () -> i32 {\n" + "\n".join(lines) +
+                "\n    return 0;\n}\n")
+
+    def if_nest(d):
+        lines, ind = [], ""
+        for _ in range(d):
+            lines.append(f"{ind}#if true {{")
+            ind += "    "
+        lines.append(f"{ind}A :: 1")
+        for i in range(d):
+            ind = ind[:-4]
+            lines.append(f"{ind}}} else {{")
+            lines.append(f"{ind}    A :: {i + 2}")
+            lines.append(f"{ind}}}")
+        return "\n".join(lines) + "\n\nmain :: () -> i32 { return 0; }\n"
+
+    def type_ctor(d):
+        s = "Box :: $(T: type) -> type { return struct { inner: T; } }\n"
+        cur = "i32"
+        for i in range(d):
+            s += f"B{i+1} :: Box({cur})\n"
+            cur = f"B{i+1}"
+        s += f"\nmain :: () -> i32 {{\n    v : {cur};\n    return 0;\n}}\n"
+        return s
+
+    def const_chain(d):
+        s = "".join(f"A{i} :: A{i+1}\n" for i in range(d))
+        s += f"A{d} :: 1\n"
+        if rng.random() < 0.3:
+            s += f"A{d+1} :: A0\n"        # 循环引用
+        s += "\nmain :: () -> i32 { return A0; }\n"
+        return s
+
+    def mixed_agg(d):
+        s = ("E :: enum { A; B; }\n"
+             "U :: union { i: i32; f: f32; }\n")
+        cur = "i32"
+        for i in range(d):
+            s += f"X{i} :: struct {{ e: E; u: U; arr: [2]{cur}; n: i32; }}\n"
+            cur = f"X{i}"
+        s += f"\nmain :: () -> i32 {{\n    v : {cur};\n    return 0;\n}}\n"
+        return s
+
+    forms = [local_structs, nested_fn, if_nest, type_ctor, const_chain, mixed_agg]
+    text = rng.choice(forms)(depth)
+
+    return provenance("decl", 0, depth) + text
+
+
 def g_degenerate(rng, size):
     """Empty / whitespace / comment-only / BOM files."""
     cases = [
@@ -377,10 +584,12 @@ class Case:
 
 
 RECIPES = ("nest", "truncate", "mutate_tok", "mutate_byte",
-           "numbers", "graph", "degenerate")
+           "numbers", "graph", "comptime", "anon", "global", "decl", "degenerate")
 
 # nest sizes are deliberately clustered around the observed cliff
 NEST_SIZES = [8, 16, 24, 32, 48, 64, 100, 128, 200, 256, 512, 1024, 5000]
+# decl nesting depth: enough to reach parser/analyser stack limits
+DECL_SIZES = [8, 16, 32, 64, 100, 128, 256, 512, 1024, 2048]
 
 
 def generate(seed, counts, recipes):
@@ -394,8 +603,12 @@ def generate(seed, counts, recipes):
         for k in range(n):
             case_seed = seed * 100003 + idx
             rng = random.Random(case_seed)
-            size = NEST_SIZES[k % len(NEST_SIZES)] if recipe == "nest" \
-                else rng.choice([2, 4, 8, 16, 32, 64])
+            if recipe == "nest":
+                size = NEST_SIZES[k % len(NEST_SIZES)]
+            elif recipe == "decl":
+                size = DECL_SIZES[k % len(DECL_SIZES)]
+            else:
+                size = rng.choice([2, 4, 8, 16, 32, 64])
             src = rng.choice(srcs) if srcs else None
 
             if recipe == "nest":
@@ -410,6 +623,14 @@ def generate(seed, counts, recipes):
                 text, extra = g_numbers(rng, size), None
             elif recipe == "graph":
                 text, extra = g_graph(rng, size)
+            elif recipe == "comptime":
+                text, extra = g_comptime(rng, size), None
+            elif recipe == "anon":
+                text, extra = g_anon(rng, size), None
+            elif recipe == "global":
+                text, extra = g_global(rng, size), None
+            elif recipe == "decl":
+                text, extra = g_decl(rng, size), None
             elif recipe == "degenerate":
                 text, extra = g_degenerate(rng, size), None
             else:
@@ -429,9 +650,13 @@ def generate(seed, counts, recipes):
 # ------------------------------------------------------------------- main
 
 QUICK_COUNTS = {"nest": 60, "truncate": 60, "mutate_tok": 50,
-                "mutate_byte": 50, "numbers": 25, "graph": 25, "degenerate": 30}
+                "mutate_byte": 50, "numbers": 25, "graph": 25,
+                "comptime": 40, "anon": 30, "global": 30, "decl": 30,
+                "degenerate": 30}
 DEEP_COUNTS = {"nest": 300, "truncate": 700, "mutate_tok": 500,
-               "mutate_byte": 500, "numbers": 200, "graph": 300, "degenerate": 200}
+               "mutate_byte": 500, "numbers": 200, "graph": 300,
+               "comptime": 400, "anon": 300, "global": 300, "decl": 300,
+               "degenerate": 200}
 
 
 def main():
