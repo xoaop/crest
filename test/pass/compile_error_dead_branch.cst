@@ -1,0 +1,11 @@
+// @pass
+// @run
+
+// 死分支里的 compile_error 不分析、不报错
+#if false {
+    boom :: compile_error("should not fire");
+}
+
+main :: () -> i32 {
+    return 0;
+}

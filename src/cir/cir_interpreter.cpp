@@ -1225,6 +1225,8 @@ AnalyzeResult Interpreter::analyze_Hook(const CIRHookInfo& info, CIRInstructionR
         return hook_sizeof(info, pc_ref);
     } else if(info.name == context()->known_global_strings.field_count_builtin) {
         return hook_field_count(info, pc_ref);
+    } else if(info.name == context()->known_global_strings.compile_error_builtin) {
+        return hook_compile_error(info, pc_ref);
     } else {
         return make_result(pc_ref, inst_error(pc_ref, "未知内建 '{}'", get_global_string(info.name)));
     }
@@ -1282,6 +1284,35 @@ AnalyzeResult Interpreter::hook_field_count(const CIRHookInfo& info, CIRInstruct
     auto v = make_value(easy_type(Type_isize));
     v.integer_val(t->struct_info.struct_fields.count);
     return make_result(pc_ref, ResultDesc::make_value(v));
+}
+
+AnalyzeResult Interpreter::hook_compile_error(const CIRHookInfo& info, CIRInstructionRef pc_ref) {
+    if(info.arg_insts.count != 1) {
+        return make_result(pc_ref, inst_error(pc_ref, "compile_error 需要恰好 1 个参数"));
+    }
+
+    if(!has_result_val(info.arg_insts[0])) {
+        return {};
+    }
+
+    const auto av = ResultValueOpt(info.arg_insts[0]).value();
+    if(!is_slice_struct_type(av.type)) {
+        return make_result(pc_ref, inst_error(pc_ref, "compile_error 需要 []u8 参数"));
+    }
+
+    const auto data = av.struct_field_val(0).pointer_val();
+    const isize count = static_cast<isize>(av.struct_field_val(1).integer_val());
+
+    std::string msg;
+    FOR_0_TO(count) {
+        const auto elem = data.is_null() ? INVALID_VALUE : data.slot->element_ref(it);
+        if(elem == INVALID_VALUE) {
+            break;
+        }
+        msg.push_back(static_cast<char>(elem->integer_val()));
+    }
+
+    return make_result(pc_ref, inst_error(pc_ref, "{}", msg));
 }
 
 // handler: FieldTypeOfStruct

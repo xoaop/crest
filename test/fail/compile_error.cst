@@ -1,0 +1,8 @@
+// @fail
+// @error "boom"
+
+// compile_error 直接报错
+main :: () -> i32 {
+    compile_error("boom");
+    return 0;
+}

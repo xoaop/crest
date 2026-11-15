@@ -205,6 +205,7 @@ struct Interpreter {
     AnalyzeResult hook_typeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
     AnalyzeResult hook_sizeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
     AnalyzeResult hook_field_count(const CIRHookInfo& info, CIRInstructionRef pc_ref);
+    AnalyzeResult hook_compile_error(const CIRHookInfo& info, CIRInstructionRef pc_ref);
 
     Value eval_GetOrInitStruct(CIRInstructionRef ref);
 

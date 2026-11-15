@@ -36,6 +36,7 @@ struct KnownGlobalStrings {
     GlobalStringIndex sizeof_builtin;
     GlobalStringIndex field_count_builtin;
     GlobalStringIndex get_field_builtin;
+    GlobalStringIndex compile_error_builtin;
     GlobalStringIndex empty;
 };
 

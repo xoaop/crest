@@ -49,6 +49,7 @@ KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, 
     known.sizeof_builtin = get_or_insert_global_string(global_strings, "sizeof", allocator);
     known.field_count_builtin = get_or_insert_global_string(global_strings, "field_count", allocator);
     known.get_field_builtin = get_or_insert_global_string(global_strings, "get_field", allocator);
+    known.compile_error_builtin = get_or_insert_global_string(global_strings, "compile_error", allocator);
     known.empty = get_or_insert_global_string(global_strings, "", allocator);
 
     return known;
