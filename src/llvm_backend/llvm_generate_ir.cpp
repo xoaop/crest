@@ -1252,10 +1252,12 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             TypeRef actual_type = parent_res.actual_type();
             bool is_lval = parent_res.value_kind == CIRValueKind::LValue;
 
-            // ① LValue of *StructType（actual=**StructType）→ load 出 *StructType 指针值
-            if(is_lval && is_pointer_type(actual_type) && is_pointer_type(actual_type->pointed_type)) {
-                struct_ptr = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(actual_type), struct_ptr, "loaddblptr");
-                actual_type = actual_type->pointed_type;
+            // ① LValue 的逻辑类型是指针：槽里装的是指针本身，先 load 出来
+            TypeRef logical_type = parent_res.type();
+            if(is_lval && is_pointer_type(logical_type)) {
+                struct_ptr = LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(logical_type), struct_ptr, "loadptr");
+                is_lval = false;
+                actual_type = logical_type;
             }
 
             // ② union 分支：bitcast 指针（所有成员 offset 0）

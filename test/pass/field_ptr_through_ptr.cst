@@ -1,0 +1,28 @@
+// @pass
+// @run
+
+// 经指针字段取字段地址：&a.p.x 必须先 load a.p，不能直接按 a 的偏移算
+
+Inner :: struct {
+    x: i64;
+}
+
+Mid :: struct {
+    p: *Inner;
+    n: i64;
+}
+
+set_it :: (p: *i64) -> void {
+    ^p = 42;
+    return;
+}
+
+main :: () -> i32 {
+    i: Inner = ---;
+    i.x = 0;
+    a: Mid = ---;
+    a.p = &i;
+    a.n = 7;
+    set_it(&a.p.x);
+    return cast(i32)(i.x - 42);
+}
