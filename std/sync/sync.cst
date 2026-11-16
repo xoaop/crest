@@ -1,0 +1,351 @@
+// 公开 API（包作用域）
+
+Lock :: struct {
+    impl: Lock_Impl;
+}
+
+lock_init :: (l: *Lock) -> void {
+    _lock_init(&l.impl);
+    return;
+}
+
+lock_destroy :: (l: *Lock) -> void {
+    _lock_destroy(&l.impl);
+    return;
+}
+
+lock_acquire :: (l: *Lock) -> void {
+    _lock_acquire(&l.impl);
+    return;
+}
+
+lock_release :: (l: *Lock) -> void {
+    _lock_release(&l.impl);
+    return;
+}
+
+lock_try_acquire :: (l: *Lock) -> bool {
+    return _lock_try_acquire(&l.impl);
+}
+
+RWLock :: struct {
+    impl: RWLock_Impl;
+}
+
+rw_lock_init :: (l: *RWLock) -> void {
+    _rw_lock_init(&l.impl);
+    return;
+}
+
+rw_lock_destroy :: (l: *RWLock) -> void {
+    _rw_lock_destroy(&l.impl);
+    return;
+}
+
+rw_lock_acquire :: (l: *RWLock) -> void {
+    _rw_lock_acquire(&l.impl);
+    return;
+}
+
+rw_lock_release :: (l: *RWLock) -> void {
+    _rw_lock_release(&l.impl);
+    return;
+}
+
+rw_lock_try_acquire :: (l: *RWLock) -> bool {
+    return _rw_lock_try_acquire(&l.impl);
+}
+
+rw_lock_shared_acquire :: (l: *RWLock) -> void {
+    _rw_lock_shared_acquire(&l.impl);
+    return;
+}
+
+rw_lock_shared_release :: (l: *RWLock) -> void {
+    _rw_lock_shared_release(&l.impl);
+    return;
+}
+
+rw_lock_try_shared_acquire :: (l: *RWLock) -> bool {
+    return _rw_lock_try_shared_acquire(&l.impl);
+}
+
+Cond :: struct {
+    impl: Cond_Impl;
+}
+
+cond_init :: (c: *Cond) -> void {
+    _cond_init(&c.impl);
+    return;
+}
+
+cond_destroy :: (c: *Cond) -> void {
+    _cond_destroy(&c.impl);
+    return;
+}
+
+cond_wait :: (c: *Cond, l: *Lock) -> void {
+    _cond_wait(&c.impl, &l.impl);
+    return;
+}
+
+cond_signal :: (c: *Cond) -> void {
+    _cond_signal(&c.impl);
+    return;
+}
+
+cond_broadcast :: (c: *Cond) -> void {
+    _cond_broadcast(&c.impl);
+    return;
+}
+
+#under_is_file_scope
+
+#if TARGET_IS_WINDOWS {
+
+// ---------- Win32 ----------
+
+SRWLOCK :: struct {
+    ptr: *void;
+}
+CONDITION_VARIABLE :: struct {
+    ptr: *void;
+}
+
+AcquireSRWLockExclusive :: (lock: *SRWLOCK) -> void extern_C
+ReleaseSRWLockExclusive :: (lock: *SRWLOCK) -> void extern_C
+TryAcquireSRWLockExclusive :: (lock: *SRWLOCK) -> u8 extern_C
+AcquireSRWLockShared :: (lock: *SRWLOCK) -> void extern_C
+ReleaseSRWLockShared :: (lock: *SRWLOCK) -> void extern_C
+TryAcquireSRWLockShared :: (lock: *SRWLOCK) -> u8 extern_C
+
+SleepConditionVariableSRW :: (cv: *CONDITION_VARIABLE, lock: *SRWLOCK, ms: u32, flags: u32) -> i32 extern_C
+WakeConditionVariable :: (cv: *CONDITION_VARIABLE) -> void extern_C
+WakeAllConditionVariable :: (cv: *CONDITION_VARIABLE) -> void extern_C
+
+INFINITE :: 0xFFFFFFFF
+
+Lock_Impl :: struct {
+    lock: SRWLOCK;
+}
+
+_lock_init :: (l: *Lock_Impl) -> void {
+    l.lock = SRWLOCK.{ null };
+    return;
+}
+
+_lock_destroy :: (l: *Lock_Impl) -> void {
+    return;
+}
+
+_lock_acquire :: (l: *Lock_Impl) -> void {
+    AcquireSRWLockExclusive(&l.lock);
+    return;
+}
+
+_lock_release :: (l: *Lock_Impl) -> void {
+    ReleaseSRWLockExclusive(&l.lock);
+    return;
+}
+
+_lock_try_acquire :: (l: *Lock_Impl) -> bool {
+    return TryAcquireSRWLockExclusive(&l.lock) != 0;
+}
+
+RWLock_Impl :: struct {
+    lock: SRWLOCK;
+}
+
+_rw_lock_init :: (l: *RWLock_Impl) -> void {
+    l.lock = SRWLOCK.{ null };
+    return;
+}
+
+_rw_lock_destroy :: (l: *RWLock_Impl) -> void {
+    return;
+}
+
+_rw_lock_acquire :: (l: *RWLock_Impl) -> void {
+    AcquireSRWLockExclusive(&l.lock);
+    return;
+}
+
+_rw_lock_release :: (l: *RWLock_Impl) -> void {
+    ReleaseSRWLockExclusive(&l.lock);
+    return;
+}
+
+_rw_lock_try_acquire :: (l: *RWLock_Impl) -> bool {
+    return TryAcquireSRWLockExclusive(&l.lock) != 0;
+}
+
+_rw_lock_shared_acquire :: (l: *RWLock_Impl) -> void {
+    AcquireSRWLockShared(&l.lock);
+    return;
+}
+
+_rw_lock_shared_release :: (l: *RWLock_Impl) -> void {
+    ReleaseSRWLockShared(&l.lock);
+    return;
+}
+
+_rw_lock_try_shared_acquire :: (l: *RWLock_Impl) -> bool {
+    return TryAcquireSRWLockShared(&l.lock) != 0;
+}
+
+Cond_Impl :: struct {
+    cv: CONDITION_VARIABLE;
+}
+
+_cond_init :: (c: *Cond_Impl) -> void {
+    c.cv = CONDITION_VARIABLE.{ null };
+    return;
+}
+
+_cond_destroy :: (c: *Cond_Impl) -> void {
+    return;
+}
+
+_cond_wait :: (c: *Cond_Impl, l: *Lock_Impl) -> void {
+    SleepConditionVariableSRW(&c.cv, &l.lock, INFINITE, 0);
+    return;
+}
+
+_cond_signal :: (c: *Cond_Impl) -> void {
+    WakeConditionVariable(&c.cv);
+    return;
+}
+
+_cond_broadcast :: (c: *Cond_Impl) -> void {
+    WakeAllConditionVariable(&c.cv);
+    return;
+}
+
+} else {
+
+// ---------- POSIX ----------
+
+pthread_mutex_t :: [8]u64
+pthread_cond_t :: [8]u64
+pthread_rwlock_t :: [25]u64
+
+pthread_mutex_init :: (m: *pthread_mutex_t, attr: *void) -> i32 extern_C
+pthread_mutex_destroy :: (m: *pthread_mutex_t) -> i32 extern_C
+pthread_mutex_lock :: (m: *pthread_mutex_t) -> i32 extern_C
+pthread_mutex_unlock :: (m: *pthread_mutex_t) -> i32 extern_C
+pthread_mutex_trylock :: (m: *pthread_mutex_t) -> i32 extern_C
+
+pthread_cond_init :: (c: *pthread_cond_t, attr: *void) -> i32 extern_C
+pthread_cond_destroy :: (c: *pthread_cond_t) -> i32 extern_C
+pthread_cond_wait :: (c: *pthread_cond_t, m: *pthread_mutex_t) -> i32 extern_C
+pthread_cond_signal :: (c: *pthread_cond_t) -> i32 extern_C
+pthread_cond_broadcast :: (c: *pthread_cond_t) -> i32 extern_C
+
+pthread_rwlock_init :: (l: *pthread_rwlock_t, attr: *void) -> i32 extern_C
+pthread_rwlock_destroy :: (l: *pthread_rwlock_t) -> i32 extern_C
+pthread_rwlock_rdlock :: (l: *pthread_rwlock_t) -> i32 extern_C
+pthread_rwlock_wrlock :: (l: *pthread_rwlock_t) -> i32 extern_C
+pthread_rwlock_unlock :: (l: *pthread_rwlock_t) -> i32 extern_C
+pthread_rwlock_tryrdlock :: (l: *pthread_rwlock_t) -> i32 extern_C
+pthread_rwlock_trywrlock :: (l: *pthread_rwlock_t) -> i32 extern_C
+
+Lock_Impl :: struct {
+    lock: pthread_mutex_t;
+}
+
+_lock_init :: (l: *Lock_Impl) -> void {
+    pthread_mutex_init(&l.lock, null);
+    return;
+}
+
+_lock_destroy :: (l: *Lock_Impl) -> void {
+    pthread_mutex_destroy(&l.lock);
+    return;
+}
+
+_lock_acquire :: (l: *Lock_Impl) -> void {
+    pthread_mutex_lock(&l.lock);
+    return;
+}
+
+_lock_release :: (l: *Lock_Impl) -> void {
+    pthread_mutex_unlock(&l.lock);
+    return;
+}
+
+_lock_try_acquire :: (l: *Lock_Impl) -> bool {
+    return pthread_mutex_trylock(&l.lock) == 0;
+}
+
+RWLock_Impl :: struct {
+    lock: pthread_rwlock_t;
+}
+
+_rw_lock_init :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_init(&l.lock, null);
+    return;
+}
+
+_rw_lock_destroy :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_destroy(&l.lock);
+    return;
+}
+
+_rw_lock_acquire :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_wrlock(&l.lock);
+    return;
+}
+
+_rw_lock_release :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_unlock(&l.lock);
+    return;
+}
+
+_rw_lock_try_acquire :: (l: *RWLock_Impl) -> bool {
+    return pthread_rwlock_trywrlock(&l.lock) == 0;
+}
+
+_rw_lock_shared_acquire :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_rdlock(&l.lock);
+    return;
+}
+
+_rw_lock_shared_release :: (l: *RWLock_Impl) -> void {
+    pthread_rwlock_unlock(&l.lock);
+    return;
+}
+
+_rw_lock_try_shared_acquire :: (l: *RWLock_Impl) -> bool {
+    return pthread_rwlock_tryrdlock(&l.lock) == 0;
+}
+
+Cond_Impl :: struct {
+    cv: pthread_cond_t;
+}
+
+_cond_init :: (c: *Cond_Impl) -> void {
+    pthread_cond_init(&c.cv, null);
+    return;
+}
+
+_cond_destroy :: (c: *Cond_Impl) -> void {
+    pthread_cond_destroy(&c.cv);
+    return;
+}
+
+_cond_wait :: (c: *Cond_Impl, l: *Lock_Impl) -> void {
+    pthread_cond_wait(&c.cv, &l.lock);
+    return;
+}
+
+_cond_signal :: (c: *Cond_Impl) -> void {
+    pthread_cond_signal(&c.cv);
+    return;
+}
+
+_cond_broadcast :: (c: *Cond_Impl) -> void {
+    pthread_cond_broadcast(&c.cv);
+    return;
+}
+
+}

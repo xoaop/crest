@@ -1,0 +1,114 @@
+// 公开 API（包作用域）
+
+Thread_Proc :: (*void) -> *void
+
+Thread :: struct {
+    impl: Thread_Impl;
+}
+
+thread_create :: (t: *Thread, start: *Thread_Proc, arg: *void) -> bool {
+    return _thread_create(&t.impl, cast(*void)(start), arg);
+}
+
+thread_join :: (t: *Thread) -> void {
+    _thread_join(&t.impl);
+    return;
+}
+
+thread_detach :: (t: *Thread) -> void {
+    _thread_detach(&t.impl);
+    return;
+}
+
+thread_exit :: (code: i32) -> void {
+    _thread_exit(code);
+    return;
+}
+
+thread_current_id :: () -> u64 {
+    return _thread_current_id();
+}
+
+#under_is_file_scope
+
+#if TARGET_IS_WINDOWS {
+
+// ---------- Win32 ----------
+
+WaitForSingleObject :: (handle: *void, ms: u32) -> u32 extern_C
+CloseHandle :: (handle: *void) -> i32 extern_C
+CreateThread :: (attrs: *void, stack_size: usize, start: *void, param: *void, flags: u32, thread_id: *u32) -> *void extern_C
+ExitThread :: (code: u32) -> void extern_C
+GetCurrentThreadId :: () -> u32 extern_C
+
+INFINITE :: 0xFFFFFFFF
+
+Thread_Impl :: struct {
+    handle: *void;
+}
+
+_thread_create :: (t: *Thread_Impl, start: *void, arg: *void) -> bool {
+    t.handle = CreateThread(null, 0, start, arg, 0, null);
+    return t.handle != null;
+}
+
+_thread_join :: (t: *Thread_Impl) -> void {
+    WaitForSingleObject(t.handle, INFINITE);
+    CloseHandle(t.handle);
+    t.handle = null;
+    return;
+}
+
+_thread_detach :: (t: *Thread_Impl) -> void {
+    CloseHandle(t.handle);
+    t.handle = null;
+    return;
+}
+
+_thread_exit :: (code: i32) -> void {
+    ExitThread(cast(u32)code);
+    return;
+}
+
+_thread_current_id :: () -> u64 {
+    return cast(u64)GetCurrentThreadId();
+}
+
+} else {
+
+// ---------- POSIX ----------
+
+pthread_create :: (t: *u64, attr: *void, start: *void, arg: *void) -> i32 extern_C
+pthread_join :: (t: u64, ret: *void) -> i32 extern_C
+pthread_detach :: (t: u64) -> i32 extern_C
+pthread_exit :: (ret: *void) -> void extern_C
+pthread_self :: () -> u64 extern_C
+
+Thread_Impl :: struct {
+    handle: u64;
+}
+
+_thread_create :: (t: *Thread_Impl, start: *void, arg: *void) -> bool {
+    return pthread_create(&t.handle, null, start, arg) == 0;
+}
+
+_thread_join :: (t: *Thread_Impl) -> void {
+    pthread_join(t.handle, null);
+    return;
+}
+
+_thread_detach :: (t: *Thread_Impl) -> void {
+    pthread_detach(t.handle);
+    return;
+}
+
+_thread_exit :: (code: i32) -> void {
+    pthread_exit(null);
+    return;
+}
+
+_thread_current_id :: () -> u64 {
+    return pthread_self();
+}
+
+}
