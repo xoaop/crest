@@ -2287,7 +2287,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(const CIRTypeAscribeInfo& info, C
     const CIRVariableDeclInfo& vd = pkg->inst(info.var_inst).info<CIROperator::VariableDecl>();
 
     // 类型位置必须是真类型、且有存储布局。函数形参例外（类型形参 $T 的类型就是 'type'）
-    const Value& type_val = ResultValueOpt(info.type_inst).value();
+    const Value type_val = ResultValueOpt(info.type_inst).value();
     if(auto e = check_var_type(temp_allocator(), type_val, vd.is_param)) {
         return make_result(pc_ref, inst_error(pc_ref, "{}", e.value()));
     }
@@ -2533,7 +2533,7 @@ AnalyzeResult Interpreter::analyze_DetermineType(const CIRDetermineTypeInfo& inf
         if(!has_result_val(expected_type_inst)) {
             return {};   // 依赖未就绪，等下一轮
         } else {
-            const Value& type_v = ResultValueOpt(expected_type_inst).value();
+            const Value type_v = ResultValueOpt(expected_type_inst).value();
 
             if(!is_type_type(type_v.type)) {
                 return make_result(pc_ref, ResultDesc::make_error());
