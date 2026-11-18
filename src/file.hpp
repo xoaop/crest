@@ -35,9 +35,7 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     xpString str = xp_make_string_capacity(allocator, nullptr, size);
     const size_t read = fread(str, 1, static_cast<size_t>(size), file);
 
-    XP_STRING_META(str)->count = static_cast<isize>(read);
-
-    str[read] = '\0';
+    xp_string_set_count(str, static_cast<isize>(read));
 
     fclose(file);
 
