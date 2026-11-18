@@ -24,7 +24,7 @@ GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings,
 
 
 GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings, const xpString& str, xpAllocator allocator) {
-    return get_or_insert_global_string(global_strings, str.c_str, static_cast<size_t>(str.length), allocator);
+    return get_or_insert_global_string(global_strings, str, static_cast<size_t>(xp_string_count(str)), allocator);
 }
 
 StringRef get_global_string(const GlobalStringArray& global_strings, GlobalStringIndex index) {

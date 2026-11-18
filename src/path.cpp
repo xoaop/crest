@@ -16,7 +16,7 @@ Array<xpString> scan_crest_files(const char *dir_path, xpAllocator allocator) {
     Array<xpString> crest_files = make_array<xpString>(allocator);
 
     std::error_code ec;
-    const std::filesystem::path dir(as_u8(xp_string_c(dir_path)));
+    const std::filesystem::path dir(as_u8(std::string(dir_path)));
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
         if (entry.is_regular_file(ec) && entry.path().extension() == ".cst") {
             crest_files.push_back(xp_make_string(allocator, (const char *)entry.path().generic_u8string().c_str()));

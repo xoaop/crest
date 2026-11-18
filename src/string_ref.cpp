@@ -16,7 +16,7 @@ StringRef StringRef::init(const char *str, size_t count) {
 
 StringRef StringRef::init(const xpString& str) {
     StringRef r;
-    r.view = std::string_view(str.c_str, (size_t)str.length);
+    r.view = std::string_view(str, (size_t)xp_string_count(str));
     return r;
 }
 

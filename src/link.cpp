@@ -408,7 +408,7 @@ static std::string shell_quote(const std::string& s) {
 static void append_objects(std::string& cmd, const Array<xpString>& obj_paths) {
     for(const auto& obj : obj_paths) {
         cmd += " ";
-        cmd += shell_quote(std::string(obj.c_str));
+        cmd += shell_quote(std::string(static_cast<const char *>(obj)));
     }
 }
 

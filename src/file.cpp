@@ -166,12 +166,13 @@ void init_utf8_console() {
 xpOption<xpString> file_to_string_utf8(char const *path, xpAllocator allocator) {
     xpString text = file_to_string(path, allocator);
 
-    if(text.length >= 3
+    if(xp_string_count(text) >= 3
        && static_cast<u8>(text[0]) == 0xEF
        && static_cast<u8>(text[1]) == 0xBB
        && static_cast<u8>(text[2]) == 0xBF) {
-        text.c_str += 3;
-        text.length -= 3;
+        xpString without_bom = xp_make_string_count(allocator, text + 3, xp_string_count(text) - 3);
+        xp_string_free(text);
+        text = without_bom;
     }
 
     if(!is_valid_utf8(text)) {

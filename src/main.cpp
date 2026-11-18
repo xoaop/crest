@@ -392,23 +392,24 @@ int main(int argc_raw, char** argv_raw) {
     });
 
     // builtin 完整构建+分析（删全局循环后没有 import 会触发它，必须显式做，且在 main 之前）。
-    auto builtin_pkg_opt = compile_package_from_import(xp_string_c("std/builtin"));
+    auto builtin_pkg_opt = compile_package_from_import(xp_make_string(permanent_allocator(), "std/builtin"));
     if(builtin_pkg_opt.is_none()) {
         err("std/builtin package not found");
         return 1;
     }
 
+    const xpString main_path_str = xp_make_string(permanent_allocator(), main_path);
     xpString main_dir;
-    if(is_existing_directory(xp_string_c(main_path))) {
-        main_dir = xp_string_c(main_path);
+    if(is_existing_directory(main_path_str)) {
+        main_dir = main_path_str;
     } else {
-        main_dir = xp_make_string(permanent_allocator(), (const char *)std::filesystem::path(as_u8(xp_string_c(main_path))).parent_path().generic_u8string().c_str());
+        main_dir = xp_make_string(permanent_allocator(), (const char *)std::filesystem::path(as_u8(main_path_str)).parent_path().generic_u8string().c_str());
     }
     context()->main_src_dir_path = main_dir;
     context()->package_search_paths.push_back(main_dir);
 
 
-    auto main_pkg_opt = compile_package_from_path(xp_string_c(main_path));
+    auto main_pkg_opt = compile_package_from_path(main_path_str);
     if(main_pkg_opt.is_none()) {
         err("main package path '{}' is not a valid directory or file", main_path);
         return 1;
@@ -462,7 +463,7 @@ int main(int argc_raw, char** argv_raw) {
 
     // 链接/归档：把各包的 .o 变成可执行文件或库（-c 时只编译）
     if(!compile_only && obj_paths.count > 0) {
-        const std::filesystem::path main_p(as_u8(xp_string_c(main_path)));
+        const std::filesystem::path main_p(as_u8(main_path_str));
         std::string binary_stem = (const char *)(main_p.has_extension() ? main_p.stem() : main_p.filename()).generic_u8string().c_str();
         if(binary_stem.empty()) {
             binary_stem = "output";

@@ -75,7 +75,7 @@ void ErrorReporter::print_msg() {
         static constexpr isize MAX_ECHO_COLS = 160;
         static constexpr isize ECHO_CONTEXT = 60;
 
-        const isize line_len = line_str.length;
+        const isize line_len = xp_string_count(line_str);
         const isize hl_start = start.second - 1;   // 0-based
         const isize hl_end   = end.second - 1;
 
@@ -90,7 +90,7 @@ void ErrorReporter::print_msg() {
 
         if(prefix_len > 0) { print_err("..."); }
         xpString window_str = xp_make_string_capacity(xp_heap_allocator(),
-            line_str.c_str + win_start, win_end - win_start);
+            line_str + win_start, win_end - win_start);
         defer(xp_string_free(window_str));
         print_err("{}", window_str);
         if(win_end < line_len) { print_err("..."); }

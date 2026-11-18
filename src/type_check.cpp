@@ -159,7 +159,7 @@ std::optional<xpString> check_var_type(xpAllocator allocator, const Value& val, 
         return xp_string_concat_mid(
             xp_make_string(allocator, "类型不能是函数类型（没有存储布局），请用函数指针 '*"),
             to_xp_str(type->name(), allocator),
-            xpOption<xpString>(xp_string_c("'")),
+            xpOption<xpString>(xp_make_string(allocator, "'")),
             allocator
         );
     }

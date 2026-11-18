@@ -217,9 +217,9 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
             // TODO: 规范
             auto name_maybe = type->struct_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_string_c("anonymous_struct");
+            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_make_string(stage_allocator(), "anonymous_struct");
 
-            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
+            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()));
             LLVMTypeRef *struct_type = xp_hash_map_insert(&g_llvm_session.struct_types, key, struct_ty);
             
             
@@ -244,9 +244,9 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             }
 
             auto name_maybe = type->union_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_string_c("anonymous_union");
+            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_make_string(stage_allocator(), "anonymous_union");
 
-            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()).c_str);
+            LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()));
             LLVMTypeRef *union_type = xp_hash_map_insert(&g_llvm_session.union_types, key, struct_ty);
 
             // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，运行期布局
@@ -355,7 +355,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         LLVMValueRef g = LLVMAddGlobal(
             unit.module,
             get_llvm_type_from_type(var_type),
-            xp_string_to_c_style(gd.raw_name, stage_allocator()).c_str
+            xp_string_to_c_style(gd.raw_name, stage_allocator())
         );
         LLVMSetLinkage(g, LLVMInternalLinkage);
 
@@ -389,7 +389,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
         LLVMValueRef f = LLVMAddFunction(
             unit.module,
-            xp_string_to_c_style(fd.raw_name, stage_allocator()).c_str,
+            xp_string_to_c_style(fd.raw_name, stage_allocator()),
             fn_type
         );
 
@@ -1588,7 +1588,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruc
     XP_ASSERT_DEFAULT(inst.op == CIROperator::VariableDecl);
 
     // 1. 分配空间
-    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()).c_str, get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
+    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()), get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
 
     // 2. 如果有初始值，生成初始值 IR 并存储
 

@@ -20,7 +20,7 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     FILE *file = nullptr;
 
 #ifdef _WIN32
-    file = _wfopen(std::filesystem::path(as_u8(xp_string_c(path))).c_str(), L"rb");
+    file = _wfopen(std::filesystem::path(as_u8(std::string(path))).c_str(), L"rb");
 #else
     file = fopen(path, "rb");
 #endif
@@ -33,11 +33,11 @@ xp_internal xpString file_to_string(char const *path, xpAllocator allocator) {
     rewind(file);
 
     xpString str = xp_make_string_capacity(allocator, nullptr, size);
-    const size_t read = fread(str.c_str, 1, static_cast<size_t>(size), file);
+    const size_t read = fread(str, 1, static_cast<size_t>(size), file);
 
-    str.length = static_cast<isize>(read);
+    XP_STRING_META(str)->count = static_cast<isize>(read);
 
-    str.c_str[str.length] = '\0';
+    str[read] = '\0';
 
     fclose(file);
 

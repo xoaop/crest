@@ -3271,7 +3271,7 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
             v.func_val(func_key);
         }
 
-        // DEBUG_TRACE("to set type and result for func {}", sym ? sym->name : xp_string_c("<anon>"));
+        // DEBUG_TRACE("to set type and result for func {}", sym ? sym->name : xp_make_string(permanent_allocator(), "<anon>"));
 
         r.writes.push_back({pc_ref, ResultDesc::make_value(v)});
         // 副作用：函数值同步写进 pkg->results（递归引用需在 body 分析前可查）
@@ -3770,10 +3770,10 @@ AnalyzeResult Interpreter::analyze_ImportPackage(const CIRImportPackageInfo& inf
     }
 
     // import 是编译期求值：compile_package_from_import 解析路径→查表/现场构建（循环 import 在查表时检测报错）
-    xpString cycle_err = xp_string_c("");
+    xpString cycle_err = xp_make_string_zero();
     auto pkg_opt = compile_package_from_import(to_xp_str(get_global_string(info.path), permanent_allocator()), &cycle_err);
     if(pkg_opt.is_none()) {
-        if(cycle_err.length > 0) {
+        if(xp_string_count(cycle_err) > 0) {
             return make_result(pc_ref, inst_error(pc_ref, "{}", cycle_err));
         }
         return make_result(pc_ref, inst_error(pc_ref, "找不到包 '{}'", get_global_string(info.path)));

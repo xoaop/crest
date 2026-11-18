@@ -1011,7 +1011,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
         xpString count_str = xp_isize_to_string(type->array_info.count, temp_allocator());
         xp_string_append(&base_str, count_str);
 
-        xp_string_append(&base_str, xp_string_c("]"));
+        xp_string_append(&base_str, "]");
 
         // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
         xpString elem_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name)), temp_allocator());
@@ -1029,21 +1029,19 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
             xp_string_append(&func_str, param_type_str);
 
             if(it_index != type->function_info.param_types.count - 1) {
-                xpString comma_str = xp_string_c(", ");
-                xp_string_append(&func_str, comma_str);
+                xp_string_append(&func_str, ", ");
             }
 
-            
+
         }
-        
-        xpString rb_arrow_str = xp_string_c(") -> ");
-        xp_string_append(&func_str, rb_arrow_str);
+
+        xp_string_append(&func_str, ") -> ");
 
         xpString return_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name)), temp_allocator());
         xp_string_append(&func_str, return_type_str);
         // ABI 边界是类型的一部分，报错时两个类型必须能区分开
         if(type->function_info.is_extern_c) {
-            xp_string_append(&func_str, xp_string_c(" extern_C"));
+            xp_string_append(&func_str, " extern_C");
         }
         return get_or_insert_global_string(func_str);
     } else if(is_type_type(type)) {
@@ -1051,7 +1049,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
         xpString type_str = xp_make_string(allocator, "type(");
         xpString self_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name)), temp_allocator());
         xp_string_append(&type_str, self_type_str);
-        xp_string_append(&type_str, xp_string_c(")"));
+        xp_string_append(&type_str, ")");
         return get_or_insert_global_string(type_str);
 
     } else if(is_package_type(type)) {

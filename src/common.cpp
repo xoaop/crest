@@ -54,18 +54,18 @@ void global_allocators_free() {
 xpString rename_ident(xpHashMap<xpString, isize> *identifier_map, xpString ident) {
     isize *exist_count = nullptr;
     if((exist_count = xp_hash_map_get(*identifier_map, ident)) != nullptr) {
-        int len = snprintf(nullptr, 0, "%s.%td", ident.c_str, *exist_count);
+        int len = snprintf(nullptr, 0, "%s.%td", static_cast<const char *>(ident), *exist_count);
         char *new_ident = cast(char *)xp_alloc(permanent_allocator(), len + 1);
-        snprintf(new_ident, len + 1, "%s.%td", ident.c_str, *exist_count);
+        snprintf(new_ident, len + 1, "%s.%td", static_cast<const char *>(ident), *exist_count);
         *exist_count += 1;
-        return xp_string_c(new_ident);
+        return xp_make_string(permanent_allocator(), new_ident);
     } else {
         isize new_count = 0;
-        int len = snprintf(nullptr, 0, "%s.%td", ident.c_str, new_count);
+        int len = snprintf(nullptr, 0, "%s.%td", static_cast<const char *>(ident), new_count);
         char *new_ident = cast(char *)xp_alloc(permanent_allocator(), len + 1);
-        snprintf(new_ident, len + 1, "%s.%td", ident.c_str, new_count);
+        snprintf(new_ident, len + 1, "%s.%td", static_cast<const char *>(ident), new_count);
 
-        xpString new_str = xp_string_c(new_ident);
+        xpString new_str = xp_make_string(permanent_allocator(), new_ident);
         new_count +=1 ;
         xp_hash_map_insert(identifier_map, ident, new_count);
         return new_str;

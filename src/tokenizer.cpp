@@ -130,7 +130,8 @@ Array<Token> tokenize(SourceCode *src_code) {
             // End Of Tokens
             Token end = {};
             end.type = TokenType::EndOfTokens;
-            end.src_loc = SourceLocation(*t.source_code, make_span(t.source_code->code_string.length, t.source_code->code_string.length));
+            const isize code_length = xp_string_count(t.source_code->code_string);
+            end.src_loc = SourceLocation(*t.source_code, make_span(code_length, code_length));
 
 
             t.token_array.push_back(end);
@@ -183,7 +184,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
         }
 
         //TODO:(xoaop) 如果在keyword_map找到, 就是关键字, 如 i32, u32等
-        GlobalStringIndex str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        GlobalStringIndex str = get_or_insert_global_string(t->source_code->code_string + old_index, t->curr_character_index - old_index);
         
         TokenType *type = nullptr;
         if((type = xp_hash_map_get(keyword_map, str)) != nullptr) {
@@ -458,7 +459,7 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
             return xp_make_pair(xpOption<Token>::none(), true);
         }
 
-        token.token_str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, t->curr_character_index - old_index);
+        token.token_str = get_or_insert_global_string(t->source_code->code_string + old_index, t->curr_character_index - old_index);
     }
 
 
@@ -468,11 +469,11 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
 }
 
 char tokenizer_curr_character(Tokenizer *t) {
-    return t->source_code->code_string.c_str[t->curr_character_index];
+    return t->source_code->code_string[t->curr_character_index];
 }
 
 b32 tokenizer_end(Tokenizer *t) {
-    return t->source_code->code_string.c_str[t->curr_character_index] == END_OF_CODE;
+    return t->source_code->code_string[t->curr_character_index] == END_OF_CODE;
 }
 
 isize advance_one_character(Tokenizer *t) {
@@ -493,11 +494,11 @@ isize advance_characters(Tokenizer *t, isize count) {
 }
 
 char tokenizer_next_character(Tokenizer *t) {
-    if(t->source_code->code_string.c_str[t->curr_character_index] == END_OF_CODE) {
+    if(t->source_code->code_string[t->curr_character_index] == END_OF_CODE) {
         return END_OF_CODE;
     }
 
-    return t->source_code->code_string.c_str[t->curr_character_index + 1];
+    return t->source_code->code_string[t->curr_character_index + 1];
 }
 
 isize tokenizer_skip_space(Tokenizer *t) {
@@ -676,7 +677,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
 
     token->type = token_type;
 
-    token->number_info.number_str = get_or_insert_global_string(t->source_code->code_string.c_str + old_index, static_cast<size_t>(t->curr_character_index - old_index));
+    token->number_info.number_str = get_or_insert_global_string(t->source_code->code_string + old_index, static_cast<size_t>(t->curr_character_index - old_index));
     
     
     advance_characters(t, len);

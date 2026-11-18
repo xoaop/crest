@@ -43,7 +43,6 @@ struct FunctionTail {
 
 void report_unexpected(Parser *p, const char *expected_string);
 void report_unexpected(Parser *p, Token token, const char *expected_string);
-void report_unexpected(Parser *p, Token token, xpString expected_string);
 void report_unexpected(Parser *p, TokenType expected);
 void report_unexpected(Parser *p, Token token, TokenType expected);
 
@@ -165,9 +164,8 @@ Ast *parse_import(Parser *p) {
         return ast_alloc(AstType_BadDecl, import_token);
     }
     
-    xpString raw_path = context()->global_strings.strings[path_succ.first.token_str];
-    raw_path.c_str = raw_path.c_str + 1;  // 去掉开头的引号
-    raw_path.length -= 2;                 // 去掉结尾的引号
+    xpString raw_with_quotes = context()->global_strings.strings[path_succ.first.token_str];
+    xpString raw_path = xp_make_string_count(ast_allocator(), raw_with_quotes + 1, xp_string_count(raw_with_quotes) - 2); // 去掉前后的引号
 
     if(!is_valid_utf8(raw_path)) {
         context()->reporter.report_error(path_succ.first.src_loc, "import 路径不是合法 UTF-8");
@@ -961,11 +959,12 @@ Ast *parse_string_literal(Parser *p) {
     Token str_token = expect(p, TokenType::StringLiteral);
 
     xpString raw_str_with_quotes = context()->global_strings.strings[str_token.token_str];
-    XP_ASSERT_DEFAULT(raw_str_with_quotes.c_str[0] == '"' && raw_str_with_quotes.c_str[raw_str_with_quotes.length - 1] == '"');
+    const isize raw_str_length = xp_string_count(raw_str_with_quotes);
+    XP_ASSERT_DEFAULT(raw_str_with_quotes[0] == '"' && raw_str_with_quotes[raw_str_length - 1] == '"');
 
 
-    isize raw_str_count = raw_str_with_quotes.length - 2; // 去掉前后的引号
-    char *iter = raw_str_with_quotes.c_str + 1; // 跳过开头的引号
+    isize raw_str_count = raw_str_length - 2; // 去掉前后的引号
+    char *iter = raw_str_with_quotes + 1; // 跳过开头的引号
 
     xpString parsed_str = xp_make_string(ast_allocator(), ""); // 先创建一个空字符串, 后面逐个字符追加
 
@@ -1849,21 +1848,16 @@ void report_unexpected(Parser *p, const char *expected_string) {
 }
 
 void report_unexpected(Parser *p, Token token, const char *expected_string) {
-    report_unexpected(p, token, xp_string_c(expected_string));
-}
-
-
-void report_unexpected(Parser *p, Token token, xpString expected_string) {
     if(token.type == TokenType::EndOfTokens) {
         context()->reporter.report(
-            ErrorLevel::Error, 
+            ErrorLevel::Error,
             token.src_loc,
             "unexpected end of tokens, expected {}",
             expected_string
         );
     } else {
         context()->reporter.report(
-            ErrorLevel::Error, 
+            ErrorLevel::Error,
             token.src_loc,
             "unexpected token '{}', expected {}",
             get_global_string(token.token_str),

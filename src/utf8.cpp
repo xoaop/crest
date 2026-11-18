@@ -1,8 +1,8 @@
 #include "utf8.hpp"
 
 bool is_valid_utf8(xpString text) {
-    const unsigned char *s = (const unsigned char *)text.c_str;
-    const isize n = text.length;
+    const unsigned char *s = reinterpret_cast<const unsigned char *>(static_cast<char *>(text));
+    const isize n = xp_string_count(text);
 
     for(isize i = 0; i < n; ) {
         const unsigned char c = s[i];
@@ -50,7 +50,7 @@ bool is_valid_utf8(xpString text) {
 }
 
 std::u8string_view as_u8(xpString text) {
-    return std::u8string_view((const char8_t *)text.c_str, (size_t)text.length);
+    return std::u8string_view(reinterpret_cast<const char8_t *>(static_cast<char *>(text)), (size_t)xp_string_count(text));
 }
 
 std::u8string_view as_u8(const std::string& text) {

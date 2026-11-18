@@ -95,11 +95,11 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
 
     Package pkg;
     if(is_existing_directory(path)) {
-        pkg = tokenize_and_parse_package(path.c_str);
+        pkg = tokenize_and_parse_package(path);
     } else {
         // 单文件包: path 直接用归一化的文件路径(与 dedup 的 abs_path 一致)
         pkg = make_package(abs_path, permanent_allocator());
-        AstFile file = tokenize_and_parse_file(path.c_str);
+        AstFile file = tokenize_and_parse_file(path);
         pkg.ast_files.push_back(file);
     }
 
@@ -166,7 +166,7 @@ bool compile_package(Ref<Package> pkg_ref) {
 
 Package tokenize_and_parse_package(const char *path_of_package_dir) {
 
-    xpString package_dir_path = normalize_path(xp_string_c(path_of_package_dir), permanent_allocator());
+    xpString package_dir_path = normalize_path(xp_make_string(permanent_allocator(), path_of_package_dir), permanent_allocator());
 
     // 扫描该目录下所有.crest文件
     Array<xpString> crest_files = scan_crest_files(path_of_package_dir, permanent_allocator());
@@ -175,7 +175,7 @@ Package tokenize_and_parse_package(const char *path_of_package_dir) {
     Package package = make_package(get_or_insert_global_string(package_dir_path), permanent_allocator());
     for(auto&& it : crest_files) {
         xpString crest_file_path = it;
-        AstFile ast_file = tokenize_and_parse_file(crest_file_path.c_str);
+        AstFile ast_file = tokenize_and_parse_file(crest_file_path);
 
         package.ast_files.push_back(ast_file);
     }
@@ -208,7 +208,7 @@ xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator alloca
     Array<xpString>& search_paths = context()->package_search_paths;
 
     // 空路径 concat 出来就是搜索根目录本身（base / "" 带尾斜杠），会误当成一个包
-    if(import_path.length <= 0) {
+    if(xp_string_count(import_path) <= 0) {
         return xpOption<xpString>::none();
     }
 
