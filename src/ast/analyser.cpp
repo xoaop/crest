@@ -414,9 +414,12 @@ CoroutineTask<void> resolve_comptime_if(
 
     CIRBlockRef blk = CIRBuilder::build_block_inst_for_expr(ctx, ci.condition, true, true);
 
-    EvalStack eval_stack = {};
-    Interpreter interp(ctx.allocator, analyser.pkg, &eval_stack,
-                       EvalInstance::make(ctx.pkg, 0, ctx.allocator));
+    // 解释器自己的执行链：分配器不借用 CIRBuildContext（那是建 CIR 用的）
+    InterpStack interp_stack(xp_heap_allocator());
+
+    Interpreter interp(ctx.allocator, analyser.pkg, &interp_stack,
+        EvalInstance::make(ctx.pkg, 0, ctx.allocator)
+    );
 
     CIRInstructionRef blk_ref(blk, ctx.pkg);
     interp.analyze_block(blk, blk_ref);

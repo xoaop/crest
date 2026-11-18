@@ -2,6 +2,8 @@
 #include "common.hpp"
 #include "compile.hpp"
 
+#include <memory>
+
 #include "context.hpp"
 
 #include "type.hpp"
@@ -67,41 +69,146 @@ TypeRef get_compliable_const_type(Value& val) {
 
 
 
-isize EvalStack::depth() const {
-    return count;
+bool InterpStack::empty() const {
+    return interps.count == 0;
 }
 
-EvalInstance *EvalStack::push(EvalInstance inst) {
-    ASSERT_MSG(count < CAPACITY, "求值实例栈满（上限 {}）", CAPACITY);
-    frames[count] = std::move(inst);
-
-    return &frames[count++];
+Interpreter* InterpStack::top() const {
+    return interps.back();
 }
 
-void EvalStack::pop() {
-    ASSERT_MSG(count > 0, "cannot pop empty stack");
-    EvalInstance::free(&frames[count - 1]);
-    count--;
+isize InterpStack::depth() const {
+    return interps.count;
 }
 
+void InterpStack::push(Interpreter* interp) {
+    interps.push_back(interp);
+}
 
-Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, EvalStack *eval_stack, EvalInstance inst)
-    : pkg_ref(pkg_ref), pkg(get_cir_package(pkg_ref)), eval_stack(eval_stack),
-      curr_frame(eval_stack->push(std::move(inst))) {
+void InterpStack::pop() {
+    interps.pop_back();
+}
+
+InterpStack::InterpStack(xpAllocator allocator)
+    : interps(make_array<Interpreter*>(allocator)) {
+}
+
+InterpStack::~InterpStack() {
+    array_free(&interps);
+}
+
+void Interpreter::start_frame(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode) {
+    frame.stop_blk = blk;
+    frame.stop_target = target;
+
+    new_analyze_flow(CIRInstructionRef{blk, 0, pkg});
+
+    if(force_eval_mode.has_value()) {
+        eval_mode_stack.push_back(*force_eval_mode);
+        frame.pushed_eval_mode = true;
+    } else if(pkg->block(blk).immediate_eval) {
+        eval_mode_stack.push_back(EvalMode::FullEval);
+        frame.pushed_eval_mode = true;
+    }
+}
+
+void Interpreter::step() {
+    frame.yielded = false;
+    analyze_block_insts(frame.stop_blk, frame.stop_target);
+}
+
+void Interpreter::finish_frame() {
+    // 被调方结果落定：没有返回值时补终止标记，父帧重跑调用指令时由缓存路径产出结果
+    if(eval_instance.ctx.in_call()) {
+        const FuncCallKey key = eval_instance.ctx.call_key();
+        const auto& func = inst(key.func_decl_pc).info<CIROperator::FunctionDecl>();
+        auto call_instance = eval_instance.ctx.call_instance();
+
+        const CIRInstResult *body_res = Ref<CIRInstResult>::init(func.body_inst, call_instance).get_result();
+        const bool body_finalized = body_res != nullptr
+            && (body_res->state == CIRResultState::WholeValue || body_res->state == CIRResultState::Error);
+
+        if(!body_finalized) {
+            const CIRInstResult *func_res = Ref<CIRInstResult>::init(key.func_decl_pc, call_instance).get_result();
+            ASSERT_MSG(func_res != nullptr, "被调函数声明结果缺失");
+            const TypeRef return_type = func_res->type()->function_info.return_type;
+
+            if(func.return_type_inst == INVALID_INST || return_type == easy_type(Type_void)) {
+                call_instance->result_of(func.body_inst).set_val(make_value(easy_type(Type_void)));
+            } else {
+                context()->reporter.report_error(inst(frame.call_pc).src_loc,
+                    "编译期调用未产出返回值（返回类型 '{}'）", return_type->name());
+                Set_ResultError(func.body_inst);
+            }
+        }
+    }
+
+    if(frame.pushed_eval_mode) {
+        eval_mode_stack.pop_back();
+        frame.pushed_eval_mode = false;
+    }
+    recover_analyze_flow();
+}
+
+void InterpStack::run() {
+    while(interps.count > 0) {
+        Interpreter* cur = interps.back();
+        cur->step();
+
+        if(interps.back() != cur) {
+            continue;   // 栈顶已变化：本 interp 让出
+        }
+
+        cur->finish_frame();
+
+        if(interps.count == 1) {
+            break;      // 根 interp 留给调用方收尾
+        }
+        Interpreter::destroy(cur);   // 析构时出栈并写回调用点
+    }
+}
+
+void InterpStack::run_until(Interpreter* target) {
+    while(interps.count > 0 && interps.back() != target) {
+        Interpreter* cur = interps.back();
+        cur->step();
+
+        if(interps.back() != cur) {
+            continue;
+        }
+
+        cur->finish_frame();
+        Interpreter::destroy(cur);
+    }
+}
+
+Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst)
+    : pkg_ref(pkg_ref), pkg(get_cir_package(pkg_ref)), interp_stack(interp_stack), eval_instance(std::move(inst)) {
     inst_stack = make_array<CIRInstructionRef>(allocator);
     eval_mode_stack = make_array<EvalMode>(allocator);
 
-
     inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg});
     scope = pkg->package_scope;
+
+    interp_stack->push(this);
 }
 
 Interpreter::~Interpreter() {
+    interp_stack->pop();
+
     array_free(&inst_stack);
     array_free(&eval_mode_stack);
+    EvalInstance::free(&eval_instance);
+}
 
-    eval_stack->pop();
+Interpreter* Interpreter::create(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst) {
+    void *mem = xp_alloc(xp_heap_allocator(), sizeof(Interpreter));
+    return std::construct_at(static_cast<Interpreter*>(mem), allocator, pkg_ref, interp_stack, std::move(inst));
+}
 
+void Interpreter::destroy(Interpreter *interp) {
+    std::destroy_at(interp);
+    xp_free(xp_heap_allocator(), interp);
 }
 
 CIRInstructionRef& Interpreter::curr_inst_ref() {
@@ -119,14 +226,19 @@ void analyze_package(Ref<Package> pkg, xpAllocator allocator) {
         return lcir::Module::init(permanent_allocator());
     });
 
-    EvalStack eval_stack = {};
+    // 编译期调用链：根 interp 跑包的顶层块
+    InterpStack interp_stack(allocator);
 
-    // 根帧：包的全局上下文
-    auto root = EvalInstance::make(get_cir_package(pkg), 0, allocator);
+    Interpreter* root = Interpreter::create(allocator, pkg, &interp_stack,
+                                            EvalInstance::make(get_cir_package(pkg), 0, allocator)
+    );
+    root->frame.managed = true;
+    root->start_frame(get_cir_package(pkg)->top_blk, std::nullopt);
 
-    Interpreter interpreter(allocator, pkg, &eval_stack, root);
-    interpreter.analyze_cir_package();
-    interpreter.collect_lcir_globals();
+    interp_stack.run();
+
+    root->collect_lcir_globals();
+    Interpreter::destroy(root);
 }
 
 //
@@ -164,13 +276,6 @@ void Interpreter::collect_lcir_globals() {
             };
         });
     }
-}
-
-//
-// interp 入口
-//
-void Interpreter::analyze_cir_package() {
-    analyze_block(pkg->top_blk, std::nullopt);
 }
 
 
@@ -235,15 +340,24 @@ bool Interpreter::analyze_instruction(std::optional<CIROperator> expected_op, An
     };
     
 
-    AnalyzeResult r = analyze_lambda();
-    for(auto& w : r.writes) {
-        apply_result(w.ref, w.result);
+    Interpreter* top_before = interp_stack->empty() ? nullptr : interp_stack->top();
 
-        // 可达性捕获：被引用的函数值进 lcir 工作表（与 apply_result 平级，不塞进它内部）
-        if(w.result.state == CIRResultState::WholeValue && is_function_type(w.result.val_ref().type)) {
-            capture_lcir_function(w.result.val_ref().func_val().func_key);
+    AnalyzeResult r = analyze_lambda();
+
+    Interpreter* top_after = interp_stack->empty() ? nullptr : interp_stack->top();
+    if(top_after != top_before) {
+        // handler 压入子帧：本条指令不落结果、不推进 pc
+        if(frame.managed) {
+            frame.yielded = true;
+            return true;   // 驱动帧让出；子帧结束后由驱动续跑
         }
+
+        // 同步子 interp（泛型具化、跨包符号）：就地跑完子树，再重跑本条
+        interp_stack->run_until(top_before);
+        return analyze_instruction(expected_op, params);
     }
+
+    apply_writes(r.writes);
 
     if(r.next_pc.has_value()) {
         curr_inst_ref() = *r.next_pc;
@@ -318,6 +432,11 @@ bool Interpreter::analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstruct
     bool result = true;
     for(;;) {
 
+        // 本帧已让出：交给驱动
+        if(frame.yielded) {
+            return true;
+        }
+
         // @note: 目前假设执行一个block时, 执行完一条指令, package不会被修改, 即使是Call了不同package的function, 执行完了也会回到当前package
         // 也就是说执行任何一条指令前后, package不变, 但指令执行中间不保证
         bool is_in_same_block = curr_inst_ref().block_ref == blk;
@@ -384,22 +503,22 @@ bool Interpreter::propagate_error(Array<CIRInstructionRef>& refs) {
 
 
 bool Interpreter::has_instance() const {
-    return curr_frame->ctx.in_call();
+    return eval_instance.ctx.in_call();
 }
 
 std::optional<FuncCallKey> Interpreter::curr_cache_key() const {
-    if(curr_frame->ctx.in_call()) {
-        return curr_frame->ctx.call_key();
+    if(eval_instance.ctx.in_call()) {
+        return eval_instance.ctx.call_key();
     }
     return std::nullopt;
 }
 
 CIRResultContext Interpreter::result_context() const {
-    return curr_frame->ctx;
+    return eval_instance.ctx;
 }
 
 EvalInstance* Interpreter::curr_instance() {
-    return has_instance() ? curr_frame : nullptr;
+    return has_instance() ? &eval_instance : nullptr;
 }
 
 bool Interpreter::has_result_val(CIRInstructionRef ref) {
@@ -613,6 +732,7 @@ EvalInstance EvalInstance::make(Ref<CIRPackage> callee_pkg, isize var_count, xpA
 }
 
 void EvalInstance::free(EvalInstance *inst) {
+    // var_ptrs 当前都由 arena 分配，arena 的 free 是空操作；保留统一入口
     array_free(&inst->var_ptrs);
 }
 
@@ -771,8 +891,19 @@ void Interpreter::apply_result(CIRInstructionRef ref, const ResultDesc& result) 
         if(result.implicit_type.has_value()) {
             res.implicit_type = result.implicit_type;
         }
-        
+
         return;
+    }
+}
+
+void Interpreter::apply_writes(const Array<ResultWrite>& writes) {
+    for(auto& w : writes) {
+        apply_result(w.ref, w.result);
+
+        // 可达性捕获：被引用的函数值进 lcir 工作表（与 apply_result 平级，不塞进它内部）
+        if(w.result.state == CIRResultState::WholeValue && is_function_type(w.result.val_ref().type)) {
+            capture_lcir_function(w.result.val_ref().func_val().func_key);
+        }
     }
 }
 
@@ -3235,7 +3366,7 @@ std::optional<Value> Interpreter::instantiate_generic_func(
     }
 
     // 帧是本 interp 自己的（构造时已入链）；把它的 ctx 绑到本次实例
-    curr_frame->ctx.enter_call(cache_key, lexical_parent);
+    eval_instance.ctx.enter_call(cache_key, lexical_parent);
 
     // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
     // 查 result_instance_map 命中本实例的这个槽
@@ -3305,9 +3436,10 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
         key_refs.push_back(Ref<CIRInstResult>::init(decl_arg_inst, parent_instance));
     }
 
-    // 另起一个只看得见 callee 包的 interp 来具化：帧归它自己，构造即入链
-    Interpreter callee_interp(xp_heap_allocator(), fv.func_key.inst_ref.pkg->package_ref, eval_stack,
-                              EvalInstance::make(fv.func_key.inst_ref.pkg, generic_func.slot_count, permanent_allocator()));
+    // 另起一个只看得见 callee 包的 interp 来具化（同步 interp）
+    Interpreter callee_interp(xp_heap_allocator(), fv.func_key.inst_ref.pkg->package_ref, interp_stack,
+                              EvalInstance::make(fv.func_key.inst_ref.pkg, generic_func.slot_count, permanent_allocator())
+    );
     callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
     const auto instantiated = callee_interp.instantiate_generic_func(fv, key_refs, type_args);
@@ -3321,68 +3453,6 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
 }
 
 
-// 跑完一具编译期函数体：压帧、填实参、跑 body、弹帧，返回值深拷进 permanent
-AnalyzeResult Interpreter::run_comptime_body(
-        Interpreter& callee_interp,
-        CIRInstructionRef pc_ref,
-        const CIRFunctionDeclInfo& func,
-        const CIRCallInfo& call_info,
-        Ref<CIRResultInstance> callee_result_instance,
-        TypeRef called_type,
-        FuncCallKey cache_key) {
-
-    const auto& arg_insts = call_info.arg_insts;
-    const auto return_type = called_type->function_info.return_type;
-    auto *frame = callee_interp.curr_frame;
-
-    FOR_0_TO(func.arg_decl_insts.count) {
-        // 实参在调用侧取好，槽在 callee 侧分配
-        const auto arg_type = ResultTypeOpt(arg_insts[it]).value();
-        const auto arg_val = ResultValueOpt(arg_insts[it]).value();
-
-        // 副作用：参数槽分配 + 写值
-        const auto slot = context()->static_values.alloc_value(arg_type);
-        *slot = Value::zero(arg_type, permanent_allocator());
-        Pointer::make_slot(slot).store(arg_val, permanent_allocator());
-
-        frame->var_ptrs[it] = Pointer::make_slot(slot);
-    }
-
-    // 副作用：分析 callee 函数体（body_inst 是裸块句柄，显式进块）
-    callee_interp.analyze_block(func.body_inst.block_ref, func.body_inst);
-
-    const bool body_has_error = callee_interp.has_error(func.body_inst);
-    const bool has_return = callee_interp.has_result_val(func.body_inst);
-
-    Value return_val = {};
-    if(has_return) {
-        // 返回值深拷一份：结果自己持有数据
-        return_val = clone_value(callee_interp.ResultValueOpt(func.body_inst).value(), permanent_allocator());
-    }
-
-    if(has_return) {
-        // 副作用：返回结果写入 callee 结果实例缓存（供后续同 key 调用命中）
-        callee_result_instance->result_of(func.body_inst).set_val(return_val);
-    }
-
-    AnalyzeResult res;
-    if(body_has_error) {
-        res.writes.push_back({pc_ref, ResultDesc::make_error()});
-    }
-
-    if(has_return) {
-        res.writes.push_back({pc_ref, ResultDesc::make_value(return_val)});
-    } else if(!body_has_error && func.return_type_inst == INVALID_INST) {
-        // 返回类型写成 '?'（infer）时按 body 推导：没有返回值即 void
-        res.writes.push_back({pc_ref, ResultDesc::make_type_only(easy_type(Type_void))});
-    } else if(!body_has_error && return_type != easy_type(Type_void)) {
-        // 编译期调用没产出返回值（函数声明了非 void 返回类型）——调用方拿不到值，必须报错
-        res.writes.push_back({pc_ref, inst_error(pc_ref,
-            "编译期调用未产出返回值（返回类型 '{}'）", return_type->name())});
-    }
-
-    return res;
-}
 
 // handler: Call（写自身返回值；编译期调用 push/pop instance 副作用保留）
 AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
@@ -3467,74 +3537,108 @@ AnalyzeResult Interpreter::analyze_Call(const CIRCallInfo& info, CIRInstructionR
 
     // 编译期执行
     if(curr_eval_mode() == EvalMode::FullEval) {
-        
-        constexpr auto MAX_CALL_DEPTH = 50;
-        if(eval_stack->depth() > MAX_CALL_DEPTH) {
-            r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", MAX_CALL_DEPTH)});
-            return r;
-        }
-
-        ASSERT(has_result_val(called_inst));
-
-        const auto called_val = ResultValueOpt(called_inst).value();
-        const auto fv = called_val.func_val();
-        const Ref<CIRPackage> callee_pkg_ref = fv.func_key.inst_ref.pkg;
-        CIRPackage &callee_pkg = callee_pkg_ref.resolve();
-
-        const auto func_decl_pc = fv.func_key.inst_ref;
-        const auto& func = callee_pkg.inst(func_decl_pc).info<CIROperator::FunctionDecl>();
-
-        if(!has_result_val(call_info.arg_insts)) {
-            r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用实参不是常量的函数")});
-            return r;
-        }
-
-        // 构建编译期函数调用结果查询键
-        FuncCallKey cache_key = {
-            .func_decl_pc = func_decl_pc,
-            .comptime_arg_refs = make_array<Ref<CIRInstResult>>(permanent_allocator())
-        };
-        Ref<CIRResultInstance> parent_instance;
-        if(auto* inst_ptr = curr_instance()) { parent_instance = inst_ptr->ctx.call_instance(); }
-        for(auto&& it : call_info.arg_insts) {
-            cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::init(it, parent_instance));
-        }
- 
-        // 查询编译期函数调用结果缓存
-        Ref<CIRResultInstance> lexical_parent = fv.func_key.result_instance;
-        if(lexical_parent == Ref<CIRResultInstance>::INVALID_REF) {
-            lexical_parent = callee_pkg.root_instance();
-        }
-        const auto callee_result_instance = callee_pkg.get_or_init_result_instance(cache_key, lexical_parent);
-
-        // 递归重入: 命中提前登记的结果直接复用（InProgress 用于中断递归）
-        const CIRInstResult *cached = callee_result_instance->result_ptr_of(func.body_inst);
-        if(cached && (cached->state == CIRResultState::WholeValue || cached->state == CIRResultState::InProgress)) {
-            r.writes.push_back({pc_ref, ResultDesc::make_value(cached->actual_val())});
-            return r;
-        }
-
-        if(func.is_extern_c) {
-            r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用 extern \"C\" 函数")});
-            return r;
-        }
-
-        // 另起一个 interp 跑 callee 的 body：帧归它自己，构造即入链
-        auto eval_inst = EvalInstance::make(callee_pkg_ref, func.slot_count, permanent_allocator());
-        eval_inst.ctx.enter_call(cache_key, lexical_parent);
-
-        Interpreter callee_interp(xp_heap_allocator(), callee_pkg.package_ref, eval_stack, std::move(eval_inst));
-        callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
-
-        const auto body_res = run_comptime_body(callee_interp, pc_ref,
-                                                func, call_info, callee_result_instance, called_type, cache_key);
-
-        for(auto& w: body_res.writes) {
+        auto exec = exec_comptime_call(call_info, called_inst, pc_ref);
+        for(auto& w : exec.writes) {
             r.writes.push_back(w);
         }
     }
 
     return r;
+}
+
+// 编译期调用执行：查缓存 / 起子帧 / 收尾
+AnalyzeResult Interpreter::exec_comptime_call(
+        const CIRCallInfo& call_info,
+        CIRInstructionRef called_inst,
+        CIRInstructionRef pc_ref) {
+
+    AnalyzeResult r;
+
+    ASSERT(has_result_val(called_inst));
+
+    const auto called_val = ResultValueOpt(called_inst).value();
+    const auto fv = called_val.func_val();
+    const Ref<CIRPackage> callee_pkg_ref = fv.func_key.inst_ref.pkg;
+    CIRPackage &callee_pkg = callee_pkg_ref.resolve();
+
+    const auto func_decl_pc = fv.func_key.inst_ref;
+    const auto& func = callee_pkg.inst(func_decl_pc).info<CIROperator::FunctionDecl>();
+
+    if(!has_result_val(call_info.arg_insts)) {
+        r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用实参不是常量的函数")});
+        return r;
+    }
+
+    // 构建编译期函数调用结果查询键
+    FuncCallKey cache_key = {
+        .func_decl_pc = func_decl_pc,
+        .comptime_arg_refs = make_array<Ref<CIRInstResult>>(permanent_allocator())
+    };
+    Ref<CIRResultInstance> parent_instance;
+    if(auto* inst_ptr = curr_instance()) { parent_instance = inst_ptr->ctx.call_instance(); }
+    for(auto&& it : call_info.arg_insts) {
+        cache_key.comptime_arg_refs.push_back(Ref<CIRInstResult>::init(it, parent_instance));
+    }
+
+    // 查询编译期函数调用结果缓存
+    Ref<CIRResultInstance> lexical_parent = fv.func_key.result_instance;
+    if(lexical_parent == Ref<CIRResultInstance>::INVALID_REF) {
+        lexical_parent = callee_pkg.root_instance();
+    }
+    const auto callee_result_instance = callee_pkg.get_or_init_result_instance(cache_key, lexical_parent);
+
+    // 递归重入: 命中提前登记的结果直接复用（InProgress 用于中断递归）
+    const CIRInstResult *cached = callee_result_instance->result_ptr_of(func.body_inst);
+    if(cached && cached->state == CIRResultState::Error) {
+        r.writes.push_back({pc_ref, ResultDesc::make_error()});
+        return r;
+    }
+
+    if(cached && (cached->state == CIRResultState::WholeValue || cached->state == CIRResultState::InProgress)) {
+        if(cached->state == CIRResultState::WholeValue && cached->actual_val().type == easy_type(Type_void)) {
+            // void 完成标记：调用点只拿类型
+            r.writes.push_back({pc_ref, ResultDesc::make_type_only(easy_type(Type_void))});
+        } else {
+            r.writes.push_back({pc_ref, ResultDesc::make_value(cached->actual_val())});
+        }
+        return r;
+    }
+
+    if(func.is_extern_c) {
+        r.writes.push_back({pc_ref, inst_error(pc_ref, "编译期无法调用 extern \"C\" 函数")});
+        return r;
+    }
+
+    // 起子 interp：填实参；调用点结果由出栈时写回
+    if(interp_stack->depth() >= InterpStack::MAX_DEPTH) {
+        r.writes.push_back({pc_ref, inst_error(pc_ref, "循环依赖或递归过深（最大调用深度 {}）", InterpStack::MAX_DEPTH)});
+        return r;
+    }
+
+    auto eval_inst = EvalInstance::make(callee_pkg_ref, func.slot_count, permanent_allocator());
+    eval_inst.ctx.enter_call(cache_key, lexical_parent);
+
+    Interpreter* callee_interp = Interpreter::create(xp_heap_allocator(), callee_pkg.package_ref, interp_stack, std::move(eval_inst));
+    callee_interp->frame.managed = true;
+    callee_interp->frame.call_pc = pc_ref;
+    callee_interp->eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
+
+    FOR_0_TO(func.arg_decl_insts.count) {
+        // 实参在调用侧取好，槽在 callee 侧分配
+        const auto arg_type = ResultTypeOpt(call_info.arg_insts[it]).value();
+        const auto arg_val = ResultValueOpt(call_info.arg_insts[it]).value();
+
+        // 副作用：参数槽分配 + 写值
+        const auto slot = context()->static_values.alloc_value(arg_type);
+        *slot = Value::zero(arg_type, permanent_allocator());
+        Pointer::make_slot(slot).store(arg_val, permanent_allocator());
+
+        callee_interp->eval_instance.var_ptrs[it] = Pointer::make_slot(slot);
+    }
+
+    callee_interp->start_frame(func.body_inst.block_ref, func.body_inst);
+
+    return {};   // 不写结果、不推进 pc；子 interp 结束后出栈写回调用点
 }
 
 AnalyzeResult Interpreter::analyze_EnterScope(const CIREnterScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
@@ -3711,10 +3815,11 @@ bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
             return true;
         }
 
-        // 跨包：另起一个只看得见该符号所属包的 interpreter，结果落它自己的全局上下文
+        // 跨包：另起一个只看得见该符号所属包的 interpreter（同步 interp），结果落它自己的全局上下文
         if(sym->inst_key.inst_ref.pkg != pkg) {
-            Interpreter sub(xp_heap_allocator(), sym->inst_key.inst_ref.pkg->package_ref, eval_stack,
-                            EvalInstance::make(sym->inst_key.inst_ref.pkg, 0, permanent_allocator()));
+            Interpreter sub(xp_heap_allocator(), sym->inst_key.inst_ref.pkg->package_ref, interp_stack,
+                            EvalInstance::make(sym->inst_key.inst_ref.pkg, 0, permanent_allocator())
+            );
             sub.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
             return sub.analyze_symbol_of_package(sym);
@@ -3722,9 +3827,9 @@ bool Interpreter::analyze_symbol_of_package(Ref<SymbolInfo> sym) {
 
         // TODO: 抽象泄露
         // 临时把当前实例上下文切到本包全局上下文，结果落全局，不污染触发实例
-        CIRResultContext saved_ctx = curr_frame->ctx;
-        curr_frame->ctx = CIRResultContext::create(pkg);
-        defer(curr_frame->ctx = saved_ctx);
+        CIRResultContext saved_ctx = eval_instance.ctx;
+        eval_instance.ctx = CIRResultContext::create(pkg);
+        defer(eval_instance.ctx = saved_ctx);
 
         new_analyze_flow(sym->val_as_inst_key().inst_ref);
         defer(recover_analyze_flow());

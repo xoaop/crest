@@ -139,7 +139,7 @@ struct AnalyzeParams {
 
 
 
-// 求值实例 — 每次编译期函数调用创建一个
+// 求值实例 — 每个 interp 一个，随 interp 生灭
 struct EvalInstance {
 
     static EvalInstance make(Ref<CIRPackage> callee_pkg, isize var_count, xpAllocator allocator);
@@ -148,25 +148,47 @@ struct EvalInstance {
 
     CIRResultContext ctx;
     Array<Pointer> var_ptrs;
-
-    // 用于恢复调用者上下文
-    // CIRInstructionRef caller_pc = INVALID_INST;   // 返回地址（pc 会被 body 覆盖，必须留帧里）
-    // Ref<Scope> caller_scope;
 };
 
 
-// 求值实例栈 —— 帧的存放处（调用链），归 interp 之外的持有者
-// 定长数组：帧地址天生稳定，不存在"扩容搬家"（interp 从生到死握着帧指针）
-struct EvalStack {
-    static constexpr isize CAPACITY = 64;
+struct Interpreter;
 
-    EvalInstance frames[CAPACITY] = {};
-    isize count = 0;
+// 调用帧：纯数据
+struct InterpStackFrame {
+    // 本帧分析的块
+    CIRBlockRef stop_blk = 0;
+    std::optional<CIRInstructionRef> stop_target = std::nullopt;
+    bool pushed_eval_mode = false;
 
-    isize depth() const;                     // 活帧数（含根帧）
+    // 是否由 InterpStack 驱动；false = 同步 interp（泛型具化、跨包符号）
+    bool managed = false;
 
-    EvalInstance *push(EvalInstance inst);   // 入链，返回这一帧
-    void pop();                              // 出链
+    // 本帧已让出（子 interp 入栈）
+    bool yielded = false;
+
+    // 调用点（无返回值报错的位置）
+    CIRInstructionRef call_pc = INVALID_INST;
+};
+
+// 解释器栈 —— 编译期调用链。栈顶就是当前执行的 interp：
+// 发起编译期调用 = 入栈；自己的块跑完 = 出栈。C++ 栈不随调用深度增长。
+struct InterpStack {
+    explicit InterpStack(xpAllocator allocator);
+    ~InterpStack();
+
+    // 栈深上限：失控递归的兜底（真正能到多深由内存决定）
+    static constexpr isize MAX_DEPTH = 10000;
+
+    Array<Interpreter*> interps;
+
+    bool empty() const;
+    Interpreter* top() const;
+    isize depth() const;
+
+    void push(Interpreter* interp);
+    void pop();                              // 出栈；调用结果写回新的栈顶
+    void run();                              // 驱动整条栈，直到根结束（根留给调用方销毁）
+    void run_until(Interpreter* target);     // 同步 interp：跑到 target 重新成为栈顶
 };
 
 
@@ -178,18 +200,24 @@ struct EvalStack {
 //
 
 struct Interpreter {
-    // inst 是本 interp 的帧：构造即入链，析构即出链，一生不换
-    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, EvalStack *eval_stack, EvalInstance inst);
+    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst);
     ~Interpreter();
 
-    // 不能拷贝：析构有副作用（出链），拷一份就多 pop 一次
     Interpreter(const Interpreter&) = delete;
+
+    static Interpreter* create(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst);
+    static void destroy(Interpreter *interp);
+
+    // 本 interp 的帧操作
+    void start_frame(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);
+    void step();
+    void finish_frame();
+
 
 
 
     void set_scope(Ref<Scope> scope);
 
-    void analyze_cir_package();
     void collect_lcir_globals();
 
     bool analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
@@ -259,6 +287,9 @@ struct Interpreter {
 
     void apply_result(CIRInstructionRef target, const ResultDesc& result);
 
+    // 批量落结果（含函数值可达性捕获），与 dispatch 应用 writes 的语义一致
+    void apply_writes(const Array<ResultWrite>& writes);
+
     void capture_lcir_function(Ref<CIRInstResult> fk);   // 把被引用的函数值登记进 lcir 工作表
 
 
@@ -281,15 +312,11 @@ struct Interpreter {
         Array<Ref<CIRInstResult>> key_refs,
         Array<TypeRef> type_args);
 
-    // 跑完一具编译期函数体（this = 调用方 interp）
-    AnalyzeResult run_comptime_body(
-        Interpreter& callee_interp,
-        CIRInstructionRef pc_ref,
-        const CIRFunctionDeclInfo& func,
+    // 编译期调用执行：查缓存 / 起子帧 / 收尾，返回调用点的结果写入
+    AnalyzeResult exec_comptime_call(
         const CIRCallInfo& call_info,
-        Ref<CIRResultInstance> callee_result_instance,
-        TypeRef called_type,
-        FuncCallKey cache_key);
+        CIRInstructionRef called_inst,
+        CIRInstructionRef pc_ref);
 
 public:
 
@@ -297,9 +324,11 @@ public:
     const Ref<Package> pkg_ref;
     const Ref<CIRPackage> pkg;
 
-    // 调用链在外部（EvalStack）；本 interp 只绑链上的一帧，从生到死不换
-    EvalStack *const eval_stack;
-    EvalInstance *const curr_frame;
+    // 编译期调用链
+    InterpStack *const interp_stack;
+    // 本 interp 的调用帧（纯数据）与求值实例
+    InterpStackFrame frame;
+    EvalInstance eval_instance;
 
     Ref<Scope> scope;
 
