@@ -1,0 +1,222 @@
+// @pass
+// @run
+
+#under_is_file_scope
+
+trace: i32 = 0;
+side: i32 = 0;
+
+mark :: (tag: i32) -> void {
+    trace = trace * 10 + tag;
+    return;
+}
+
+ok :: (want: i32) -> bool {
+    if trace != want {
+        return false;
+    }
+    trace = 0;
+    return true;
+}
+
+// 同一作用域多个 defer：倒序
+t1 :: () -> void {
+    defer mark(1);
+    defer mark(2);
+    defer mark(3);
+    return;
+}
+
+// 嵌套块：内层先跑
+t2 :: () -> void {
+    defer mark(1);
+    {
+        defer mark(2);
+    }
+    return;
+}
+
+// return 退出多层
+t3 :: () -> void {
+    defer mark(1);
+    {
+        defer mark(2);
+        {
+            defer mark(3);
+            return;
+        }
+    }
+    return;
+}
+
+// defer 读变量的退出时值
+t4 :: () -> void {
+    x := 1;
+    defer mark(x);
+    x = 2;
+    return;
+}
+
+// 循环里块级 defer 每轮都跑
+t5 :: () -> void {
+    for i in 0..3 {
+        {
+            defer mark(1);
+        }
+    }
+    return;
+}
+
+// break 触发块级作用域退出
+t6 :: () -> void {
+    for i in 0..5 {
+        {
+            defer mark(1);
+            if i == 2 {
+                break;
+            }
+        }
+        mark(9);
+    }
+    return;
+}
+
+// continue 触发块级作用域退出
+t7 :: () -> void {
+    for i in 0..3 {
+        {
+            defer mark(1);
+            if i < 2 {
+                continue;
+            }
+        }
+        mark(9);
+    }
+    return;
+}
+
+// 从循环里 return：块、函数两层都退
+t8 :: () -> void {
+    defer mark(1);
+    for i in 0..5 {
+        {
+            defer mark(2);
+            if i == 1 {
+                return;
+            }
+        }
+    }
+    return;
+}
+
+// defer 块里的 defer
+t9 :: () -> void {
+    defer {
+        defer mark(1);
+        mark(2);
+    }
+    return;
+}
+
+// if 分支里注册的 defer 只在走该分支时跑
+t10 :: (flag: bool) -> void {
+    defer mark(1);
+    if flag {
+        defer mark(2);
+        mark(3);
+    }
+    return;
+}
+
+// 返回值在 defer 之前求值
+t11 :: () -> i32 {
+    x := 5;
+    defer side = 99;
+    return x;
+}
+
+// 循环体直接写的 defer 属于 for 作用域，循环退出时跑一次
+t12 :: () -> void {
+    for i in 0..3 {
+        defer mark(1);
+        if i == 1 {
+            break;
+        }
+    }
+    return;
+}
+
+// defer 使用参数
+t13 :: (a: i32) -> void {
+    defer mark(a);
+    return;
+}
+
+// if/else 两支各自的 defer
+t14 :: (flag: bool) -> void {
+    if flag {
+        defer mark(1);
+        mark(2);
+    } else {
+        defer mark(3);
+        mark(4);
+    }
+    return;
+}
+
+main :: () -> i32 {
+    t1();
+    if !ok(321) { return 1; }
+
+    // 多次调用互不影响
+    t1();
+    if !ok(321) { return 2; }
+
+    t2();
+    if !ok(21) { return 3; }
+
+    t3();
+    if !ok(321) { return 4; }
+
+    t4();
+    if !ok(2) { return 5; }
+
+    t5();
+    if !ok(111) { return 6; }
+
+    t6();
+    if !ok(19191) { return 7; }
+
+    t7();
+    if !ok(1119) { return 8; }
+
+    t8();
+    if !ok(221) { return 9; }
+
+    t9();
+    if !ok(21) { return 10; }
+
+    t10(true);
+    if !ok(321) { return 11; }
+
+    t10(false);
+    if !ok(1) { return 12; }
+
+    if t11() != 5 { return 13; }
+    if side != 99 { return 14; }
+
+    t12();
+    // 本地语义：defer 写在循环体里属于每轮的作用域，每轮退出都展开
+    if !ok(11) { return 15; }
+
+    t13(7);
+    if !ok(7) { return 16; }
+
+    t14(true);
+    if !ok(21) { return 17; }
+
+    t14(false);
+    if !ok(43) { return 18; }
+
+    return 0;
+}

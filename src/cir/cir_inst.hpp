@@ -84,8 +84,6 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(PointerType)              \
     X(ArrayType)                \
     X(SliceType)                \
-    X(EnterScope)               \
-    X(ExitScope)                \
     X(CondBr)                   \
     X(IfExpr)                   \
     X(Break)                    \
@@ -471,14 +469,6 @@ struct CIRIndexPtrInfo {
     CIRInstructionRef index_inst;
 
     CIR_REFS(&CIRIndexPtrInfo::array_inst, &CIRIndexPtrInfo::index_inst)
-};
-
-struct CIREnterScopeInfo {
-    Ref<Scope> scope;
-};
-
-struct CIRExitScopeInfo {
-    Ref<Scope> scope;
 };
 
 struct CIRImportPackageInfo {

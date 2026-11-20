@@ -216,8 +216,6 @@ struct Interpreter {
 
 
 
-    void set_scope(Ref<Scope> scope);
-
     void collect_lcir_globals();
 
     bool analyze_instruction(std::optional<CIROperator> expected_op = std::nullopt, AnalyzeParams params = {});
@@ -329,8 +327,6 @@ public:
     // 本 interp 的调用帧（纯数据）与求值实例
     InterpStackFrame frame;
     EvalInstance eval_instance;
-
-    Ref<Scope> scope;
 
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）
     Array<EvalMode> eval_mode_stack;

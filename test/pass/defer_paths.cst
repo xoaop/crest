@@ -1,0 +1,46 @@
+// @pass
+// @run
+
+#under_is_file_scope
+trace: i32 = 0;
+
+multiple :: (choice: i32) -> i32 {
+    x := 2;
+    defer {
+        y := x + 1;
+        trace = trace * 10 + y;
+    }
+    if choice == 0 { return 0; }
+    if choice == 1 { return 1; }
+    return 2;
+}
+
+unreached :: () -> void {
+    defer trace = trace * 10 + 1;
+    return;
+    defer trace = trace * 10 + 9;
+}
+
+shadow :: () -> void {
+    x := 1;
+    defer trace = trace * 10 + x;
+    {
+        x := 2;
+        defer trace = trace * 10 + x;
+    }
+    return;
+}
+
+main :: () -> i32 {
+    if multiple(0) != 0 { return 1; }
+    if multiple(1) != 1 { return 2; }
+    if multiple(2) != 2 { return 3; }
+    if trace != 333 { return 4; }
+    trace = 0;
+    unreached();
+    if trace != 1 { return 5; }
+    trace = 0;
+    shadow();
+    if trace != 21 { return 6; }
+    return 0;
+}

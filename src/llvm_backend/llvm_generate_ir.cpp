@@ -1118,13 +1118,6 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
         
         
         
-        // 这些与状态相关的指令, 需要更新状态, 但不生成IR
-        case CIROperator::EnterScope:
-            break;
-        case CIROperator::ExitScope:
-            break;
-        
-        
         // 不需要生成IR
         case CIROperator::ConstantValue:
         case CIROperator::StringLiteral:

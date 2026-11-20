@@ -1,0 +1,10 @@
+// @fail
+// @error "defer 内不能使用 return"
+
+main :: () -> i32 {
+    defer {
+        return 0;
+    }
+
+    return 0;
+}

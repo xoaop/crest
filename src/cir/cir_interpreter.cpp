@@ -188,7 +188,6 @@ Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, InterpStac
     eval_mode_stack = make_array<EvalMode>(allocator);
 
     inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg});
-    scope = pkg->package_scope;
 
     interp_stack->push(this);
 }
@@ -634,17 +633,6 @@ void Interpreter::Set_ResultValue(CIRInstructionRef ref, Value val) {
 void Interpreter::Set_ResultTypeAndValue(CIRInstructionRef ref, Value val) {
     Set_ResultType(ref, val.type);
     Set_ResultValue(ref, val);
-}
-
-
-
-//
-// Scope 处理
-//
-
-
-void Interpreter::set_scope(Ref<Scope> sc) {
-    scope = sc;
 }
 
 
@@ -2366,18 +2354,23 @@ AnalyzeResult Interpreter::analyze_Break(const CIRBreakInfo& info, CIRInstructio
         const bool target_yields_value = pkg->block(target_block.block_ref).yields_value;
         if(has_result_val(info.break_value_inst)
            && (curr_eval_mode() == EvalMode::FullEval || target_yields_value)) {
-
-            // 真实 BlockRef 指令（loop break）才改 pc 跳转；块句柄 {blk,-1}（if 表达式臂）无此指令，控制流由 analyze_block recover 处理
-            if(curr_eval_mode() == EvalMode::FullEval && target_block.inst_index != INVALID_INST_INDEX) {
-                const CIRBlockRefInfo& block_ref_info = pkg->inst(target_block).info<CIROperator::BlockRef>();
-                auto new_curr_inst_ref = curr_inst_ref();
-                new_curr_inst_ref.block_ref = block_ref_info.in_which_block;
-                new_curr_inst_ref.inst_index = target_block.inst_index;
-                curr_inst_ref() = new_curr_inst_ref;
-            }
-
             r.writes.push_back({target_block, ResultDesc::make_value(ResultValueOpt(info.break_value_inst).value())});
         }
+    }
+
+    // Break 离开当前块：目标是真实 BlockRef 就跳到它的位置（loop break），
+    // 块句柄（return 到函数块、if 表达式臂等）没有这条指令，就终止当前块（后续不可达）。
+    if(curr_eval_mode() == EvalMode::FullEval) {
+        auto cur = curr_inst_ref();
+        if(target_block.inst_index != INVALID_INST_INDEX) {
+            const CIRBlockRefInfo& block_ref_info = pkg->inst(target_block).info<CIROperator::BlockRef>();
+            cur.block_ref = block_ref_info.in_which_block;
+            cur.inst_index = target_block.inst_index;
+        } else {
+            cur.inst_index = pkg->block(cur.block_ref).insts.count();
+        }
+        
+        curr_inst_ref() = cur;
     }
 
     return r;
@@ -3639,18 +3632,6 @@ AnalyzeResult Interpreter::exec_comptime_call(
     callee_interp->start_frame(func.body_inst.block_ref, func.body_inst);
 
     return {};   // 不写结果、不推进 pc；子 interp 结束后出栈写回调用点
-}
-
-AnalyzeResult Interpreter::analyze_EnterScope(const CIREnterScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Ref<Scope> scope = info.scope;
-    set_scope(scope);
-    return {};
-}
-
-AnalyzeResult Interpreter::analyze_ExitScope(const CIRExitScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Ref<Scope> scope = info.scope;
-    set_scope(scope);
-    return {};
 }
 
 // handler: IdentRef（写自身 LValue 类型/地址；符号按需分析副作用保留）
