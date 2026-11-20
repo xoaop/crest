@@ -72,6 +72,9 @@ struct Ast;
     AST_INFO(ReturnStmt, "return statement", struct {                                \
         Ast *expr;                                                                   \
     })                                                                               \
+    AST_INFO(DeferStmt, "defer statement", struct {                                  \
+        Ast *defered_statement;                                                      \
+    })                                                                               \
     AST_INFO(VariableDecl, "variable decl", struct {                                 \
         GlobalStringIndex var_name;                                                  \
         Ast *expr;                                                                   \

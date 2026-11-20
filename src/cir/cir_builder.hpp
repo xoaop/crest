@@ -41,6 +41,8 @@ struct CIRBuildContext {
     Array<CIRBlockRef> block_stack;
     Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
     Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
+
+    xpHashMap<Ref<Scope>, Array<Ast *>> scope_defered_stmts;   // 各作用域收集到的 defer
 };
 
 struct ScopeGuard {
@@ -91,8 +93,8 @@ struct CIRBuilder {
     
     
     
-    static bool Enter_Scope(CIRBuildContext& ctx, Ast *ast);
-    static void Exit_Scope(CIRBuildContext& ctx);
+    static bool enter_scope(CIRBuildContext& ctx, Ast *ast);
+    static void exit_scope(CIRBuildContext& ctx);
     
 
     static void build_cir_package(Ref<Package> pkg);

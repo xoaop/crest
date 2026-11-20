@@ -62,13 +62,22 @@ static void crest_targets() {
     println_out("Usage: crest build <path> -target <arch>-<os>-<env>");
     println_out("");
     println_out("  arch: {} | {} | {} | {}",
-        target_arch_name(TargetArch::X86_64), target_arch_name(TargetArch::X86),
-        target_arch_name(TargetArch::AArch64), target_arch_name(TargetArch::Arm));
+        target_arch_name(TargetArch::X86_64), 
+        target_arch_name(TargetArch::X86),
+        target_arch_name(TargetArch::AArch64), 
+        target_arch_name(TargetArch::Arm)
+    );
     println_out("  os:   {} | {} | {} | {}",
-        target_os_name(TargetOS::Windows), target_os_name(TargetOS::Linux),
-        target_os_name(TargetOS::Darwin), target_os_name(TargetOS::FreeBSD));
+        target_os_name(TargetOS::Windows), 
+        target_os_name(TargetOS::Linux),
+        target_os_name(TargetOS::Darwin), 
+        target_os_name(TargetOS::FreeBSD)
+    );
     println_out("  env:  {} | {} | {}",
-        target_env_name(TargetEnv::MSVC), target_env_name(TargetEnv::GNU), target_env_name(TargetEnv::Musl));
+        target_env_name(TargetEnv::MSVC), 
+        target_env_name(TargetEnv::GNU), 
+        target_env_name(TargetEnv::Musl)
+    );
     println_out("");
     println_out("  e.g. x86_64-windows-gnu, x86_64-linux-musl, aarch64-linux-gnu");
 }

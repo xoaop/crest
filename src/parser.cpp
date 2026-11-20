@@ -724,6 +724,15 @@ Ast *parse_stmt(Parser *p) {
         }
 
         break;
+
+    case TokenType::KW_defer:
+        a = ast_alloc(AstType_DeferStmt);
+        a->token = expect(p, TokenType::KW_defer);
+
+        a->DeferStmt.defered_statement = parse_stmt(p);
+        a->src_loc = merge(a->token.src_loc, a->DeferStmt.defered_statement->src_loc);
+
+        break;
     
     default:
         a = parse_assignment_or_expr(p);

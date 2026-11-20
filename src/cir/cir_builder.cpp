@@ -26,7 +26,7 @@
 #include "cir_builder.hpp"
 #include "context.hpp"
 
-
+static void expand_defered_stmts(CIRBuildContext& ctx, Ref<Scope> target_scope);
 
 
 CIRBuildContext CIRBuildContext::init(xpAllocator allocator) {
@@ -43,6 +43,7 @@ CIRBuildContext CIRBuildContext::init(xpAllocator allocator) {
     ctx.block_stack = make_array<CIRBlockRef>(allocator);
     ctx.loop_body_block_stack = make_array<CIRInstructionRef>(allocator);
     ctx.loop_stack = make_array<CIRInstructionRef>(allocator);
+    ctx.scope_defered_stmts = xp_hash_map_make<Ref<Scope>, Array<Ast *>>(allocator);
 
     return ctx;
 }
@@ -51,6 +52,12 @@ void CIRBuildContext::free(CIRBuildContext& ctx) {
     array_free(&ctx.block_stack);
     array_free(&ctx.loop_body_block_stack);
     array_free(&ctx.loop_stack);
+
+    for(auto& entry : ctx.scope_defered_stmts) {
+        Array<Ast *> defered_stmts = entry.value;
+        array_free(&defered_stmts);
+    }
+    xp_hash_map_free(ctx.scope_defered_stmts);
 }
 
 
@@ -73,9 +80,6 @@ void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
     for(AstFile& ast_file : pkg->ast_files) {
 
         ctx.scope = ast_file.file_scope;
-
-        // @new — 顶层 scope 用显式 EnterScope 指令切换（不发 ExitScope，靠下一个 EnterScope 覆盖）
-        auto enter_scope = Make_Instruction<CIROperator::EnterScope>(ctx, nullptr, { .scope = ast_file.file_scope });
 
         for(Ast *ast : ast_file.top_levels) {
             build_top_stmt(ctx, ast);
@@ -422,6 +426,15 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(CIRBuildContext& ctx, Ast *stm
 
         case AstType_ReturnStmt: {
             build_inst_for_return_stmt(ctx, stmt);
+        } break;
+
+        case AstType_DeferStmt: {
+            Ast *defered_stmt = stmt->DeferStmt.defered_statement;
+            auto& defered_stmts = ctx.scope_defered_stmts.get_or_insert(ctx.scope, [&]{
+                return make_array<Ast *>(ctx.allocator);
+            });
+            defered_stmts.push_back(defered_stmt);
+
         } break;
 
         case AstType_FunctionCallExpr: {
@@ -1458,7 +1471,9 @@ CIRInstructionRef CIRBuilder::Alloc_Var(CIRBuildContext& ctx, GlobalStringIndex 
 
 CIRInstructionRef CIRBuilder::New_Break(CIRBuildContext& ctx, CIRInstructionRef break_block, CIRInstructionRef break_value_inst, Ast *ast) {
     ASSERT(break_block.is_block());
-    
+
+    expand_defered_stmts(ctx, ctx.pkg->block(break_block.block_ref).scope);
+
     auto br = Make_Instruction<CIROperator::Break>(ctx, ast, {
         .break_block = break_block,
         .break_value_inst = break_value_inst,
@@ -1493,7 +1508,7 @@ CIRInstructionRef CIRBuilder::New_BlockRef(CIRBuildContext& ctx, Ast *ast, CIRBl
 CIRBlockRef CIRBuilder::Begin_Block(CIRBuildContext& ctx, bool is_comptime, bool immediate_eval, bool yields_value) {
     ASSERT(!immediate_eval || is_comptime);
 
-    CIRBlockRef blk = ctx.pkg->create_block(is_comptime, immediate_eval, false, yields_value);
+    CIRBlockRef blk = ctx.pkg->create_block(is_comptime, immediate_eval, false, yields_value, ctx.scope);
     ctx.block_stack.push_back(blk);
     return blk;
 }
@@ -1504,7 +1519,7 @@ void CIRBuilder::End_Block(CIRBuildContext& ctx) {
 
 
 CIRBlockRef CIRBuilder::Begin_Loop(CIRBuildContext& ctx) {
-    CIRBlockRef blk = ctx.pkg->create_block(false, false, true);
+    CIRBlockRef blk = ctx.pkg->create_block(false, false, true, false, ctx.scope);
 
     // 为什么不拓展Begin_Block? 因为我不确定以后的Loop会不会还是基于在Block上加is_loop flag来表示
     // 所以我单独写一个Begin_Loop, 以便以后扩展
@@ -1529,50 +1544,74 @@ void CIRBuilder::End_Loop(CIRBuildContext& ctx, CIRInstructionRef loop_inst) {
 
 
 
-bool CIRBuilder::Enter_Scope(CIRBuildContext& ctx, Ast *ast) {
+bool CIRBuilder::enter_scope(CIRBuildContext& ctx, Ast *ast) {
     Ref<Scope> child = try_enter_scope(&ctx.scope.unwrap(), ast);
     if(child == Ref<Scope>::INVALID_REF) {
         return false;
     }
 
-    Ref<Scope> child_n{child};
-    auto ref = Make_Instruction<CIROperator::EnterScope>(ctx, nullptr, { .scope = child_n });
-    ctx.scope = child_n;
+    xp_hash_map_remove(&ctx.scope_defered_stmts, child);
+    ctx.scope = child;
 
     return true;
 }
 
-void CIRBuilder::Exit_Scope(CIRBuildContext& ctx) {
+void CIRBuilder::exit_scope(CIRBuildContext& ctx) {
     Ref<Scope> parent = try_exit_scope(&ctx.scope.unwrap());
     if(parent == Ref<Scope>::INVALID_REF) {
         return;
     }
 
-    Ref<Scope> parent_n{parent.index};
-    auto ref = Make_Instruction<CIROperator::ExitScope>(ctx, nullptr, { .scope = parent_n });
-    ctx.scope = parent_n;
+    if(auto *defered_stmts = xp_hash_map_get(ctx.scope_defered_stmts, ctx.scope)) {
+        Array<Ast *> to_build = *defered_stmts;   // 拷贝：展开 defer 可能插入同表，触发 rehash
+        for(auto j = to_build.count - 1; j >= 0; --j) {
+            build_inst_for_stmt(ctx, to_build[j]);
+        }
+    }
+
+    ctx.scope = parent;
 }
 
 
 ScopeGuard::ScopeGuard(CIRBuildContext& ctx, Ast *ast): ctx(&ctx), entered(false) {
     if(ast != nullptr) {
-        entered = CIRBuilder::Enter_Scope(ctx, ast);
+        entered = CIRBuilder::enter_scope(ctx, ast);
     }
 }
 
 ScopeGuard::~ScopeGuard() {
     if(entered) {
-        CIRBuilder::Exit_Scope(*ctx);
+        CIRBuilder::exit_scope(*ctx);
     }
 }
-
-
-
 
 
 bool is_type_decl_ast(Ast *expr) {
     return expr->type == AstType_StructDeclValue
         || expr->type == AstType_UnionDecl
         || expr->type == AstType_EnumDecl;
+}
+
+
+// 提前退出：把 ctx.scope 到 target_scope 之间各层的 defer 按内→外展开
+static void expand_defered_stmts(CIRBuildContext& ctx, Ref<Scope> target_scope) {
+    Ref<Scope> saved_scope = ctx.scope;
+
+    for(auto scope = ctx.scope; scope != target_scope && scope != Ref<Scope>::INVALID_REF; scope = scope->parent) {
+        ctx.scope = scope;
+
+        auto *defered_stmts = xp_hash_map_get(ctx.scope_defered_stmts, scope);
+        if(defered_stmts == nullptr) {
+            continue;
+        }
+
+        // 拷贝：展开 defer 可能插入同表，触发 rehash 让指针失效
+        Array<Ast *> to_build = *defered_stmts;
+        for(auto j = to_build.count - 1; j >= 0; --j) {
+            CIRBuilder::build_inst_for_stmt(ctx, to_build[j]);
+        }
+    }
+
+    ctx.scope = saved_scope;
 }
 

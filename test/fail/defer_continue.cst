@@ -1,0 +1,12 @@
+// @fail
+// @error "defer 内不能使用 continue"
+
+main :: () -> i32 {
+    for i in 0..3 {
+        defer {
+            continue;
+        }
+    }
+
+    return 0;
+}

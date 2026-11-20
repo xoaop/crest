@@ -24,7 +24,8 @@ struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
     CIRBlockRef self = -1;          // 本块号（create_block 填）
     Ref<CIRPackage> cir_package;   // 所属包
-    
+    Ref<Scope> scope;              // 块创建时所在的作用域
+
     bool is_comptime;
     bool immediate_eval;
     bool is_loop;                // 循环块标记（旧 Loop 指令已合并进 Block）
@@ -83,7 +84,7 @@ struct CIRPackage {
     const CIRInstResult* find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
     const CIRInstResult* find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
 
-    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false);
+    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false, Ref<Scope> scope = Ref<Scope>::INVALID_REF);
 };
 
 

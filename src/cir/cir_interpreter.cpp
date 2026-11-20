@@ -188,7 +188,6 @@ Interpreter::Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, InterpStac
     eval_mode_stack = make_array<EvalMode>(allocator);
 
     inst_stack.push_back(CIRInstructionRef{pkg->top_blk, 0, pkg});
-    scope = pkg->package_scope;
 
     interp_stack->push(this);
 }
@@ -634,17 +633,6 @@ void Interpreter::Set_ResultValue(CIRInstructionRef ref, Value val) {
 void Interpreter::Set_ResultTypeAndValue(CIRInstructionRef ref, Value val) {
     Set_ResultType(ref, val.type);
     Set_ResultValue(ref, val);
-}
-
-
-
-//
-// Scope 处理
-//
-
-
-void Interpreter::set_scope(Ref<Scope> sc) {
-    scope = sc;
 }
 
 
@@ -3639,18 +3627,6 @@ AnalyzeResult Interpreter::exec_comptime_call(
     callee_interp->start_frame(func.body_inst.block_ref, func.body_inst);
 
     return {};   // 不写结果、不推进 pc；子 interp 结束后出栈写回调用点
-}
-
-AnalyzeResult Interpreter::analyze_EnterScope(const CIREnterScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Ref<Scope> scope = info.scope;
-    set_scope(scope);
-    return {};
-}
-
-AnalyzeResult Interpreter::analyze_ExitScope(const CIRExitScopeInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    Ref<Scope> scope = info.scope;
-    set_scope(scope);
-    return {};
 }
 
 // handler: IdentRef（写自身 LValue 类型/地址；符号按需分析副作用保留）

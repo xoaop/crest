@@ -34,6 +34,7 @@ struct Analyser {
     Ref<Scope> current_scope;
     AstFile *curr_ast_file;
     bool under_file_scope = false;
+    bool in_defer = false;   // 正在解析 defer 内部的语句
 };
 
 
@@ -215,6 +216,7 @@ void resolve_union_decl(Ast *decl, Analyser analyser);
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser);
 void resolve_local_stmt(Ast *stmt_ast, Analyser analyser);
+void resolve_defer_stmt(Ast *stmt_ast, Analyser analyser);
 void resolve_expr(Ast *expr_ast, Analyser analyser);
 void resolve_expr2(Ast *expr_ast, Analyser analyser);
 void resolve_block(Ast *ast, Analyser analyser, bool need_new_scope);
@@ -754,6 +756,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
     Ref<Scope> parent_scope = analyser.current_scope;
 
     Analyser new_sc = new_scope(analyser, ScopeType::Function, decl, parent_scope);
+    new_sc.in_defer = false;   // 函数体是新的控制流边界
    
     resolve_fn_param_list(decl->FunctionDeclValue.params, new_sc);
 
@@ -1054,6 +1057,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
 
     case AstType_ReturnStmt: {
+        if(analyser.in_defer) {
+            context()->reporter.report_error(stmt_ast->src_loc, "defer 内不能使用 return");
+        }
+
         if(stmt_ast->ReturnStmt.expr != NULL) {
             resolve_expr(stmt_ast->ReturnStmt.expr, analyser);
         }
@@ -1066,6 +1073,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
     
     case AstType_Break: {
+        if(analyser.in_defer) {
+            context()->reporter.report_error(stmt_ast->src_loc, "defer 内不能使用 break");
+        }
+
         if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
@@ -1074,6 +1085,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
         }
     } break;
     case AstType_Continue: {
+        if(analyser.in_defer) {
+            context()->reporter.report_error(stmt_ast->src_loc, "defer 内不能使用 continue");
+        }
+
         if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
@@ -1092,6 +1107,10 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
         resolve_const_decl_local(stmt_ast, analyser);
     } break;
 
+    case AstType_DeferStmt: {
+        resolve_defer_stmt(stmt_ast, analyser);
+    } break;
+
     default: {
         context()->reporter.report_error(
             stmt_ast->src_loc,
@@ -1100,6 +1119,19 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
     } break;
     
     }
+}
+
+void resolve_defer_stmt(Ast *stmt_ast, Analyser analyser) {
+    Ast *defered_stmt_ast = stmt_ast->DeferStmt.defered_statement;
+
+    if(defered_stmt_ast->type == AstType_DeferStmt) {
+        context()->reporter.report_error("defer不能够直接嵌套defer, 虽然可以实现, 但是不好");
+    }
+
+    analyser.in_defer = true;
+    resolve_local_stmt(defered_stmt_ast, analyser);
+
+    return;
 }
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {

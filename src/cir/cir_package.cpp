@@ -39,13 +39,14 @@ const CIRBlock& CIRPackage::block(CIRBlockRef ref) const {
     return blocks[ref];
 }
 
-CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value) {
+CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value, Ref<Scope> scope) {
     CIRBlock blk = {};
     blk.insts = StableOrderedArray<CIRInstruction>::make(permanent_allocator());
     blk.is_comptime = is_comptime;
     blk.immediate_eval = immediate_eval;
     blk.is_loop = is_loop;
     blk.yields_value = yields_value;
+    blk.scope = scope;
     CIRBlockRef ref = blocks.count;
     blk.self = ref;
     blk.cir_package = self_ref;
