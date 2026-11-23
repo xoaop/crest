@@ -30,6 +30,9 @@ struct IRSymbolTable {
     xpHashMap<Ref<SymbolInfo>, LLVMValueRef> local_vals;
 };
 
+LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref);
+LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, LLVMValueRef val);
+
 
 struct LLVMState {
     LLVMValueRef curr_function;
@@ -99,9 +102,8 @@ struct LLVMGenerator {
     LLVMValueRef compare_two_values(LLVMValueRef left, LLVMValueRef right, TypeRef type, bool is_not_equal);
 
 
-    LLVMBasicBlockMapper& add_mapper_for_block(CIRBlockRef blk, bool create_exit = true);
     LLVMBasicBlockMapper* mapper(CIRBlockRef blk);
-    LLVMBasicBlockMapper& get_or_create_mapper(CIRBlockRef blk);
+    LLVMBasicBlockMapper& get_or_create_mapper(CIRBlockRef blk, bool create_exit = true);
 
     LLVMBasicBlockRef curr_bb();
 

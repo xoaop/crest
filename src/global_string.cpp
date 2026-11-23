@@ -31,10 +31,6 @@ StringRef get_global_string(const GlobalStringArray& global_strings, GlobalStrin
     return StringRef::init(global_strings.strings[index]);
 }
 
-size_t global_string_count(const GlobalStringArray& global_strings) {
-    return global_strings.strings.size();
-}
-
 KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, xpAllocator allocator) {
     KnownGlobalStrings known;
 
@@ -51,6 +47,7 @@ KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, 
     known.get_field_builtin = get_or_insert_global_string(global_strings, "get_field", allocator);
     known.compile_error_builtin = get_or_insert_global_string(global_strings, "compile_error", allocator);
     known.empty = get_or_insert_global_string(global_strings, "", allocator);
+    known.align = get_or_insert_global_string(global_strings, "align", allocator);
 
     return known;
 }

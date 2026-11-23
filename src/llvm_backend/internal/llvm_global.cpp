@@ -29,6 +29,7 @@ void init_llvm() {
         LLVMDisposeMessage(error);
         XP_ASSERT_DEFAULT(0);
     }
+    
     // 默认基线 CPU，产物不随编译机变；-features 可单独覆盖
     const char *cpu = "generic";
     const char *features = "";
@@ -49,6 +50,7 @@ void init_llvm() {
     if(context()->target_features) {
         features = context()->target_features;
     }
+
     g_llvm_session.ctx = LLVMContextCreate();
     g_llvm_session.target_machine = LLVMCreateTargetMachine(
         target,
@@ -59,8 +61,14 @@ void init_llvm() {
         LLVMRelocPIC,
         LLVMCodeModelDefault
     );
-    if(owned_cpu) LLVMDisposeMessage(owned_cpu);
-    if(owned_features) LLVMDisposeMessage(owned_features);
+
+    if(owned_cpu) {
+        LLVMDisposeMessage(owned_cpu);
+    }
+    if(owned_features) {
+        LLVMDisposeMessage(owned_features);
+    }
+
     g_llvm_session.target_data = LLVMCreateTargetDataLayout(g_llvm_session.target_machine);
 
     g_llvm_session.struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(permanent_allocator());

@@ -21,7 +21,6 @@ GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings,
 GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings, const xpString& str, xpAllocator allocator);
 
 StringRef get_global_string(const GlobalStringArray& global_strings, GlobalStringIndex index);
-size_t global_string_count(const GlobalStringArray& global_strings);
 
 
 struct KnownGlobalStrings {
@@ -38,6 +37,7 @@ struct KnownGlobalStrings {
     GlobalStringIndex get_field_builtin;
     GlobalStringIndex compile_error_builtin;
     GlobalStringIndex empty;
+    GlobalStringIndex align;
 };
 
 KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, xpAllocator allocator);
