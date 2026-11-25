@@ -160,6 +160,7 @@ struct Ast;
     })                                                                               \
     AST_INFO(StructDeclValue, "struct decl value", struct {                          \
         Array<Ast *> fields;                                                         \
+        Ast *align_ast;                                                              \
     })                                                                               \
     AST_INFO(EnumDecl, "enum decl", struct {                                         \
         Ast *type_ast;                                                               \

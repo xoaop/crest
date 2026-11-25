@@ -129,15 +129,19 @@ SysVShape classify_sysv(TypeRef type) {
     }
 
     shape.count = (int)((size + 7) / 8);
+    while(shape.count > 0) {
+        const ChunkAcc& tail = acc[shape.count - 1];
+        if(tail.any_int || tail.f64 || tail.f32_count > 0) break;
+        shape.count--;
+    }
     for(int i = 0; i < shape.count; i++) {
         SysVChunk& c = shape.chunks[i];
-        isize remaining = size - (isize)i * 8;
+        const isize remaining = size - static_cast<isize>(i) * 8;
         c.bytes = (unsigned)(remaining > 8 ? 8 : remaining);
         c.f64 = acc[i].f64;
         c.f32_count = acc[i].f32_count;
         c.is_sse = !acc[i].any_int;
         if(c.is_sse && !c.f64 && c.f32_count == 0) {
-            // 纯填充块不应出现；按 INTEGER 兜底更安全
             c.is_sse = false;
         }
     }
@@ -215,7 +219,8 @@ ABIFunctionPlan make_c_abi_plan(TypeRef func_type, ABIKind abi) {
     plan.params = make_array_capacity<ABIParamPlan>(stage_allocator(), fixed);
 
     // SysV 寄存器计数（GPR / SSE 各自独立）
-    int used_gpr = 0;
+    const bool agg_ret = is_struct_type(plan.ret_type) || is_union_type(plan.ret_type);
+    int used_gpr = sysv && agg_ret && classify_sysv(plan.ret_type).memory ? 1 : 0;
     int used_sse = 0;
 
     for(isize i = 0; i < fixed; i++) {
@@ -244,6 +249,7 @@ ABIFunctionPlan make_c_abi_plan(TypeRef func_type, ABIKind abi) {
                 pp.kind = ABIParamPlan::Kind::ByValPtr;
                 pp.types[0] = LLVMPointerTypeInContext(ctx, 0);
                 pp.ntypes = 1;
+                pp.align = static_cast<unsigned>(type_align_of(pt));
             } else {
                 pp.kind = ABIParamPlan::Kind::Aggregate;
                 pp.types[0] = LLVMIntTypeInContext(ctx, (unsigned)w);
@@ -262,7 +268,7 @@ ABIFunctionPlan make_c_abi_plan(TypeRef func_type, ABIKind abi) {
                 pp.kind = ABIParamPlan::Kind::ByValPtr;
                 pp.types[0] = LLVMPointerTypeInContext(ctx, 0);
                 pp.ntypes = 1;
-                pp.align = (int)type_align_of(pt);
+                pp.align = static_cast<unsigned>(type_align_of(pt));
             } else {
                 pp.kind = ABIParamPlan::Kind::Aggregate;
                 pp.ntypes = s.count;
@@ -279,7 +285,6 @@ ABIFunctionPlan make_c_abi_plan(TypeRef func_type, ABIKind abi) {
 
     // ── 返回 ──
     LLVMTypeRef ret_llvm = nullptr;
-    const bool agg_ret = is_struct_type(plan.ret_type) || is_union_type(plan.ret_type);
 
     if(plan.ret_type->kind == Type_void) {
         ret_llvm = LLVMVoidTypeInContext(ctx);
@@ -376,6 +381,8 @@ void apply_c_abi_attrs(LLVMValueRef fn_or_call, const ABIFunctionPlan& plan, boo
         add_attr(fn_or_call, index,
                  make_type_attr("sret", get_llvm_type_from_type(plan.ret_type)), is_call);
         add_attr(fn_or_call, index, make_enum_attr("noalias"), is_call);
+        add_attr(fn_or_call, index,
+                 make_enum_attr("align", static_cast<u64>(type_align_of(plan.ret_type))), is_call);
         index++;
     }
 
@@ -385,10 +392,10 @@ void apply_c_abi_attrs(LLVMValueRef fn_or_call, const ABIFunctionPlan& plan, boo
             if(plan.abi == ABIKind::SysVX64) {
                 add_attr(fn_or_call, index,
                          make_type_attr("byval", get_llvm_type_from_type(pp.source_type)), is_call);
-                if(pp.align > 0) {
-                    add_attr(fn_or_call, index,
-                             make_enum_attr("align", (u64)pp.align), is_call);
-                }
+            }
+            if(pp.align > 0) {
+                add_attr(fn_or_call, index,
+                         make_enum_attr("align", static_cast<u64>(pp.align)), is_call);
             }
             index++;
         } else {

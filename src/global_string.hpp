@@ -25,6 +25,7 @@ StringRef get_global_string(const GlobalStringArray& global_strings, GlobalStrin
 
 struct KnownGlobalStrings {
     GlobalStringIndex builtin;
+    GlobalStringIndex align;
     GlobalStringIndex under_is_file_scope;
     GlobalStringIndex type;
     GlobalStringIndex string;
@@ -37,7 +38,6 @@ struct KnownGlobalStrings {
     GlobalStringIndex get_field_builtin;
     GlobalStringIndex compile_error_builtin;
     GlobalStringIndex empty;
-    GlobalStringIndex align;
 };
 
 KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, xpAllocator allocator);

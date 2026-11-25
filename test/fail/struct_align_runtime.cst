@@ -1,0 +1,9 @@
+// @fail
+// @error "#align 参数必须是编译期常量"
+
+main :: () -> i32 {
+    n := 16;
+    S :: struct #align(n) { x: i32; }
+    s: S;
+    return 0;
+}

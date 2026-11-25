@@ -24,14 +24,14 @@
 // 实参在 LLVM 里可能是内存地址（局部变量、Deref 等），也可能是聚合值
 // （常量 struct 走 LLVMConstNamedStruct）。C ABI 降级需要按字节读块或传指针，
 // 所以先统一成地址——clang 也是这么做的。
-LLVMValueRef LLVMGenerator::gen_ir_aggregate_address(LLVMValueRef val) {
+LLVMValueRef LLVMGenerator::gen_ir_aggregate_address(LLVMValueRef val, TypeRef source_type) {
     if(LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind) {
         return val;
     }
 
     LLVMTypeRef t = LLVMTypeOf(val);
 
-    LLVMValueRef addr = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abitmp", t);
+    LLVMValueRef addr = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abitmp", t, static_cast<unsigned>(type_align_of(source_type)));
     LLVMBuildStore(unit.builder, val, addr);
 
     return addr;
@@ -47,7 +47,7 @@ LLVMValueRef LLVMGenerator::gen_ir_aggregate_value(LLVMValueRef val, LLVMTypeRef
 }
 
 // 寄存器类聚合体在内存和 IR 参数/返回值之间按 8 字节块转换。
-// 块内偏移按 k*8 写死：Crest 没有 packed，也没有 16 字节对齐成员。
+// 块内偏移按 k*8 写死，聚合字段仍按语言布局分类。
 // 对齐显式按 1 写，避免后端从 GEP 推出高于实际布局的假设。
 LLVMValueRef LLVMGenerator::gen_ir_chunk_address(LLVMValueRef base, int k) {
     LLVMTypeRef i8_t = LLVMInt8TypeInContext(g_llvm_session.ctx);
@@ -107,7 +107,7 @@ LLVMValueRef LLVMGenerator::gen_ir_param_value_by_abi(const ABIFunctionPlan& pla
     case ABIParamPlan::Kind::Aggregate: {
         // 寄存器类聚合体散成块：写回内存再整体读出
         LLVMTypeRef agg_t = get_llvm_type_from_type(pp.source_type);
-        LLVMValueRef tmp = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abiparam", agg_t);
+        LLVMValueRef tmp = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "abiparam", agg_t, static_cast<unsigned>(type_align_of(pp.source_type)));
 
         LLVMValueRef chunks[2] = {nullptr, nullptr};
         for(int k = 0; k < pp.ntypes; k++) {
@@ -147,7 +147,7 @@ void LLVMGenerator::gen_ir_ret_by_abi(const ABIFunctionPlan& plan, LLVMValueRef 
     if(plan.ret_chunks > 0) {
         // 寄存器类聚合体：从内存逐块读出，打包成 fn_type 的返回类型
         Array<LLVMValueRef> chunks = gen_ir_load_chunks(
-            gen_ir_aggregate_address(ret_val), plan.ret_chunk_types, plan.ret_chunks);
+            gen_ir_aggregate_address(ret_val, plan.ret_type), plan.ret_chunk_types, plan.ret_chunks);
 
         if(plan.ret_chunks == 1) {
             LLVMBuildRet(unit.builder, chunks[0]);
@@ -184,7 +184,7 @@ LLVMValueRef LLVMGenerator::gen_ir_sret_slot_by_abi(const ABIFunctionPlan& plan)
     }
 
     return insert_alloca_before_last_inst_which_is_br(
-        curr_state.entry, "sret", get_llvm_type_from_type(plan.ret_type));
+        curr_state.entry, "sret", get_llvm_type_from_type(plan.ret_type), static_cast<unsigned>(type_align_of(plan.ret_type)));
 }
 
 // 把一个源码实参降级成对应的 ABI 实参：标量 1 个值，聚合 1~2 个块，大聚合 1 个指针
@@ -199,13 +199,14 @@ Array<LLVMValueRef> LLVMGenerator::gen_ir_call_args_by_abi(const ABIFunctionPlan
 
     case ABIParamPlan::Kind::ByValPtr: {
         // 聚合体走内存：SysV 带 byval（后端负责复制），MS 是裸指针
-        LLVMValueRef addr = gen_ir_aggregate_address(arg_val);
+        LLVMValueRef addr = gen_ir_aggregate_address(arg_val, pp.source_type);
 
         if(plan.abi == ABIKind::MSX64) {
             // MS x64：被调方可以改写参数内存，调用方必须先复制一份
             LLVMTypeRef agg_t = get_llvm_type_from_type(pp.source_type);
+            const unsigned copy_align = pp.align < 16 ? 16 : pp.align;
             LLVMValueRef copy = insert_alloca_before_last_inst_which_is_br(
-                curr_state.entry, "abicopy", agg_t);
+                curr_state.entry, "abicopy", agg_t, copy_align);
 
             LLVMBuildStore(unit.builder, gen_ir_aggregate_value(addr, agg_t), copy);
             addr = copy;
@@ -217,7 +218,7 @@ Array<LLVMValueRef> LLVMGenerator::gen_ir_call_args_by_abi(const ABIFunctionPlan
     case ABIParamPlan::Kind::Aggregate: {
         // 寄存器类聚合体：按 8 字节块从内存读出
         Array<LLVMValueRef> chunks = gen_ir_load_chunks(
-            gen_ir_aggregate_address(arg_val), pp.types, pp.ntypes);
+            gen_ir_aggregate_address(arg_val, pp.source_type), pp.types, pp.ntypes);
 
         FOR(chunks) out.push_back(it);
     } break;
@@ -238,7 +239,7 @@ LLVMValueRef LLVMGenerator::gen_ir_call_result_by_abi(const ABIFunctionPlan& pla
     if(plan.ret_chunks > 0) {
         // 寄存器类聚合体返回：把返回的块写回聚合体再整体读出
         LLVMValueRef tmp = insert_alloca_before_last_inst_which_is_br(
-            curr_state.entry, "abiret", get_llvm_type_from_type(plan.ret_type));
+            curr_state.entry, "abiret", get_llvm_type_from_type(plan.ret_type), static_cast<unsigned>(type_align_of(plan.ret_type)));
 
         LLVMValueRef vals[2] = {nullptr, nullptr};
         for(int k = 0; k < plan.ret_chunks; k++) {
@@ -282,6 +283,9 @@ static bool same_abi_signature(const ABIFunctionPlan& a, const ABIFunctionPlan& 
     }
 
     if(a.sret != b.sret || a.ret_signext != b.ret_signext || a.ret_zeroext != b.ret_zeroext) {
+        return false;
+    }
+    if(a.sret && type_align_of(a.ret_type) != type_align_of(b.ret_type)) {
         return false;
     }
 

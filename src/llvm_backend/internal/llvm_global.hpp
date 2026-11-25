@@ -24,6 +24,8 @@ struct LLVMSession {
     // 具名 struct / union 的 LLVM 类型缓存，键为 TypeHashKey
     xpHashMap<TypeHashKey, LLVMTypeRef> struct_types;
     xpHashMap<TypeHashKey, LLVMTypeRef> union_types;
+    // LLVM struct 类型 → 源码字段下标到 LLVM 成员下标的映射（填充字段占用成员位置）
+    xpHashMap<LLVMTypeRef, Array<unsigned>> struct_field_indices;
 };
 
 

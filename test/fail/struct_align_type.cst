@@ -1,0 +1,8 @@
+// @fail
+// @error "#align 参数必须是整数"
+
+S :: struct #align(true) { x: i32; }
+main :: () -> i32 {
+    s: S;
+    return 0;
+}

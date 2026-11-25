@@ -351,8 +351,9 @@ struct CIRStructFieldInfo {
 struct CIRFinishStructInfo {
     CIRInstructionRef struct_decl_inst;
     Array<CIRInstructionRef> field_insts;
+    CIRInstructionRef align_inst = INVALID_INST;
 
-    CIR_REFS(&CIRFinishStructInfo::struct_decl_inst, &CIRFinishStructInfo::field_insts)
+    CIR_REFS(&CIRFinishStructInfo::struct_decl_inst, &CIRFinishStructInfo::field_insts, &CIRFinishStructInfo::align_inst)
 };
 
 struct CIREnumDeclInitInfo {

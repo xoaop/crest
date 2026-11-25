@@ -19,6 +19,9 @@
 #include "lcir.hpp"
 #include "llvm-c/Core.h"
 
+// 逻辑字段号 -> LLVM 结构体实际字段号（语言布局可能插入 padding 数组字段）
+static unsigned llvm_struct_field_index(LLVMTypeRef struct_type, isize source_index);
+
 Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config) {
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
 
@@ -57,6 +60,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
             xp_string_to_c_style(gd.raw_name, stage_allocator())
         );
         LLVMSetLinkage(g, LLVMInternalLinkage);
+        LLVMSetAlignment(g, static_cast<unsigned>(type_align_of(var_type)));
 
         Value init_val = gd.init_result.resolve().actual_val();
         init_val.set_type(var_type);
@@ -420,7 +424,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     field_index = (unsigned)index;
                 }
 
-                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, field_index, "insertfieldtmp");
+                const unsigned element_index = llvm_struct_field_index(llvm_struct_type, (isize)field_index);
+                struct_val = LLVMBuildInsertValue(unit.builder, struct_val, field_val, element_index, "insertfieldtmp");
             }
             save_llvm_val_of_inst(ref, struct_val);
         } break;
@@ -508,7 +513,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             }
             ASSERT(field_idx != -1);
 
-            LLVMValueRef field_val = LLVMBuildExtractValue(unit.builder, parent_val, (unsigned)field_idx, "fieldtmp");
+            LLVMValueRef field_val = LLVMBuildExtractValue(unit.builder, parent_val, llvm_struct_field_index(get_llvm_type_from_type(struct_type), field_idx), "fieldtmp");
             save_llvm_val_of_inst(ref, field_val);
         } break;
 
@@ -559,7 +564,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             }
             XP_ASSERT_DEFAULT(field_idx != -1);
 
-            LLVMValueRef field_ptr = LLVMBuildStructGEP2(unit.builder, get_llvm_type_from_type(struct_type), struct_ptr, (unsigned)field_idx, "fieldptrtmp");
+            LLVMValueRef field_ptr = LLVMBuildStructGEP2(unit.builder, get_llvm_type_from_type(struct_type), struct_ptr, llvm_struct_field_index(get_llvm_type_from_type(struct_type), field_idx), "fieldptrtmp");
             save_llvm_val_of_inst(ref, field_ptr);
         } break;
 
@@ -581,7 +586,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
                 LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
-                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, 0, "slicedataptrtmp");
+                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, llvm_struct_field_index(get_llvm_type_from_type(array_type), 0), "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
                 LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(data_ptr_type);
                 LLVMValueRef data_typed_ptr = LLVMBuildBitCast(unit.builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
@@ -615,7 +620,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 elem_ptr = LLVMBuildGEP2(unit.builder, get_llvm_type_from_type(array_type), array_ptr, indices, 2, "arrayelemptrtmp");
             } else if(is_slice_struct_type(array_type)) {
                 LLVMValueRef slice_val = array_is_ptr ? LLVMBuildLoad2(unit.builder, get_llvm_type_from_type(array_type), array_val, "loadslicetmp") : array_val;
-                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, 0, "slicedataptrtmp");
+                LLVMValueRef data_raw = LLVMBuildExtractValue(unit.builder, slice_val, llvm_struct_field_index(get_llvm_type_from_type(array_type), 0), "slicedataptrtmp");
                 TypeRef data_ptr_type = array_type->struct_info.struct_fields[0].type;
                 LLVMTypeRef data_ptr_llvm_type = get_llvm_type_from_type(data_ptr_type);
                 LLVMValueRef data_typed_ptr = LLVMBuildBitCast(unit.builder, data_raw, data_ptr_llvm_type, "slicedatatypedptrtmp");
@@ -997,7 +1002,8 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruc
     XP_ASSERT_DEFAULT(inst.op == CIROperator::VariableDecl);
 
     // 1. 分配空间
-    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()), get_llvm_type_from_type(result_ctx.result_of(ref).actual_type()));
+    TypeRef var_type = result_ctx.result_of(ref).actual_type();
+    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()), get_llvm_type_from_type(var_type), static_cast<unsigned>(type_align_of(var_type)));
 
     // 2. 如果有初始值，生成初始值 IR 并存储
 
@@ -1371,13 +1377,13 @@ LLVMValueRef LLVMGenerator::gen_array_value_to_slice_cast(LLVMValueRef array_val
     };
     // 设置数据指针
     LLVMValueRef data_ptr = LLVMBuildGEP2(unit.builder, array_type, array_value_ptr, indices, 2, "arraydataptrtmp");
-    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, data_ptr, 0, "insertsliceptrtmp");
+    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, data_ptr, llvm_struct_field_index(slice_struct_type, 0), "insertsliceptrtmp");
     
     // 设置count
     // TODO i64 换成 isize
     LLVMValueRef count_value = LLVMConstInt(LLVMInt64TypeInContext(g_llvm_session.ctx), array_value_type->array_info.count, 0);
 
-    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, count_value, 1, "insertslicecounttmp");
+    slice_struct_value = LLVMBuildInsertValue(unit.builder, slice_struct_value, count_value, llvm_struct_field_index(slice_struct_type, 1), "insertslicecounttmp");
 
     return slice_struct_value;
 }
@@ -1397,8 +1403,12 @@ LLVMValueRef LLVMGenerator::compare_two_values(LLVMValueRef left, LLVMValueRef r
                 ? type->struct_info.struct_fields[i].type
                 : type->array_info.element_type;
 
-            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, (unsigned)i, "leftextracttmp");
-            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, (unsigned)i, "rightextracttmp");
+            const unsigned member_index = is_struct_type(type)
+                ? llvm_struct_field_index(get_llvm_type_from_type(type), i)
+                : (unsigned)i;
+
+            LLVMValueRef left_field = LLVMBuildExtractValue(unit.builder, left, member_index, "leftextracttmp");
+            LLVMValueRef right_field = LLVMBuildExtractValue(unit.builder, right, member_index, "rightextracttmp");
 
             LLVMValueRef field_cmp = compare_two_values(left_field, right_field, member_type, false);
 
@@ -1477,15 +1487,28 @@ LLVMValueRef LLVMGenerator::gen_llvm_val_by_value(const Value& value, std::optio
 
         case Type_struct: {
             if(is_struct_type(value.type)) {
-                Array<LLVMValueRef> field_values = make_array<LLVMValueRef>(stage_allocator());
-
-                Array<Value> field_vals = value.struct_fields_val();
-                FOR(field_vals) {
-                    LLVMValueRef field_llvm_val = gen_llvm_val_by_value(it);
-                    field_values.push_back(field_llvm_val);
+                LLVMTypeRef struct_type = get_llvm_type_from_type(value.type);
+                const unsigned element_count = LLVMCountStructElementTypes(struct_type);
+                Array<LLVMValueRef> element_values = make_array_capacity<LLVMValueRef>(stage_allocator(), static_cast<isize>(element_count));
+                FOR_0_TO(static_cast<isize>(element_count)) {
+                    element_values.push_back(nullptr);
                 }
 
-                llvm_val = LLVMConstNamedStruct(get_llvm_type_from_type(value.type), field_values.data, cast(unsigned)field_values.count);
+                Array<Value> field_vals = value.struct_fields_val();
+                ASSERT(field_vals.count == value.type->struct_info.struct_fields.count);
+                FOR(field_vals) {
+                    const unsigned element_index = llvm_struct_field_index(struct_type, it_index);
+                    ASSERT(element_index < element_count);
+                    element_values[element_index] = gen_llvm_val_by_value(it);
+                }
+
+                FOR_0_TO(static_cast<isize>(element_count)) {
+                    if(element_values[it] == nullptr) {
+                        element_values[it] = LLVMConstNull(LLVMStructGetTypeAtIndex(struct_type, static_cast<unsigned>(it)));
+                    }
+                }
+
+                llvm_val = LLVMConstNamedStruct(struct_type, element_values.data, element_count);
             } else {
                 UNREACHABLE();
             }
@@ -1653,20 +1676,44 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_make_string(stage_allocator(), "anonymous_struct");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()));
-            LLVMTypeRef *struct_type = xp_hash_map_insert(&g_llvm_session.struct_types, key, struct_ty);
-            
-            
-            Array<LLVMTypeRef> field_types = make_array_capacity<LLVMTypeRef>(stage_allocator(), type->struct_info.struct_fields.count);
-            
-            for(auto&& it : type->struct_info.struct_fields) {
-                StructField field = it;
-                LLVMTypeRef field_llvm_type = get_llvm_type_from_type(field.type);
-                field_types.push_back(field_llvm_type);
+
+            // 先登记不透明类型: 自引用字段（*Node）需要在建体前能找到它
+            xp_hash_map_insert(&g_llvm_session.struct_types, key, struct_ty);
+
+            // 按语言布局（type_size_of / field_offset_in_struct）显式排布：
+            // 显式 @align 与字段间 padding 都由这里体现，字段访问经 llvm_struct_field_index 映射
+            Array<LLVMTypeRef> field_types = make_array_capacity<LLVMTypeRef>(stage_allocator(), type->struct_info.struct_fields.count * 2 + 1);
+            Array<unsigned> field_indices = make_array_capacity<unsigned>(permanent_allocator(), type->struct_info.struct_fields.count);
+
+            LLVMTypeRef i8_type = LLVMInt8TypeInContext(g_llvm_session.ctx);
+            isize emitted_size = 0;
+            FOR(type->struct_info.struct_fields) {
+                const TypeRef field_type = it.type;
+                const isize field_offset = field_offset_in_struct(type, it_index);
+                ASSERT(field_offset >= emitted_size);
+                if(field_offset > emitted_size) {
+                    field_types.push_back(LLVMArrayType2(i8_type, static_cast<u64>(field_offset - emitted_size)));
+                    emitted_size = field_offset;
+                }
+
+                field_indices.push_back(static_cast<unsigned>(field_types.count));
+                field_types.push_back(get_llvm_type_from_type(field_type));
+                emitted_size += type_size_of(field_type);
             }
 
-            LLVMStructSetBody(*struct_type, field_types.data, field_types.count, 0);
+            const isize struct_size = type_size_of(type);
+            ASSERT(struct_size >= emitted_size);
+            if(struct_size > emitted_size) {
+                field_types.push_back(LLVMArrayType2(i8_type, static_cast<u64>(struct_size - emitted_size)));
+            }
 
-            return *struct_type;
+            // 递归构建字段类型可能触发扩容，旧槽位指针会失效：重新按键取
+            LLVMTypeRef *cached = xp_hash_map_get(g_llvm_session.struct_types, key);
+            ASSERT(cached != nullptr);
+            LLVMStructSetBody(*cached, field_types.data, static_cast<unsigned>(field_types.count), 0);
+            xp_hash_map_insert(&g_llvm_session.struct_field_indices, *cached, field_indices);
+
+            return *cached;
         }
         case Type_union: {
             TypeHashKey& key = type->union_info.hash_key;
@@ -1754,7 +1801,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 }
 
 
-LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow_alloc_value_to_get_ptr) {
+LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow_alloc_value_to_get_ptr, TypeRef value_type) {
     if(LLVMIsALoadInst(value)) {
         // 如果是load指令, 直接返回被加载的地址
 
@@ -1772,8 +1819,9 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
 
     // 否则, 需要先把值存到内存中, 再返回地址
     if(allow_alloc_value_to_get_ptr) {
-        LLVMTypeRef value_type = LLVMTypeOf(value);
-        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_bb(), "temp", value_type);
+        LLVMTypeRef value_type_llvm = LLVMTypeOf(value);
+        unsigned align = value_type != nullptr ? static_cast<unsigned>(type_align_of(value_type)) : 0;
+        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_bb(), "temp", value_type_llvm, align);
         LLVMBuildStore(unit.builder, value, temp_alloca);
         return temp_alloca;
     } else {
@@ -1889,7 +1937,7 @@ void LLVMGenerator::Set_Curr_Inst_Pos_Before(LLVMValueRef inst) {
     LLVMPositionBuilderBefore(unit.builder, inst);
 }
 
-LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type) {
+LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type, unsigned align) {
     LLVMBasicBlockRef curr_block = curr_bb();
     
 
@@ -1904,6 +1952,7 @@ LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasic
     DEBUG_TRACE("BuildAlloca: var={}, type_kind={}", var_name, (int)LLVMGetTypeKind(type));
     XP_ASSERT_DEFAULT(type != nullptr);
     LLVMValueRef alloca = LLVMBuildAlloca(unit.builder, type, var_name);
+    LLVMSetAlignment(alloca, align != 0 ? align : static_cast<unsigned>(LLVMABIAlignmentOfType(g_llvm_session.target_data, type)));
     DEBUG_TRACE("BuildAlloca OK");
 
     Set_Curr_Inst_Pos_At_End_Of_Basic_Block(curr_block);
@@ -1927,4 +1976,11 @@ int size_of_type(TypeRef type) {
         return 0;
     }
     return (int)LLVMStoreSizeOfType(g_llvm_session.target_data, get_llvm_type_from_type(type));
+}
+
+static unsigned llvm_struct_field_index(LLVMTypeRef struct_type, isize source_index) {
+    Array<unsigned>* indices = xp_hash_map_get(g_llvm_session.struct_field_indices, struct_type);
+    ASSERT(indices != nullptr);
+    ASSERT(source_index >= 0 && source_index < indices->count);
+    return (*indices)[source_index];
 }

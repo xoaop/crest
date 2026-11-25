@@ -1,0 +1,6 @@
+// @fail
+// @error "#align(16) 小于字段 'inner' 要求的对齐 32"
+
+Inner :: struct #align(32) { x: i32; }
+Outer :: struct #align(16) { inner: Inner; }
+main :: () -> i32 { s: Outer; return 0; }

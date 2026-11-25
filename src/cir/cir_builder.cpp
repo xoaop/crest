@@ -1297,10 +1297,16 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                 field_insts.push_back(sf);
             }
 
+            CIRInstructionRef align_inst = INVALID_INST;
+            if(expr->StructDeclValue.align_ast != nullptr) {
+                align_inst = build_block_ref_inst_for_expr(ctx, expr->StructDeclValue.align_ast, true, true);
+            }
+
             // 3. FinishStruct — 集中完成所有工作
             auto finish = Make_Instruction<CIROperator::FinishStruct>(ctx, expr, {
                 .struct_decl_inst = decl_init,
                 .field_insts = field_insts.copy(permanent_allocator()),
+                .align_inst = align_inst,
             });
             New_Break(ctx, CIRInstructionRef(struct_decl_blk, ctx.pkg), finish, expr);
             End_Block(ctx);

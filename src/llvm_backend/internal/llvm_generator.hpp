@@ -56,7 +56,7 @@ struct LLVMGenerator {
     void init(Ref<Package> pkg, xpAllocator allocator);
     void deinit();
 
-    LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type);
+    LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type, unsigned align = 0);
 
     // ── C ABI 降级（实现见 llvm_abi_codegen.cpp）──
     // 规则与签名计划在 llvm_abi.cpp；这里只按 plan 生成 IR。
@@ -68,7 +68,7 @@ struct LLVMGenerator {
     Array<LLVMValueRef> gen_ir_call_args_by_abi(const ABIFunctionPlan& plan, const ABIParamPlan& pp, LLVMValueRef arg_val);
     LLVMValueRef gen_ir_call_result_by_abi(const ABIFunctionPlan& plan, LLVMValueRef call_result, LLVMValueRef sret_slot);
     // 聚合体在内存与 IR 值之间的搬运
-    LLVMValueRef gen_ir_aggregate_address(LLVMValueRef val);
+    LLVMValueRef gen_ir_aggregate_address(LLVMValueRef val, TypeRef source_type);
     LLVMValueRef gen_ir_aggregate_value(LLVMValueRef val, LLVMTypeRef agg_type);
     LLVMValueRef gen_ir_chunk_address(LLVMValueRef base, int k);
     Array<LLVMValueRef> gen_ir_load_chunks(LLVMValueRef base, LLVMTypeRef const* types, int n);
@@ -92,7 +92,7 @@ struct LLVMGenerator {
     LLVMValueRef gen_ir_cast(TypeRef from_type, TypeRef to_type, LLVMValueRef value);
     LLVMValueRef gen_array_value_to_slice_cast(LLVMValueRef array_value_ptr, TypeRef array_value_type);
 
-    LLVMValueRef get_ptr_of_llvm_value(LLVMValueRef value, bool allow_alloc_value_to_get_ptr = false);
+    LLVMValueRef get_ptr_of_llvm_value(LLVMValueRef value, bool allow_alloc_value_to_get_ptr = false, TypeRef value_type = nullptr);
     LLVMValueRef gen_llvm_val_by_value(const Value& value, std::optional<TypeRef> expected_type = std::nullopt);
     LLVMValueRef gen_llvm_string_global(const char *chars, isize len);
 

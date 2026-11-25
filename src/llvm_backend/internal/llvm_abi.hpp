@@ -59,7 +59,7 @@ struct ABIParamPlan {
     int ntypes = 0;
     bool signext = false;
     bool zeroext = false;
-    int align = 0;            // ByValPtr 的对齐
+    unsigned align = 0;       // ByValPtr 的对齐
 };
 
 struct ABIFunctionPlan {

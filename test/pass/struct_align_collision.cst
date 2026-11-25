@@ -1,0 +1,26 @@
+// @pass
+// @run
+
+A :: struct #align(16) { x: i32; }
+B :: struct #align(32) { x: i32; }
+
+#under_is_file_scope
+ga: A = A.{ x = 3 };
+gb: B = B.{ x = 4 };
+
+main :: () -> i32 {
+    if sizeof(A) != 16 { return 1; }
+    if sizeof(B) != 32 { return 2; }
+    if ga.x != 3 { return 3; }
+    if gb.x != 4 { return 4; }
+
+    aa: [2]A;
+    bb: [2]B;
+    aa[0].x = 5;
+    aa[1].x = 6;
+    bb[0].x = 7;
+    bb[1].x = 8;
+    if aa[0].x + aa[1].x != 11 { return 5; }
+    if bb[0].x + bb[1].x != 15 { return 6; }
+    return 0;
+}

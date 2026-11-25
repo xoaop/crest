@@ -87,6 +87,7 @@ Type copy_type(Type *src) {
     case Type_struct: {
         t.struct_info.struct_fields = src->struct_info.struct_fields.copy(type_allocator());
         t.struct_info.hash_key = src->struct_info.hash_key.clone(type_allocator());
+        t.struct_info.explicit_align = src->struct_info.explicit_align;
         if(t.struct_info.hash_key.fields != nullptr) {
             t.struct_info.hash_key.fields = t.struct_info.struct_fields.data;
             t.struct_info.hash_key.field_count = t.struct_info.struct_fields.count;
@@ -1335,6 +1336,10 @@ isize type_size_of(TypeRef type) {
 isize type_align_of(TypeRef type) {
     switch(type->kind) {
         case Type_struct: {
+            if(type->struct_info.explicit_align != 0) {
+                return type->struct_info.explicit_align;
+            }
+
             isize max_align = 1;
             FOR(type->struct_info.struct_fields) {
                 isize a = type_align_of(it.type);

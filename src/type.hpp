@@ -130,6 +130,7 @@ struct Type {
         struct {
             Array<StructField> struct_fields;
             TypeHashKey hash_key;
+            isize explicit_align;   // 0 = 自然对齐
         } struct_info;
 
         

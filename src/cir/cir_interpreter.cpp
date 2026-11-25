@@ -2852,6 +2852,35 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
 
         TypeRef st = ResultValueOpt(struct_decl_inst).value().type_val();
 
+        auto apply_align = [&]() -> AnalyzeResult {
+            if(info.align_inst == INVALID_INST) {
+                return {};
+            }
+
+            const auto align_val = ResultValueOpt(info.align_inst);
+            if(!align_val.has_value()) {
+                return make_result(pc_ref, inst_error(info.align_inst, "#align 参数必须是编译期常量"));
+            }
+            if(!is_integer_or_untyped_type(align_val->type)) {
+                return make_result(pc_ref, inst_error(info.align_inst, "#align 参数必须是整数"));
+            }
+            const i128 alignment = align_val->integer_val();
+            if(alignment <= 0 || alignment > (i128(1) << 29) || (alignment & (alignment - 1)) != 0) {
+                return make_result(pc_ref, inst_error(info.align_inst, "#align 参数必须是 1 到 2^29 之间的 2 次幂"));
+            }
+            for(const StructField& field : st->struct_info.struct_fields) {
+                const isize field_align = type_align_of(field.type);
+                if(alignment < field_align) {
+                    return make_result(pc_ref, inst_error(info.align_inst,
+                        "#align({}) 小于字段 '{}' 要求的对齐 {}",
+                        static_cast<isize>(alignment), get_global_string(field.name), field_align
+                    ));
+                }
+            }
+            st->struct_info.explicit_align = static_cast<isize>(alignment);
+            return {};
+        };
+
         bool already_finished = st->struct_info.struct_fields.count > 0;
         if(!already_finished) {
             Array<StructField> fields = make_array<StructField>(type_allocator());
@@ -2879,6 +2908,11 @@ AnalyzeResult Interpreter::analyze_FinishStruct(const CIRFinishStructInfo& info,
             }
 
             finish_unfinish_struct_type(st, fields);
+        }
+
+        auto align_result = apply_align();
+        if(align_result.has_error()) {
+            return align_result;
         }
 
         return make_result({{pc_ref, ResultDesc::make_type_only(type_type())}, {pc_ref, ResultDesc::make_value(ResultValueOpt(struct_decl_inst).value())}});

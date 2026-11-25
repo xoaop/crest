@@ -1,0 +1,4 @@
+// @fail
+
+S :: struct #align() { x: i32; }
+main :: () -> i32 { s: S; return 0; }

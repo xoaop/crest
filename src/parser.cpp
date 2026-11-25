@@ -263,7 +263,19 @@ Ast *parse_union_decl(Parser *p) {
 
 Ast *parse_struct_decl(Parser *p) {
     auto name_succ = expect2(p, TokenType::KW_struct);
-    
+
+    Ast *align_ast = nullptr;
+    if(curr_token(p).type == TokenType::Hash) {
+        expect(p, TokenType::Hash);
+        Token directive = expect(p, TokenType::Ident);
+        if(directive.token_str != context()->known_global_strings.align) {
+            context()->reporter.report_error(directive.src_loc, "struct 只支持 #align 指令");
+        }
+        expect(p, TokenType::LeftBracket);
+        align_ast = parse_expr(p, 0);
+        expect(p, TokenType::RightBracket);
+    }
+
     expect(p, TokenType::LeftCurlyBracket);
 
     Array<Ast *> field_types = make_array<Ast *>(ast_allocator());
@@ -291,6 +303,7 @@ Ast *parse_struct_decl(Parser *p) {
 
     Ast *a = ast_alloc(AstType_StructDeclValue, name_succ.first);
     a->StructDeclValue.fields = field_types;
+    a->StructDeclValue.align_ast = align_ast;
     a->src_loc = merge(name_succ.first.src_loc, rcb.src_loc);
 
     return a;

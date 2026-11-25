@@ -1,0 +1,5 @@
+// @fail
+// @error "#align(4) 小于字段 'values' 要求的对齐 8"
+
+S :: struct #align(4) { values: [2]i64; }
+main :: () -> i32 { s: S; return 0; }

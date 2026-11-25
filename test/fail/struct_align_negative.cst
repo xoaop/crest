@@ -1,0 +1,5 @@
+// @fail
+// @error "#align 参数必须是 1 到 2^29 之间的 2 次幂"
+
+S :: struct #align(-8) { x: i32; }
+main :: () -> i32 { s: S; return 0; }

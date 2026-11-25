@@ -1,0 +1,32 @@
+// @pass
+// @run
+// @link-c abi.c
+
+Small :: struct #align(16) { x: i8; }
+Aligned :: struct #align(32) { x: i64; }
+Outer :: struct { head: i8; value: Aligned; tail: i8; }
+
+small_id :: (v: Small) -> Small extern_C
+aligned_id :: (v: Aligned) -> Aligned extern_C
+layout :: (s: *Small, a: *Aligned, o: *Outer, values: *Aligned) -> i32 extern_C
+budget :: (a: i64, b: i64, c: i64, d: i64, e: i64, s: Small, f: i64) -> Aligned extern_C
+
+main :: () -> i32 {
+    s: Small;
+    s.x = 11;
+    returned_s := small_id(s);
+    if returned_s.x != 12 { return 1; }
+    a: Aligned;
+    a.x = 20;
+    returned_a := aligned_id(a);
+    if returned_a.x != 21 { return 2; }
+    o: Outer;
+    values: [2]Aligned;
+    if layout(&s, &a, &o, &values[0]) != 0 { return 3; }
+    if o.value.x != 27 { return 5; }
+    if o.tail != 8 { return 6; }
+    if values[0].x != 37 { return 7; }
+    if values[1].x != 43 { return 8; }
+    if budget(1, 2, 3, 4, 5, s, 6).x != 32 { return 4; }
+    return 0;
+}

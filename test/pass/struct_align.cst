@@ -1,0 +1,50 @@
+// @pass
+// @run
+
+alignment :: $() -> i32 { return 32; }
+Small :: struct #align(16) { x: i8; }
+Aligned :: struct #align(alignment()) { a: i32; b: i8; }
+Natural :: struct { x: i64; }
+Exact :: struct #align(8) { x: i64; }
+Empty :: struct #align(64) {}
+Outer :: struct { head: i8; value: Aligned; tail: i8; }
+
+Make :: $(n: i32) -> type {
+    return struct #align(n) { x: i32; };
+}
+
+identity :: (s: Small) -> Small { return s; }
+copy :: (s: Aligned) -> Aligned { return s; }
+read :: (s: Outer) -> i32 { return s.value.a + cast(i32)s.tail; }
+
+#under_is_file_scope
+global: Aligned = Aligned.{ a = 7, b = 3 };
+
+main :: () -> i32 {
+    if sizeof(Small) != 16 { return 1; }
+    if sizeof(Aligned) != 32 { return 2; }
+    if sizeof(Natural) != 8 { return 3; }
+    if sizeof(Exact) != 8 { return 16; }
+    if sizeof(Empty) != 0 { return 4; }
+    if sizeof(Outer) != 96 { return 5; }
+    if sizeof([3]Aligned) != 96 { return 6; }
+    if sizeof(Make(16)) != 16 { return 7; }
+    if sizeof(Make(64)) != 64 { return 8; }
+
+    s := identity(Small.{ x = 12 });
+    if s.x != 12 { return 9; }
+    a := copy(global);
+    if a.a != 7 { return 10; }
+    if a.b != 3 { return 11; }
+    a.a = 10;
+    o := Outer.{ value = a, tail = 5 };
+    if read(o) != 15 { return 12; }
+
+    values: [2]Aligned;
+    values[0] = global;
+    values[1] = a;
+    if values[0].a != 7 { return 13; }
+    if values[1].a != 10 { return 14; }
+    if values[1].b != 3 { return 15; }
+    return 0;
+}

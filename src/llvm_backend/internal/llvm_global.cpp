@@ -73,4 +73,5 @@ void init_llvm() {
 
     g_llvm_session.struct_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(permanent_allocator());
     g_llvm_session.union_types = xp_hash_map_make<TypeHashKey, LLVMTypeRef>(permanent_allocator());
+    g_llvm_session.struct_field_indices = xp_hash_map_make<LLVMTypeRef, Array<unsigned>>(permanent_allocator());
 }

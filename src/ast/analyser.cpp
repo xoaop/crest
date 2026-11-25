@@ -785,6 +785,10 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
     Ast *value_ast = decl;
     XP_ASSERT_DEFAULT(value_ast->type == AstType_StructDeclValue);
 
+    if(value_ast->StructDeclValue.align_ast != nullptr) {
+        resolve_expr(value_ast->StructDeclValue.align_ast, analyser);
+    }
+
     Analyser struct_analyser = new_scope(analyser, ScopeType::StructBlock, value_ast);
 
 

@@ -35,6 +35,7 @@ KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, 
     KnownGlobalStrings known;
 
     known.builtin = get_or_insert_global_string(global_strings, "builtin", allocator);
+    known.align = get_or_insert_global_string(global_strings, "align", allocator);
     known.under_is_file_scope = get_or_insert_global_string(global_strings, "under_is_file_scope", allocator);
     known.type = get_or_insert_global_string(global_strings, "type", allocator);
     known.string = get_or_insert_global_string(global_strings, "string", allocator);
@@ -47,7 +48,6 @@ KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, 
     known.get_field_builtin = get_or_insert_global_string(global_strings, "get_field", allocator);
     known.compile_error_builtin = get_or_insert_global_string(global_strings, "compile_error", allocator);
     known.empty = get_or_insert_global_string(global_strings, "", allocator);
-    known.align = get_or_insert_global_string(global_strings, "align", allocator);
 
     return known;
 }
