@@ -22,7 +22,7 @@
 // 逻辑字段号 -> LLVM 结构体实际字段号（语言布局可能插入 padding 数组字段）
 static unsigned llvm_struct_field_index(LLVMTypeRef struct_type, isize source_index);
 
-Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config) {
+Array<xpString> gen_ir_all_packages(xpHashMap<PackageRef, lcir::Module>& modules, LLVMIRGenerateConfig config) {
     Array<xpString> obj_paths = make_array<xpString>(permanent_allocator());
 
     // extern_C 用裸符号名：跨包同名必须在生成前对齐 ABI 签名（要等 init_llvm 之后才能算 plan）
@@ -32,7 +32,7 @@ Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modul
     }
 
     for(const auto& entry : modules) {
-        const Ref<Package> pkg_ref = entry.key;
+        const PackageRef pkg_ref = entry.key;
         const lcir::Module& module = entry.value;
 
         LLVMGenerator gen;
@@ -53,7 +53,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
     for(const auto& entry : mod.globals) {
         const auto& gd = entry.value;
 
-        TypeRef var_type = gd.decl_result.resolve().type();
+        TypeRef var_type = gd.decl_result->type();
         LLVMValueRef g = LLVMAddGlobal(
             unit.module,
             get_llvm_type_from_type(var_type),
@@ -62,7 +62,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         LLVMSetLinkage(g, LLVMInternalLinkage);
         LLVMSetAlignment(g, static_cast<unsigned>(type_align_of(var_type)));
 
-        Value init_val = gd.init_result.resolve().actual_val();
+        Value init_val = gd.init_result->actual_val();
         init_val.set_type(var_type);
         LLVMSetInitializer(g, gen_llvm_val_by_value(init_val, var_type));
 
@@ -72,7 +72,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
     // phase 1：声明
     for(const auto& entry : mod.functions) {
         const auto& fd = entry.value;
-        Ref<CIRInstResult> fk = fd.decl_result;
+        CIRInstResultRef fk = fd.decl_result;
 
         if(xp_hash_map_get(inst_vals, fk) != nullptr) {
             continue;
@@ -124,7 +124,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
             continue;
         }
 
-        Ref<CIRInstResult> fk = fd.decl_result;
+        CIRInstResultRef fk = fd.decl_result;
         LLVMValueRef f = *xp_hash_map_get(inst_vals, fk);
 
         lcir::within_instance(result_ctx, fd, [&]() {
@@ -147,7 +147,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
     // 输出 .ll 文件
     char *error = nullptr;
-    const std::filesystem::path pkg_path(as_u8(to_xp_str(get_global_string(pkg.unwrap().path), stage_allocator())));
+    const std::filesystem::path pkg_path(as_u8(to_xp_str(get_global_string(pkg->path), stage_allocator())));
     std::string file_name = (const char *)pkg_path.generic_u8string().c_str();
     // 单文件包 path 带扩展名(.cst), 输出文件名不带后缀
     if(pkg_path.has_extension()) {
@@ -224,7 +224,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
     return xp_make_string(permanent_allocator(), (const char *)obj_file_path.generic_u8string().c_str());
 }
 
-void LLVMGenerator::gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm_func) {
+void LLVMGenerator::gen_func_body_walk(CIRInstResultRef key, LLVMValueRef llvm_func) {
     const auto& func_inst = key.inst_ref.pkg->inst(key.inst_ref);
     auto& fd = func_inst.info<CIROperator::FunctionDecl>();
 
@@ -829,7 +829,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto sym = inst.info<CIROperator::IdentRef>().symbol;
 
             LLVMValueRef alloca = look_up_local_vals(&syms, sym);
-            if(alloca == nullptr && sym != Ref<SymbolInfo>::INVALID_REF) {
+            if(alloca == nullptr && sym != SymbolInfoRef::INVALID_REF) {
                 // 全局变量：声明指令的 LLVM 值就是全局指针
                 LLVMValueRef *global_val = xp_hash_map_get(inst_vals, sym->val_as_inst_key());
                 if(global_val != nullptr) {
@@ -843,7 +843,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
 
         case CIROperator::IdentVal: {
             auto sym_ref = inst.info<CIROperator::IdentVal>().symbol;
-            SymbolInfo &sym = sym_ref.unwrap();
+            SymbolInfo &sym = *sym_ref;
 
             auto r = sym.result();
             if(r.state >= CIRResultState::OnlyType && is_function_type(r.type())) {
@@ -1592,8 +1592,8 @@ LLVMValueRef LLVMGenerator::gen_llvm_string_global(const char *chars, isize len)
 
 
 
-void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
-    Package *pkg = &pkg_ref.unwrap();
+void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
+    Package *pkg = &*pkg_ref;
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
     unit.module = LLVMModuleCreateWithNameInContext(get_global_string(pkg->path).data(), g_llvm_session.ctx);
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
@@ -1612,9 +1612,9 @@ void LLVMGenerator::init(Ref<Package> pkg_ref, xpAllocator allocator) {
     this->curr_state = {nullptr, nullptr};
     curr_blk = INVALID_BLOCK;
     syms = IRSymbolTable{
-        .local_vals = xp_hash_map_make<Ref<SymbolInfo>, LLVMValueRef>(allocator)
+        .local_vals = xp_hash_map_make<SymbolInfoRef, LLVMValueRef>(allocator)
     };
-    inst_vals = xp_hash_map_make<Ref<CIRInstResult>, LLVMValueRef>(allocator);
+    inst_vals = xp_hash_map_make<CIRInstResultRef, LLVMValueRef>(allocator);
     block_to_bbs = xp_hash_map_make<CIRBlockRef, Array<LLVMBasicBlockMapper>>(allocator);
     string_globals = xp_hash_map_make<ValueRef, LLVMValueRef>(allocator);
 }
@@ -1730,7 +1730,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             LLVMTypeRef *union_type = xp_hash_map_insert(&g_llvm_session.union_types, key, struct_ty);
 
             // 体为 { T_align, [pad x i8] }：size = round_up(maxsize, maxalign)，align = maxalign，运行期布局
-            Ref<Scope> scope = type->union_info.union_scope;
+            ScopeRef scope = type->union_info.union_scope;
             if(scope->symbols.symbols.count == 0) {
                 // 空 union：退化空 struct
                 LLVMStructSetBody(*union_type, nullptr, 0, 0);
@@ -1832,7 +1832,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
 }
 
 LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
-    DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)&result_ctx.pkg().unwrap(), result_ctx.call_instance().index, debug_curr_gen_ref);
+    DEBUG_TRACE("get_llvm_val_from_inst_ref ENTER: ref={} pkg={} call_inst={} gen_ref={}" , ref, (void*)&*result_ctx.pkg(), result_ctx.call_instance().index, debug_curr_gen_ref);
 
     auto result = result_ctx.result_of(ref);
 
@@ -1844,7 +1844,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     }
 
     // 其余按引用点的 key 寻址（每条指令的 LLVM 值各存各的）
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(ref, result_ctx.call_instance());
+    CIRInstResultRef key = CIRInstResultRef::init(ref, result_ctx.call_instance());
     if(LLVMValueRef* val = xp_hash_map_get(inst_vals, key)) {
         return *val;
     }
@@ -1858,8 +1858,8 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     }
 
     // 引用点 key 未命中 → 尝试 null call_instance
-    if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(ref);
+    if(result_ctx.call_instance() != CIRResultInstanceRef::INVALID_REF) {
+        CIRInstResultRef null_key = CIRInstResultRef::init(ref);
         if(LLVMValueRef* null_cached = xp_hash_map_get(inst_vals, null_key)) {
             return *null_cached;
         }
@@ -1871,18 +1871,18 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
 }
 
 void LLVMGenerator::save_llvm_val_of_inst(CIRInstructionRef ref, LLVMValueRef llvm_val) {
-    Ref<CIRInstResult> key = Ref<CIRInstResult>::init(ref, result_ctx.call_instance());
-    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)&result_ctx.pkg().unwrap(), result_ctx.call_instance().index);
+    CIRInstResultRef key = CIRInstResultRef::init(ref, result_ctx.call_instance());
+    DEBUG_TRACE("save_llvm_val_of_inst: ref={} pkg={} call_inst={}", ref, (void*)&*result_ctx.pkg(), result_ctx.call_instance().index);
     xp_hash_map_insert(&inst_vals, key, llvm_val);
     // 同时以 null call_instance 保存，使不同调用上下文均能命中缓存
-    if(result_ctx.call_instance() != Ref<CIRResultInstance>::INVALID_REF) {
-        Ref<CIRInstResult> null_key = Ref<CIRInstResult>::init(ref);
+    if(result_ctx.call_instance() != CIRResultInstanceRef::INVALID_REF) {
+        CIRInstResultRef null_key = CIRInstResultRef::init(ref);
         xp_hash_map_insert(&inst_vals, null_key, llvm_val);
     }
 }
 
 
-LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref) {
+LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, SymbolInfoRef symbol_ref) {
     LLVMValueRef *val = xp_hash_map_get(ir_syms->local_vals, symbol_ref);
     if(val != nullptr) {
         return *val;
@@ -1890,7 +1890,7 @@ LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_r
     return nullptr;
 }
 
-LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, LLVMValueRef val) {
+LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfoRef symbol_ref, LLVMValueRef val) {
     return xp_hash_map_insert(&ir_syms->local_vals, symbol_ref, val);
 }
 

@@ -6,6 +6,7 @@
 #include "array.hpp"
 #include "common.hpp"
 #include "scope.hpp"
+#include "package_ref.hpp"
 #include "global_string.hpp"
 
 struct CIRResultInstance;   // 前向声明（union_info.creation_instance）
@@ -145,15 +146,15 @@ struct Type {
         // 枚举
         struct {
             TypeRef element_type; // 枚举成员的类型
-            Ref<Scope> enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
+            ScopeRef enum_scope; // 枚举的作用域, 包含枚举成员的符号表信息
             TypeHashKey hash_key;
         } enum_info;
 
 
         // 联合体
         struct {
-            Ref<Scope> union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
-            Ref<CIRResultInstance> creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；INVALID = 包级）
+            ScopeRef union_scope;   // resolve 建的共享字段符号表（字段符号绑 InCIRInstruction）
+            CIRResultInstanceRef creation_instance;   // 类型创建时的调用实例（泛型逐实例解析字段类型；INVALID = 包级）
             TypeHashKey hash_key;
         } union_info;
 
@@ -162,7 +163,7 @@ struct Type {
         TypeRef self_type_info;
 
         // package类型
-        Ref<Package> package_info;
+        PackageRef package_info;
     };
 
     // *重要: 用于hash set比较Type, 不然会出问题
@@ -340,7 +341,7 @@ TypeRef array_type(TypeRef element_type, usize count);
 TypeRef anonymous_struct_type(Ast *decl, Array<StructField> fields);
 TypeRef struct_type(Ast *decl, GlobalStringIndex name, Array<StructField> fields);
 TypeRef type_type();
-TypeRef package_type(Ref<Package> package_info);
+TypeRef package_type(PackageRef package_info);
 TypeRef undefined_type();
 TypeRef error_type();
 
@@ -350,9 +351,9 @@ TypeRef unfinished_anonymous_struct_type(Ast *decl);
 TypeRef unfinished_struct_type(Ast *decl, GlobalStringIndex ident);
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields);
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, Ref<Scope> scope);
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, ScopeRef scope);
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, Ref<Scope> scope);
+TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, ScopeRef scope);
 TypeRef union_field_type(TypeRef union_type, GlobalStringIndex field_name);   // 按创建实例解析字段类型
 bool type_contains_by_value(TypeRef outer, TypeRef inner);   // 判断 outer 是否按值包含 inner（指针处截断）
 

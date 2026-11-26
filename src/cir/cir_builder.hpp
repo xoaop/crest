@@ -30,11 +30,11 @@ struct CIRBuildContext {
 
     xpAllocator allocator;
 
-    Ref<CIRPackage> pkg;
-    Ref<Package> pkg_ref;
+    CIRPackageRef pkg;
+    PackageRef pkg_ref;
     CIRFunctionDeclInfo *func;
     CIRInstructionRef func_body_block;   // 函数体 Block 指令，return 就是 break 到此 block
-    Ref<Scope> scope;
+    ScopeRef scope;
     bool building_return_type_decl = false;   // 正在构建 return <type-decl>，声明块内发 PublishReturnValue
     isize internal_var_serial = 0;            // 编译器内部变量名编号（名不可词法化，用户不可声明）
 
@@ -42,7 +42,7 @@ struct CIRBuildContext {
     Array<CIRInstructionRef> loop_body_block_stack; // 目前用于continue知道目标在哪
     Array<CIRInstructionRef> loop_stack;            // 目前用于break知道目标在哪
 
-    xpHashMap<Ref<Scope>, Array<Ast *>> scope_defered_stmts;   // 各作用域收集到的 defer
+    xpHashMap<ScopeRef, Array<Ast *>> scope_defered_stmts;   // 各作用域收集到的 defer
 };
 
 struct ScopeGuard {
@@ -57,8 +57,8 @@ struct CIRBuilder {
 
     
     static CIRInstructionRef build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast);
-    static CIRInstructionRef build_inst_for_const_decl(Ref<Package> pkg_ref, Ast *const_decl_ast);
-    static CIRInstructionRef build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<Ref<SymbolInfo>> func_sym);
+    static CIRInstructionRef build_inst_for_const_decl(PackageRef pkg_ref, Ast *const_decl_ast);
+    static CIRInstructionRef build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<SymbolInfoRef> func_sym);
     static CIRInstructionRef build_inst_for_ast_block(CIRBuildContext& ctx, Ast *block_ast, bool new_ir_block, bool emit_in_parent = true, CIRBlockRef *out_block = nullptr);
     static CIRInstructionRef build_inst_for_stmt(CIRBuildContext& ctx, Ast *stmt);
     static CIRInstructionRef build_inst_for_expr(CIRBuildContext& ctx, Ast *expr, CIRInstructionRef expected_type_inst = INVALID_INST);
@@ -97,7 +97,7 @@ struct CIRBuilder {
     static void exit_scope(CIRBuildContext& ctx);
     
 
-    static void build_cir_package(Ref<Package> pkg);
+    static void build_cir_package(PackageRef pkg);
     static void build_top_stmt(CIRBuildContext& ctx, Ast *ast);
 };
 

@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "xoaop.h"
-#include "ref.hpp"
 
 struct Package;
 struct Scope;

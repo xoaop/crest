@@ -740,7 +740,7 @@ void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
 }
 
 
-TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, Ref<Scope> scope) {
+TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, ScopeRef scope) {
     XP_ASSERT_DEFAULT(is_integer_type(elem_type));
 
     Type t{Type_enum};
@@ -755,7 +755,7 @@ TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, Ty
     return add_type_unique(t);
 }
 
-TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, Ref<Scope> scope) {
+TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, ScopeRef scope) {
     Type t{Type_union};
 
     t.union_info.hash_key = ident.has_value()
@@ -767,11 +767,11 @@ TypeRef union_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, R
 }
 
 TypeRef union_field_type(TypeRef union_type, GlobalStringIndex field_name) {
-    Ref<SymbolInfo> field_sym = find_symbol_ref_curr(union_type->union_info.union_scope, field_name);
-    ASSERT(field_sym != Ref<SymbolInfo>::INVALID_REF);
+    SymbolInfoRef field_sym = find_symbol_ref_curr(union_type->union_info.union_scope, field_name);
+    ASSERT(field_sym != SymbolInfoRef::INVALID_REF);
 
-    const Ref<CIRInstResult> &ik = field_sym->inst_key;
-    auto key = Ref<CIRInstResult>::init(ik.inst_ref, union_type->union_info.creation_instance);
+    const CIRInstResultRef &ik = field_sym->inst_key;
+    auto key = CIRInstResultRef::init(ik.inst_ref, union_type->union_info.creation_instance);
     
     const CIRInstResult *r = key.get_result();
     ASSERT(r != nullptr);
@@ -794,7 +794,7 @@ bool type_contains_by_value(TypeRef outer, TypeRef inner) {
             }
             return false;
         case Type_union: {
-            Ref<Scope> scope = outer->union_info.union_scope;
+            ScopeRef scope = outer->union_info.union_scope;
             for(const auto& entry : *scope) {
                 if(type_contains_by_value(union_field_type(outer, entry.value.name), inner)) {
                     return true;
@@ -822,7 +822,7 @@ TypeRef type_type() {
     return type_type(undefined_type());
 }
 
-TypeRef package_type(Ref<Package> package_info) {
+TypeRef package_type(PackageRef package_info) {
     Type t = {};
     t.kind = Type_package;
     t.package_info = package_info;
@@ -1054,7 +1054,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
         return get_or_insert_global_string(type_str);
 
     } else if(is_package_type(type)) {
-        return type->package_info.unwrap().path;
+        return type->package_info->path;
     } else if(type->kind == Type_error) {
         return get_type_kind_str(Type_error);
     } else if(type->kind == Type_Undefined) {
@@ -1172,7 +1172,7 @@ struct std::hash<Type> {
 
         case Type_package: {
             u64 hash_package = Type_package;
-            u64 hash_package_info = cast(u64)(type.package_info.unwrap().path);
+            u64 hash_package_info = cast(u64)(type.package_info->path);
             u64 hash_value = xp_hash_combine_u64(hash_package, hash_package_info);
             return cast(usize)(hash_value);
         } break;
@@ -1312,7 +1312,7 @@ isize type_size_of(TypeRef type) {
             return xp_align_up_isize(raw, type_align_of(type));
         }
         case Type_union: {
-            Ref<Scope> scope = type->union_info.union_scope;
+            ScopeRef scope = type->union_info.union_scope;
             isize max_size = 0;
             isize max_align = 1;
             for(const auto& entry : *scope) {
@@ -1348,7 +1348,7 @@ isize type_align_of(TypeRef type) {
             return max_align;
         }
         case Type_union: {
-            Ref<Scope> scope = type->union_info.union_scope;
+            ScopeRef scope = type->union_info.union_scope;
             isize max_align = 1;
             for(const auto& entry : *scope) {
                 isize a = type_align_of(union_field_type(type, entry.value.name));

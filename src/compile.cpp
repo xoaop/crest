@@ -17,7 +17,7 @@
 
 
 
-bool compile_package(Ref<Package> pkg_ref);
+bool compile_package(PackageRef pkg_ref);
 
 // 根据package目录路径得到package
 Package tokenize_and_parse_package(const char *path_of_package_dir);
@@ -28,7 +28,7 @@ AstFile tokenize_and_parse_file(const char *path);
 xpOption<xpString> resolve_package_path(xpString import_path, xpAllocator allocator);
 
 // 构造循环 import 报错消息
-xpString make_import_cycle_message(Ref<Package> target);
+xpString make_import_cycle_message(PackageRef target);
 
 
 bool check_directory_legel(xpString path);
@@ -37,8 +37,8 @@ bool check_file_legal(xpString path);
 
 
 
-xpString make_import_cycle_message(Ref<Package> target) {
-    Package *p = &target.unwrap();
+xpString make_import_cycle_message(PackageRef target) {
+    Package *p = &*target;
     std::string msg = "import 循环依赖: '";
     StringRef path = get_global_string(p->path);
     msg.append(path.data(), path.count());
@@ -47,17 +47,17 @@ xpString make_import_cycle_message(Ref<Package> target) {
 }
 
 
-xpOption<Ref<Package>> compile_package_from_import(xpString import_path, xpString *cycle_err) {
+xpOption<PackageRef> compile_package_from_import(xpString import_path, xpString *cycle_err) {
     auto resolved = resolve_package_path(import_path, permanent_allocator());
     if(resolved.is_none()) {
-        return xpOption<Ref<Package>>::none();
+        return xpOption<PackageRef>::none();
     }
 
     auto pkg_opt = compile_package_from_path(resolved.unwrap(), cycle_err);
     if(pkg_opt.is_none()) {
         return pkg_opt;
-    } else if(pkg_opt.unwrap().unwrap().state == SymbolState::Error) {
-        return xpOption<Ref<Package>>::none();
+    } else if(pkg_opt.unwrap()->state == SymbolState::Error) {
+        return xpOption<PackageRef>::none();
     }
     
     return pkg_opt;
@@ -65,33 +65,33 @@ xpOption<Ref<Package>> compile_package_from_import(xpString import_path, xpStrin
 
 
 
-xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_err) {
+xpOption<PackageRef> compile_package_from_path(xpString path, xpString *cycle_err) {
     if(!is_existing_directory(path) && !is_existing_file(path)) {
-        return xpOption<Ref<Package>>::none();
+        return xpOption<PackageRef>::none();
     }
 
 
     // TODO: 优化
-    // 如果已经存在于 context()->all_packages 中，则直接返回已有的 Ref<Package>；
+    // 如果已经存在于 context()->all_packages 中，则直接返回已有的 PackageRef；
     // 若该包仍在编译中（state == Solving，尚未编译完成的祖先包）→ import 循环依赖
     GlobalStringIndex abs_path = get_or_insert_global_string(normalize_path(path, permanent_allocator()));
     FOR(context()->all_packages) {
         if(it.path == abs_path) {
             if(it.state == SymbolState::Solving) {
                 if(cycle_err) {
-                    *cycle_err = make_import_cycle_message(Ref<Package>{it_index});
+                    *cycle_err = make_import_cycle_message(PackageRef{it_index});
                 }
-                return xpOption<Ref<Package>>::none();
+                return xpOption<PackageRef>::none();
             }
             if(it.state == SymbolState::Error) {
-                return xpOption<Ref<Package>>::none();
+                return xpOption<PackageRef>::none();
             }
-            return xpOption<Ref<Package>>::some(Ref<Package>{it_index});
+            return xpOption<PackageRef>::some(PackageRef{it_index});
         }
     }
 
     // 根包（首个 add，global_blank_package 尚未设置）＝ builtin：scope/global_blank/基础类型符号特殊处理
-    bool is_root_pkg = (context()->global_blank_package == Ref<Package>::INVALID_REF);
+    bool is_root_pkg = (context()->global_blank_package == PackageRef::INVALID_REF);
 
     Package pkg;
     if(is_existing_directory(path)) {
@@ -103,28 +103,28 @@ xpOption<Ref<Package>> compile_package_from_path(xpString path, xpString *cycle_
         pkg.ast_files.push_back(file);
     }
 
-    Ref<Package> ref = add_package(context(), pkg);
+    PackageRef ref = add_package(context(), pkg);
 
     // 根包注册为 global_blank_package（scope 创建与基础类型符号在 resolve 阶段处理）
     if(is_root_pkg) {
         context()->global_blank_package = ref;
     }
 
-    ref.unwrap().state = SymbolState::Solving;
+    ref->state = SymbolState::Solving;
 
     if(!compile_package(ref)) {
-        ref.unwrap().state = SymbolState::Error;
+        ref->state = SymbolState::Error;
     } else {
-        ref.unwrap().state = SymbolState::Solved;
+        ref->state = SymbolState::Solved;
     }
 
-    return xpOption<Ref<Package>>::some(ref);
+    return xpOption<PackageRef>::some(ref);
 }
 
 
 
-bool compile_package(Ref<Package> pkg_ref) {
-    auto& pkg = pkg_ref.unwrap();
+bool compile_package(PackageRef pkg_ref) {
+    auto& pkg = *pkg_ref;
 
     xp_arena_init_default(&pkg.stage_arena);
     pkg.stage_allocator = xp_arena_allocator(&pkg.stage_arena);
@@ -143,7 +143,7 @@ bool compile_package(Ref<Package> pkg_ref) {
     xp_arena_allocator_clear(pkg.stage_allocator);
 
     if(context()->cir_dump) {
-        dump_cir_package(&get_cir_package(pkg_ref).resolve());
+        dump_cir_package(&*get_cir_package(pkg_ref));
     }
 
     analyze_package(pkg_ref, pkg.stage_allocator);

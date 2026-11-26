@@ -3,8 +3,8 @@
 #include "print.hpp"
 
 
-CIRResultInstance CIRResultInstance::init(xpAllocator allocator, Ref<CIRResultInstance> parent) {
-    ASSERT(parent != Ref<CIRResultInstance>::INVALID_REF);
+CIRResultInstance CIRResultInstance::init(xpAllocator allocator, CIRResultInstanceRef parent) {
+    ASSERT(parent != CIRResultInstanceRef::INVALID_REF);
 
     CIRResultInstance inst;
     inst.results = xp_hash_map_make<CIRInstructionRef, CIRInstResult>(allocator);
@@ -30,7 +30,7 @@ const CIRInstResult* CIRResultInstance::find_along_chain(CIRInstructionRef ref) 
     if(const CIRInstResult *r = result_ptr_of(ref)) {
         return r;
     }
-    for(Ref<CIRResultInstance> it = parent; it != Ref<CIRResultInstance>::INVALID_REF; it = it->parent) {
+    for(CIRResultInstanceRef it = parent; it != CIRResultInstanceRef::INVALID_REF; it = it->parent) {
         if(const CIRInstResult *r = it->result_ptr_of(ref)) {
             return r;
         }

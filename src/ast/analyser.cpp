@@ -30,8 +30,8 @@
 
 
 struct Analyser {
-    Ref<Package> pkg;
-    Ref<Scope> current_scope;
+    PackageRef pkg;
+    ScopeRef current_scope;
     AstFile *curr_ast_file;
     bool under_file_scope = false;
     bool in_defer = false;   // 正在解析 defer 内部的语句
@@ -39,7 +39,7 @@ struct Analyser {
 };
 
 
-Analyser make_analyser(AstFile *curr_ast_file, Ref<Package> pkg) {
+Analyser make_analyser(AstFile *curr_ast_file, PackageRef pkg) {
     Analyser analyser = {};
     analyser.pkg = pkg;
     analyser.current_scope = curr_ast_file->file_scope;
@@ -51,10 +51,10 @@ Analyser make_analyser(AstFile *curr_ast_file, Ref<Package> pkg) {
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg);
+void collect_top_level_symbols_in_file(AstFile *ast_file, PackageRef curr_pkg);
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool under_file_scope);
 void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_file_scope);
-static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringIndex name);
+static bool shadow_blocked(ScopeRef target_scope, Ast *decl_ast, GlobalStringIndex name);
 
 
 
@@ -62,8 +62,8 @@ static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringI
 //
 // Symbol Collect
 //
-void collect_top_level_symbols_in_package(Ref<Package> pkg) {
-    Package* p = &pkg.unwrap();
+void collect_top_level_symbols_in_package(PackageRef pkg) {
+    Package* p = &*pkg;
 
     for(auto&& it : p->ast_files) {
         AstFile *ast_file = &it;
@@ -73,9 +73,9 @@ void collect_top_level_symbols_in_package(Ref<Package> pkg) {
 
 
 
-void collect_top_level_symbols_in_file(AstFile *ast_file, Ref<Package> curr_pkg) {
+void collect_top_level_symbols_in_file(AstFile *ast_file, PackageRef curr_pkg) {
 
-    ast_file->file_scope = alloc_scope(&context()->all_scopes, curr_pkg.unwrap().package_scope, ScopeType::File, permanent_allocator());
+    ast_file->file_scope = alloc_scope(&context()->all_scopes, curr_pkg->package_scope, ScopeType::File, permanent_allocator());
 
     bool under_file_scope = false;
 
@@ -117,11 +117,11 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
     bool is_import = (value_ast != nullptr && value_ast->type == AstType_Import);
     bool to_file_scope = is_import || under_file_scope;
 
-    Ref<SymbolInfo> info = to_file_scope
+    SymbolInfoRef info = to_file_scope
         ? find_symbol_ref_curr(analyser.current_scope, const_decl_ast->ConstDecl.name)
         : find_symbol_ref_until(ScopeType::Package, analyser.current_scope, const_decl_ast->ConstDecl.name);
 
-    if(info != Ref<SymbolInfo>::INVALID_REF) {
+    if(info != SymbolInfoRef::INVALID_REF) {
         context()->reporter.report_error(
             const_decl_ast->src_loc,
             "symbol '{}' repeated definition",
@@ -130,7 +130,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
         return;
     }
 
-    const auto target_scope = to_file_scope ? analyser.current_scope : analyser.pkg.unwrap().package_scope;
+    const auto target_scope = to_file_scope ? analyser.current_scope : analyser.pkg->package_scope;
 
     if(shadow_blocked(target_scope, const_decl_ast, const_decl_ast->ConstDecl.name)) {
         return;
@@ -139,9 +139,9 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
     auto new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
     new_symbol.no_shadow = const_decl_ast->ConstDecl.is_builtin;
 
-    add_symbol_to_scope(&target_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
+    add_symbol_to_scope(&*target_scope, const_decl_ast->ConstDecl.name, new_symbol);
 
-    const_decl_ast->ast_symbol = Ref<SymbolInfo>{
+    const_decl_ast->ast_symbol = SymbolInfoRef{
         .scope = target_scope,
         .name = const_decl_ast->ConstDecl.name
     };
@@ -162,8 +162,8 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_fi
 
     GlobalStringIndex name = var_decl_ast->VariableDecl.var_name;
 
-    Ref<SymbolInfo> info = find_symbol_ref_curr(analyser.current_scope, name);
-    if(info != Ref<SymbolInfo>::INVALID_REF) {
+    SymbolInfoRef info = find_symbol_ref_curr(analyser.current_scope, name);
+    if(info != SymbolInfoRef::INVALID_REF) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
             "symbol '{}' repeated definition",
@@ -177,9 +177,9 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_fi
     }
 
     auto new_symbol = make_symbol(name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
-    add_symbol_to_scope(&analyser.current_scope.unwrap(), name, new_symbol);
+    add_symbol_to_scope(&*analyser.current_scope, name, new_symbol);
 
-    var_decl_ast->ast_symbol = Ref<SymbolInfo>{
+    var_decl_ast->ast_symbol = SymbolInfoRef{
         .scope = analyser.current_scope,
         .name = name
     };
@@ -187,8 +187,8 @@ void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_fi
 
 
 // 目标作用域里有不可遮蔽的符号则报错，返回 true
-static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringIndex name) {
-    const auto *shadowed = find_symbol_until_global(&target_scope.unwrap(), name);
+static bool shadow_blocked(ScopeRef target_scope, Ast *decl_ast, GlobalStringIndex name) {
+    const auto *shadowed = find_symbol_until_global(&*target_scope, name);
     if(shadowed != nullptr && shadowed->no_shadow) {
         context()->reporter.report_error(
             decl_ast->src_loc,
@@ -207,7 +207,7 @@ static bool shadow_blocked(Ref<Scope> target_scope, Ast *decl_ast, GlobalStringI
 //
 
 void resolve_ast_file(AstFile *ast_file, Analyser analyser);
-void resolve_top_level_comptime_if(Ref<Package> pkg);
+void resolve_top_level_comptime_if(PackageRef pkg);
 void resolve_top_stmt(Ast *ast, Analyser analyser);
 void resolve_fn_param_list(Array<Ast *>, Analyser);
 void resolve_function_decl(Ast *ast, Analyser analyser);
@@ -238,7 +238,7 @@ CoroutineTask<void> resolve_comptime_if(CoroutineManager& manager,Ast *ast, Anal
 
 // 注册基础类型符号
 void init_global_symbols() {
-    Ref<Package> blank_pkg{context()->global_blank_package.index};
+    PackageRef blank_pkg{context()->global_blank_package.index};
 
     // basic types
     {
@@ -253,7 +253,7 @@ void init_global_symbols() {
                 nullptr,
                 nullptr
             );
-            add_symbol_to_scope(&blank_pkg.unwrap().package_scope.unwrap(), symbol_info);
+            add_symbol_to_scope(&*blank_pkg->package_scope, symbol_info);
         };
 
         insert_basic_type(Type_void);
@@ -286,14 +286,14 @@ void init_global_symbols() {
             nullptr,
             nullptr
         );
-        add_symbol_to_scope(&blank_pkg.unwrap().package_scope.unwrap(), type_string, type_symbol);
+        add_symbol_to_scope(&*blank_pkg->package_scope, type_string, type_symbol);
     }
 }
 
 
 
-void resolve_ast_package(Ref<Package> pkg) {
-    Package* p = &pkg.unwrap();
+void resolve_ast_package(PackageRef pkg) {
+    Package* p = &*pkg;
     
     for(AstFile& ast_file: p->ast_files) {
         resolve_ast_file(&ast_file, make_analyser(&ast_file, pkg));
@@ -301,16 +301,16 @@ void resolve_ast_package(Ref<Package> pkg) {
 }
 
 
-void resolve_package(Ref<Package> pkg) {
-    Package *p = &pkg.unwrap();
+void resolve_package(PackageRef pkg) {
+    Package *p = &*pkg;
 
     // 包 scope 创建属于 resolve 阶段：根包＝Global 根（并注册基础类型符号，须在 collect/resolve 前）；
     // 其余包＝挂到根下的 Package scope
     if(pkg == context()->global_blank_package) {
-        p->package_scope = alloc_scope(&context()->all_scopes, Ref<Scope>::INVALID_REF, ScopeType::Global, permanent_allocator());
+        p->package_scope = alloc_scope(&context()->all_scopes, ScopeRef::INVALID_REF, ScopeType::Global, permanent_allocator());
         init_global_symbols();
     } else {
-        p->package_scope = alloc_scope(&context()->all_scopes, context()->global_blank_package.unwrap().package_scope, ScopeType::Package, permanent_allocator());
+        p->package_scope = alloc_scope(&context()->all_scopes, context()->global_blank_package->package_scope, ScopeType::Package, permanent_allocator());
     }
 
     collect_top_level_symbols_in_package(pkg);
@@ -328,8 +328,8 @@ void resolve_package(Ref<Package> pkg) {
 
 
 
-Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast, std::optional<Ref<Scope>> parent_scope = std::nullopt) {
-    Ref<Scope> new_scope = alloc_scope(
+Analyser new_scope(Analyser old_state, ScopeType type, Ast *related_ast, std::optional<ScopeRef> parent_scope = std::nullopt) {
+    ScopeRef new_scope = alloc_scope(
         &context()->all_scopes,
         parent_scope.has_value() ? parent_scope.value() : old_state.current_scope,
         type,
@@ -359,7 +359,7 @@ static bool comptime_if_condition_ready(Ast *expr, Analyser analyser, bool repor
 
         const auto name = node->Ident.name;
         const auto symbol = find_symbol_ref_until_global(analyser.current_scope, name);
-        if(symbol == Ref<SymbolInfo>::INVALID_REF) {
+        if(symbol == SymbolInfoRef::INVALID_REF) {
             if(report_error) {
                 context()->reporter.report_error(
                     node->src_loc,
@@ -371,7 +371,7 @@ static bool comptime_if_condition_ready(Ast *expr, Analyser analyser, bool repor
             return AstVisit::Stop;
         }
 
-        SymbolInfo& info = symbol.unwrap();
+        SymbolInfo& info = *symbol;
         if(info.ast != nullptr
             && info.ast->type == AstType_ConstDecl
             && !info.ast->ConstDecl.resolved) {
@@ -408,7 +408,7 @@ CoroutineTask<void> resolve_comptime_if(
     auto &ci = ast->ComptimeIf;
     resolve_expr(ci.condition, analyser);
 
-    CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg.unwrap().stage_allocator);
+    CIRBuildContext ctx = CIRBuildContext::init(analyser.pkg->stage_allocator);
     defer(CIRBuildContext::free(ctx));
 
     ctx.pkg_ref = analyser.pkg;
@@ -471,7 +471,7 @@ CoroutineTask<void> resolve_comptime_if(
 
 
 
-void resolve_top_level_comptime_if(Ref<Package> pkg) {
+void resolve_top_level_comptime_if(PackageRef pkg) {
     auto& manager = context()->coroutine_manager;
     ASSERT(manager.get_queued_task_count() == 0);
 
@@ -589,7 +589,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
             // 符号在 collect 阶段建好，ref 已经记在 ast_symbol 上，不按名字重找（同名遮蔽会找错那条）。
             // 没建上说明 collect 已经报过错（重复定义 / 不可遮蔽），这里不再解析
-            if(ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+            if(ast->ast_symbol == SymbolInfoRef::INVALID_REF) {
                 break;
             }
 
@@ -617,7 +617,7 @@ void resolve_top_stmt(Ast *ast, Analyser analyser) {
 
         case AstType_VariableDecl: {
             // 符号在 collect 阶段建好；没建上说明 collect 已经报过错
-            if(ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+            if(ast->ast_symbol == SymbolInfoRef::INVALID_REF) {
                 break;
             }
 
@@ -674,8 +674,8 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     }
 
     if(!(analyser.current_scope->scope_type == ScopeType::File)) {
-        Ref<SymbolInfo> exist = find_symbol_ref_curr(analyser.current_scope, const_ident);
-        if(exist != Ref<SymbolInfo>::INVALID_REF) {
+        SymbolInfoRef exist = find_symbol_ref_curr(analyser.current_scope, const_ident);
+        if(exist != SymbolInfoRef::INVALID_REF) {
             context()->reporter.report_error(
                 const_decl_ast->src_loc,
                 "symbol '{}' already declared in the same scope",
@@ -701,11 +701,11 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
     }
 
 
-    Ref<SymbolInfo> symbol_ref;
+    SymbolInfoRef symbol_ref;
     if(analyser.current_scope->scope_type != ScopeType::File) {
         // 局部 const：在当前作用域现场建符号
         
-        const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name);
+        const auto *shadowed = find_symbol_until_global(&*analyser.current_scope, const_decl_ast->ConstDecl.name);
         if(shadowed != nullptr && shadowed->no_shadow) {
             context()->reporter.report_error(
                 const_decl_ast->src_loc,
@@ -716,9 +716,9 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
         }
 
         const auto new_symbol = make_symbol(const_decl_ast->ConstDecl.name, analyser.pkg, analyser.curr_ast_file, const_decl_ast);
-        add_symbol_to_scope(&analyser.current_scope.unwrap(), const_decl_ast->ConstDecl.name, new_symbol);
+        add_symbol_to_scope(&*analyser.current_scope, const_decl_ast->ConstDecl.name, new_symbol);
 
-        symbol_ref = Ref<SymbolInfo>{
+        symbol_ref = SymbolInfoRef{
             .scope = analyser.current_scope,
             .name = const_decl_ast->ConstDecl.name
         };
@@ -754,7 +754,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
 
     
     // // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
-    Ref<Scope> parent_scope = analyser.current_scope;
+    ScopeRef parent_scope = analyser.current_scope;
 
     Analyser new_sc = new_scope(analyser, ScopeType::Function, decl, parent_scope);
     new_sc.in_defer = false;   // 函数体是新的控制流边界
@@ -795,8 +795,8 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
     for(auto&& it : value_ast->StructDeclValue.fields) {
         auto field = it;
 
-        Ref<SymbolInfo> existing = find_symbol_ref_curr(struct_analyser.current_scope, field->StructField.name);
-        if(existing != Ref<SymbolInfo>::INVALID_REF) {
+        SymbolInfoRef existing = find_symbol_ref_curr(struct_analyser.current_scope, field->StructField.name);
+        if(existing != SymbolInfoRef::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
                 "duplicate struct field '{}'", get_global_string(field->StructField.name)
@@ -806,7 +806,7 @@ void resolve_struct_decl(Ast *decl, Analyser analyser) {
         resolve_expr(field->StructField.type_ast, struct_analyser);
 
         SymbolInfo field_symbol = make_symbol(field->StructField.name, analyser.pkg, analyser.curr_ast_file, field);
-        add_symbol_to_scope(&struct_analyser.current_scope.unwrap(), field->StructField.name, field_symbol);
+        add_symbol_to_scope(&*struct_analyser.current_scope, field->StructField.name, field_symbol);
     }
 }
 
@@ -819,8 +819,8 @@ void resolve_union_decl(Ast *decl, Analyser analyser) {
 
     for(Ast *field: decl->UnionDecl.fields) {
 
-        Ref<SymbolInfo> existing = find_symbol_ref_curr(union_analyser.current_scope, field->StructField.name);
-        if(existing != Ref<SymbolInfo>::INVALID_REF) {
+        SymbolInfoRef existing = find_symbol_ref_curr(union_analyser.current_scope, field->StructField.name);
+        if(existing != SymbolInfoRef::INVALID_REF) {
             context()->reporter.report_error(
                 field->src_loc,
                 "duplicate union field '{}'", get_global_string(field->StructField.name)
@@ -830,7 +830,7 @@ void resolve_union_decl(Ast *decl, Analyser analyser) {
         resolve_expr(field->StructField.type_ast, union_analyser);
 
         SymbolInfo field_symbol = make_symbol(field->StructField.name, analyser.pkg, analyser.curr_ast_file, field);
-        add_symbol_to_scope(&union_analyser.current_scope.unwrap(), field->StructField.name, field_symbol);
+        add_symbol_to_scope(&*union_analyser.current_scope, field->StructField.name, field_symbol);
     }
 }
 
@@ -854,8 +854,8 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
         } else {
             GlobalStringIndex field_name = field->Ident.name;
 
-            Ref<SymbolInfo> existing = find_symbol_ref_curr(enum_analyser.current_scope, field_name);
-            if(existing != Ref<SymbolInfo>::INVALID_REF) {
+            SymbolInfoRef existing = find_symbol_ref_curr(enum_analyser.current_scope, field_name);
+            if(existing != SymbolInfoRef::INVALID_REF) {
                 context()->reporter.report_error(
                     field->src_loc,
                     "duplicate enum field '{}'", get_global_string(field_name)
@@ -863,7 +863,7 @@ void resolve_enum_decl(Ast *decl, Analyser analyser) {
             }
 
             SymbolInfo field_symbol = make_symbol(field_name, analyser.pkg, analyser.curr_ast_file, field);
-            add_symbol_to_scope(&enum_analyser.current_scope.unwrap(), field_name, field_symbol);
+            add_symbol_to_scope(&*enum_analyser.current_scope, field_name, field_symbol);
         }
     }
 }
@@ -876,7 +876,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
         ASSERT(param->type == AstType_ParamDecl);
 
         const auto existing = find_symbol_ref_curr(analyser.current_scope, param->ParamDecl.name);
-        if(existing != Ref<SymbolInfo>::INVALID_REF) {
+        if(existing != SymbolInfoRef::INVALID_REF) {
             context()->reporter.report_error(
                 param->src_loc,
                 "duplicate parameter name '{}'",
@@ -891,7 +891,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             );
         }
 
-        const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), param->ParamDecl.name);
+        const auto *shadowed = find_symbol_until_global(&*analyser.current_scope, param->ParamDecl.name);
         if(shadowed != nullptr && shadowed->no_shadow) {
             context()->reporter.report_error(
                 param->src_loc,
@@ -902,8 +902,8 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
         }
 
         const auto param_symbol = make_symbol(param->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param);
-        add_symbol_to_scope(&analyser.current_scope.unwrap(), param->ParamDecl.name, param_symbol);
-        param->ast_symbol = Ref<SymbolInfo>{
+        add_symbol_to_scope(&*analyser.current_scope, param->ParamDecl.name, param_symbol);
+        param->ast_symbol = SymbolInfoRef{
             .scope = analyser.current_scope,
             .name = param->ParamDecl.name
         };
@@ -918,7 +918,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
             case AstType_TypeVariableDeclInParam: {
                 const auto& type_var_name = type_ast->TypeVariableDeclInParam.name;
 
-                if(find_symbol_ref_curr(analyser.current_scope, type_var_name) != Ref<SymbolInfo>::INVALID_REF) {
+                if(find_symbol_ref_curr(analyser.current_scope, type_var_name) != SymbolInfoRef::INVALID_REF) {
                     context()->reporter.report_error(
                         type_ast->src_loc,
                         "type variable '{}' already declared in the same scope",
@@ -928,7 +928,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
                 }
 
 
-                const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), type_var_name);
+                const auto *shadowed = find_symbol_until_global(&*analyser.current_scope, type_var_name);
                 if(shadowed != nullptr && shadowed->no_shadow) {
                     context()->reporter.report_error(
                         type_ast->src_loc,
@@ -939,8 +939,8 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
                 }
 
                 const auto info = make_symbol(type_var_name, analyser.pkg, analyser.curr_ast_file, type_ast);
-                add_symbol_to_scope(&analyser.current_scope.unwrap(), type_var_name, info);
-                type_ast->ast_symbol = Ref<SymbolInfo>{
+                add_symbol_to_scope(&*analyser.current_scope, type_var_name, info);
+                type_ast->ast_symbol = SymbolInfoRef{
                     .scope = analyser.current_scope,
                     .name = type_var_name
                 };
@@ -959,7 +959,7 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     XP_ASSERT_DEFAULT(param_ast->type == AstType_ParamDecl);
 
     const auto existing = find_symbol_ref_curr(analyser.current_scope, param_ast->ParamDecl.name);
-    if(existing != Ref<SymbolInfo>::INVALID_REF) {
+    if(existing != SymbolInfoRef::INVALID_REF) {
         context()->reporter.report_error(
             param_ast->src_loc,
             "duplicate parameter name '{}'",
@@ -967,7 +967,7 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
         );
     }
 
-    const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), param_ast->ParamDecl.name);
+    const auto *shadowed = find_symbol_until_global(&*analyser.current_scope, param_ast->ParamDecl.name);
     if(shadowed != nullptr && shadowed->no_shadow) {
         context()->reporter.report_error(
             param_ast->src_loc,
@@ -978,8 +978,8 @@ void resolve_fn_param(Ast *param_ast, Analyser analyser) {
     }
 
     const auto param_symbol = make_symbol(param_ast->ParamDecl.name, analyser.pkg, analyser.curr_ast_file, param_ast);
-    add_symbol_to_scope(&analyser.current_scope.unwrap(), param_ast->ParamDecl.name, param_symbol);
-    param_ast->ast_symbol = Ref<SymbolInfo>{
+    add_symbol_to_scope(&*analyser.current_scope, param_ast->ParamDecl.name, param_symbol);
+    param_ast->ast_symbol = SymbolInfoRef{
         .scope = analyser.current_scope,
         .name = param_ast->ParamDecl.name
     };
@@ -1089,7 +1089,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
             context()->reporter.report_error(stmt_ast->src_loc, "defer 内不能使用 break");
         }
 
-        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
+        if(get_upper_scope_with_type(&*analyser.current_scope, ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
                 "break statement not within loop"
@@ -1101,7 +1101,7 @@ void resolve_local_stmt(Ast *stmt_ast, Analyser analyser) {
             context()->reporter.report_error(stmt_ast->src_loc, "defer 内不能使用 continue");
         }
 
-        if(get_upper_scope_with_type(&analyser.current_scope.unwrap(), ScopeType::LoopBlock, ScopeType::Function) == NULL) {
+        if(get_upper_scope_with_type(&*analyser.current_scope, ScopeType::LoopBlock, ScopeType::Function) == NULL) {
             context()->reporter.report_error(
                 stmt_ast->src_loc,
                 "continue statement not within loop"
@@ -1149,8 +1149,8 @@ void resolve_defer_stmt(Ast *stmt_ast, Analyser analyser) {
 
 void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
-    Ref<SymbolInfo> existing = find_symbol_ref_curr(analyser.current_scope, var_decl_ast->VariableDecl.var_name);
-    if(existing != Ref<SymbolInfo>::INVALID_REF) {
+    SymbolInfoRef existing = find_symbol_ref_curr(analyser.current_scope, var_decl_ast->VariableDecl.var_name);
+    if(existing != SymbolInfoRef::INVALID_REF) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
             "symbol '{}' already declared in the same scope",
@@ -1176,7 +1176,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     }
 
 
-    const auto *shadowed = find_symbol_until_global(&analyser.current_scope.unwrap(), var_decl_ast->VariableDecl.var_name);
+    const auto *shadowed = find_symbol_until_global(&*analyser.current_scope, var_decl_ast->VariableDecl.var_name);
     if(shadowed != nullptr && shadowed->no_shadow) {
         context()->reporter.report_error(
             var_decl_ast->src_loc,
@@ -1187,8 +1187,8 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
     }
 
     const auto info = make_symbol(var_decl_ast->VariableDecl.var_name, analyser.pkg, analyser.curr_ast_file, var_decl_ast);
-    add_symbol_to_scope(&analyser.current_scope.unwrap(), var_decl_ast->VariableDecl.var_name, info);
-    var_decl_ast->ast_symbol = Ref<SymbolInfo>{
+    add_symbol_to_scope(&*analyser.current_scope, var_decl_ast->VariableDecl.var_name, info);
+    var_decl_ast->ast_symbol = SymbolInfoRef{
         .scope = analyser.current_scope,
         .name = var_decl_ast->VariableDecl.var_name
     };
@@ -1227,7 +1227,7 @@ void resolve_expr2(Ast *expr_ast, Analyser analyser) {
             }
 
 
-            if(expr_ast->FunctionCallExpr.func_ident->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+            if(expr_ast->FunctionCallExpr.func_ident->ast_symbol == SymbolInfoRef::INVALID_REF) {
                 break; // 说明前面已经报过错了, 这里就不继续解析了
             }
 
@@ -1397,7 +1397,7 @@ void resolve_expr(Ast *expr_ast, Analyser analyser) {
 
 
 SymbolInfo *resolve_string_as_ident(GlobalStringIndex str, Analyser analyser) {
-    SymbolInfo *info = find_symbol_until_global(&analyser.current_scope.unwrap(), str);
+    SymbolInfo *info = find_symbol_until_global(&*analyser.current_scope, str);
     if(info == NULL) {
         return NULL;
     }
@@ -1432,19 +1432,19 @@ void resolve_field_access(Ast *field_access_ast, Analyser analyser) {
 
 
     // @note: 如果父节点的符号解析失败, 那么这里就不再继续解析了, 否则会报错两次
-    if(parent_ast->ast_symbol == Ref<SymbolInfo>::INVALID_REF) {
+    if(parent_ast->ast_symbol == SymbolInfoRef::INVALID_REF) {
         return;
     }
 
-    SymbolInfo &parent_symbol_info = parent_ast->ast_symbol.unwrap();
+    SymbolInfo &parent_symbol_info = *parent_ast->ast_symbol;
     auto r = parent_symbol_info.result();
     Value parent_value = r.state == CIRResultState::WholeValue ? r.actual_val() : make_value();
     TypeRef parent_type = parent_value.type;
     if(is_package_type(parent_type)) {
-        Ref<Package> pkg = parent_value.type->package_info;
+        PackageRef pkg = parent_value.type->package_info;
 
         Analyser pkg_analyser = analyser;
-        pkg_analyser.current_scope = pkg.unwrap().package_scope;
+        pkg_analyser.current_scope = pkg->package_scope;
         pkg_analyser.curr_ast_file = parent_symbol_info.file;
         pkg_analyser.pkg = parent_symbol_info.package;
 

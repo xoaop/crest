@@ -9,7 +9,7 @@
 //
 // 公共接口
 //
-void analyze_package(Ref<Package> pkg, xpAllocator allocator);
+void analyze_package(PackageRef pkg, xpAllocator allocator);
 
 
 
@@ -142,7 +142,7 @@ struct AnalyzeParams {
 // 求值实例 — 每个 interp 一个，随 interp 生灭
 struct EvalInstance {
 
-    static EvalInstance make(Ref<CIRPackage> callee_pkg, isize var_count, xpAllocator allocator);
+    static EvalInstance make(CIRPackageRef callee_pkg, isize var_count, xpAllocator allocator);
 
     static void free(EvalInstance *inst);
 
@@ -200,12 +200,12 @@ struct InterpStack {
 //
 
 struct Interpreter {
-    Interpreter(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst);
+    Interpreter(xpAllocator allocator, PackageRef pkg_ref, InterpStack *interp_stack, EvalInstance inst);
     ~Interpreter();
 
     Interpreter(const Interpreter&) = delete;
 
-    static Interpreter* create(xpAllocator allocator, Ref<Package> pkg_ref, InterpStack *interp_stack, EvalInstance inst);
+    static Interpreter* create(xpAllocator allocator, PackageRef pkg_ref, InterpStack *interp_stack, EvalInstance inst);
     static void destroy(Interpreter *interp);
 
     // 本 interp 的帧操作
@@ -225,7 +225,7 @@ struct Interpreter {
     bool analyze_block(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);  // 进入块 blk 分析；target = 块的 handle（结果位置，可选：无结果位置的块传 nullopt）
     void analyze_loop(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 循环块分析（完全独立）：入口 + 迭代 + 编译时检查 + 恢复
     bool analyze_block_insts(CIRBlockRef blk, std::optional<CIRInstructionRef> target);   // 迭代分析块内指令（普通块与循环块共用），直到块结果已定（有 target）或到块末尾
-    bool analyze_symbol_of_package(Ref<SymbolInfo> sym_ref);
+    bool analyze_symbol_of_package(SymbolInfoRef sym_ref);
 
     // 各内建 hook 的独立处理
     AnalyzeResult hook_typeof(const CIRHookInfo& info, CIRInstructionRef pc_ref);
@@ -288,7 +288,7 @@ struct Interpreter {
     // 批量落结果（含函数值可达性捕获），与 dispatch 应用 writes 的语义一致
     void apply_writes(const Array<ResultWrite>& writes);
 
-    void capture_lcir_function(Ref<CIRInstResult> fk);   // 把被引用的函数值登记进 lcir 工作表
+    void capture_lcir_function(CIRInstResultRef fk);   // 把被引用的函数值登记进 lcir 工作表
 
 
 
@@ -307,7 +307,7 @@ struct Interpreter {
     // 得到本次调用的具体函数值
     std::optional<Value> instantiate_generic_func(
         FuncValue fv,
-        Array<Ref<CIRInstResult>> key_refs,
+        Array<CIRInstResultRef> key_refs,
         Array<TypeRef> type_args);
 
     // 编译期调用执行：查缓存 / 起子帧 / 收尾，返回调用点的结果写入
@@ -319,8 +319,8 @@ struct Interpreter {
 public:
 
     // 本 interp 只看得见这一个包：跨包一律另起一个 interp
-    const Ref<Package> pkg_ref;
-    const Ref<CIRPackage> pkg;
+    const PackageRef pkg_ref;
+    const CIRPackageRef pkg;
 
     // 编译期调用链
     InterpStack *const interp_stack;

@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "array.hpp"
 #include "cir_instruction_ref.hpp"
+#include "package_ref.hpp"
 
 
 struct Value;
@@ -71,7 +72,7 @@ enum class ActualValueType {
 
 
 struct FuncValue {
-    Ref<CIRInstResult>                func_key;
+    CIRInstResultRef                func_key;
 };
 
 struct Value {
@@ -95,11 +96,11 @@ public:
     void bool_val(bool bool_val);
     void struct_fields_val(Array<Value> field_values);
     void array_element_values(Array<Value> elem_values);
-    void func_val(Ref<CIRInstResult> func_key);
-    void func_val_key(Ref<CIRInstResult> key);
+    void func_val(CIRInstResultRef func_key);
+    void func_val_key(CIRInstResultRef key);
     void pointer_val(Pointer ptr);          // comptime 指针
     void type_val(TypeRef type_ref);
-    void package_val(Ref<Package> pkg);
+    void package_val(PackageRef pkg);
 
 
     i128 integer_val() const;
@@ -117,7 +118,7 @@ public:
     ValueRef element_ref(isize index);
     Pointer pointer_val() const;           // comptime 指针
     TypeRef type_val() const;
-    Ref<Package> package_val() const;
+    PackageRef package_val() const;
     FuncValue func_val() const;
 
     // $T 泛型模板的函数值: payload 是函数, 但 type 未定(签名要等调用点推导出类型变量)。
@@ -146,7 +147,7 @@ private:
 
         TypeRef type_value;        // 类型值
 
-        Ref<Package> package_value;    // 包值（全局包表编号）
+        PackageRef package_value;    // 包值（全局包表编号）
     };
 
 public:
@@ -187,10 +188,10 @@ struct std::hash<Value> {
             break;
         case ActualValueType::Function: {
             const auto fv = v.is_unresolved_func_val() ? v.unresolved_func_val() : v.func_val();
-            h = xp_hash_combine_u64(h, std::hash<Ref<CIRInstResult>>{}(fv.func_key));
+            h = xp_hash_combine_u64(h, std::hash<CIRInstResultRef>{}(fv.func_key));
         } break;
         case ActualValueType::Package:
-            h = xp_hash_combine_u64(h, std::hash<Ref<Package>>{}(v.package_val()));
+            h = xp_hash_combine_u64(h, std::hash<PackageRef>{}(v.package_val()));
             break;
         case ActualValueType::Struct: {
             const auto fields = v.struct_fields_val();

@@ -272,7 +272,7 @@ LLVMValueRef LLVMGenerator::gen_ir_call_result_by_abi(const ABIFunctionPlan& pla
 struct ExternCSymbol {
     TypeRef type;          // 只存类型：需要时重算 plan，避免持有跨包 arena 里的数组
     bool is_definition;
-    Ref<Package> owner;
+    PackageRef owner;
 };
 
 // LLVM 类型在 context 内唯一化，fn_type 指针相等即返回类型、参数类型与变参性都相同。
@@ -307,8 +307,8 @@ static bool same_abi_signature(const ABIFunctionPlan& a, const ABIFunctionPlan& 
 
 // 一个 extern_C 声明/定义与同名记录比对；定义比声明更有代表性，后来的定义成为基准。
 static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
-                                      const Ref<Package> pkg,
-                                      Ref<CIRInstResult> fk,
+                                      const PackageRef pkg,
+                                      CIRInstResultRef fk,
                                       const lcir::FunctionDecl& fd,
                                       ABIKind abi) {
     auto& inst = fk.inst_ref.pkg->inst(fk.inst_ref);
@@ -340,7 +340,7 @@ static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
         context()->reporter.report_error(
             inst.src_loc,
             "extern \"C\" 符号 '{}' 重复定义（另一处在包 '{}'）",
-            fd.raw_name, get_global_string(prev->owner.unwrap().path)
+            fd.raw_name, get_global_string(prev->owner->path)
         );
     }
 
@@ -350,12 +350,12 @@ static void check_one_extern_c_symbol(xpHashMap<xpString, ExternCSymbol>& seen,
     }
 }
 
-void check_extern_c_symbols(const xpHashMap<Ref<Package>, lcir::Module>& modules) {
+void check_extern_c_symbols(const xpHashMap<PackageRef, lcir::Module>& modules) {
     const ABIKind abi = current_abi(context()->target.os);
     xpHashMap<xpString, ExternCSymbol> seen = xp_hash_map_make<xpString, ExternCSymbol>(permanent_allocator());
 
     for(const auto& mod_entry : modules) {
-        const Ref<Package> pkg = mod_entry.key;
+        const PackageRef pkg = mod_entry.key;
 
         for(const auto& fn_entry : mod_entry.value.functions) {
             // 调用方侧为跨包引用补的声明：fk 属于被调包，签名必然与 owner 一致

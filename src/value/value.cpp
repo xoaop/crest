@@ -117,12 +117,12 @@ void Value::array_element_values(Array<Value> elem_values) {
     struct_or_array_fields = elem_values;
 }
 
-void Value::func_val(Ref<CIRInstResult> func_key) {
+void Value::func_val(CIRInstResultRef func_key) {
     actual_value_type = ActualValueType::Function;
     this->func_value.func_key = func_key;
 }
 
-void Value::func_val_key(Ref<CIRInstResult> key) {
+void Value::func_val_key(CIRInstResultRef key) {
     this->func_value.func_key = key;
 }
 
@@ -250,11 +250,11 @@ TypeRef Value::type_val() const {
     return type_value;
 }
 
-void Value::package_val(Ref<Package> pkg) {
+void Value::package_val(PackageRef pkg) {
     actual_value_type = ActualValueType::Package;
     package_value = pkg;
 }
-Ref<Package> Value::package_val() const {
+PackageRef Value::package_val() const {
     XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Package);
     return package_value;
 }

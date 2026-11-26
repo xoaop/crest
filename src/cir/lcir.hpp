@@ -18,14 +18,14 @@ struct FunctionDecl {
     } linkage;
 
     xpString raw_name;
-    Ref<CIRInstResult> decl_result;
+    CIRInstResultRef decl_result;
 };
 
 
 struct GlobalVariableDecl {
     xpString raw_name;
-    Ref<CIRInstResult> init_result;   // 初值指令的结果（编译期常量）
-    Ref<CIRInstResult> decl_result;
+    CIRInstResultRef init_result;   // 初值指令的结果（编译期常量）
+    CIRInstResultRef decl_result;
 };
 
 
@@ -33,32 +33,32 @@ struct Module {
 
     static Module init(xpAllocator allocator) {
         auto m = Module {
-            .functions = xp_hash_map_make<Ref<CIRInstResult>, FunctionDecl>(allocator),
-            .globals = xp_hash_map_make<Ref<CIRInstResult>, GlobalVariableDecl>(allocator),
+            .functions = xp_hash_map_make<CIRInstResultRef, FunctionDecl>(allocator),
+            .globals = xp_hash_map_make<CIRInstResultRef, GlobalVariableDecl>(allocator),
         };
 
         return m;
     }
 
-    xpHashMap<Ref<CIRInstResult>, FunctionDecl> functions;   // func_key → 条目，插入即去重
-    xpHashMap<Ref<CIRInstResult>, GlobalVariableDecl> globals;   // 顶层变量 → 条目（文件作用域，包内 internal）
+    xpHashMap<CIRInstResultRef, FunctionDecl> functions;   // func_key → 条目，插入即去重
+    xpHashMap<CIRInstResultRef, GlobalVariableDecl> globals;   // 顶层变量 → 条目（文件作用域，包内 internal）
 };
 
 
-xpString mangle_name(Ref<CIRInstResult> key, std::optional<xpString> base_name_opt, bool is_extern_c, Ref<Package> package);
+xpString mangle_name(CIRInstResultRef key, std::optional<xpString> base_name_opt, bool is_extern_c, PackageRef package);
 
 template<class F>
 void within_instance(CIRResultContext& ctx, const FunctionDecl& fd, F&& body) {
     auto saved_ci = ctx.call_instance();
 
     const auto result_instance = fd.decl_result.result_instance;
-    if(result_instance != Ref<CIRResultInstance>::INVALID_REF) {
+    if(result_instance != CIRResultInstanceRef::INVALID_REF) {
         ctx.enter_call_instance(result_instance);
     }
 
     body();
 
-    if(saved_ci != Ref<CIRResultInstance>::INVALID_REF) {
+    if(saved_ci != CIRResultInstanceRef::INVALID_REF) {
         ctx.enter_call_instance(saved_ci);
     } else {
         ctx.exit_call();

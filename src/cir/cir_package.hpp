@@ -23,8 +23,8 @@ struct Package;
 struct CIRBlock {
     StableOrderedArray<CIRInstruction> insts;
     CIRBlockRef self = -1;          // 本块号（create_block 填）
-    Ref<CIRPackage> cir_package;   // 所属包
-    Ref<Scope> scope;              // 块创建时所在的作用域
+    CIRPackageRef cir_package;   // 所属包
+    ScopeRef scope;              // 块创建时所在的作用域
 
     bool is_comptime;
     bool immediate_eval;
@@ -56,20 +56,20 @@ struct CIRBlock {
 
 
 struct CIRPackage {
-    Ref<CIRPackage> self_ref;   // 自身句柄
-    Ref<Package> package_ref;   // 本包在 context()->all_packages 中的编号
+    CIRPackageRef self_ref;   // 自身句柄
+    PackageRef package_ref;   // 本包在 context()->all_packages 中的编号
 
 
     CIRBlockRef top_blk;
     Array<CIRBlock> blocks;
 
-    Ref<Scope> package_scope;   // 包级 scope（顶层驱动的初始 scope）
+    ScopeRef package_scope;   // 包级 scope（顶层驱动的初始 scope）
 
     Array<GlobalStringIndex> string_literals;
 
 
     Array<CIRResultInstance> result_instances;   // [0] = 包级根实例
-    xpHashMap<FuncCallKey, Ref<CIRResultInstance>> result_instance_map;
+    xpHashMap<FuncCallKey, CIRResultInstanceRef> result_instance_map;
 
 
     CIRInstruction& inst_mut(CIRInstructionRef ref);
@@ -77,14 +77,14 @@ struct CIRPackage {
     CIRBlock& block_mut(CIRBlockRef ref);
     const CIRBlock& block(CIRBlockRef ref) const;
 
-    Ref<CIRResultInstance> root_instance() const;
-    Ref<CIRResultInstance> get_or_init_result_instance(FuncCallKey key, Ref<CIRResultInstance> parent);
+    CIRResultInstanceRef root_instance() const;
+    CIRResultInstanceRef get_or_init_result_instance(FuncCallKey key, CIRResultInstanceRef parent);
 
-    CIRInstResult& result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance = {});
-    const CIRInstResult* find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
-    const CIRInstResult* find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const;
+    CIRInstResult& result_of(CIRInstructionRef ref, CIRResultInstanceRef instance = {});
+    const CIRInstResult* find_result(CIRInstructionRef ref, CIRResultInstanceRef instance) const;
+    const CIRInstResult* find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, CIRResultInstanceRef instance) const;
 
-    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false, Ref<Scope> scope = Ref<Scope>::INVALID_REF);
+    CIRBlockRef create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value = false, ScopeRef scope = ScopeRef::INVALID_REF);
 };
 
 
@@ -102,20 +102,20 @@ void dump_cir_package(CIRPackage *file);
 
 
 struct CIRResultContext {
-    static CIRResultContext create(Ref<CIRPackage> pkg);
+    static CIRResultContext create(CIRPackageRef pkg);
 
-    Ref<CIRPackage> pkg() const { return _pkg; }
-    void set_pkg(Ref<CIRPackage> new_pkg) { _pkg = new_pkg; }
+    CIRPackageRef pkg() const { return _pkg; }
+    void set_pkg(CIRPackageRef new_pkg) { _pkg = new_pkg; }
 
-    void enter_call(FuncCallKey key, Ref<CIRResultInstance> parent);
-    void enter_call_instance(Ref<CIRResultInstance> instance);
+    void enter_call(FuncCallKey key, CIRResultInstanceRef parent);
+    void enter_call_instance(CIRResultInstanceRef instance);
 
     void exit_call();
     bool in_call() const { 
-        return _call_instance != Ref<CIRResultInstance>::INVALID_REF;
+        return _call_instance != CIRResultInstanceRef::INVALID_REF;
     }
 
-    Ref<CIRResultInstance> call_instance() const { 
+    CIRResultInstanceRef call_instance() const { 
         return _call_instance; 
     }
 
@@ -126,7 +126,7 @@ struct CIRResultContext {
     const CIRInstResult *result_ptr_in_curr_instance_and_pkg(CIRInstructionRef ref) const;
 
 private:
-    Ref<CIRPackage> _pkg = Ref<CIRPackage>::INVALID_REF;
-    Ref<CIRResultInstance> _call_instance;
+    CIRPackageRef _pkg = CIRPackageRef::INVALID_REF;
+    CIRResultInstanceRef _call_instance;
     std::optional<FuncCallKey> _call_key;
 };

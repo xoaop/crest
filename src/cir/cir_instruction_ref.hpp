@@ -3,7 +3,6 @@
 #include "xoaop.h"
 #include "array.hpp"
 #include "print.hpp"
-#include "ref.hpp"
 #include "cir_package_ref.hpp"
 #include <format>
 #include <functional>
@@ -23,15 +22,15 @@ constexpr isize INVALID_INST_INDEX = -1;
 
 
 struct CIRInstructionRef {
-    Ref<CIRPackage> pkg;
+    CIRPackageRef pkg;
     CIRBlockRef block_ref = INVALID_BLOCK;
     isize       inst_index = INVALID_INST_INDEX;
 
     constexpr CIRInstructionRef() : block_ref(INVALID_BLOCK), inst_index(INVALID_INST_INDEX) {}
-    explicit CIRInstructionRef(CIRBlockRef blk, isize idx, Ref<CIRPackage> pkg) : pkg(pkg), block_ref(blk), inst_index(idx) {
+    explicit CIRInstructionRef(CIRBlockRef blk, isize idx, CIRPackageRef pkg) : pkg(pkg), block_ref(blk), inst_index(idx) {
         ASSERT(blk != INVALID_BLOCK && idx != INVALID_INST_INDEX);
     }
-    explicit CIRInstructionRef(CIRBlockRef blk, Ref<CIRPackage> pkg) : pkg(pkg), block_ref(blk), inst_index(INVALID_INST_INDEX) {
+    explicit CIRInstructionRef(CIRBlockRef blk, CIRPackageRef pkg) : pkg(pkg), block_ref(blk), inst_index(INVALID_INST_INDEX) {
         ASSERT(blk != INVALID_BLOCK);
     }
 
@@ -66,7 +65,7 @@ template<>
 struct std::hash<CIRInstructionRef> {
     usize operator()(const CIRInstructionRef& r) const {
         u64 h = xp_hash_combine_u64((u64)r.block_ref, (u64)r.inst_index);
-        h = xp_hash_combine_u64(h, (u64)std::hash<Ref<CIRPackage>>{}(r.pkg));
+        h = xp_hash_combine_u64(h, (u64)std::hash<CIRPackageRef>{}(r.pkg));
         return h;
     }
 };
@@ -80,11 +79,11 @@ struct std::formatter<CIRInstructionRef> {
 };
 
 
-template<> struct Ref<CIRInstResult>;
+struct CIRInstResultRef;
 
 struct FuncCallKey {
     CIRInstructionRef                        func_decl_pc;
-    Array<Ref<CIRInstResult>>                comptime_arg_refs = {};
+    Array<CIRInstResultRef>                comptime_arg_refs = {};
 
     // $T 实例: comptime_arg_refs 按其结果的类型去重, 而非按指令身份 ——
     // sum_down(3i32) 和递归里的 sum_down(n-1i32) 是不同指令, 必须落同一实例。
@@ -103,6 +102,6 @@ struct std::hash<FuncCallKey> {
 };
 
 
-// Ref 特化依赖 CIRInstructionRef，放在文件末尾避免循环
+// CIR ref 依赖 CIRInstructionRef，放在文件末尾避免循环
 #include "cir_result_instance_ref.hpp"
 #include "cir_inst_result_ref.hpp"

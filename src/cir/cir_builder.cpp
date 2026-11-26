@@ -26,9 +26,9 @@
 #include "cir_builder.hpp"
 #include "context.hpp"
 
-static void expand_defered_stmts(CIRBuildContext& ctx, Ref<Scope> target_scope);
+static void expand_defered_stmts(CIRBuildContext& ctx, ScopeRef target_scope);
 // 展开某个作用域收集的 defer（逆序）。consume：作用域真正结束则清空收集表。
-static void emit_scope_defers(CIRBuildContext& ctx, Ref<Scope> scope, bool consume);
+static void emit_scope_defers(CIRBuildContext& ctx, ScopeRef scope, bool consume);
 
 
 CIRBuildContext CIRBuildContext::init(xpAllocator allocator) {
@@ -36,16 +36,16 @@ CIRBuildContext CIRBuildContext::init(xpAllocator allocator) {
     ctx.allocator = allocator;
 
     ctx.func = nullptr;
-    ctx.pkg = Ref<CIRPackage>::INVALID_REF;
-    ctx.pkg_ref = Ref<Package>::INVALID_REF;
-    ctx.scope = Ref<Scope>::INVALID_REF;
+    ctx.pkg = CIRPackageRef::INVALID_REF;
+    ctx.pkg_ref = PackageRef::INVALID_REF;
+    ctx.scope = ScopeRef::INVALID_REF;
     ctx.func_body_block = INVALID_INST;
     ctx.building_return_type_decl = false;
 
     ctx.block_stack = make_array<CIRBlockRef>(allocator);
     ctx.loop_body_block_stack = make_array<CIRInstructionRef>(allocator);
     ctx.loop_stack = make_array<CIRInstructionRef>(allocator);
-    ctx.scope_defered_stmts = xp_hash_map_make<Ref<Scope>, Array<Ast *>>(allocator);
+    ctx.scope_defered_stmts = xp_hash_map_make<ScopeRef, Array<Ast *>>(allocator);
 
     return ctx;
 }
@@ -63,8 +63,8 @@ void CIRBuildContext::free(CIRBuildContext& ctx) {
 }
 
 
-void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
-    Package *pkg = &pkg_ref.unwrap();
+void CIRBuilder::build_cir_package(PackageRef pkg_ref) {
+    Package *pkg = &*pkg_ref;
 
     CIRBuildContext ctx = CIRBuildContext::init(pkg->stage_allocator);
     defer(CIRBuildContext::free(ctx));
@@ -72,7 +72,7 @@ void CIRBuilder::build_cir_package(Ref<Package> pkg_ref) {
     ctx.pkg_ref = pkg_ref;
     ctx.scope = pkg->package_scope;
 
-    const Ref<CIRPackage> cir_pkg = get_cir_package(pkg_ref);
+    const CIRPackageRef cir_pkg = get_cir_package(pkg_ref);
     ctx.pkg = cir_pkg;
 
     ctx.block_stack.push_back(cir_pkg->top_blk);
@@ -126,7 +126,7 @@ void CIRBuilder::build_top_stmt(CIRBuildContext& ctx, Ast *ast) {
 CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast) {
     XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
 
-    SymbolInfo &sym = const_decl_ast->ast_symbol.unwrap();
+    SymbolInfo &sym = *const_decl_ast->ast_symbol;
 
     // 内建：无值，符号仅作识别（is_built_in() 读 AST），标 Solved、不建值块
     if(const_decl_ast->ConstDecl.is_builtin) {
@@ -150,14 +150,14 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, As
     });
 
 
-    sym.val(Ref<CIRInstResult>::init(const_decl));
+    sym.val(CIRInstResultRef::init(const_decl));
 
     return const_decl;
 }
 
 
-CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ref<Package> pkg_ref, Ast *const_decl_ast) {
-    Package *pkg = &pkg_ref.unwrap();
+CIRInstructionRef CIRBuilder::build_inst_for_const_decl(PackageRef pkg_ref, Ast *const_decl_ast) {
+    Package *pkg = &*pkg_ref;
 
     CIRBuildContext ctx = CIRBuildContext::init(pkg->stage_allocator);
     defer(CIRBuildContext::free(ctx));
@@ -176,7 +176,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(Ref<Package> pkg_ref, As
 
 
 
-CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<Ref<SymbolInfo>> func_sym) {
+CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<SymbolInfoRef> func_sym) {
     XP_ASSERT_DEFAULT(fd->type == AstType_FunctionDeclValue);
 
     auto saved_curr_func = ctx.func;
@@ -282,7 +282,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
     func.sig_blk = sig_blk;
 
     func.body_inst = INVALID_INST;
-    func.symbol = func_sym.value_or(Ref<SymbolInfo>::INVALID_REF);
+    func.symbol = func_sym.value_or(SymbolInfoRef::INVALID_REF);
     auto func_inst = New_Instruction(ctx, CIROperator::FunctionDecl, fd);
 
     Instruction(ctx, func_inst).info<CIROperator::FunctionDecl>() = func;
@@ -492,8 +492,8 @@ static CIRInstructionRef alloc_internal_var(CIRBuildContext& ctx, const char *ro
 
     // 符号必须挂在 VariableDecl AST 上：解释器靠 ast->type 判断是否可寻址
     SymbolInfo symbol = make_symbol(name, ctx.pkg_ref, nullptr, decl);
-    add_symbol_to_scope(&ctx.scope.unwrap(), name, symbol);
-    decl->ast_symbol = Ref<SymbolInfo>{ .scope = ctx.scope, .name = name };
+    add_symbol_to_scope(&*ctx.scope, name, symbol);
+    decl->ast_symbol = SymbolInfoRef{ .scope = ctx.scope, .name = name };
 
     return CIRBuilder::build_inst_for_var_decl(ctx, decl);
 }
@@ -846,7 +846,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
     CIRInstructionRef result = INVALID_INST;
     switch(expr->type) {
         case AstType_Ident: {
-            if(expr->ast_symbol != Ref<SymbolInfo>::INVALID_REF && expr->ast_symbol->is_var_decl()) {
+            if(expr->ast_symbol != SymbolInfoRef::INVALID_REF && expr->ast_symbol->is_var_decl()) {
                 auto ref = Make_Instruction<CIROperator::IdentRef>(ctx, expr, {
                     .ident = expr->Ident.name,
                     .symbol = expr->ast_symbol,
@@ -875,7 +875,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                 // 内建：callee 解析到 #builtin 符号 → 发 Hook，不走普通 Call / 泛型 / 常量实参
             {
                 const auto csym = expr->FunctionCallExpr.func_ident->ast_symbol;
-                if(csym != Ref<SymbolInfo>::INVALID_REF && csym->is_built_in()) {
+                if(csym != SymbolInfoRef::INVALID_REF && csym->is_built_in()) {
                     // get_field(v, i)：按编译期常量下标取字段，直接降成 FieldAccess
                     if(csym->name == context()->known_global_strings.get_field_builtin) {
                         if(expr->FunctionCallExpr.args.count != 2) {
@@ -1217,7 +1217,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
             auto string_ident = Make_Instruction<CIROperator::IdentVal>(ctx, expr, {
                 .ident = context()->known_global_strings.string,
-                .symbol = find_symbol_ref_until_global(context()->global_blank_package.unwrap().package_scope, context()->known_global_strings.string),
+                .symbol = find_symbol_ref_until_global(context()->global_blank_package->package_scope, context()->known_global_strings.string),
             });
 
             auto s = Make_Instruction<CIROperator::StringLiteral>(ctx, expr, {
@@ -1367,9 +1367,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
         case AstType_FunctionDeclValue: {
             // 命名取分析期绑好的 ast_symbol（const 直接值或 if 臂）；匿名则无名
-            Ref<SymbolInfo> func_sym = expr->ast_symbol;
+            SymbolInfoRef func_sym = expr->ast_symbol;
 
-            if(func_sym.scope != Ref<Scope>::INVALID_REF) {
+            if(func_sym.scope != ScopeRef::INVALID_REF) {
                 result = build_func_decl(ctx, expr, func_sym);
             } else {
                 result = build_func_decl(ctx, expr, std::nullopt);
@@ -1468,7 +1468,7 @@ CIRInstructionRef CIRBuilder::Alloc_Var(CIRBuildContext& ctx, GlobalStringIndex 
     isize slot = ctx.func ? ctx.func->slot_count++ : -1;
     auto vd = Make_Instruction<CIROperator::VariableDecl>(ctx, ast, {
         .name = name,
-        .symbol = ast ? ast->ast_symbol : Ref<SymbolInfo>::INVALID_REF,
+        .symbol = ast ? ast->ast_symbol : SymbolInfoRef::INVALID_REF,
         .slot = slot,
         .is_var_arg = is_var_arg,
         .is_param = is_param,
@@ -1553,8 +1553,8 @@ void CIRBuilder::End_Loop(CIRBuildContext& ctx, CIRInstructionRef loop_inst) {
 
 
 bool CIRBuilder::enter_scope(CIRBuildContext& ctx, Ast *ast) {
-    Ref<Scope> child = try_enter_scope(&ctx.scope.unwrap(), ast);
-    if(child == Ref<Scope>::INVALID_REF) {
+    ScopeRef child = try_enter_scope(&*ctx.scope, ast);
+    if(child == ScopeRef::INVALID_REF) {
         return false;
     }
 
@@ -1565,8 +1565,8 @@ bool CIRBuilder::enter_scope(CIRBuildContext& ctx, Ast *ast) {
 }
 
 void CIRBuilder::exit_scope(CIRBuildContext& ctx) {
-    Ref<Scope> parent = try_exit_scope(&ctx.scope.unwrap());
-    if(parent == Ref<Scope>::INVALID_REF) {
+    ScopeRef parent = try_exit_scope(&*ctx.scope);
+    if(parent == ScopeRef::INVALID_REF) {
         return;
     }
 
@@ -1600,7 +1600,7 @@ bool is_type_decl_ast(Ast *expr) {
 
 // 展开某个作用域收集的 defer（逆序）。consume：作用域真正结束 → 清空收集表；
 // 提前退出 → 保留，供同一作用域的其他退出路径各自展开。
-static void emit_scope_defers(CIRBuildContext& ctx, Ref<Scope> scope, bool consume) {
+static void emit_scope_defers(CIRBuildContext& ctx, ScopeRef scope, bool consume) {
     Array<Ast *> to_build = {};
     if(auto *defered_stmts = xp_hash_map_get(ctx.scope_defered_stmts, scope)) {
         to_build = *defered_stmts;   // 拷贝：展开 defer 可能插入同表，触发 rehash
@@ -1609,7 +1609,7 @@ static void emit_scope_defers(CIRBuildContext& ctx, Ref<Scope> scope, bool consu
         xp_hash_map_remove(&ctx.scope_defered_stmts, scope);
     }
 
-    Ref<Scope> saved_scope = ctx.scope;
+    ScopeRef saved_scope = ctx.scope;
     ctx.scope = scope;
     for(auto j = to_build.count - 1; j >= 0; --j) {
         CIRBuilder::build_inst_for_stmt(ctx, to_build[j]);
@@ -1618,8 +1618,8 @@ static void emit_scope_defers(CIRBuildContext& ctx, Ref<Scope> scope, bool consu
 }
 
 // 提前退出：把 ctx.scope 到 target_scope 之间各层的 defer 按内→外展开
-static void expand_defered_stmts(CIRBuildContext& ctx, Ref<Scope> target_scope) {
-    for(auto scope = ctx.scope; scope != target_scope && scope != Ref<Scope>::INVALID_REF; scope = scope->parent) {
+static void expand_defered_stmts(CIRBuildContext& ctx, ScopeRef target_scope) {
+    for(auto scope = ctx.scope; scope != target_scope && scope != ScopeRef::INVALID_REF; scope = scope->parent) {
         emit_scope_defers(ctx, scope, false);
     }
 }

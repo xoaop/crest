@@ -36,6 +36,6 @@ void init_llvm();
 
 // 跨包 extern_C 符号一致性：同名最多一个定义，ABI 签名必须兼容。
 // 必须在 init_llvm() 之后调用（要用 make_c_abi_plan 比布局）。
-void check_extern_c_symbols(const xpHashMap<Ref<Package>, lcir::Module>& modules);
+void check_extern_c_symbols(const xpHashMap<PackageRef, lcir::Module>& modules);
 
-Array<xpString> gen_ir_all_packages(xpHashMap<Ref<Package>, lcir::Module>& modules, LLVMIRGenerateConfig config);
+Array<xpString> gen_ir_all_packages(xpHashMap<PackageRef, lcir::Module>& modules, LLVMIRGenerateConfig config);

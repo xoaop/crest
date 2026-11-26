@@ -6,6 +6,7 @@
 #include "ast_file.hpp"
 #include "scope.hpp"
 #include "slot_map.hpp"
+#include "package_ref.hpp"
 #include "cir_package_ref.hpp"
 
 
@@ -25,13 +26,13 @@ struct Package {
     // ast build
     //
     Array<AstFile> ast_files;
-    Ref<Scope> package_scope;
+    ScopeRef package_scope;
 
 
     //
     // cir build
     //
-    Ref<CIRPackage> cir_package;
+    CIRPackageRef cir_package;
 };
 
 Package make_package(GlobalStringIndex path, xpAllocator allocator);

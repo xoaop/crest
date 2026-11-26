@@ -5,6 +5,8 @@
 #include <optional>
 
 #include "symbol.hpp"
+#include "scope_ref.hpp"
+#include "symbol_info_ref.hpp"
 // 前向声明AST，不需要引入完整头文件
 struct Ast;
 enum TypeKind: int;
@@ -70,10 +72,10 @@ struct Scope {
     ScopeType scope_type;
 
     SymbolTable symbols;
-    Ref<Scope> parent;   // 根 scope 无父，可空
+    ScopeRef parent;   // 根 scope 无父，可空
 
-    xpHashMap<Ast*, Ref<Scope>> ast_to_scope;
-    Array<Ref<Scope>> children;
+    xpHashMap<Ast*, ScopeRef> ast_to_scope;
+    Array<ScopeRef> children;
 
     ScopeIterator begin() const;
     ScopeIterator end() const;
@@ -108,10 +110,10 @@ struct ScopeIterator {
 };
 
 
-Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator);
-Ref<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
+Scope make_scope(ScopeRef parent, ScopeType type, xpAllocator allocator);
+ScopeRef alloc_scope(Array<Scope> *all_scopes, ScopeRef parent, ScopeType type, xpAllocator allocator, Ast* owner_ast = nullptr);
 
-void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast = nullptr);
+void add_sub_scope(Scope *parent, ScopeRef child, Ast *owner_ast = nullptr);
 
 Scope *get_upper_scope_with_type(Scope *scope, ScopeType type, std::optional<ScopeType> stop_at = std::nullopt);
 
@@ -124,13 +126,13 @@ SymbolInfo *find_symbol_until_global(Scope *scope, GlobalStringIndex symbol_iden
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind);
 SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind);
 
-Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, GlobalStringIndex symbol_ident);
-Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, GlobalStringIndex symbol_ident);
-Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, GlobalStringIndex symbol_ident);
+SymbolInfoRef find_symbol_ref_until_global(ScopeRef scope, GlobalStringIndex symbol_ident);
+SymbolInfoRef find_symbol_ref_curr(ScopeRef scope, GlobalStringIndex symbol_ident);
+SymbolInfoRef find_symbol_ref_until(ScopeType top_scope_type, ScopeRef scope, GlobalStringIndex symbol_ident);
 
 
-Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
-Ref<Scope> try_exit_scope(Scope *current);
+ScopeRef try_enter_scope(Scope *parent, Ast *ast_for_child_scope);
+ScopeRef try_exit_scope(Scope *current);
 
 void print_scope_tree(Scope *scope, int indent = 0);
 

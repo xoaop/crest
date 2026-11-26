@@ -7,15 +7,15 @@ Context *context() {
 }
 
 
-Ref<CIRPackage> get_cir_package(Ref<Package> pkg_ref) {
-    Package *pkg = &pkg_ref.unwrap();
+CIRPackageRef get_cir_package(PackageRef pkg_ref) {
+    Package *pkg = &*pkg_ref;
 
-    if(pkg->cir_package == Ref<CIRPackage>::INVALID_REF) {
+    if(pkg->cir_package == CIRPackageRef::INVALID_REF) {
         CIRPackage cir = make_cir_package(permanent_allocator());
         cir.package_scope = pkg->package_scope;
         cir.package_ref = pkg_ref;
 
-        Ref<CIRPackage> ref{context()->all_cir_packages.insert(cir)};
+        CIRPackageRef ref{context()->all_cir_packages.insert(cir)};
 
         CIRPackage &created = context()->all_cir_packages[ref.key];
         created.self_ref = ref;
@@ -29,15 +29,15 @@ Ref<CIRPackage> get_cir_package(Ref<Package> pkg_ref) {
 
 
 
-Ref<Package> add_package(Context *ctx, Package pkg) {
+PackageRef add_package(Context *ctx, Package pkg) {
     ctx->all_packages.push_back(pkg);
-    return Ref<Package>{ctx->all_packages.count - 1};
+    return PackageRef{ctx->all_packages.count - 1};
 }
 
 
 
 const CIRInstruction& inst(CIRInstructionRef ref) {
-    ASSERT(ref.pkg != Ref<CIRPackage>::INVALID_REF);
+    ASSERT(ref.pkg != CIRPackageRef::INVALID_REF);
     return ref.pkg->inst(ref);
 }
 

@@ -27,11 +27,11 @@ struct CIRPackage;
 
 
 struct IRSymbolTable {
-    xpHashMap<Ref<SymbolInfo>, LLVMValueRef> local_vals;
+    xpHashMap<SymbolInfoRef, LLVMValueRef> local_vals;
 };
 
-LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref);
-LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, Ref<SymbolInfo> symbol_ref, LLVMValueRef val);
+LLVMValueRef look_up_local_vals(IRSymbolTable *ir_syms, SymbolInfoRef symbol_ref);
+LLVMValueRef *add_local_val(IRSymbolTable *ir_syms, SymbolInfoRef symbol_ref, LLVMValueRef val);
 
 
 struct LLVMState {
@@ -53,7 +53,7 @@ struct LLVMModuleState {
 // 目前一个Module就代表一个package
 struct LLVMGenerator {
 
-    void init(Ref<Package> pkg, xpAllocator allocator);
+    void init(PackageRef pkg, xpAllocator allocator);
     void deinit();
 
     LLVMValueRef insert_alloca_before_last_inst_which_is_br(LLVMBasicBlockRef target_block, const char *var_name, LLVMTypeRef type, unsigned align = 0);
@@ -74,7 +74,7 @@ struct LLVMGenerator {
     Array<LLVMValueRef> gen_ir_load_chunks(LLVMValueRef base, LLVMTypeRef const* types, int n);
     void gen_ir_store_chunks(LLVMValueRef base, LLVMValueRef const* vals, int n);
 
-    void gen_func_body_walk(Ref<CIRInstResult> key, LLVMValueRef llvm_func);   // 体遍历核心（不含上下文切换/COMDAT）
+    void gen_func_body_walk(CIRInstResultRef key, LLVMValueRef llvm_func);   // 体遍历核心（不含上下文切换/COMDAT）
 
     void gen_ir_inst_call(const CIRCallInfo& info, const CIRInstructionRef call_inst);
     void gen_ir_inst_break(const CIRBreakInfo& info);
@@ -113,7 +113,7 @@ struct LLVMGenerator {
 public:
     LLVMModuleState unit;   // 逐单元 LLVM 句柄（module + builder）
 
-    Ref<Package> pkg;
+    PackageRef pkg;
 
 
     IRSymbolTable syms;
@@ -123,7 +123,7 @@ public:
     // 当前正在生成的函数若是 extern_C 定义：入口参数与出口返回按这份 plan 拼装
     std::optional<ABIFunctionPlan> curr_c_abi_def;
 
-    xpHashMap<Ref<CIRInstResult>, LLVMValueRef> inst_vals;
+    xpHashMap<CIRInstResultRef, LLVMValueRef> inst_vals;
 
     xpHashMap<CIRBlockRef, Array<LLVMBasicBlockMapper>> block_to_bbs;
     xpHashMap<ValueRef, LLVMValueRef> string_globals;  // 字面量字节的槽 → @str_N

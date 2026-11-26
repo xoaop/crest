@@ -218,7 +218,7 @@ struct Ast {
 
     Token token; // 记录该AST对应的第一个token
 
-    Ref<SymbolInfo> ast_symbol = Ref<SymbolInfo>::INVALID_REF; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
+    SymbolInfoRef ast_symbol = SymbolInfoRef::INVALID_REF; // 该AST节点对应的符号表信息, 主要用于Ident, FieldAccess等需要符号表信息的AST节点
 
     // 表达式属性
     bool is_null = false;       // 该AST是否是一个null值(仅用于常量表达式)

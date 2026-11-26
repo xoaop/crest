@@ -1,8 +1,9 @@
+#include "scope_ref.hpp"
+
 #include "context.hpp"
 
 
-template<>
-Scope& Ref<Scope>::resolve() const {
+Scope *ScopeRef::operator->() const {
     ASSERT(index >= 0 && index < context()->all_scopes.count);
-    return context()->all_scopes[index];
+    return &context()->all_scopes[index];
 }

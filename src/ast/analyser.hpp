@@ -12,7 +12,7 @@ struct AstFile;
 
 
 
-void resolve_package(Ref<Package> pkg);
+void resolve_package(PackageRef pkg);
 
 
 // 注册基础类型符号

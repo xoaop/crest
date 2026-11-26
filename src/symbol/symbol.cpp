@@ -38,7 +38,7 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     }
     if(value_store_type == ValueStoreType::InCIRInstruction) {
 
-        Ref<CIRResultInstance> instance = Ref<CIRResultInstance>::INVALID_REF;
+        CIRResultInstanceRef instance = CIRResultInstanceRef::INVALID_REF;
         if(key.has_value()) {
             if(auto *entry = xp_hash_map_get(inst_key.inst_ref.pkg->result_instance_map, key.value())) {
                 instance = *entry;
@@ -53,7 +53,7 @@ CIRInstResult SymbolInfo::result(std::optional<FuncCallKey> key) const {
     return CIRInstResult{};
 }
 
-Ref<CIRInstResult> SymbolInfo::val_as_inst_key() const {
+CIRInstResultRef SymbolInfo::val_as_inst_key() const {
     XP_ASSERT_DEFAULT(value_store_type == ValueStoreType::InCIRInstruction);
     return inst_key;
 }
@@ -62,7 +62,7 @@ void SymbolInfo::val(Value new_val) {
     value_store_type = ValueStoreType::InSymbolInfo;
     value = new_val;
 }
-void SymbolInfo::val(Ref<CIRInstResult> new_key) {
+void SymbolInfo::val(CIRInstResultRef new_key) {
     value_store_type = ValueStoreType::InCIRInstruction;
     inst_key = new_key;
 }
@@ -96,7 +96,7 @@ bool SymbolInfo::is_built_in() {
 }
 
 
-SymbolInfo make_symbol(GlobalStringIndex name, Value value, Ref<Package> package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(GlobalStringIndex name, Value value, PackageRef package, AstFile *file, Ast *ast) {
     SymbolInfo info{};
     info.name = name;
     info.val(value);
@@ -107,7 +107,7 @@ SymbolInfo make_symbol(GlobalStringIndex name, Value value, Ref<Package> package
     return info;
 }
 
-SymbolInfo make_symbol(GlobalStringIndex name, Ref<Package> package, AstFile *file, Ast *ast) {
+SymbolInfo make_symbol(GlobalStringIndex name, PackageRef package, AstFile *file, Ast *ast) {
     SymbolInfo info = make_symbol(name, make_value(), package, file, ast);
     info.state = SymbolState::Unsolved;
 

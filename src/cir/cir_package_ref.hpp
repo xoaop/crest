@@ -1,29 +1,38 @@
 #pragma once
 
-#include "ref.hpp"
+#include <functional>
+
 #include "slot_map.hpp"
+
 
 struct CIRPackage;
 
 
-template<>
-struct Ref<CIRPackage> : RefBase<CIRPackage> {
+struct CIRPackageRef {
+    static const CIRPackageRef INVALID_REF;
+
     SlotIndex key;
 
-    constexpr Ref() = default;
-    explicit constexpr Ref(SlotIndex k) : key(k) {}
+    constexpr CIRPackageRef() = default;
+    explicit constexpr CIRPackageRef(SlotIndex k) : key(k) {}
 
-    CIRPackage &resolve() const;
+    CIRPackage *operator->() const;
+    CIRPackage &operator*() const {
+        return *operator->();
+    }
 
-    bool operator==(const Ref<CIRPackage> &other) const {
+    bool operator==(const CIRPackageRef &other) const {
         return key == other.key;
     }
 };
 
 
 template<>
-struct std::hash<Ref<CIRPackage>> {
-    usize operator()(const Ref<CIRPackage> &r) const {
+struct std::hash<CIRPackageRef> {
+    usize operator()(const CIRPackageRef &r) const {
         return std::hash<SlotIndex>{}(r.key);
     }
 };
+
+
+inline const CIRPackageRef CIRPackageRef::INVALID_REF{};

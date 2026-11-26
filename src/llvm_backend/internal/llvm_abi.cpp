@@ -65,7 +65,7 @@ static void classify_into(TypeRef t, isize offset, ChunkAcc acc[2], bool& memory
         return;
     }
     case Type_union: {
-        Ref<Scope> scope = t->union_info.union_scope;
+        ScopeRef scope = t->union_info.union_scope;
         for(const auto& entry : *scope) {
             TypeRef ft = union_field_type(t, entry.value.name);
             classify_into(ft, offset, acc, memory);

@@ -9,7 +9,7 @@
 #include "global_string.hpp"
 #include "cir_instruction_ref.hpp"
 #include "cir_inst_result_ref.hpp"
-#include "ref.hpp"
+#include "package_ref.hpp"
 
 #include "value.hpp"
 
@@ -37,7 +37,7 @@ enum class ValueStoreType {
 struct SymbolInfo {
     GlobalStringIndex name;
     SymbolState state;
-    Ref<Package> package;
+    PackageRef package;
     AstFile *file;
     Ast *ast;
 
@@ -49,7 +49,7 @@ struct SymbolInfo {
 public: // @NOTE: 注意使用
     union {
         Value value;
-        Ref<CIRInstResult> inst_key; // 该符号是由哪个CIR指令定义的, 用于在求值过程中定位到唯一的符号定义, 以便处理循环依赖等情况
+        CIRInstResultRef inst_key; // 该符号是由哪个CIR指令定义的, 用于在求值过程中定位到唯一的符号定义, 以便处理循环依赖等情况
     };
 
 public:
@@ -57,10 +57,10 @@ public:
     SymbolInfo(const SymbolInfo& other);
     SymbolInfo& operator=(const SymbolInfo& other);
 
-    Ref<CIRInstResult> val_as_inst_key() const;
+    CIRInstResultRef val_as_inst_key() const;
     CIRInstResult result(std::optional<FuncCallKey> key = std::nullopt) const;
     void val(Value new_val);
-    void val(Ref<CIRInstResult> new_key);
+    void val(CIRInstResultRef new_key);
 
     bool is_var_decl();
     bool is_const_decl();
@@ -68,8 +68,8 @@ public:
     bool is_built_in();
 };
 
-SymbolInfo make_symbol(GlobalStringIndex name, Value value, Ref<Package> package, AstFile *file, Ast *ast);
-SymbolInfo make_symbol(GlobalStringIndex name, Ref<Package> package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(GlobalStringIndex name, Value value, PackageRef package, AstFile *file, Ast *ast);
+SymbolInfo make_symbol(GlobalStringIndex name, PackageRef package, AstFile *file, Ast *ast);
 
 
 

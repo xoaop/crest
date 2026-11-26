@@ -2,28 +2,36 @@
 
 #include <functional>
 
-#include "ref.hpp"
+#include "xoaop.h"
+#include "scope_ref.hpp"
 #include "symbol.hpp"
 
 
-template<>
-struct Ref<SymbolInfo> : RefBase<SymbolInfo> {
-    Ref<Scope> scope = Ref<Scope>::INVALID_REF;
+struct SymbolInfoRef {
+    static const SymbolInfoRef INVALID_REF;
+
+    ScopeRef scope = ScopeRef::INVALID_REF;
     GlobalStringIndex name;
 
-    SymbolInfo &resolve() const;
+    SymbolInfo *operator->() const;
+    SymbolInfo &operator*() const {
+        return *operator->();
+    }
 
-    bool operator==(const Ref<SymbolInfo> &other) const {
+    bool operator==(const SymbolInfoRef &other) const {
         return scope == other.scope && name == other.name;
     }
 };
 
 
 template<>
-struct std::hash<Ref<SymbolInfo>> {
-    size_t operator()(const Ref<SymbolInfo> &r) const {
+struct std::hash<SymbolInfoRef> {
+    size_t operator()(const SymbolInfoRef &r) const {
         u64 h = xp_hash_combine_u64(0, (u64)(usize)r.scope.index);
         h = xp_hash_combine_u64(h, (u64)r.name);
         return h;
     }
 };
+
+
+inline const SymbolInfoRef SymbolInfoRef::INVALID_REF{};

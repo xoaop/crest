@@ -391,7 +391,7 @@ int main(int argc_raw, char** argv_raw) {
 
     context()->all_scopes = make_array<Scope>(permanent_allocator());
     context()->static_values = ValueArray::init(permanent_allocator());
-    context()->lcir_modules = xp_hash_map_make<Ref<Package>, lcir::Module>(permanent_allocator());
+    context()->lcir_modules = xp_hash_map_make<PackageRef, lcir::Module>(permanent_allocator());
 
     // 各包的 stage arena 统一在退出时回收（含以下所有报错早退路径）
     defer({
@@ -428,7 +428,7 @@ int main(int argc_raw, char** argv_raw) {
 
     
     if(context()->scope_dump) {
-        print_scope_tree(&context()->global_blank_package.unwrap().package_scope.unwrap());
+        print_scope_tree(&*context()->global_blank_package->package_scope);
         return 0;
     }
     
@@ -443,7 +443,7 @@ int main(int argc_raw, char** argv_raw) {
     // std::for_each(context()->lcir_modules.begin(), context()->lcir_modules.end(), [](const auto& entry) {
     //     auto& module = entry.value;
 
-    //     println_out("Module for package: {}", entry.key.unwrap().path);
+    //     println_out("Module for package: {}", entry.key->path);
 
     //     std::for_each(module.functions.begin(), module.functions.end(), [](const auto& func) {
     //         println_out("Function: {} (linkage: {})", func.value.raw_name, static_cast<int>(func.value.linkage));

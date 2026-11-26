@@ -131,7 +131,7 @@ enum class CIRFieldTag {
 
 struct CIRConstDeclInfo {
     GlobalStringIndex ident;
-    Ref<SymbolInfo> symbol;
+    SymbolInfoRef symbol;
     CIRInstructionRef value_inst; // 常量值的指令引用
 
     CIR_REFS(&CIRConstDeclInfo::value_inst)
@@ -139,7 +139,7 @@ struct CIRConstDeclInfo {
 
 struct CIRVariableDeclInfo {
     GlobalStringIndex name;
-    Ref<SymbolInfo> symbol;
+    SymbolInfoRef symbol;
     isize slot;                   // 在栈帧中的槽位（参数 0..N-1，局部变量 N..）
     bool is_var_arg;              // 是否是变长参数（仅函数参数有效）
     bool is_param;                // 是否函数形参（含类型形参：其类型可以是 type）
@@ -149,7 +149,7 @@ struct CIRVariableDeclInfo {
 
 struct CIRGlobalVariableDeclInfo {
     GlobalStringIndex name;
-    Ref<SymbolInfo> symbol;
+    SymbolInfoRef symbol;
     CIRInstructionRef value_inst;   // 初值（immediate 块，编译期常量）
 
     CIR_REFS(&CIRGlobalVariableDeclInfo::value_inst)
@@ -163,7 +163,7 @@ struct EnumFieldInit {
 };
 
 struct CIRFunctionDeclInfo {
-    Ref<SymbolInfo> symbol;                        // 绑定的符号（跨包引用/导出发符号名用）
+    SymbolInfoRef symbol;                        // 绑定的符号（跨包引用/导出发符号名用）
 
     [[ =CIRFieldTag::ChildBlock ]]
     CIRInstructionRef body_inst;
@@ -338,7 +338,7 @@ struct CIRSliceTypeInfo {
 
 struct CIRGetOrInitStructInfo {
     Ast *decl_ast;
-    Ref<SymbolInfo> symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
+    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
 };
 
 struct CIRStructFieldInfo {
@@ -359,8 +359,8 @@ struct CIRFinishStructInfo {
 struct CIREnumDeclInitInfo {
     CIRInstructionRef tag_type_inst;
     Ast *decl_ast;
-    Ref<SymbolInfo> symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
-    Ref<Scope> scope;
+    SymbolInfoRef symbol;   // 可选，ConstDecl绑定的符号，壳子创建后立即注册
+    ScopeRef scope;
     Array<EnumFieldInit> fields;
 
     CIR_REFS(&CIREnumDeclInitInfo::tag_type_inst, &CIREnumDeclInitInfo::fields)
@@ -368,8 +368,8 @@ struct CIREnumDeclInitInfo {
 
 struct CIRGetOrInitUnionInfo {
     Ast *decl_ast;
-    Ref<SymbolInfo> symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
-    Ref<Scope> scope;      // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
+    SymbolInfoRef symbol;   // 可选的 ConstDecl 绑定符号，未完成类型创建后立即注册（自引用字段）
+    ScopeRef scope;      // resolve 建的 union scope（模板，analysis 派生每实例独立 scope）
 };
 
 struct CIRFinishUnionInfo {
@@ -449,11 +449,11 @@ struct CIRBlockRefInfo {
 
 struct CIRIdentRefInfo {
     GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
-    Ref<SymbolInfo> symbol;
+    SymbolInfoRef symbol;
 };
 struct CIRIdentValInfo {
     GlobalStringIndex ident;   // 标识符名（undefined 错误消息用）
-    Ref<SymbolInfo> symbol;
+    SymbolInfoRef symbol;
 };
 
 
@@ -599,15 +599,15 @@ template<> struct CIRFormat<EnumFieldInit> {
     }
 };
 
-template <typename T> struct CIRFormat<Ref<T>> {
-    static std::string as_string(const Ref<T>& v) {
+template<> struct CIRFormat<ScopeRef> {
+    static std::string as_string(const ScopeRef& v) {
         return std::format("{}", v.index);
     }
 };
 
-template<> struct CIRFormat<Ref<SymbolInfo>> {
-    static std::string as_string(const Ref<SymbolInfo>& v) {
-        if(v == Ref<SymbolInfo>::INVALID_REF) {
+template<> struct CIRFormat<SymbolInfoRef> {
+    static std::string as_string(const SymbolInfoRef& v) {
+        if(v == SymbolInfoRef::INVALID_REF) {
             return "-";
         }
 

@@ -50,7 +50,7 @@ struct Context {
     // Package搜索路径 — 按优先级排列
     Array<xpString> package_search_paths;
 
-    Ref<Package> global_blank_package = Ref<Package>::INVALID_REF;
+    PackageRef global_blank_package = PackageRef::INVALID_REF;
 
     ErrorReporter reporter;
 
@@ -59,7 +59,7 @@ struct Context {
     Array<Scope> all_scopes;
 
     SlotMap<CIRPackage> all_cir_packages;
-    xpHashMap<Ref<Package>, lcir::Module> lcir_modules;
+    xpHashMap<PackageRef, lcir::Module> lcir_modules;
 
 
     // 编译期产出的 Value 槽（字面量字节、变量槽）：permanent，不回收
@@ -73,9 +73,9 @@ struct Context {
 };
 
 
-Ref<CIRPackage> get_cir_package(Ref<Package> pkg);
+CIRPackageRef get_cir_package(PackageRef pkg);
 
-Ref<Package> add_package(Context *ctx, Package pkg);
+PackageRef add_package(Context *ctx, Package pkg);
 
 
 const CIRInstruction& inst(CIRInstructionRef ref);

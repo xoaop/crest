@@ -16,7 +16,7 @@ CIRPackage make_cir_package(xpAllocator allocator) {
     cir_package.string_literals = make_array<GlobalStringIndex>(allocator);
     cir_package.result_instances = make_array<CIRResultInstance>(allocator);
     cir_package.result_instances.push_back(CIRResultInstance::init_root(allocator));
-    cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, Ref<CIRResultInstance>>(allocator);
+    cir_package.result_instance_map = xp_hash_map_make<FuncCallKey, CIRResultInstanceRef>(allocator);
     return cir_package;
 }
 
@@ -39,7 +39,7 @@ const CIRBlock& CIRPackage::block(CIRBlockRef ref) const {
     return blocks[ref];
 }
 
-CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value, Ref<Scope> scope) {
+CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool is_loop, bool yields_value, ScopeRef scope) {
     CIRBlock blk = {};
     blk.insts = StableOrderedArray<CIRInstruction>::make(permanent_allocator());
     blk.is_comptime = is_comptime;
@@ -54,22 +54,22 @@ CIRBlockRef CIRPackage::create_block(bool is_comptime, bool immediate_eval, bool
     return ref;
 }
 
-Ref<CIRResultInstance> CIRPackage::root_instance() const {
-    Ref<CIRResultInstance> r;
+CIRResultInstanceRef CIRPackage::root_instance() const {
+    CIRResultInstanceRef r;
     r.cir_package = self_ref;
     r.index = 0;
     return r;
 }
 
 
-Ref<CIRResultInstance> CIRPackage::get_or_init_result_instance(FuncCallKey key, Ref<CIRResultInstance> parent) {
-    Ref<CIRResultInstance> *existing = xp_hash_map_get(result_instance_map, key);
+CIRResultInstanceRef CIRPackage::get_or_init_result_instance(FuncCallKey key, CIRResultInstanceRef parent) {
+    CIRResultInstanceRef *existing = xp_hash_map_get(result_instance_map, key);
     if(existing != nullptr) {
         return *existing;
     }
     result_instances.push_back(CIRResultInstance::init(permanent_allocator(), parent));
 
-    Ref<CIRResultInstance> r;
+    CIRResultInstanceRef r;
     r.cir_package = self_ref;
     r.index = (isize)result_instances.count - 1;
     result_instance_map.insert(key, r);
@@ -77,8 +77,8 @@ Ref<CIRResultInstance> CIRPackage::get_or_init_result_instance(FuncCallKey key, 
 }
 
 
-CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstance> instance) {
-    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
+CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, CIRResultInstanceRef instance) {
+    if(instance != CIRResultInstanceRef::INVALID_REF) {
         return instance->result_of_or(ref, [&]{ return root_instance()->result_of(ref); });
     }
 
@@ -87,16 +87,16 @@ CIRInstResult& CIRPackage::result_of(CIRInstructionRef ref, Ref<CIRResultInstanc
 }
 
 
-const CIRInstResult* CIRPackage::find_result(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const {
-    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
+const CIRInstResult* CIRPackage::find_result(CIRInstructionRef ref, CIRResultInstanceRef instance) const {
+    if(instance != CIRResultInstanceRef::INVALID_REF) {
         return instance->find_along_chain(ref);
     }
     return root_instance()->find_along_chain(ref);
 }
 
 
-const CIRInstResult* CIRPackage::find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, Ref<CIRResultInstance> instance) const {
-    if(instance != Ref<CIRResultInstance>::INVALID_REF) {
+const CIRInstResult* CIRPackage::find_result_in_curr_instance_and_pkg(CIRInstructionRef ref, CIRResultInstanceRef instance) const {
+    if(instance != CIRResultInstanceRef::INVALID_REF) {
         return instance->result_ptr_of(ref);
     }
     return root_instance()->result_ptr_of(ref);
@@ -106,7 +106,7 @@ const CIRInstResult* CIRPackage::find_result_in_curr_instance_and_pkg(CIRInstruc
 u64 FuncCallKey::hash() const {
 
     // TODO: AI SLOP
-    u64 h = xp_hash_combine_u64((u64)std::hash<Ref<CIRPackage>>{}(func_decl_pc.pkg), (u64)func_decl_pc.block_ref);
+    u64 h = xp_hash_combine_u64((u64)std::hash<CIRPackageRef>{}(func_decl_pc.pkg), (u64)func_decl_pc.block_ref);
     h = xp_hash_combine_u64(h, (u64)func_decl_pc.inst_index);
     h = xp_hash_combine_u64(h, (u64)is_generic_instance);
 
@@ -187,18 +187,18 @@ isize CIRBlock::push_back_inst(CIRInstruction inst) {
 }
 
 
-CIRResultContext CIRResultContext::create(Ref<CIRPackage> pkg) {
+CIRResultContext CIRResultContext::create(CIRPackageRef pkg) {
     CIRResultContext ctx;
     ctx._pkg = pkg;
     return ctx;
 }
 
-void CIRResultContext::enter_call(FuncCallKey key, Ref<CIRResultInstance> parent) {
+void CIRResultContext::enter_call(FuncCallKey key, CIRResultInstanceRef parent) {
     _call_key = key;
     _call_instance = _pkg->get_or_init_result_instance(key, parent);
 }
 
-void CIRResultContext::enter_call_instance(Ref<CIRResultInstance> instance) {
+void CIRResultContext::enter_call_instance(CIRResultInstanceRef instance) {
     _call_key = std::nullopt;
     _call_instance = instance;
 }
@@ -214,7 +214,7 @@ const FuncCallKey &CIRResultContext::call_key() const {
 }
 
 CIRInstResult &CIRResultContext::result_of(CIRInstructionRef ref) const {
-    if (_call_instance != Ref<CIRResultInstance>::INVALID_REF) {
+    if (_call_instance != CIRResultInstanceRef::INVALID_REF) {
         return _pkg->result_of(ref, _call_instance);
     }
     return _pkg->result_of(ref);

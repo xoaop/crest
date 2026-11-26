@@ -3,22 +3,22 @@
 #include "cir_package_ref.hpp"
 
 
-Ref<CIRInstResult> Ref<CIRInstResult>::init(CIRInstructionRef ref, Ref<CIRResultInstance> ri) {
-    return Ref<CIRInstResult>{
+CIRInstResultRef CIRInstResultRef::init(CIRInstructionRef ref, CIRResultInstanceRef ri) {
+    return CIRInstResultRef{
         .inst_ref = ref,
         .result_instance = ri
     };
 }
 
-CIRInstResult& Ref<CIRInstResult>::resolve() const {
-    ASSERT(inst_ref.pkg != Ref<CIRPackage>::INVALID_REF);
-    return inst_ref.pkg->result_of(inst_ref, result_instance);
+CIRInstResult *CIRInstResultRef::operator->() const {
+    ASSERT(inst_ref.pkg != CIRPackageRef::INVALID_REF);
+    return &inst_ref.pkg->result_of(inst_ref, result_instance);
 }
 
-const CIRInstResult* Ref<CIRInstResult>::get_result() const {
+const CIRInstResult* CIRInstResultRef::get_result() const {
     return inst_ref.pkg->find_result(inst_ref, result_instance);
 }
 
-const CIRInstruction& Ref<CIRInstResult>::inst() const {
+const CIRInstruction& CIRInstResultRef::inst() const {
     return inst_ref.pkg->inst(inst_ref);
 }

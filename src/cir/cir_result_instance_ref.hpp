@@ -2,31 +2,34 @@
 
 #include <functional>
 
-#include "ref.hpp"
 #include "cir_package_ref.hpp"
 
-struct CIRPackage;
+
 struct CIRResultInstance;
 
 
-template<>
-struct Ref<CIRResultInstance> : RefBase<CIRResultInstance> {
-    Ref<CIRPackage> cir_package;
+struct CIRResultInstanceRef {
+    static const CIRResultInstanceRef INVALID_REF;
+
+    CIRPackageRef cir_package;
     isize index = -1;
 
-    CIRResultInstance &resolve() const;
+    CIRResultInstance *operator->() const;
 
-    bool operator==(const Ref& other) const {
+    bool operator==(const CIRResultInstanceRef &other) const {
         return cir_package == other.cir_package && index == other.index;
     }
 };
 
 
 template<>
-struct std::hash<Ref<CIRResultInstance>> {
-    usize operator()(const Ref<CIRResultInstance>& r) const {
-        u64 h = (u64)std::hash<Ref<CIRPackage>>{}(r.cir_package);
+struct std::hash<CIRResultInstanceRef> {
+    usize operator()(const CIRResultInstanceRef &r) const {
+        u64 h = (u64)std::hash<CIRPackageRef>{}(r.cir_package);
         h = xp_hash_combine_u64(h, (u64)r.index);
         return h;
     }
 };
+
+
+inline const CIRResultInstanceRef CIRResultInstanceRef::INVALID_REF{};

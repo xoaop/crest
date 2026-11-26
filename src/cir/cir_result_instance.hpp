@@ -8,7 +8,7 @@
 
 struct CIRResultInstance {
 
-    static CIRResultInstance init(xpAllocator allocator, Ref<CIRResultInstance> parent);
+    static CIRResultInstance init(xpAllocator allocator, CIRResultInstanceRef parent);
     static CIRResultInstance init_root(xpAllocator allocator);
 
     const CIRInstResult* result_ptr_of(CIRInstructionRef ref) const;
@@ -24,5 +24,5 @@ struct CIRResultInstance {
 
 private:
     xpHashMap<CIRInstructionRef, CIRInstResult> results;
-    Ref<CIRResultInstance> parent;
+    CIRResultInstanceRef parent;
 };

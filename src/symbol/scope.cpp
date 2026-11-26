@@ -22,28 +22,28 @@ ScopeIterator Scope::end() const {
 
 
 
-Scope make_scope(Ref<Scope> parent, ScopeType type, xpAllocator allocator) {
+Scope make_scope(ScopeRef parent, ScopeType type, xpAllocator allocator) {
     Scope sc = {};
     sc.scope_type = type;
     sc.parent = parent;
     sc.symbols = make_symbol_table(allocator);
-    sc.ast_to_scope = xp_hash_map_make<Ast*, Ref<Scope>>(allocator);
-    sc.children = make_array<Ref<Scope>>(allocator);
+    sc.ast_to_scope = xp_hash_map_make<Ast*, ScopeRef>(allocator);
+    sc.children = make_array<ScopeRef>(allocator);
     return sc;
 }
 
 
-Ref<Scope> alloc_scope(Array<Scope> *all_scopes, Ref<Scope> parent, ScopeType type, xpAllocator allocator, Ast *owner_ast) {
+ScopeRef alloc_scope(Array<Scope> *all_scopes, ScopeRef parent, ScopeType type, xpAllocator allocator, Ast *owner_ast) {
     all_scopes->push_back(make_scope(parent, type, allocator));
-    Ref<Scope> self{all_scopes->count - 1};
+    ScopeRef self{all_scopes->count - 1};
 
-    if(parent != Ref<Scope>::INVALID_REF) {
+    if(parent != ScopeRef::INVALID_REF) {
         add_sub_scope(&(*all_scopes)[parent.index], self, owner_ast);
     }
     return self;
 }
 
-void add_sub_scope(Scope *parent, Ref<Scope> child, Ast *owner_ast) {
+void add_sub_scope(Scope *parent, ScopeRef child, Ast *owner_ast) {
     if(owner_ast != nullptr) {
         xp_hash_map_insert(&parent->ast_to_scope, owner_ast, child);
     }
@@ -62,8 +62,8 @@ Scope *get_upper_scope_with_type(Scope *scope, ScopeType type, std::optional<Sco
             break;
         }
 
-        Ref<Scope> parent = upper->parent;
-        upper = (parent == Ref<Scope>::INVALID_REF) ? NULL : &parent.unwrap();
+        ScopeRef parent = upper->parent;
+        upper = (parent == ScopeRef::INVALID_REF) ? NULL : &*parent;
     }
 
     return NULL;
@@ -99,8 +99,8 @@ SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, GlobalStri
             break;
         }
 
-        Ref<Scope> parent = curr->parent;
-        curr = (parent == Ref<Scope>::INVALID_REF) ? NULL : &parent.unwrap();
+        ScopeRef parent = curr->parent;
+        curr = (parent == ScopeRef::INVALID_REF) ? NULL : &*parent;
     }
 
     return NULL;
@@ -111,13 +111,13 @@ SymbolInfo *find_symbol_until_global(Scope *scope, GlobalStringIndex symbol_iden
 }
 
 
-Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope, GlobalStringIndex symbol_ident) {
-    Ref<Scope> curr = scope;
-    while (curr != Ref<Scope>::INVALID_REF) {
-        Scope &s = curr.unwrap();
+SymbolInfoRef find_symbol_ref_until(ScopeType top_scope_type, ScopeRef scope, GlobalStringIndex symbol_ident) {
+    ScopeRef curr = scope;
+    while (curr != ScopeRef::INVALID_REF) {
+        Scope &s = *curr;
         SymbolInfo *info = find_symbol(&s.symbols, symbol_ident);
         if (info != nullptr) {
-            return Ref<SymbolInfo>{
+            return SymbolInfoRef{
                 .scope = curr,
                 .name = symbol_ident
             };
@@ -127,23 +127,23 @@ Ref<SymbolInfo> find_symbol_ref_until(ScopeType top_scope_type, Ref<Scope> scope
         }
         curr = s.parent;
     }
-    return Ref<SymbolInfo>::INVALID_REF;
+    return SymbolInfoRef::INVALID_REF;
 }
 
-Ref<SymbolInfo> find_symbol_ref_until_global(Ref<Scope> scope, GlobalStringIndex symbol_ident) {
+SymbolInfoRef find_symbol_ref_until_global(ScopeRef scope, GlobalStringIndex symbol_ident) {
     return find_symbol_ref_until(ScopeType::Global, scope, symbol_ident);
 }
 
-Ref<SymbolInfo> find_symbol_ref_curr(Ref<Scope> scope, GlobalStringIndex symbol_ident) {
-    Scope &s = scope.unwrap();
+SymbolInfoRef find_symbol_ref_curr(ScopeRef scope, GlobalStringIndex symbol_ident) {
+    Scope &s = *scope;
     SymbolInfo *info = find_symbol(&s.symbols, symbol_ident);
     if (info != nullptr) {
-        return Ref<SymbolInfo>{
+        return SymbolInfoRef{
             .scope = scope,
             .name = symbol_ident
         };
     }
-    return Ref<SymbolInfo>::INVALID_REF;
+    return SymbolInfoRef::INVALID_REF;
 }
 
 
@@ -181,18 +181,18 @@ SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, Glo
     return info;
 }
 
-Ref<Scope> try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
+ScopeRef try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
     XP_ASSERT_DEFAULT(parent != NULL && ast_for_child_scope != NULL);
 
-    Ref<Scope> *child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
+    ScopeRef *child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
     if(child_scope != nullptr) {
         return *child_scope;
     }
 
-    return Ref<Scope>::INVALID_REF;
+    return ScopeRef::INVALID_REF;
 }
 
-Ref<Scope> try_exit_scope(Scope *current) {
+ScopeRef try_exit_scope(Scope *current) {
     XP_ASSERT_DEFAULT(current != NULL);
     return current->parent;
 }
@@ -209,8 +209,8 @@ void print_scope_tree(Scope *scope, int indent) {
     print_indent(indent);
     println_err("{}", *scope);
 
-    for(Ref<Scope> sub_scope : scope->children) {
-        print_scope_tree(&sub_scope.unwrap(), indent + 1);
+    for(ScopeRef sub_scope : scope->children) {
+        print_scope_tree(&*sub_scope, indent + 1);
     }
 #endif
 }
