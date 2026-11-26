@@ -90,7 +90,7 @@ LLVMValueRef LLVMGenerator::gen_ir_param_value_by_abi(const ABIFunctionPlan& pla
         idx += (unsigned)plan.params[i].ntypes;
     }
 
-    XP_ASSERT_DEFAULT(slot < (unsigned)plan.params.count);
+    ASSERT(slot < (unsigned)plan.params.count);
     const ABIParamPlan& pp = plan.params[slot];
 
     switch(pp.kind) {

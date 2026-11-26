@@ -349,13 +349,13 @@ ABIFunctionPlan make_c_abi_plan(TypeRef func_type, ABIKind abi) {
 
 static LLVMAttributeRef make_enum_attr(const char* name, u64 value = 0) {
     unsigned kind = LLVMGetEnumAttributeKindForName(name, strlen(name));
-    XP_ASSERT_DEFAULT(kind != 0);
+    ASSERT(kind != 0);
     return LLVMCreateEnumAttribute(g_llvm_session.ctx, kind, value);
 }
 
 static LLVMAttributeRef make_type_attr(const char* name, LLVMTypeRef type) {
     unsigned kind = LLVMGetEnumAttributeKindForName(name, strlen(name));
-    XP_ASSERT_DEFAULT(kind != 0);
+    ASSERT(kind != 0);
     return LLVMCreateTypeAttribute(g_llvm_session.ctx, kind, type);
 }
 

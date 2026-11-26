@@ -420,7 +420,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 unsigned field_index = (unsigned)written_index;
                 if(info.field_names.count > 0 && info.field_names[written_index] != GLOBAL_STRING_NONE) {
                     const isize index = struct_field_index(struct_type, info.field_names[written_index]);
-                    XP_ASSERT_DEFAULT(index >= 0);
+                    ASSERT(index >= 0);
                     field_index = (unsigned)index;
                 }
 
@@ -480,7 +480,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 TypeRef union_type = is_union_type(logical_type) ? logical_type : logical_type->pointed_type;
 
                 TypeRef field_type = union_field_type(union_type, info.field_name);
-                XP_ASSERT_DEFAULT(field_type != nullptr);
+                ASSERT(field_type != nullptr);
 
                 LLVMValueRef addr = get_ptr_of_llvm_value(parent_val, true);
                 LLVMValueRef typed_ptr = LLVMBuildBitCast(unit.builder, addr, LLVMPointerType(get_llvm_type_from_type(field_type), 0), "unionfieldptrtmp");
@@ -537,7 +537,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 TypeRef union_type = (is_pointer_type(actual_type) && is_union_type(actual_type->pointed_type)) ? actual_type->pointed_type : actual_type;
 
                 TypeRef field_type = union_field_type(union_type, info.field_name);
-                XP_ASSERT_DEFAULT(field_type != nullptr);
+                ASSERT(field_type != nullptr);
 
                 LLVMValueRef field_ptr = LLVMBuildBitCast(unit.builder, struct_ptr, LLVMPointerType(get_llvm_type_from_type(field_type), 0), "unionfieldptrtmp");
                 save_llvm_val_of_inst(ref, field_ptr);
@@ -553,7 +553,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                 // LLVM 值隐含是指向 actual_type 的指针
                 struct_type = actual_type;
             }
-            XP_ASSERT_DEFAULT(struct_type != nullptr);
+            ASSERT(struct_type != nullptr);
 
             isize field_idx = -1;
             FOR(struct_type->struct_info.struct_fields) {
@@ -562,7 +562,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     break;
                 }
             }
-            XP_ASSERT_DEFAULT(field_idx != -1);
+            ASSERT(field_idx != -1);
 
             LLVMValueRef field_ptr = LLVMBuildStructGEP2(unit.builder, get_llvm_type_from_type(struct_type), struct_ptr, llvm_struct_field_index(get_llvm_type_from_type(struct_type), field_idx), "fieldptrtmp");
             save_llvm_val_of_inst(ref, field_ptr);
@@ -836,7 +836,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
                     alloca = *global_val;
                 }
             }
-            XP_ASSERT_DEFAULT(alloca != nullptr);
+            ASSERT(alloca != nullptr);
 
             save_llvm_val_of_inst(ref, alloca);
         } break;
@@ -848,7 +848,7 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             auto r = sym.result();
             if(r.state >= CIRResultState::OnlyType && is_function_type(r.type())) {
                 LLVMValueRef func_val = look_up_local_vals(&syms, sym_ref);
-                XP_ASSERT_DEFAULT(func_val != nullptr);
+                ASSERT(func_val != nullptr);
                 save_llvm_val_of_inst(ref, func_val);
             }
         } break;
@@ -868,7 +868,7 @@ void LLVMGenerator::gen_ir_inst_call(const CIRCallInfo& info, const CIRInstructi
 
     TypeRef called_type = called_res.actual_type();
     TypeRef func_type = is_pointer_type(called_type) ? called_type->pointed_type : called_type;
-    XP_ASSERT_DEFAULT(is_function_type(func_type));
+    ASSERT(is_function_type(func_type));
 
     // extern_C 被调方走 C ABI（>8 字节聚合按指针传、sret 返回）。
     // 标记挂在函数类型上：具名调用和经指针调用用同一条判据。
@@ -999,7 +999,7 @@ void LLVMGenerator::gen_ir_loop(LLVMBasicBlockRef last_bb, LLVMBasicBlockRef fir
 }
 
 void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruction& inst) {
-    XP_ASSERT_DEFAULT(inst.op == CIROperator::VariableDecl);
+    ASSERT(inst.op == CIROperator::VariableDecl);
 
     // 1. 分配空间
     TypeRef var_type = result_ctx.result_of(ref).actual_type();
@@ -1123,7 +1123,7 @@ void LLVMGenerator::gen_ir_binary_expr(CIRInstructionRef inst) {
         } break;
         case TokenType::Percent: { // %
             if(is_float_type(left_type)) {
-                XP_ASSERT_DEFAULT(0); // 浮点数不支持取模运算
+                ASSERT(0); // 浮点数不支持取模运算
             }
 
             if(is_signed_type(left_type)) {
@@ -1825,7 +1825,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
         LLVMBuildStore(unit.builder, value, temp_alloca);
         return temp_alloca;
     } else {
-        XP_ASSERT_DEFAULT(0 && "Compiler Internal Error: Cannot get pointer of value, and not allowed to alloc value to get pointer");
+        ASSERT(0 && "Compiler Internal Error: Cannot get pointer of value, and not allowed to alloc value to get pointer");
     }
 
     return nullptr;
@@ -1839,7 +1839,7 @@ LLVMValueRef LLVMGenerator::get_llvm_val_from_inst_ref(CIRInstructionRef ref) {
     // 函数值按函数自己的 func_key 寻址（引用点各异、函数唯一）；phase1 已声明，必命中
     if(result.state == CIRResultState::WholeValue && is_function_type(result.actual_val().type)) {
         LLVMValueRef* existing = xp_hash_map_get(inst_vals, result.actual_val().func_val().func_key);
-        XP_ASSERT_DEFAULT(existing != nullptr);
+        ASSERT(existing != nullptr);
         return *existing;
     }
 
@@ -1950,7 +1950,7 @@ LLVMValueRef LLVMGenerator::insert_alloca_before_last_inst_which_is_br(LLVMBasic
     }
 
     DEBUG_TRACE("BuildAlloca: var={}, type_kind={}", var_name, (int)LLVMGetTypeKind(type));
-    XP_ASSERT_DEFAULT(type != nullptr);
+    ASSERT(type != nullptr);
     LLVMValueRef alloca = LLVMBuildAlloca(unit.builder, type, var_name);
     LLVMSetAlignment(alloca, align != 0 ? align : static_cast<unsigned>(LLVMABIAlignmentOfType(g_llvm_session.target_data, type)));
     DEBUG_TRACE("BuildAlloca OK");

@@ -20,14 +20,14 @@ void init_llvm() {
     LLVMInitializeNativeDisassembler();
 
     // 全局会话创建一次（跨 package 共享）：ctx + target_machine + target_data
-    XP_ASSERT_DEFAULT(!context()->target_triple.empty());
+    ASSERT(!context()->target_triple.empty());
     const char *triple = context()->target_triple.c_str();
     LLVMTargetRef target;
     char *error = nullptr;
     if(LLVMGetTargetFromTriple(triple, &target, &error)) {
         err("Error getting target: {}", error);
         LLVMDisposeMessage(error);
-        XP_ASSERT_DEFAULT(0);
+        ASSERT(0);
     }
     
     // 默认基线 CPU，产物不随编译机变；-features 可单独覆盖

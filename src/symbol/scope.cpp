@@ -8,7 +8,7 @@ struct Ast;
 
 SymbolInfo& Scope::operator[](GlobalStringIndex name) {
     SymbolInfo *info = find_symbol_until_global(this, name);
-    XP_ASSERT_DEFAULT(info != nullptr);
+    ASSERT(info != nullptr);
     return *info;
 }
 
@@ -79,14 +79,14 @@ void add_symbol_to_scope(Scope *scope, SymbolInfo info) {
 }
 
 SymbolInfo *find_symbol_curr(Scope *scope, GlobalStringIndex symbol_ident) {
-    XP_ASSERT_DEFAULT(scope != NULL);
+    ASSERT(scope != NULL);
 
     return find_symbol(&scope->symbols, symbol_ident);
 }
 
 
 SymbolInfo *find_symbol_until(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident) {
-    XP_ASSERT_DEFAULT(scope != NULL);
+    ASSERT(scope != NULL);
 
     Scope *curr = scope;
     while (curr != NULL) {
@@ -149,7 +149,7 @@ SymbolInfoRef find_symbol_ref_curr(ScopeRef scope, GlobalStringIndex symbol_iden
 
 
 SymbolInfo *find_symbol_curr_spec_v(Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind) {
-    XP_ASSERT_DEFAULT(scope != NULL);
+    ASSERT(scope != NULL);
 
     SymbolInfo *info = find_symbol_curr(scope, symbol_ident);
 
@@ -166,7 +166,7 @@ SymbolInfo *find_symbol_curr_spec_v(Scope *scope, GlobalStringIndex symbol_ident
 
 
 SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, GlobalStringIndex symbol_ident, TypeKind type_kind) {
-    XP_ASSERT_DEFAULT(scope != NULL);
+    ASSERT(scope != NULL);
 
     SymbolInfo *info = find_symbol_until(top_scope_type, scope, symbol_ident);
 
@@ -182,7 +182,7 @@ SymbolInfo *find_symbol_until_spec_v(ScopeType top_scope_type, Scope *scope, Glo
 }
 
 ScopeRef try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
-    XP_ASSERT_DEFAULT(parent != NULL && ast_for_child_scope != NULL);
+    ASSERT(parent != NULL && ast_for_child_scope != NULL);
 
     ScopeRef *child_scope = xp_hash_map_get(parent->ast_to_scope, ast_for_child_scope);
     if(child_scope != nullptr) {
@@ -193,7 +193,7 @@ ScopeRef try_enter_scope(Scope *parent, Ast *ast_for_child_scope) {
 }
 
 ScopeRef try_exit_scope(Scope *current) {
-    XP_ASSERT_DEFAULT(current != NULL);
+    ASSERT(current != NULL);
     return current->parent;
 }
 

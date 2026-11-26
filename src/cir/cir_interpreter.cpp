@@ -48,7 +48,7 @@ bool check_untyped_to_type(Value& val, TypeRef target_type) {
 }
 
 TypeRef get_compliable_const_type(Value& val) {
-    XP_ASSERT_DEFAULT(is_untyped_type(val.type));
+    ASSERT(is_untyped_type(val.type));
 
 
     if(val.type == easy_type(Type_untyped_int)) {
@@ -1132,7 +1132,7 @@ AnalyzeResult Interpreter::analyze_Unary(const CIRUnaryInfo& info, CIRInstructio
         }
     }
 
-    XP_ASSERT_DEFAULT(result_type != nullptr);
+    ASSERT(result_type != nullptr);
 
     if(should_eval_for_lazy_eval({operand_inst})) {
         Value operand_val = ResultValueOpt(operand_inst).value();
@@ -1181,7 +1181,7 @@ AnalyzeResult Interpreter::analyze_Cast(const CIRCastInfo& info, CIRInstructionR
     }
 
     TypeRef result_type = target_type;
-    XP_ASSERT_DEFAULT(result_type != nullptr);
+    ASSERT(result_type != nullptr);
 
     if(should_eval_for_lazy_eval({expr_inst})) {
         Value expr_val = ResultValueOpt(expr_inst).value();
@@ -1530,7 +1530,7 @@ AnalyzeResult Interpreter::analyze_StructInit(const CIRStructInitInfo& info, CIR
         }
 
         st = ResultValueOpt(info.struct_type_inst).value().type_val();
-        // XP_ASSERT_DEFAULT(is_struct_type(st));
+        // ASSERT(is_struct_type(st));
         if(!is_struct_type(st)) {
             return make_result(pc_ref, inst_error(pc_ref, "你不能把非结构体类型 '{}' 当作结构体来初始化", st->name()));
         }
@@ -2383,7 +2383,7 @@ AnalyzeResult Interpreter::analyze_TypeAscribe(const CIRTypeAscribeInfo& info, C
     // 限制:
     // var_inst == VariableDecl
     // type_inst.result is type_type
-    XP_ASSERT_DEFAULT(pkg->inst(info.var_inst).op == CIROperator::VariableDecl);
+    ASSERT(pkg->inst(info.var_inst).op == CIROperator::VariableDecl);
 
     // 类型标注表达式求值出错：传播错误（Error 态晚于 OnlyType，下面那个 >= OnlyType 会误把它当有类型）
     if(has_error(info.type_inst)) {
@@ -2814,7 +2814,7 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
                 return {};
             }
 
-            XP_ASSERT_DEFAULT(field_val.type == elem_type);
+            ASSERT(field_val.type == elem_type);
             next_auto_value = field_val.integer_val() + 1;
             field_val.set_type(enum_type);
         } else {
@@ -2831,7 +2831,7 @@ AnalyzeResult Interpreter::analyze_EnumDeclInit(const CIREnumDeclInitInfo& info,
 
         // 副作用：注册枚举字段符号到 enum_scope + Solved
         SymbolInfoRef field_sym = find_symbol_ref_curr(enum_scope, ef.name);
-        XP_ASSERT_DEFAULT(field_sym != SymbolInfoRef::INVALID_REF);
+        ASSERT(field_sym != SymbolInfoRef::INVALID_REF);
         if(ef.value_inst != INVALID_INST) {
             field_sym->val(CIRInstResultRef::init(ef.value_inst));
         } else {
@@ -2996,7 +2996,7 @@ AnalyzeResult Interpreter::analyze_FinishUnion(const CIRFinishUnionInfo& info, C
                 }
 
                 SymbolInfoRef field_sym = find_symbol_ref_curr(union_scope, field_info.name);
-                XP_ASSERT_DEFAULT(field_sym != SymbolInfoRef::INVALID_REF);
+                ASSERT(field_sym != SymbolInfoRef::INVALID_REF);
 
                 // 绑定 InCIRInstruction（镜像 enum）：字段类型由 result(type 的 creation_key) 解析
                 field_sym->val(CIRInstResultRef::init(field_info.type_block_inst));
@@ -3055,14 +3055,14 @@ AnalyzeResult Interpreter::analyze_BlockRef(const CIRBlockRefInfo& info, CIRInst
 
 // handler: CondBr（进入分支 Block 分析；pc 由 new_analyze_flow/recover 自管）
 AnalyzeResult Interpreter::analyze_CondBr(const CIRCondBrInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    XP_ASSERT_DEFAULT(inst(pc_ref).op == CIROperator::CondBr);
+    ASSERT(inst(pc_ref).op == CIROperator::CondBr);
 
     auto& if_info = inst(pc_ref).info<CIROperator::CondBr>();
     auto cond_inst = if_info.condition_inst;
     CIRBlockRef true_blk = if_info.true_block;
     CIRBlockRef false_blk = if_info.false_block;
 
-    XP_ASSERT_DEFAULT(cond_inst != INVALID_INST);
+    ASSERT(cond_inst != INVALID_INST);
 
     // 条件未就绪：&&/|| 的 lowering 把条件做成一个 BlockRef，而它可能排在
     // 本指令之后（同块靠后），线性扫描到这时还没分析。按需进入求值，

@@ -55,7 +55,7 @@ SourceLocation::SourceLocation(SourceCode src_code, Span span) {
 }
 
 SourceLocation merge(const SourceLocation& a, const SourceLocation& b) {
-    XP_ASSERT_MSG(is_same_src_code(&a.src_code, &b.src_code), "Cannot merge SourceLocations from different SourceCodes");
+    ASSERT_MSG(is_same_src_code(&a.src_code, &b.src_code), "Cannot merge SourceLocations from different SourceCodes");
 
     SourceLocation merged{
         a.src_code,

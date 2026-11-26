@@ -128,36 +128,36 @@ void Value::func_val_key(CIRInstResultRef key) {
 
 
 i128 Value::integer_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Integer);
+    ASSERT(actual_value_type == ActualValueType::Integer);
     return integer_value;
 }
 
 double Value::float_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Float);
+    ASSERT(actual_value_type == ActualValueType::Float);
     return float_value;
 }
 
 bool Value::bool_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Bool);
+    ASSERT(actual_value_type == ActualValueType::Bool);
     return bool_value;
 }
 
 Array<Value> Value::struct_fields_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
+    ASSERT(actual_value_type == ActualValueType::Struct);
     return struct_or_array_fields;
 }
 
 Value Value::struct_field_val(isize index) const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
-    XP_ASSERT_DEFAULT(is_struct_type(type));
-    XP_ASSERT_DEFAULT(index >= 0 && index < type->struct_info.struct_fields.count);
+    ASSERT(actual_value_type == ActualValueType::Struct);
+    ASSERT(is_struct_type(type));
+    ASSERT(index >= 0 && index < type->struct_info.struct_fields.count);
 
     return struct_fields_val()[index];
 }
 
 Value Value::struct_field_val(xpString field_name) const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
-    XP_ASSERT_DEFAULT(is_struct_type(type));
+    ASSERT(actual_value_type == ActualValueType::Struct);
+    ASSERT(is_struct_type(type));
 
 
     FOR(type->struct_info.struct_fields) {
@@ -168,7 +168,7 @@ Value Value::struct_field_val(xpString field_name) const {
         }
     }
 
-    XP_ASSERT_MSG(false, "struct field not found");
+    ASSERT_MSG(false, "struct field not found");
     return Value();
 }
 
@@ -177,28 +177,28 @@ Pointer slice_data_val(const Value& slice_value) {
 }
 
 Array<Value> Value::array_element_values() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
+    ASSERT(actual_value_type == ActualValueType::Array);
     return struct_or_array_fields;
 }
 
 Value Value::array_element_val(isize index) const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
-    XP_ASSERT_DEFAULT(is_array_type(type));
-    XP_ASSERT_DEFAULT(index >= 0 && index < type->array_info.count);
+    ASSERT(actual_value_type == ActualValueType::Array);
+    ASSERT(is_array_type(type));
+    ASSERT(index >= 0 && index < type->array_info.count);
 
     return struct_or_array_fields[index];
 }
 
 ValueRef Value::struct_field_ref(isize index) {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Struct);
-    XP_ASSERT_DEFAULT(index >= 0 && index < struct_or_array_fields.count);
+    ASSERT(actual_value_type == ActualValueType::Struct);
+    ASSERT(index >= 0 && index < struct_or_array_fields.count);
 
     return &struct_or_array_fields[index];
 }
 
 ValueRef Value::array_element_ref(isize index) {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Array);
-    XP_ASSERT_DEFAULT(index >= 0 && index < struct_or_array_fields.count);
+    ASSERT(actual_value_type == ActualValueType::Array);
+    ASSERT(index >= 0 && index < struct_or_array_fields.count);
 
     return &struct_or_array_fields[index];
 }
@@ -214,8 +214,8 @@ ValueRef Value::element_ref(isize index) {
 
 // TODO: 重构
 FuncValue Value::func_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
-    XP_ASSERT_DEFAULT(is_function_type(type));
+    ASSERT(actual_value_type == ActualValueType::Function);
+    ASSERT(is_function_type(type));
     return func_value;
 }
 
@@ -224,8 +224,8 @@ bool Value::is_unresolved_func_val() const {
 }
 
 FuncValue Value::unresolved_func_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Function);
-    XP_ASSERT_DEFAULT(type == undefined_type());
+    ASSERT(actual_value_type == ActualValueType::Function);
+    ASSERT(type == undefined_type());
     return func_value;
 }
 
@@ -235,7 +235,7 @@ void Value::pointer_val(Pointer ptr) {
     pointer_value = ptr;
 }
 Pointer Value::pointer_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Pointer);
+    ASSERT(actual_value_type == ActualValueType::Pointer);
     return pointer_value;
 }
 
@@ -246,7 +246,7 @@ void Value::type_val(TypeRef type_ref) {
     type_value = type_ref;
 }
 TypeRef Value::type_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Type);
+    ASSERT(actual_value_type == ActualValueType::Type);
     return type_value;
 }
 
@@ -255,7 +255,7 @@ void Value::package_val(PackageRef pkg) {
     package_value = pkg;
 }
 PackageRef Value::package_val() const {
-    XP_ASSERT_DEFAULT(actual_value_type == ActualValueType::Package);
+    ASSERT(actual_value_type == ActualValueType::Package);
     return package_value;
 }
 

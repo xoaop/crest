@@ -109,7 +109,7 @@ void collect_top_level_symbols_in_file(AstFile *ast_file, PackageRef curr_pkg) {
 
 
 void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool under_file_scope) {
-    XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
+    ASSERT(const_decl_ast->type == AstType_ConstDecl);
 
     Ast *value_ast = const_decl_ast->ConstDecl.value_ast;
 
@@ -149,7 +149,7 @@ void collect_const_decl_symbol(Ast *const_decl_ast, Analyser analyser, bool unde
 
 
 void collect_var_decl_symbol(Ast *var_decl_ast, Analyser analyser, bool under_file_scope) {
-    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
+    ASSERT(var_decl_ast->type == AstType_VariableDecl);
 
     // 顶层变量只允许文件作用域（包外不可见，跨包访问须显式提供函数）
     if(!under_file_scope) {
@@ -750,7 +750,7 @@ void resolve_const_decl_local(Ast *const_decl_ast, Analyser analyser, TypeRef ta
 
 
 void resolve_function_decl(Ast *decl, Analyser analyser) {
-    XP_ASSERT_DEFAULT(decl->type == AstType_FunctionDeclValue);
+    ASSERT(decl->type == AstType_FunctionDeclValue);
 
     
     // // NOTE: 这是为了保证函数内定义的函数的父作用域不是函数, 而是外部, 毕竟函数不能访问别的函数的变量等
@@ -783,7 +783,7 @@ void resolve_function_decl(Ast *decl, Analyser analyser) {
 
 void resolve_struct_decl(Ast *decl, Analyser analyser) {
     Ast *value_ast = decl;
-    XP_ASSERT_DEFAULT(value_ast->type == AstType_StructDeclValue);
+    ASSERT(value_ast->type == AstType_StructDeclValue);
 
     if(value_ast->StructDeclValue.align_ast != nullptr) {
         resolve_expr(value_ast->StructDeclValue.align_ast, analyser);
@@ -838,7 +838,7 @@ void resolve_union_decl(Ast *decl, Analyser analyser) {
 
 void resolve_enum_decl(Ast *decl, Analyser analyser) {
     Ast *value_ast = decl;
-    XP_ASSERT_DEFAULT(value_ast->type == AstType_EnumDecl);
+    ASSERT(value_ast->type == AstType_EnumDecl);
 
     if(value_ast->EnumDecl.type_ast != nullptr) {
         resolve_expr(value_ast->EnumDecl.type_ast, analyser);
@@ -956,7 +956,7 @@ void resolve_fn_param_list(Array<Ast *> params, Analyser analyser) {
 }
 
 void resolve_fn_param(Ast *param_ast, Analyser analyser) {
-    XP_ASSERT_DEFAULT(param_ast->type == AstType_ParamDecl);
+    ASSERT(param_ast->type == AstType_ParamDecl);
 
     const auto existing = find_symbol_ref_curr(analyser.current_scope, param_ast->ParamDecl.name);
     if(existing != SymbolInfoRef::INVALID_REF) {
@@ -1197,7 +1197,7 @@ void resolve_var_decl(Ast *var_decl_ast, Analyser analyser) {
 
 
 void resolve_if_expr(Ast *expr_ast, std::function<void(Ast*, Analyser)> body, Analyser analyser) {
-    XP_ASSERT_DEFAULT(expr_ast->type == AstType_IfExpr);
+    ASSERT(expr_ast->type == AstType_IfExpr);
 
     resolve_expr(expr_ast->IfExpr.condition, analyser);
 

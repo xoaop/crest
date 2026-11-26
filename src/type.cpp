@@ -147,15 +147,15 @@ StringRef Type::t_name() {
 
 
 TypeRef get_pointed_type(TypeRef pointer_type) {
-    XP_ASSERT_DEFAULT(pointer_type->kind == Type_pointer);
-    XP_ASSERT_DEFAULT(pointer_type->pointed_type != nullptr);
+    ASSERT(pointer_type->kind == Type_pointer);
+    ASSERT(pointer_type->pointed_type != nullptr);
 
     return pointer_type->pointed_type;
 }
 
 
 TypeRef get_innermost_type_of_pointer(TypeRef pointer_type) {
-    XP_ASSERT_DEFAULT(pointer_type->kind == Type_pointer);
+    ASSERT(pointer_type->kind == Type_pointer);
 
     for(;;) {
         if(!is_pointer_type(pointer_type)) {
@@ -307,7 +307,7 @@ bool is_integer_or_bool_type(TypeRef type) {
 }
 
 bool is_signed_type(TypeRef type) {
-    XP_ASSERT_DEFAULT(is_integer_type(type));
+    ASSERT(is_integer_type(type));
     switch(type->kind) {
     case Type_i8:
     case Type_i16:
@@ -321,7 +321,7 @@ bool is_signed_type(TypeRef type) {
 }
 
 bool is_signed_or_bool_type(TypeRef type) {
-    XP_ASSERT_DEFAULT(is_integer_or_bool_type(type));
+    ASSERT(is_integer_or_bool_type(type));
     switch(type->kind) {
     case Type_i8:
     case Type_i16:
@@ -336,7 +336,7 @@ bool is_signed_or_bool_type(TypeRef type) {
 }
 
 bool is_unsigned_type(TypeRef type) {
-    XP_ASSERT_DEFAULT(is_integer_type(type));
+    ASSERT(is_integer_type(type));
     switch(type->kind) {
     case Type_u8:
     case Type_u16:
@@ -575,7 +575,7 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
             overflowed = (result != 0 && result != 1);
             break;
         default:
-            XP_ASSERT_DEFAULT(0);
+            ASSERT(0);
             break;
     }
 
@@ -583,7 +583,7 @@ bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult) {
 }
 
 bool check_integer_overflow(i128 val, TypeRef type) {
-    XP_ASSERT_DEFAULT(is_integer_type(type));
+    ASSERT(is_integer_type(type));
 
     switch(type->kind) {
         case Type_i8:
@@ -613,7 +613,7 @@ bool check_integer_overflow(i128 val, TypeRef type) {
 }
 
 bool check_float_overflow(double val, TypeRef type) {
-    XP_ASSERT_DEFAULT(is_float_type(type));
+    ASSERT(is_float_type(type));
 
     switch(type->kind) {
         case Type_f32:
@@ -656,7 +656,7 @@ void free_type_table(Context *ctx) {
 
 
 TypeRef easy_type(TypeKind kind) {
-    XP_ASSERT_DEFAULT(is_easy_type_kind(kind));
+    ASSERT(is_easy_type_kind(kind));
     Type t = make_type(kind);
     return get_or_add_type(t);
 }
@@ -733,15 +733,15 @@ TypeRef unfinished_struct_type(Ast *decl, GlobalStringIndex ident) {
 }
 
 void finish_unfinish_struct_type(TypeRef unfinish, Array<StructField> fields) {
-    XP_ASSERT_DEFAULT(is_struct_type(unfinish));
-    XP_ASSERT_DEFAULT(unfinish->struct_info.struct_fields.count == 0);
+    ASSERT(is_struct_type(unfinish));
+    ASSERT(unfinish->struct_info.struct_fields.count == 0);
 
     unfinish->struct_info.struct_fields = fields;
 }
 
 
 TypeRef enum_type_impl(Ast *decl_ast, std::optional<GlobalStringIndex> ident, TypeRef elem_type, ScopeRef scope) {
-    XP_ASSERT_DEFAULT(is_integer_type(elem_type));
+    ASSERT(is_integer_type(elem_type));
 
     Type t{Type_enum};
 
@@ -1200,7 +1200,7 @@ struct std::hash<Type> {
 
 
         default: {
-            XP_ASSERT_MSG(0, "hashing unhandled type kind");
+            ASSERT_MSG(0, "hashing unhandled type kind");
         } break;
 
     }
@@ -1366,7 +1366,7 @@ isize type_align_of(TypeRef type) {
 }
 
 isize struct_field_index(TypeRef struct_type, GlobalStringIndex field_name) {
-    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+    ASSERT(is_struct_type(struct_type));
 
     FOR(struct_type->struct_info.struct_fields) {
         if(it.name == field_name) {
@@ -1378,7 +1378,7 @@ isize struct_field_index(TypeRef struct_type, GlobalStringIndex field_name) {
 }
 
 isize field_offset_in_struct(TypeRef struct_type, isize index) {
-    XP_ASSERT_DEFAULT(is_struct_type(struct_type));
+    ASSERT(is_struct_type(struct_type));
     isize offset = 0;
     for(isize i = 0; i < index; i++) {
         TypeRef ft = struct_type->struct_info.struct_fields[i].type;

@@ -209,7 +209,7 @@ void CIRResultContext::exit_call() {
 }
 
 const FuncCallKey &CIRResultContext::call_key() const {
-    XP_ASSERT(in_call());
+    ASSERT(in_call());
     return _call_key.value();
 }
 

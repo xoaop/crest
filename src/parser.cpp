@@ -976,13 +976,13 @@ Ast *parse_for(Parser *p) {
 
 
 Ast *parse_string_literal(Parser *p) {
-    XP_ASSERT_DEFAULT(curr_token(p).type == TokenType::StringLiteral);
+    ASSERT(curr_token(p).type == TokenType::StringLiteral);
 
     Token str_token = expect(p, TokenType::StringLiteral);
 
     xpString raw_str_with_quotes = context()->global_strings.strings[str_token.token_str];
     const isize raw_str_length = xp_string_count(raw_str_with_quotes);
-    XP_ASSERT_DEFAULT(raw_str_with_quotes[0] == '"' && raw_str_with_quotes[raw_str_length - 1] == '"');
+    ASSERT(raw_str_with_quotes[0] == '"' && raw_str_with_quotes[raw_str_length - 1] == '"');
 
 
     isize raw_str_count = raw_str_length - 2; // 去掉前后的引号
@@ -1156,7 +1156,7 @@ Ast *parse_expr_factor(Parser *p, bool allow_struct_init) {
     }
 
     Ast *a = nullptr;
-    defer(XP_ASSERT_DEFAULT(a != nullptr));
+    defer(ASSERT(a != nullptr));
 
     Token curr = curr_token(p);
 
@@ -1361,7 +1361,7 @@ Ast *parse_expr_factor(Parser *p, bool allow_struct_init) {
 
             advance_token(p);
 
-            // XP_ASSERT_DEFAULT(0);
+            // ASSERT(0);
             break;
         }
     }
@@ -1428,7 +1428,7 @@ isize precedence(TokenType op, bool is_unary_op = false) {
         prec = 12;
         break;
     default:
-        XP_ASSERT_MSG(0, "Unknown operator precedence for %s\n", token_strings[cast(i32) op]);
+        ASSERT_MSG(0, "Unknown operator precedence for {}\n", token_strings[cast(i32) op]);
     }
 
     return 13 - prec;
@@ -1637,7 +1637,7 @@ Ast *parse_constant(Parser *p, bool negative) {
 #include <inttypes.h>
 
 void parse_integer(const char *str, TypeKind type_kind, Ast *a) {
-    XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
+    ASSERT(str != nullptr && a != nullptr);
 
     bool has_minus = false;
     if(str[0] == '-') {
@@ -1703,7 +1703,7 @@ void parse_integer(const char *str, TypeKind type_kind, Ast *a) {
 }
 
 void parse_float(const char *str, TypeKind type_kind, Ast *a) {
-    XP_ASSERT_DEFAULT(str != nullptr && a != nullptr);
+    ASSERT(str != nullptr && a != nullptr);
 
     // 解析
     char *end;
@@ -1845,7 +1845,7 @@ Token curr_token(Parser *p) {
 }
 
 Token next_token(Parser *p) {
-    XP_ASSERT_MSG(p->curr_token_index < p->tokens.count - 1, "No next token, reached end of tokens\n");
+    ASSERT_MSG(p->curr_token_index < p->tokens.count - 1, "No next token, reached end of tokens\n");
 
     return p->tokens[p->curr_token_index + 1];
 }
@@ -1929,7 +1929,7 @@ xpPair<Token, bool> expect2(Parser *p, TokenType type) {
 
 Token expect_assert(Parser *p, TokenType type) {
     Token expected = expect(p, type);
-    XP_ASSERT_MSG(expected.type == type, "Expected token type %s, but got %s", token_strings[cast(i32)type], token_strings[cast(i32)expected.type]);
+    ASSERT_MSG(expected.type == type, "Expected token type {}, but got {}", token_strings[cast(i32)type], token_strings[cast(i32)expected.type]);
     return expected;
 }
 

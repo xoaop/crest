@@ -124,7 +124,7 @@ void CIRBuilder::build_top_stmt(CIRBuildContext& ctx, Ast *ast) {
 
 
 CIRInstructionRef CIRBuilder::build_inst_for_const_decl(CIRBuildContext& ctx, Ast *const_decl_ast) {
-    XP_ASSERT_DEFAULT(const_decl_ast->type == AstType_ConstDecl);
+    ASSERT(const_decl_ast->type == AstType_ConstDecl);
 
     SymbolInfo &sym = *const_decl_ast->ast_symbol;
 
@@ -177,7 +177,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_const_decl(PackageRef pkg_ref, Ast 
 
 
 CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std::optional<SymbolInfoRef> func_sym) {
-    XP_ASSERT_DEFAULT(fd->type == AstType_FunctionDeclValue);
+    ASSERT(fd->type == AstType_FunctionDeclValue);
 
     auto saved_curr_func = ctx.func;
     auto saved_curr_func_body_block = ctx.func_body_block;
@@ -241,7 +241,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
     auto param_decls = make_array<CIRVariableDeclInfo>(ctx.pkg_ref->stage_allocator);
     FOR(fd->FunctionDeclValue.params) {
         Ast *param = it;
-        XP_ASSERT_DEFAULT(param->type == AstType_ParamDecl);
+        ASSERT(param->type == AstType_ParamDecl);
 
         auto param_type = INVALID_INST;
         if(!param->ParamDecl.is_var_arg) {
@@ -338,7 +338,7 @@ CIRInstructionRef CIRBuilder::build_func_decl(CIRBuildContext& ctx, Ast *fd, std
 
 
 CIRInstructionRef CIRBuilder::build_inst_for_ast_block(CIRBuildContext& ctx, Ast *block_ast, bool new_ir_block, bool emit_in_parent, CIRBlockRef *out_block) {
-    XP_ASSERT_DEFAULT(block_ast->type == AstType_Block);
+    ASSERT(block_ast->type == AstType_Block);
 
     CIRInstructionRef block_inst = INVALID_INST;
     CIRBlockRef block_blk = INVALID_BLOCK;
@@ -638,7 +638,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
 }
 
 CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast) {
-    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
+    ASSERT(var_decl_ast->type == AstType_VariableDecl);
 
     auto& vd_ast = var_decl_ast->VariableDecl;
 
@@ -689,7 +689,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_var_decl(CIRBuildContext& ctx, Ast 
 }
 
 CIRInstructionRef CIRBuilder::build_inst_for_global_var_decl(CIRBuildContext& ctx, Ast *var_decl_ast) {
-    XP_ASSERT_DEFAULT(var_decl_ast->type == AstType_VariableDecl);
+    ASSERT(var_decl_ast->type == AstType_VariableDecl);
 
     auto& vd_ast = var_decl_ast->VariableDecl;
 
@@ -720,7 +720,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_global_var_decl(CIRBuildContext& ct
 }
 
 void CIRBuilder::build_inst_for_return_stmt(CIRBuildContext& ctx, Ast *return_stmt_ast) {
-    XP_ASSERT_DEFAULT(return_stmt_ast->type == AstType_ReturnStmt);
+    ASSERT(return_stmt_ast->type == AstType_ReturnStmt);
     CIRInstructionRef value_inst = INVALID_INST;
     if(return_stmt_ast->ReturnStmt.expr != nullptr) {
         bool saved = ctx.building_return_type_decl;
@@ -1286,7 +1286,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
             // 2. 每个字段: 类型 Block + StructField（纯数据，不干活）
             Array<CIRInstructionRef> field_insts = make_array<CIRInstructionRef>(ctx.pkg_ref->stage_allocator);
             for (Ast *field : expr->StructDeclValue.fields) {
-                XP_ASSERT_DEFAULT(field->type == AstType_StructField);
+                ASSERT(field->type == AstType_StructField);
 
                 auto type_block = build_block_ref_inst_for_expr(ctx, field->StructField.type_ast, true, false);
 

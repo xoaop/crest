@@ -66,7 +66,7 @@ xp_global xpHashMap<GlobalStringIndex, TokenType> keyword_map;
 void test_keyword_map() {
     for(u8 i = __START__OF__KEYWORD__+1; i < __END__OF__KEYWORD__; i+=1) {
         xpHashMapEntry<GlobalStringIndex, TokenType> *entry = xp_hash_map_get_entry(keyword_map, get_or_insert_global_string(token_strings[i]));
-        XP_ASSERT_MSG(cast(TokenType)i == entry->value, "test_keyword_map() FAILED: %s\n", token_strings[i]);
+        ASSERT_MSG(cast(TokenType)i == entry->value, "test_keyword_map() FAILED: {}\n", token_strings[i]);
     }
 }
 
@@ -445,8 +445,8 @@ xpPair<xpOption<Token>, bool> tokenizer_get_token(Tokenizer *t) {
 
         default:
         unknown_character: // TODO(xoaop): 不太好
-            // XP_ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
-            // XP_ASSERT_DEFAULT(0);
+            // ASSERT_MSG(0, "Unknown Character At Line %lld, Column %lld: %c\n", t->curr_line_index, t->curr_column_index, tokenizer_curr_character(t));
+            // ASSERT(0);
 
             context()->reporter.report(
                 ErrorLevel::Error,
@@ -614,7 +614,7 @@ void tokenizer_scan_number(Tokenizer *t, Token *token, isize old_index) {
     } break;
 
     default:
-        XP_ASSERT_DEFAULT(0);
+        ASSERT(0);
         break;
     }
 
