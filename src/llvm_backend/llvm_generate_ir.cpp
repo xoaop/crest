@@ -1821,7 +1821,7 @@ LLVMValueRef LLVMGenerator::get_ptr_of_llvm_value(LLVMValueRef value, bool allow
     if(allow_alloc_value_to_get_ptr) {
         LLVMTypeRef value_type_llvm = LLVMTypeOf(value);
         unsigned align = value_type != nullptr ? static_cast<unsigned>(type_align_of(value_type)) : 0;
-        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_bb(), "temp", value_type_llvm, align);
+        LLVMValueRef temp_alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, "temp", value_type_llvm, align);
         LLVMBuildStore(unit.builder, value, temp_alloca);
         return temp_alloca;
     } else {
