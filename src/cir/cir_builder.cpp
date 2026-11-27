@@ -551,7 +551,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
     // Build condition inside loop (re-evaluated each iteration)
     CIRInstructionRef cond_inst;
     if(fs.iter_var != nullptr) {
-        auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
+        auto load_var = Make_Instruction<CIROperator::LoadLValToRVal>(ctx, stmt, { .ptr_inst = counter_inst });
 
         cond_inst = Make_Instruction<CIROperator::Binary>(ctx, stmt, { .op = TokenType::LessThan, .left_inst = load_var, .right_inst = end_inst });
     } else if(fs.condition != nullptr) {
@@ -576,7 +576,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
             });
 
             if(iter_var_inst != INVALID_INST) {
-                auto load_idx = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
+                auto load_idx = Make_Instruction<CIROperator::LoadLValToRVal>(ctx, stmt, { .ptr_inst = counter_inst });
 
                 CIRInstructionRef elem_inst = INVALID_INST;
                 if(fs.iter_by_ptr) {
@@ -611,7 +611,7 @@ void CIRBuilder::build_inst_for_for_stmt(CIRBuildContext& ctx, Ast *stmt) {
         }
 
         if(counter_inst != INVALID_INST) {
-            auto load_var = Make_Instruction<CIROperator::Load>(ctx, stmt, { .ptr_inst = counter_inst });
+            auto load_var = Make_Instruction<CIROperator::LoadLValToRVal>(ctx, stmt, { .ptr_inst = counter_inst });
 
             auto v = make_value(easy_type(Type_untyped_int));
             v.integer_val(1);
@@ -853,7 +853,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                     .ident = expr->Ident.name,
                     .symbol = expr->ast_symbol,
                 });
-                auto load = Make_Instruction<CIROperator::Load>(ctx, expr, { .ptr_inst = ref });
+                auto load = Make_Instruction<CIROperator::LoadLValToRVal>(ctx, expr, { .ptr_inst = ref });
 
                 result = load;
                 break;
@@ -1097,7 +1097,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
                 auto addr_of = Make_Instruction<CIROperator::AddrOf>(ctx, expr, { .lval_inst = lval });
                 result = addr_of; break;
             }
-            // ^ptr: 对指针值 Load
+            // ^ptr: 对指针值 LoadLValToRVal
             if(op == TokenType::Caret) {
                 auto ptr_val_inst = build_inst_for_expr(ctx, expr->UnaryExpr.operand);
                 auto load = Make_Instruction<CIROperator::Deref>(ctx, expr, { .operand_inst = ptr_val_inst });

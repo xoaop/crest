@@ -87,7 +87,7 @@ static void collect_refs_impl(F& f, Array<CIRInstructionRef>& r, xpAllocator a) 
     X(CondBr)                   \
     X(IfExpr)                   \
     X(Break)                    \
-    X(Load)                     \
+    X(LoadLValToRVal)          \
     X(Deref)                    \
     X(Store)                    \
     X(IdentRef)                 \
@@ -218,10 +218,10 @@ struct CIRBreakInfo {
     CIR_TARGETS(&CIRBreakInfo::break_block)
 };
 
-struct CIRLoadInfo {
+struct CIRLoadLValToRValInfo {
     CIRInstructionRef ptr_inst;
 
-    CIR_REFS(&CIRLoadInfo::ptr_inst)
+    CIR_REFS(&CIRLoadLValToRValInfo::ptr_inst)
 };
 
 struct CIRStoreInfo {

@@ -821,9 +821,9 @@ AnalyzeResult Interpreter::analyze_PointerType(const CIRPointerTypeInfo& info, C
 }
 
 
-// handler: Load
-AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
-    CIRInstructionRef ptr_inst = inst(pc_ref).info<CIROperator::Load>().ptr_inst;
+// handler: LoadLValToRVal
+AnalyzeResult Interpreter::analyze_LoadLValToRVal(const CIRLoadLValToRValInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
+    CIRInstructionRef ptr_inst = inst(pc_ref).info<CIROperator::LoadLValToRVal>().ptr_inst;
 
     if(is_lvalue(ptr_inst)) {
         TypeRef loaded_type = ResultTypeOpt(ptr_inst).value_or(INVALID_TYPE);
@@ -843,7 +843,7 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
         return make_result(pc_ref, ResultDesc::make_type_only(loaded_type));
     }
 
-    DEBUG_PANIC("Load 的操作数只可能是 lvalue");
+    DEBUG_PANIC("LoadLValToRVal 的操作数只可能是 lvalue");
     return {};
 }
 

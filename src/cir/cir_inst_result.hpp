@@ -16,7 +16,7 @@ enum class CIRResultState: u32 {
 
 enum class CIRValueKind : u8 {
     RValue,  // 实际值（参与运算、传参）
-    LValue,  // 位置句柄（可被 Load/Store/FieldPtr/IndexPtr 操作）
+    LValue,  // 位置句柄（可被 LoadLValToRVal/Store/FieldPtr/IndexPtr 操作）
 };
 
 struct CIRInstResult {

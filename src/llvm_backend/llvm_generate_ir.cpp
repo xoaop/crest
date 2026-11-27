@@ -772,8 +772,8 @@ void LLVMGenerator::gen_ir_inst(CIRInstructionRef ref) {
             gen_ir_inst_break(inst.info<CIROperator::Break>());
         } break;
 
-        case CIROperator::Load: {
-            auto &info = inst.info<CIROperator::Load>();
+        case CIROperator::LoadLValToRVal: {
+            auto &info = inst.info<CIROperator::LoadLValToRVal>();
             LLVMValueRef ptr = get_llvm_val_from_inst_ref(info.ptr_inst);
 
             const auto& load_result = result_ctx.result_of(ref);
