@@ -843,23 +843,8 @@ AnalyzeResult Interpreter::analyze_Load(const CIRLoadInfo& info, CIRInstructionR
         return make_result(pc_ref, ResultDesc::make_type_only(loaded_type));
     }
 
-    const auto ptr_type = ResultTypeOpt(ptr_inst).value_or(INVALID_TYPE);
-    if(!ptr_type) {
-        return {};
-    }
-    if(!is_pointer_type(ptr_type)) {
-        return make_result(pc_ref, inst_error(pc_ref, "不能加载非指针值，实际类型 '{}'", ptr_type->name()));
-    }
-
-    if(has_instance() && has_result_val(ptr_inst)) {
-        Pointer ptr = ResultValueOpt(ptr_inst).value().pointer_val();
-        if(ptr.is_null()) {
-            return make_result(pc_ref, inst_error(pc_ref, "解引用空指针"));
-        }
-        Value val = clone_value(ptr.load(ptr_type->pointed_type), permanent_allocator());
-        return make_result(pc_ref, ResultDesc::make_value(ptr_type->pointed_type, val));
-    }
-    return make_result(pc_ref, ResultDesc::make_type_only(ptr_type->pointed_type));
+    DEBUG_PANIC("Load 的操作数只可能是 lvalue");
+    return {};
 }
 
 
