@@ -153,44 +153,6 @@ struct EvalInstance {
 
 struct Interpreter;
 
-// 调用帧：纯数据
-struct InterpStackFrame {
-    // 本帧分析的块
-    CIRBlockRef stop_blk = 0;
-    std::optional<CIRInstructionRef> stop_target = std::nullopt;
-    bool pushed_eval_mode = false;
-
-    // 是否由 InterpStack 驱动；false = 同步 interp（泛型具化、跨包符号）
-    bool managed = false;
-
-    // 本帧已让出（子 interp 入栈）
-    bool yielded = false;
-
-    // 调用点（无返回值报错的位置）
-    CIRInstructionRef call_pc = INVALID_INST;
-};
-
-// 解释器栈 —— 编译期调用链。栈顶就是当前执行的 interp：
-// 发起编译期调用 = 入栈；自己的块跑完 = 出栈。C++ 栈不随调用深度增长。
-struct InterpStack {
-    explicit InterpStack(xpAllocator allocator);
-    ~InterpStack();
-
-    // 栈深上限：失控递归的兜底（真正能到多深由内存决定）
-    static constexpr isize MAX_DEPTH = 10000;
-
-    Array<Interpreter*> interps;
-
-    bool empty() const;
-    Interpreter* top() const;
-    isize depth() const;
-
-    void push(Interpreter* interp);
-    void pop();                              // 出栈；调用结果写回新的栈顶
-    void run();                              // 驱动整条栈，直到根结束（根留给调用方销毁）
-    void run_until(Interpreter* target);     // 同步 interp：跑到 target 重新成为栈顶
-};
-
 
 
 
@@ -200,18 +162,10 @@ struct InterpStack {
 //
 
 struct Interpreter {
-    Interpreter(xpAllocator allocator, PackageRef pkg_ref, InterpStack *interp_stack, EvalInstance inst);
+    Interpreter(xpAllocator allocator, PackageRef pkg_ref, EvalInstance inst);
     ~Interpreter();
 
     Interpreter(const Interpreter&) = delete;
-
-    static Interpreter* create(xpAllocator allocator, PackageRef pkg_ref, InterpStack *interp_stack, EvalInstance inst);
-    static void destroy(Interpreter *interp);
-
-    // 本 interp 的帧操作
-    void start_frame(CIRBlockRef blk, std::optional<CIRInstructionRef> target, std::optional<EvalMode> force_eval_mode = std::nullopt);
-    void step();
-    void finish_frame();
 
 
 
@@ -310,22 +264,13 @@ struct Interpreter {
         Array<CIRInstResultRef> key_refs,
         Array<TypeRef> type_args);
 
-    // 编译期调用执行：查缓存 / 起子帧 / 收尾，返回调用点的结果写入
-    AnalyzeResult exec_comptime_call(
-        const CIRCallInfo& call_info,
-        CIRInstructionRef called_inst,
-        CIRInstructionRef pc_ref);
-
 public:
 
     // 本 interp 只看得见这一个包：跨包一律另起一个 interp
     const PackageRef pkg_ref;
     const CIRPackageRef pkg;
 
-    // 编译期调用链
-    InterpStack *const interp_stack;
-    // 本 interp 的调用帧（纯数据）与求值实例
-    InterpStackFrame frame;
+    // 本 interp 的求值实例
     EvalInstance eval_instance;
 
     Array<CIRInstructionRef> inst_stack;  // 指令位置栈（块入口/跳转时压入保存，恢复时弹出）
