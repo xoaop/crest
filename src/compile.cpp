@@ -40,8 +40,8 @@ bool check_file_legal(xpString path);
 xpString make_import_cycle_message(PackageRef target) {
     Package *p = &*target;
     std::string msg = "import 循环依赖: '";
-    StringRef path = get_global_string(p->path);
-    msg.append(path.data(), path.count());
+    const xpString path = get_global_string(p->path);
+    msg.append(path, static_cast<size_t>(xp_string_count(path)));
     msg += "'";
     return xp_make_string_capacity(permanent_allocator(), msg.data(), (isize)msg.size());
 }

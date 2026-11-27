@@ -40,10 +40,10 @@ TypeHashKey TypeHashKey::clone(xpAllocator allocator) const {
 
 
 TypeKind string_to_type_kind(GlobalStringIndex str) {
-    StringRef str_ref = get_global_string(str);
+    const xpString name = get_global_string(str);
 
     for(size_t i = 0; i < sizeof(type_strings) / sizeof(type_strings[0]); i++) {
-        if(str_ref == StringRef::init(type_strings[i])) {
+        if(name == type_strings[i]) {
             return static_cast<TypeKind>(i);
         }
     }
@@ -126,11 +126,11 @@ Type copy_type(Type *src) {
 }
 
 
-StringRef Type::name() {
+xpString Type::name() {
     return get_global_string(get_type_name(this));
 }
 
-StringRef Type::t_name() {
+xpString Type::t_name() {
     return get_global_string(get_type_name(this, true));
 }
 
@@ -432,9 +432,9 @@ bool is_slice_struct_type(TypeRef type) {
         return false;
     }
 
-    StringRef type_name = get_global_string(type->type_name);
+    const xpString type_name = get_global_string(type->type_name);
 
-    if(type_name.count() <= 0) {
+    if(xp_string_count(type_name) <= 0) {
         return false;
     }
 
@@ -909,7 +909,7 @@ TypeRef slice_type_as_struct(TypeRef elem_type) {
     
 
     xpString slice_struct_name = xp_make_string(temp_allocator(), "[]");
-    xpString elem_str = to_xp_str(get_global_string(get_or_make_type_str(elem_type, temp_allocator())), temp_allocator());
+    xpString elem_str = get_global_string(get_or_make_type_str(elem_type, temp_allocator()));
 
     xp_string_append(&slice_struct_name, elem_str);
 
@@ -987,7 +987,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
         xpString base_str = xp_make_string(allocator, "*");
 
         // 因为可能有多级指针，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString pointed_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->pointed_type, temp_allocator(), is_pure_type_name)), temp_allocator());
+        xpString pointed_type_str = get_global_string(get_or_make_type_str(type->pointed_type, temp_allocator(), is_pure_type_name));
 
         xp_string_append(&base_str, pointed_type_str);
 
@@ -1015,7 +1015,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
         xp_string_append(&base_str, "]");
 
         // 因为可能是复杂类型，所以递归获取, 而且用temp_allocator避免内存泄漏
-        xpString elem_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name)), temp_allocator());
+        xpString elem_type_str = get_global_string(get_or_make_type_str(type->array_info.element_type, temp_allocator(), is_pure_type_name));
 
         xp_string_append(&base_str, elem_type_str);
 
@@ -1026,7 +1026,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
 
         FOR(type->function_info.param_types) {
 
-            xpString param_type_str = to_xp_str(get_global_string(get_or_make_type_str(it, temp_allocator(), is_pure_type_name)), temp_allocator());
+            xpString param_type_str = get_global_string(get_or_make_type_str(it, temp_allocator(), is_pure_type_name));
             xp_string_append(&func_str, param_type_str);
 
             if(it_index != type->function_info.param_types.count - 1) {
@@ -1038,7 +1038,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
 
         xp_string_append(&func_str, ") -> ");
 
-        xpString return_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name)), temp_allocator());
+        xpString return_type_str = get_global_string(get_or_make_type_str(type->function_info.return_type, temp_allocator(), is_pure_type_name));
         xp_string_append(&func_str, return_type_str);
         // ABI 边界是类型的一部分，报错时两个类型必须能区分开
         if(type->function_info.is_extern_c) {
@@ -1048,7 +1048,7 @@ GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool
     } else if(is_type_type(type)) {
 
         xpString type_str = xp_make_string(allocator, "type(");
-        xpString self_type_str = to_xp_str(get_global_string(get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name)), temp_allocator());
+        xpString self_type_str = get_global_string(get_or_make_type_str(type->self_type_info, temp_allocator(), is_pure_type_name));
         xp_string_append(&type_str, self_type_str);
         xp_string_append(&type_str, ")");
         return get_or_insert_global_string(type_str);

@@ -55,6 +55,6 @@ GlobalStringIndex get_or_insert_global_string(const xpString& str) {
 }
 
 
-StringRef get_global_string(GlobalStringIndex index) {
+const xpString get_global_string(GlobalStringIndex index) {
     return get_global_string(context()->global_strings, index);
 }

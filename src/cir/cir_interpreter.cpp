@@ -131,7 +131,7 @@ void Interpreter::collect_lcir_globals() {
             return lcir::GlobalVariableDecl{
                 .raw_name = lcir::mangle_name(
                     key,
-                    std::optional<xpString>(to_xp_str(get_global_string(gvd.name), permanent_allocator())),
+                    std::optional<xpString>(get_global_string(gvd.name)),
                     false,
                     pkg->package_ref
                 ),
@@ -639,7 +639,7 @@ void Interpreter::capture_lcir_function(CIRInstResultRef fk) {
     const bool has_symbol = fdecl.symbol != SymbolInfoRef::INVALID_REF;
     const xpString nm = lcir::mangle_name(
         fk,
-        has_symbol ? std::optional<xpString>(to_xp_str(get_global_string(fdecl.symbol->name), permanent_allocator())) : std::nullopt,
+        has_symbol ? std::optional<xpString>(get_global_string(fdecl.symbol->name)) : std::nullopt,
         fdecl.is_extern_c,
         fk.inst_ref.pkg->package_ref
     );
@@ -3634,7 +3634,7 @@ AnalyzeResult Interpreter::analyze_ImportPackage(const CIRImportPackageInfo& inf
 
     // import 是编译期求值：compile_package_from_import 解析路径→查表/现场构建（循环 import 在查表时检测报错）
     xpString cycle_err = xp_make_string_zero();
-    auto pkg_opt = compile_package_from_import(to_xp_str(get_global_string(info.path), permanent_allocator()), &cycle_err);
+    auto pkg_opt = compile_package_from_import(get_global_string(info.path), &cycle_err);
     if(pkg_opt.is_none()) {
         if(xp_string_count(cycle_err) > 0) {
             return make_result(pc_ref, inst_error(pc_ref, "{}", cycle_err));

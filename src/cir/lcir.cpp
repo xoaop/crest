@@ -28,7 +28,7 @@ xpString mangle_name(CIRInstResultRef key, std::optional<xpString> base_name_opt
             return name;
         }());
 
-        if(StringRef::init(base_name) == get_global_string(context()->known_global_strings.main) || is_extern_c) {
+        if(base_name == get_global_string(context()->known_global_strings.main) || is_extern_c) {
             return base_name;
         }
 
@@ -43,7 +43,7 @@ xpString mangle_name(CIRInstResultRef key, std::optional<xpString> base_name_opt
         }
 
         return xp_string_concat_mid(
-            package != PackageRef::INVALID_REF ? to_xp_str(get_global_string(package->path), permanent_allocator()) : xp_make_string_zero(),
+            package != PackageRef::INVALID_REF ? get_global_string(package->path) : xp_make_string_zero(),
             base_name,
             xpOption<xpString>(xp_make_string(permanent_allocator(), ".")),
             permanent_allocator()

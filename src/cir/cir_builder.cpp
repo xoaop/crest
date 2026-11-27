@@ -475,7 +475,9 @@ CIRInstructionRef CIRBuilder::build_inst_for_stmt(CIRBuildContext& ctx, Ast *stm
 // 编译器内部变量：名字含 '$'，不在标识符字符集内，用户源码无法拼出；
 // 后缀编号保证内部变量之间不撞名。
 static CIRInstructionRef alloc_internal_var(CIRBuildContext& ctx, const char *role, Ast *init_expr, Ast *src_ast) {
-    xpString name_str = xp_make_string(permanent_allocator(), "$");
+    xpString name_str = xp_make_string(xp_heap_allocator(), "$");
+    defer(xp_string_free(name_str));
+    
     xp_string_append(&name_str, xp_make_string(permanent_allocator(), role));
     xp_string_append(&name_str, xp_make_string(permanent_allocator(), "."));
     xp_string_append(&name_str, xp_isize_to_string(ctx.internal_var_serial, permanent_allocator()));
@@ -1210,7 +1212,7 @@ CIRInstructionRef CIRBuilder::build_inst_for_expr(CIRBuildContext& ctx, Ast *exp
 
             ctx.pkg->string_literals.push_back(str);
 
-            auto count_str = static_cast<isize>(get_global_string(str).count());
+            auto count_str = static_cast<isize>(xp_string_count(get_global_string(str)));
 
             // 字面量字节本身就在 permanent 内存里（parser 造的），无需再抄一份
 

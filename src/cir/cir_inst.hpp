@@ -573,8 +573,8 @@ template<> struct CIRFormat<GlobalStringIndex> {
         if(v == GLOBAL_STRING_NONE) {
             return "-";
         }
-        StringRef r = get_global_string(v);
-        return std::string(r.data(), r.count());
+        const xpString r = get_global_string(v);
+        return std::string(r, static_cast<size_t>(xp_string_count(r)));
     }
 };
 
@@ -611,7 +611,7 @@ template<> struct CIRFormat<SymbolInfoRef> {
             return "-";
         }
 
-        return CIRFormat<xpString>::as_string(to_xp_str(get_global_string(v.name), permanent_allocator()));
+        return CIRFormat<xpString>::as_string(get_global_string(v.name));
     }
 };
 

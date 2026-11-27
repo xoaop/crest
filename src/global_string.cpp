@@ -1,21 +1,18 @@
 #include "global_string.hpp"
 
 GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings, const char *str, size_t count, xpAllocator allocator) {
-    auto it = global_strings.string_index_map.find(StringRef::init(str, count));
-    
-    if (it != global_strings.string_index_map.end()) {
+    const auto key = xp_make_string_count(allocator, str, static_cast<isize>(count));
+
+    auto it = global_strings.string_index_map.find(key);
+    if(it != global_strings.string_index_map.end()) {
+        xp_string_free(key);
         return it->second;
-    } else {
-        global_strings.strings.push_back(xp_make_string_count(allocator, str, static_cast<isize>(count)));
-
-        const auto& new_string = global_strings.strings.back();
-        auto new_string_ref = StringRef::init(new_string);
-        GlobalStringIndex index = global_strings.strings.size() - 1;
-
-        global_strings.string_index_map[new_string_ref] = index;
-        
-        return index;
     }
+
+    global_strings.strings.push_back(key);
+    global_strings.string_index_map[key] = global_strings.strings.size() - 1;
+
+    return global_strings.strings.size() - 1;
 }
 
 GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings, const char *str, xpAllocator allocator) {
@@ -27,8 +24,8 @@ GlobalStringIndex get_or_insert_global_string(GlobalStringArray& global_strings,
     return get_or_insert_global_string(global_strings, str, static_cast<size_t>(xp_string_count(str)), allocator);
 }
 
-StringRef get_global_string(const GlobalStringArray& global_strings, GlobalStringIndex index) {
-    return StringRef::init(global_strings.strings[index]);
+const xpString get_global_string(const GlobalStringArray& global_strings, GlobalStringIndex index) {
+    return global_strings.strings[index];
 }
 
 KnownGlobalStrings make_known_global_strings(GlobalStringArray& global_strings, xpAllocator allocator) {

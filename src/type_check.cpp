@@ -158,7 +158,7 @@ std::optional<xpString> check_var_type(xpAllocator allocator, const Value& val, 
         // C 会自动把函数类型降级成指针；这里要显式的 '*'，所以按错误报出去
         return xp_string_concat_mid(
             xp_make_string(allocator, "类型不能是函数类型（没有存储布局），请用函数指针 '*"),
-            to_xp_str(type->name(), allocator),
+            type->name(),
             xpOption<xpString>(xp_make_string(allocator, "'")),
             allocator
         );

@@ -721,7 +721,7 @@ Ast *parse_stmt(Parser *p) {
         {
             Ast *import_ast = a;
             a = ast_alloc(AstType_ConstDecl, import_ast->token);
-            a->ConstDecl.name = get_or_insert_global_string(get_last_component_of_path(to_xp_str(get_global_string(import_ast->Import.path), ast_allocator()), ast_allocator()));
+            a->ConstDecl.name = get_or_insert_global_string(get_last_component_of_path(get_global_string(import_ast->Import.path), ast_allocator()));
             a->ConstDecl.value_ast = import_ast;
             a->src_loc = import_ast->src_loc;
         }
@@ -1599,7 +1599,7 @@ Ast *parse_constant(Parser *p, bool negative) {
     
     
     if(curr.type == TokenType::Integer) {
-        std::string num = get_global_string(curr.number_info.number_str).data();
+        std::string num = static_cast<const char *>(get_global_string(curr.number_info.number_str));
         if(negative) {
             num.insert(0, "-");
         }
@@ -1608,7 +1608,7 @@ Ast *parse_constant(Parser *p, bool negative) {
     }
 
     if(curr.type == TokenType::Float) {
-        std::string num = get_global_string(curr.number_info.number_str).data();
+        std::string num = static_cast<const char *>(get_global_string(curr.number_info.number_str));
         if(negative) {
             num.insert(0, "-");
         }

@@ -171,8 +171,8 @@ struct Type {
         return is_equal_type(*this, other);
     }
 
-    StringRef name();   // 符号名, 可能是结构体的名字, 包的名字, 基本类型的名字等
-    StringRef t_name(); // 纯类型名, 可能是type(struct)
+    xpString name();   // 符号名, 可能是结构体的名字, 包的名字, 基本类型的名字等
+    xpString t_name(); // 纯类型名, 可能是type(struct)
 };
 
 
@@ -286,8 +286,12 @@ struct std::formatter<Type> {
                 }
             }
         } break;
-        case Type_struct:
-            return std::format_to(out, "struct {}", type.type_name == GLOBAL_STRING_NONE ? StringRef::init("?") : get_global_string(type.type_name));
+        case Type_struct: {
+            if(type.type_name == GLOBAL_STRING_NONE) {
+                return std::format_to(out, "struct ?");
+            }
+            return std::format_to(out, "struct {}", get_global_string(type.type_name));
+        }
         case Type_untyped_int:
             return std::format_to(out, "literal");
         case Type_Undefined:

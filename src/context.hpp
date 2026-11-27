@@ -21,7 +21,6 @@
 
 #include "value_array.hpp"
 
-#include "string_ref.hpp"
 #include "global_string.hpp"
 
 #include "lcir.hpp"

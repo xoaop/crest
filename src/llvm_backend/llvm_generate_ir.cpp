@@ -57,7 +57,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
         LLVMValueRef g = LLVMAddGlobal(
             unit.module,
             get_llvm_type_from_type(var_type),
-            xp_string_to_c_style(gd.raw_name, stage_allocator())
+            gd.raw_name
         );
         LLVMSetLinkage(g, LLVMInternalLinkage);
         LLVMSetAlignment(g, static_cast<unsigned>(type_align_of(var_type)));
@@ -92,7 +92,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
         LLVMValueRef f = LLVMAddFunction(
             unit.module,
-            xp_string_to_c_style(fd.raw_name, stage_allocator()),
+            fd.raw_name,
             fn_type
         );
 
@@ -147,7 +147,7 @@ xpString LLVMGenerator::gen_ir_package(const lcir::Module& mod, LLVMIRGenerateCo
 
     // 输出 .ll 文件
     char *error = nullptr;
-    const std::filesystem::path pkg_path(as_u8(to_xp_str(get_global_string(pkg->path), stage_allocator())));
+    const std::filesystem::path pkg_path(as_u8(get_global_string(pkg->path)));
     std::string file_name = (const char *)pkg_path.generic_u8string().c_str();
     // 单文件包 path 带扩展名(.cst), 输出文件名不带后缀
     if(pkg_path.has_extension()) {
@@ -1003,7 +1003,7 @@ void LLVMGenerator::gen_ir_variable_decl(CIRInstructionRef ref, const CIRInstruc
 
     // 1. 分配空间
     TypeRef var_type = result_ctx.result_of(ref).actual_type();
-    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, xp_string_to_c_style(to_xp_str(get_global_string(inst.info<CIROperator::VariableDecl>().name), stage_allocator()), stage_allocator()), get_llvm_type_from_type(var_type), static_cast<unsigned>(type_align_of(var_type)));
+    LLVMValueRef alloca = insert_alloca_before_last_inst_which_is_br(curr_state.entry, get_global_string(inst.info<CIROperator::VariableDecl>().name), get_llvm_type_from_type(var_type), static_cast<unsigned>(type_align_of(var_type)));
 
     // 2. 如果有初始值，生成初始值 IR 并存储
 
@@ -1595,7 +1595,7 @@ LLVMValueRef LLVMGenerator::gen_llvm_string_global(const char *chars, isize len)
 void LLVMGenerator::init(PackageRef pkg_ref, xpAllocator allocator) {
     Package *pkg = &*pkg_ref;
     // 全局会话（ctx/target_machine/target_data）由 init_llvm() 创建一次，这里只建逐单元部分
-    unit.module = LLVMModuleCreateWithNameInContext(get_global_string(pkg->path).data(), g_llvm_session.ctx);
+    unit.module = LLVMModuleCreateWithNameInContext(get_global_string(pkg->path), g_llvm_session.ctx);
     unit.builder = LLVMCreateBuilderInContext(g_llvm_session.ctx);
 
     // 模块级 triple / data layout
@@ -1673,7 +1673,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
 
             // TODO: 规范
             auto name_maybe = type->struct_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_make_string(stage_allocator(), "anonymous_struct");
+            xpString name = name_maybe.has_value() ? get_global_string(name_maybe.value()) : xp_make_string(stage_allocator(), "anonymous_struct");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()));
 
@@ -1724,7 +1724,7 @@ LLVMTypeRef get_llvm_type_from_type(TypeRef type) {
             }
 
             auto name_maybe = type->union_info.hash_key.name;
-            xpString name = name_maybe.has_value() ? to_xp_str(get_global_string(name_maybe.value()), stage_allocator()) : xp_make_string(stage_allocator(), "anonymous_union");
+            xpString name = name_maybe.has_value() ? get_global_string(name_maybe.value()) : xp_make_string(stage_allocator(), "anonymous_union");
 
             LLVMTypeRef struct_ty = LLVMStructCreateNamed(g_llvm_session.ctx, xp_string_to_c_style(name, stage_allocator()));
             LLVMTypeRef *union_type = xp_hash_map_insert(&g_llvm_session.union_types, key, struct_ty);
@@ -1979,7 +1979,7 @@ int size_of_type(TypeRef type) {
 }
 
 static unsigned llvm_struct_field_index(LLVMTypeRef struct_type, isize source_index) {
-    Array<unsigned>* indices = xp_hash_map_get(g_llvm_session.struct_field_indices, struct_type);
+    auto *indices = xp_hash_map_get(g_llvm_session.struct_field_indices, struct_type);
     ASSERT(indices != nullptr);
     ASSERT(source_index >= 0 && source_index < indices->count);
     return (*indices)[source_index];
