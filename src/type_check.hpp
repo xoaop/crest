@@ -18,11 +18,16 @@ std::optional<xpString> check_const_type(xpAllocator allocator, TypeRef type);
 
 bool check_untyped_int_to_type(i128 value, TypeRef target_type);
 bool check_untyped_float_to_type(double value, TypeRef target_type);
-
+bool check_untyped_to_type(Value& val, TypeRef target_type);
 
 TypeRef get_compliable_integer_type(i128 value);
 TypeRef get_compliable_float_type(double value);
+TypeRef get_compliable_const_type(Value& val);
 
+
+bool check_integer_overflow(i128 val, TypeRef type);
+bool check_float_overflow(double val, TypeRef type);
+bool is_val_overflow(const Value& val);
 
 
 std::optional<TypeRef> default_certain_type_for_untyped_type_opt(TypeRef untyped_type);

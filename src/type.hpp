@@ -237,20 +237,12 @@ TypeRef get_common_type(TypeRef a, TypeRef b);
 u32 get_fixed_param_count(TypeRef func_type);
 
 
-bool check_literal_overflow(TypeKind type_kind, i128 result, double dresult);
-bool check_integer_overflow(i128 val, TypeRef type);
-bool check_float_overflow(double val, TypeRef type);
-
-
-
 GlobalStringIndex get_type_name(TypeRef type, bool is_pure_type_name = false);
 GlobalStringIndex get_type_kind_str(TypeKind kind);
 GlobalStringIndex get_or_make_type_str(TypeRef type, xpAllocator allocator, bool is_pure_type_name = false);
 
 
 const char *to_string(TypeKind kind);
-
-void print_type(TypeRef type);
 
 
 // Type 的 formatter：基本类型经 formatter<TypeKind>（TYPE_KINDS 宏）自动覆盖，

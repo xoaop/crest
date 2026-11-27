@@ -26,40 +26,7 @@
 #include "xoaop.h"
 
 
-bool is_val_overflow(const Value& val) {
-    if(is_integer_type(val.type)) {
-        return check_integer_overflow(val.integer_val(), val.type);
-    } else if(is_float_type(val.type)) {
-        return check_float_overflow(val.float_val(), val.type);
-    } else {
-        return false;
-    }
-}
 
-bool check_untyped_to_type(Value& val, TypeRef target_type) {
-    if(val.type == easy_type(Type_untyped_int)) {
-        return check_untyped_int_to_type(val.integer_val(), target_type);
-    } else if(val.type == easy_type(Type_untyped_float)) {
-        return check_untyped_float_to_type(val.float_val(), target_type);
-    } else {
-        UNREACHABLE();
-        return false;
-    }
-}
-
-TypeRef get_compliable_const_type(Value& val) {
-    ASSERT(is_untyped_type(val.type));
-
-
-    if(val.type == easy_type(Type_untyped_int)) {
-        return get_compliable_integer_type(val.integer_val());
-    } else if(val.type == easy_type(Type_untyped_float)) {
-        return get_compliable_float_type(val.float_val());
-    } else {
-        UNREACHABLE();
-        return error_type();
-    }
-}
 
 
 

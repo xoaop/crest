@@ -1,6 +1,7 @@
 #include "value_ops.hpp"
 
 #include "ast.hpp"
+#include "type_check.hpp"
 
 #include <cmath>
 

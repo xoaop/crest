@@ -1,4 +1,8 @@
 #include "type_check.hpp"
+
+#include <cstdint>
+#include <cfloat>
+
 #include "error_msg.hpp"
 #include "print.hpp"
 #include "context.hpp"
@@ -112,6 +116,16 @@ bool check_untyped_float_to_type(double value, TypeRef target_type) {
 }
 
 
+bool check_untyped_to_type(Value& val, TypeRef target_type) {
+    if(val.type == easy_type(Type_untyped_int)) {
+        return check_untyped_int_to_type(val.integer_val(), target_type);
+    } else if(val.type == easy_type(Type_untyped_float)) {
+        return check_untyped_float_to_type(val.float_val(), target_type);
+    } else {
+        UNREACHABLE();
+        return false;
+    }
+}
 
 
 
@@ -139,6 +153,75 @@ TypeRef get_compliable_float_type(double value) {
     }
 
 }
+
+TypeRef get_compliable_const_type(Value& val) {
+    ASSERT(is_untyped_type(val.type));
+
+
+    if(val.type == easy_type(Type_untyped_int)) {
+        return get_compliable_integer_type(val.integer_val());
+    } else if(val.type == easy_type(Type_untyped_float)) {
+        return get_compliable_float_type(val.float_val());
+    } else {
+        UNREACHABLE();
+        return error_type();
+    }
+}
+
+bool check_integer_overflow(i128 val, TypeRef type) {
+    ASSERT(is_integer_type(type));
+
+    switch(type->kind) {
+        case Type_i8:
+            return (val < INT8_MIN || val > INT8_MAX);
+        case Type_i16:
+            return (val < INT16_MIN || val > INT16_MAX);
+        case Type_i32:
+            return (val < INT32_MIN || val > INT32_MAX);
+        case Type_i64:
+            return (val < INT64_MIN || val > INT64_MAX);
+        case Type_u8:
+            return (val < 0 || val > UINT8_MAX);
+        case Type_u16:
+            return (val < 0 || val > UINT16_MAX);
+        case Type_u32:
+            return (val < 0 || val > UINT32_MAX);
+        case Type_u64:
+            return (val < 0 || val > UINT64_MAX);
+        case Type_isize:
+            return (val < INTPTR_MIN || val > INTPTR_MAX);
+        case Type_usize:
+            return (val < 0 || val > (i128)UINTPTR_MAX);
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
+
+bool check_float_overflow(double val, TypeRef type) {
+    ASSERT(is_float_type(type));
+
+    switch(type->kind) {
+        case Type_f32:
+            return (val < -FLT_MAX || val > FLT_MAX);
+        case Type_f64:
+            return (val < -DBL_MAX || val > DBL_MAX);
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
+
+bool is_val_overflow(const Value& val) {
+    if(is_integer_type(val.type)) {
+        return check_integer_overflow(val.integer_val(), val.type);
+    } else if(is_float_type(val.type)) {
+        return check_float_overflow(val.float_val(), val.type);
+    } else {
+        return false;
+    }
+}
+
 
 std::optional<xpString> check_var_type(xpAllocator allocator, const Value& val, bool is_param) {
     // 类型位置拿到的是函数值：写的是函数声明当类型用，比如 field: some_func

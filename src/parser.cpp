@@ -4,6 +4,7 @@
 #include "path.hpp"
 
 #include "context.hpp"
+#include "type_check.hpp"
 #include <functional>
 
 
