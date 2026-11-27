@@ -3151,64 +3151,6 @@ AnalyzeResult Interpreter::analyze_FunctionDecl(const CIRFunctionDeclInfo& info,
     return r;
 }
 
-// $T 实例化: 用类型实参开一个独立 CIRResultInstance, 把类型变量的值填进去,
-// 然后重跑签名块 + FunctionDecl —— 签名怎么算、body 怎么分析全部复用现成路径。
-// 流程与 analyze_Call 的编译期调用段同构, 差别只在: 类型变量不占槽(不走变量槽),
-// 入口是签名块+FunctionDecl 而非 body(要的是签名不是返回值)。
-// 工具函数: 失败一律返回 nullopt, 递归深度检查与报错都由调用方负责。
-std::optional<Value> Interpreter::instantiate_generic_func(
-        FuncValue fv,
-        Array<CIRInstResultRef> key_refs,
-        Array<TypeRef> type_args) {
-
-    const CIRPackageRef callee_pkg_ref = fv.func_key.inst_ref.pkg;
-    ASSERT_MSG(callee_pkg_ref == pkg, "具化只能跑在本 interp 绑定的包上");
-    CIRPackage &callee_pkg = *callee_pkg_ref;
-
-    CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
-    const CIRFunctionDeclInfo& func = callee_pkg.inst(func_decl_pc).info<CIROperator::FunctionDecl>();
-
-    ASSERT(type_args.count == func.generic_param_type_var_insts.count);
-
-    FuncCallKey cache_key = {
-        .func_decl_pc = func_decl_pc,
-        .comptime_arg_refs = key_refs,
-        .is_generic_instance = true,
-    };
-    CIRResultInstanceRef lexical_parent = fv.func_key.result_instance;
-    if(lexical_parent == CIRResultInstanceRef::INVALID_REF) {
-        lexical_parent = callee_pkg.root_instance();
-    }
-    CIRResultInstanceRef callee_result_instance = callee_pkg.get_or_init_result_instance(cache_key, lexical_parent);
-
-    // 已实例化 / 自递归重入 → 复用。真签名在 body 分析之前已登记（analyze_FunctionDecl
-    // 的泛型支），所以递归重入时必然命中。result_ptr_of 不 insert，新实例这里是干净的 miss
-    if(const CIRInstResult *cached = callee_result_instance->result_ptr_of(func_decl_pc)) {
-        if(cached->state == CIRResultState::WholeValue) {
-            return cached->actual_val();
-        }
-    }
-
-    // 帧是本 interp 自己的（构造时已入链）；把它的 ctx 绑到本次实例
-    eval_instance.ctx.enter_call(cache_key, lexical_parent);
-
-    // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
-    // 查 result_instance_map 命中本实例的这个槽
-    FOR(func.generic_param_type_var_insts) {
-        Value tv = make_value(type_type());
-        tv.type_val(type_args[it_index]);
-        result_context().result_of(it).set_val(tv);
-    }
-
-    analyze_instruction_at(func_decl_pc);
-
-    if(!has_result_val(func_decl_pc)) {
-        return std::nullopt;
-    }
-
-    return ResultValueOpt(func_decl_pc).value();
-}
-
 // handler: InstantiateFunc（$T 模板按实参类型具化）
 // 与 DetermineType 同模式：不写自身结果，靠 CIR_TARGETS(called_thing) 把状态传播到被调对象
 AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo& info, CIRInstructionRef pc_ref, const AnalyzeParams& params) {
@@ -3223,14 +3165,21 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
     if(!called_val.is_unresolved_func_val()) {
         return {};
     }
+
     const FuncValue fv = called_val.unresolved_func_val();
-    const CIRFunctionDeclInfo& generic_func = fv.func_key.inst_ref.pkg->inst(fv.func_key.inst_ref).info<CIROperator::FunctionDecl>();
+    const CIRPackageRef callee_pkg_ref = fv.func_key.inst_ref.pkg;
+    const CIRInstructionRef func_decl_pc = fv.func_key.inst_ref;
+    const CIRFunctionDeclInfo& generic_func = callee_pkg_ref->inst(func_decl_pc).info<CIROperator::FunctionDecl>();
 
     // TODO: REPEAT
     // 模板没有可查的签名，arity 直接用形参个数比
-    if(info.arg_insts.count != generic_func.arg_type_insts.count) {
-        return make_result(called_inst, inst_error(pc_ref, "实参数量不匹配：期望 {} 个，实际 {} 个",
-            generic_func.arg_type_insts.count, info.arg_insts.count));
+    const auto arg_count = info.arg_insts.count;
+    const auto param_count = generic_func.arg_decl_insts.count;
+    if(arg_count != param_count) {
+        return make_result(called_inst, inst_error(pc_ref, 
+            "实参数量不匹配：期望 {} 个，实际 {} 个",
+            param_count, arg_count
+        ));
     }
 
 
@@ -3265,13 +3214,51 @@ AnalyzeResult Interpreter::analyze_InstantiateFunc(const CIRInstantiateFuncInfo&
     );
     callee_interp.eval_mode_stack.push_back(curr_eval_mode());   // 接续调用点的求值模式
 
-    const auto instantiated = callee_interp.instantiate_generic_func(fv, key_refs, type_args);
+    // $T 实例化: 用类型实参开一个独立 CIRResultInstance, 把类型变量的值填进去,
+    // 然后重跑签名块 + FunctionDecl —— 签名怎么算、body 怎么分析全部复用现成路径。
+    // 流程与 analyze_Call 的编译期调用段同构, 差别只在: 类型变量不占槽(不走变量槽),
+    // 入口是签名块+FunctionDecl 而非 body(要的是签名不是返回值)。
+    ASSERT(type_args.count == generic_func.generic_param_type_var_insts.count);
 
-    if(!instantiated.has_value()) {
+    FuncCallKey cache_key = {
+        .func_decl_pc = func_decl_pc,
+        .comptime_arg_refs = key_refs,
+        .is_generic_instance = true,
+    };
+    CIRResultInstanceRef lexical_parent = fv.func_key.result_instance;
+    if(lexical_parent == CIRResultInstanceRef::INVALID_REF) {
+        lexical_parent = callee_pkg_ref->root_instance();
+    }
+    CIRResultInstanceRef callee_result_instance = callee_pkg_ref->get_or_init_result_instance(cache_key, lexical_parent);
+
+    // 已实例化 / 自递归重入 → 复用。真签名在 body 分析之前已登记（analyze_FunctionDecl
+    // 的泛型支），所以递归重入时必然命中。result_ptr_of 不 insert，新实例这里是干净的 miss
+    if(const CIRInstResult *cached = callee_result_instance->result_ptr_of(func_decl_pc)) {
+        if(cached->state == CIRResultState::WholeValue) {
+            r.writes.push_back({called_inst, ResultDesc::make_value(cached->actual_val())});
+            return r;
+        }
+    }
+
+    // 帧是本 interp 自己的（构造时已入链）；把它的 ctx 绑到本次实例
+    callee_interp.eval_instance.ctx.enter_call(cache_key, lexical_parent);
+
+    // 填类型变量：不占内存也不被 Load，IdentVal(T) 经 sym->result(curr_cache_key())
+    // 查 result_instance_map 命中本实例的这个槽
+    FOR(generic_func.generic_param_type_var_insts) {
+        Value tv = make_value(type_type());
+        tv.type_val(type_args[it_index]);
+        callee_interp.result_context().result_of(it).set_val(tv);
+    }
+
+    callee_interp.analyze_instruction_at(func_decl_pc);
+
+    if(!callee_interp.has_result_val(func_decl_pc)) {
         return make_result(called_inst, inst_error(pc_ref, "泛型函数实例化失败：签名无法确定"));
     }
 
-    r.writes.push_back({called_inst, ResultDesc::make_value(instantiated.value())});
+    const auto instantiated = callee_interp.ResultValueOpt(func_decl_pc).value();
+    r.writes.push_back({called_inst, ResultDesc::make_value(instantiated)});
     return r;
 }
 

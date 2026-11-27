@@ -257,13 +257,6 @@ struct Interpreter {
                               CIRInstructionRef error_inst,
                               Array<ResultWrite>& out_writes);
 
-    // $T 实例化: 用类型实参开一个独立 CIRResultInstance, 重跑签名块 + FunctionDecl,
-    // 得到本次调用的具体函数值
-    std::optional<Value> instantiate_generic_func(
-        FuncValue fv,
-        Array<CIRInstResultRef> key_refs,
-        Array<TypeRef> type_args);
-
 public:
 
     // 本 interp 只看得见这一个包：跨包一律另起一个 interp
